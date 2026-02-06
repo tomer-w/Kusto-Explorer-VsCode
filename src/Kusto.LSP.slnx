@@ -1,0 +1,10 @@
+<Solution>
+  <Project Path="KustoLanguageServer/KustoLsp.csproj" />
+  <Project Path="KustoLspServer/KustoLspServer.csproj" Id="304c6e02-ffce-40a0-8f94-481149430417" />
+  <Project Path="KustoLspTests/KustoLspTests.csproj" Id="ed04614e-d6ce-466b-a546-c666c5809325" />
+  <Project Path="LspCommon/LspCommon.csproj" Id="c0f6b939-7a44-403f-8127-40dc69862562" />
+  <Project Path="VsCodeExtension/VsCodeExtension.esproj">
+    <Build />
+    <Deploy />
+  </Project>
+</Solution>

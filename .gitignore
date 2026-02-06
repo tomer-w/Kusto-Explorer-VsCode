@@ -416,3 +416,7 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# VS Code extension build output - exclude compiled server files
+src/VsCodeExtension/server/
+src/VsCodeExtension/out/

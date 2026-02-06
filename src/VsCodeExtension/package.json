@@ -1,0 +1,323 @@
+{
+  "name": "kusto-lsp",
+  "displayName": "Kusto",
+  "description": "Kusto Language Support (KQL)",
+  "version": "1.0.0",
+  "publisher": "mattwar",
+  "author": "Matt Warren",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mattwar/Kusto.LSP"
+  },
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [ "Programming Languages" ],
+  "activationEvents": [ "onLanguage:kusto" ],
+  "main": "./out/extension.js",
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -watch -p .",
+    "build-release-server": "dotnet publish ../KustoLspServer/KustoLspServer.csproj -c Release -o ./server",
+    "build-debug-server": "dotnet publish ../KustoLspServer/KustoLspServer.csproj -c Debug -o ./server",
+    "package": "copy ..\\..\\LICENSE . && npm run compile && npm run build-release-server && vsce package",
+    "publish": "vsce publish"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "kusto",
+        "extensions": [ ".kql", ".csl", ".kusto" ],
+        "aliases": [ "Kql", "kql", "KQL", "Kusto", "kusto" ]
+      }
+    ],
+    "grammars": [
+      {
+        "language": "kusto",
+        "scopeName": "source.kusto",
+        "path": "./syntaxes/kusto.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "kusto.runQuery",
+        "title": "Run Query",
+        "icon": "$(play)"
+      },
+      {
+        "command": "kusto.connectDatabase",
+        "title": "Connect to Database",
+        "icon": "$(database)"
+      },
+      {
+        "command": "kusto.addServer",
+        "title": "Add Connection",
+        "icon": "$(add)"
+      },
+      {
+        "command": "kusto.addServerToGroup",
+        "title": "Add Connection to Group",
+        "icon": "$(add)"
+      },
+      {
+        "command": "kusto.addServerGroup",
+        "title": "Add Group",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "kusto.removeServer",
+        "title": "Remove",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "kusto.removeServerGroup",
+        "title": "Remove Group",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "kusto.moveServer",
+        "title": "Move...",
+        "icon": "$(move)"
+      },
+      {
+        "command": "kusto.editServer",
+        "title": "Edit...",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "kusto.renameServer",
+        "title": "Rename",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "kusto.renameServerGroup",
+        "title": "Rename",
+        "icon": "$(edit)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "kusto.addServer",
+          "when": "view == kusto.connections",
+          "group": "navigation@1"
+        },
+        {
+          "command": "kusto.addServerGroup",
+          "when": "view == kusto.connections",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "kusto.addServerToGroup",
+          "when": "view == kusto.connections && viewItem == serverGroup",
+          "group": "inline"
+        },
+        {
+          "command": "kusto.removeServer",
+          "when": "view == kusto.connections && viewItem == server",
+          "group": "9_cutcopypaste"
+        },
+        {
+          "command": "kusto.removeServerGroup",
+          "when": "view == kusto.connections && viewItem == serverGroup",
+          "group": "9_cutcopypaste"
+        },
+        {
+          "command": "kusto.moveServer",
+          "when": "view == kusto.connections && viewItem == server",
+          "group": "7_modification"
+        },
+        {
+          "command": "kusto.editServer",
+          "when": "view == kusto.connections && viewItem == server",
+          "group": "7_modification"
+        },
+        {
+          "command": "kusto.renameServer",
+          "when": "view == kusto.connections && viewItem == server",
+          "group": "7_modification"
+        },
+        {
+          "command": "kusto.renameServerGroup",
+          "when": "view == kusto.connections && viewItem == serverGroup",
+          "group": "7_modification"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "kusto.runQuery",
+          "when": "editorLangId == kusto",
+          "group": "navigation@1"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "kusto.runQuery",
+          "when": "editorLangId == kusto",
+          "group": "navigation@1"
+        },
+        {
+          "command": "kusto.connectDatabase",
+          "when": "editorLangId == kusto",
+          "group": "navigation@2"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "kusto.runQuery",
+        "key": "F5",
+        "when": "editorLangId == kusto"
+      },
+      {
+        "command": "kusto.connectDatabase",
+        "key": "F6",
+        "when": "editorLangId == kusto"
+      },
+      {
+        "command": "editor.action.triggerSuggest",
+        "key": "ctrl+space",
+        "when": "editorLangId == kusto"
+      }
+    ],
+    "viewsContainers": {
+      "panel": [
+        {
+          "id": "kusto-panel",
+          "title": "Results",
+          "icon": "$(database)"
+        }
+      ]
+    },
+    "views": {
+      "kusto-panel": [
+        {
+          "type": "webview",
+          "id": "kusto.resultsView",
+          "name": "Results",
+          "icon": "$(table)"
+        }
+      ],
+      "explorer": [
+        {
+          "id": "kusto.connections",
+          "name": "Connections",
+          "icon": "$(database)"
+        }
+      ]
+    },
+    "configurationDefaults": {
+      "[kusto]": {
+        "editor.semanticHighlighting.enabled": true,
+        "cSpell.enabled": false
+      }
+    },
+    "configuration": [
+      {
+        "title": "Connections",
+        "properties": {
+          "kusto.connections": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "description": "A list of Kusto cluster connections known by the editor."
+          }
+        }
+      },
+      {
+        "title": "Editor",
+        "properties": {
+          "kusto.editor.showQuerySeparators": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show query separator lines (---) in the editor."
+          }
+        }
+      },
+      {
+        "title": "Formatting",
+        "properties": {
+          "kusto.format.insertMissingTokens": {
+            "type": "boolean",
+            "default": false,
+            "description": "Automatically add missing tokens (e.g., semicolons) when formatting"
+          },
+          "kusto.format.bracketStyle": {
+            "type": "string",
+            "enum": [ "none", "vertical", "diagonal" ],
+            "default": "vertical",
+            "description": "How brackets are styled when formatting"
+          },
+          "kusto.format.schemaBracketStyle": {
+            "type": "string",
+            "enum": [ "none", "vertical", "diagonal" ],
+            "default": "vertical",
+            "description": "How schema brackets are styled when formatting"
+          },
+          "kusto.format.dataTableBracketStyle": {
+            "type": "string",
+            "enum": [ "none", "vertical", "diagonal" ],
+            "default": "vertical",
+            "description": "How data table brackets are styled when formatting"
+          },
+          "kusto.format.functionBodyBracketStyle": {
+            "type": "string",
+            "enum": [ "none", "vertical", "diagonal" ],
+            "default": "vertical",
+            "description": "How function body braces are styled when formatting"
+          },
+          "kusto.format.functionParameterBracketStyle": {
+            "type": "string",
+            "enum": [ "none", "vertical", "diagonal" ],
+            "default": "none",
+            "description": "How parameter list parentheses are styled when formatting"
+          },
+          "kusto.format.functionArgumentBracketStyle": {
+            "type": "string",
+            "enum": [ "none", "vertical", "diagonal" ],
+            "default": "none",
+            "description": "How argument list parentheses are styled when formatting"
+          },
+          "kusto.format.pipeOperatorPlacementStyle": {
+            "type": "string",
+            "enum": [ "none", "newLine", "smart" ],
+            "default": "smart",
+            "description": "How query pipe operators (|) are placed when formatting"
+          },
+          "kusto.format.expressionListPlacementStyle": {
+            "type": "string",
+            "enum": [ "none", "newLine", "smart" ],
+            "default": "smart",
+            "description": "How expressions in a list are placed when formatting"
+          },
+          "kusto.format.statementListPlacementStyle": {
+            "type": "string",
+            "enum": [ "none", "newLine", "smart" ],
+            "default": "smart",
+            "description": "How statements in a list are placed when formatting"
+          },
+          "kusto.format.semicolonPlacementStyle": {
+            "type": "string",
+            "enum": [ "none", "newLine", "smart" ],
+            "default": "none",
+            "description": "How semicolons are placed when formatting"
+          }
+        }
+      }
+    ]
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.0"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.75.0",
+    "@types/node": "^18.0.0",
+    "typescript": "^5.0.0"
+  }
+}

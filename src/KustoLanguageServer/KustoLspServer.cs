@@ -1,0 +1,1470 @@
+﻿using Kusto.Data;
+using Kusto.Language;
+using Kusto.Language.Editor;
+using Kusto.Language.Symbols;
+using Lsp.Common;
+using StreamJsonRpc;
+
+//using Microsoft.VisualStudio.LanguageServer.Protocol;
+using System.Collections.Immutable;
+using System.Data;
+using System.Runtime.CompilerServices;
+using System.Runtime.Serialization;
+using LSP=Microsoft.VisualStudio.LanguageServer.Protocol;
+
+namespace Kusto.Lsp;
+
+public class KustoLspServer : LspServer, ILogger
+{
+    private readonly IConnectionManager _connectionManager;
+    private readonly ISymbolManager _symbolManager;
+    private readonly IDocumentManager _documentManager;
+    private readonly IDiagnosticsManager _diagnosticsManager;
+    private readonly IQueryManager _queryManager;
+    private readonly IChartManager _chartManager;
+    private readonly ImmutableList<string> _args;
+
+    public KustoLspServer(
+        Stream input, 
+        Stream output, 
+        string[] args, 
+        IConnectionManager connectionManager,
+        ISymbolManager symbolManager,
+        IDocumentManager documentManager,
+        IDiagnosticsManager diagnosticsManager,
+        IQueryManager queryManager,
+        IChartManager chartManager)
+        : base(input, output)
+    {
+        _args = args.ToImmutableList();
+        _connectionManager = connectionManager;
+        _symbolManager = symbolManager;
+        _documentManager = documentManager;
+        _diagnosticsManager = diagnosticsManager;
+        _queryManager = queryManager;
+        _chartManager = chartManager;
+        InitEvents();
+    }
+
+    public KustoLspServer(
+        Stream input,
+        Stream output,
+        string[] args)
+        : base(input, output)
+    {
+        _args = args.ToImmutableList();
+        _connectionManager = new ConnectionManager();
+        _symbolManager = new SymbolManager(_connectionManager);
+        _documentManager = new DocumentManager(_symbolManager, this);
+        _diagnosticsManager = new DiagnosticsManager(_documentManager);
+        _queryManager = new QueryManager(_connectionManager, _documentManager, this);
+        _chartManager = new PlotlyChartManager();
+        InitEvents();
+    }
+
+    private void InitEvents()
+    {
+        _symbolManager.GlobalsChanged += _symbolManager_GlobalsChanged;
+        _documentManager.DocumentChanged += _scriptManager_ScriptChanged;
+        _diagnosticsManager.DiagnosticsUpdated += _diagnosticsManager_DiagnosticsUpdated;
+    }
+
+    void ILogger.Log(string message)
+    {
+        var _ = this.SendWindowLogMessageAsync(message);
+    }
+
+    /// <summary>
+    /// The client settings supplied during initialization.
+    /// </summary>
+    protected LSP.InitializeParams ClientSettings { get; private set; } = null!;
+
+    /// <summary>
+    /// The server settings reported to client during initialization.
+    /// </summary>
+    protected LSP.InitializeResult ServerSettings { get; private set; } = null!;
+
+    #region Initialize
+
+    /// <summary>
+    /// Initialize the language server document & settings.
+    /// </summary>
+    public override Task<LSP.InitializeResult> OnInitializeAsync(LSP.InitializeParams @params, CancellationToken cancellationToken)
+    {
+        this.ClientSettings = @params;
+
+        var semanticTokenOptions = new LSP.SemanticTokensOptions
+            {
+                Legend = new LSP.SemanticTokensLegend
+                {
+                    TokenTypes = _semanticTokenTypes.ToArray(),
+                    TokenModifiers = @params.Capabilities.TextDocument?.SemanticTokens?.TokenModifiers ?? []
+                },
+                Full = true,
+                Range = true
+            };
+
+        var completionOptions = new LSP.CompletionOptions
+        {
+            ResolveProvider = false,
+            TriggerCharacters = ["(", "[", ".", " "],
+            AllCommitCharacters = ["\t", " ", "(", ")", "{", "}", "[", "]", ".", ",", ";"]
+        };
+
+        this.ServerSettings = new LSP.InitializeResult
+        {
+            Capabilities = new LSP.ServerCapabilities
+            {
+                TextDocumentSync = new LSP.TextDocumentSyncOptions
+                {
+                    OpenClose = true,
+                    Change = LSP.TextDocumentSyncKind.Full,
+                    Save = new LSP.SaveOptions { IncludeText = true }
+                },
+                SemanticTokensOptions = semanticTokenOptions,
+                CompletionProvider = completionOptions,
+                HoverProvider = true,
+                FoldingRangeProvider = true,
+                DocumentFormattingProvider = true,
+                DocumentRangeFormattingProvider = true,
+                DocumentHighlightProvider = true,
+                ReferencesProvider = true,    // find references?
+                DefinitionProvider = true,  // goto definition?
+                CodeActionProvider = new LSP.CodeActionOptions
+                {
+                    CodeActionKinds =
+                    [
+                        LSP.CodeActionKind.QuickFix,
+                        LSP.CodeActionKind.Refactor,
+                        LSP.CodeActionKind.RefactorExtract,
+                        LSP.CodeActionKind.RefactorInline,
+                        LSP.CodeActionKind.RefactorRewrite,
+                        LSP.CodeActionKind.Source,
+                        //LSP.CodeActionKind.SourceOrganizeImports
+                    ],
+                    ResolveProvider = true
+                },
+                //RenameProvider = new RenameOptions { PrepareProvider = true },
+                //ExecuteCommandProvider = new LSP.ExecuteCommandOptions
+                //{
+                //    Commands = 
+                //    [
+                //        "Connect",
+                //        "Query" 
+                //    ]
+                //},
+
+#if false
+                //DocumentSymbolProvider = true,  // mabye?
+                //WorkspaceSymbolProvider = true,  // maybe?
+                //SignatureHelpProvider = new SignatureHelpOptions
+                //{
+                //    TriggerCharacters = new[] { "(", "," }
+                //},
+                //CodeLensProvider = new CodeLensOptions { ResolveProvider = true },
+                //DocumentOnTypeFormattingProvider = new DocumentOnTypeFormattingOptions
+                //{
+                //    FirstTriggerCharacter = ";",
+                //    MoreTriggerCharacter = new[] { "}", "\n" }
+                //},
+                //DocumentLinkProvider = new DocumentLinkOptions { ResolveProvider = true },
+                //DocumentColorProvider = true,
+                //CallHierarchyProvider = true,     // a call hierarchy of functions?
+                //LinkedEditingRangeProvider = true,
+                //TypeDefinitionProvider = true,   // kusto does not have types that can be declared
+                //ImplementationProvider = true,   // goto implementation?  Maybe have this open a source file that shows the database function declaration?
+                //InlayHintProvider = new InlayHintOptions { ResolveProvider = true }
+#endif
+            }
+        };
+
+        return Task.FromResult(this.ServerSettings);
+    }
+
+    #endregion
+
+    #region Events
+
+    private void _symbolManager_GlobalsChanged(object? sender, GlobalState e)
+    {
+    }
+
+    private void _scriptManager_ScriptChanged(object? sender, Uri id)
+    {
+    }
+
+    private void _diagnosticsManager_DiagnosticsUpdated(object? sender, DiagnosticInfo diagnostics)
+    {
+        var _ = PublishDiagnosticsAsync(diagnostics);
+    }
+
+    #endregion
+
+    #region Diagnostics Publishing
+
+    private async Task PublishDiagnosticsAsync(DiagnosticInfo info)
+    {
+        var lspDiagnostics = info.Diagnostics.Select(d =>
+            new LSP.Diagnostic
+            {
+                Range = GetLspRange(info.Text, new TextRange(d.Start, d.Length)),
+                Code = d.Code,
+                Message = d.Message,
+                Severity = GetSeverity(d.Severity)
+            }).ToArray();
+
+        var pdParams = new LSP.PublishDiagnosticParams
+        {
+            Uri = info.Id,
+            Diagnostics = lspDiagnostics
+        };
+
+        // publish new diagnostics to the client
+        await this.SendTextDocumentPublishDiagnosticsAsync(pdParams).ConfigureAwait(false);
+
+        LSP.DiagnosticSeverity GetSeverity(string severity) =>
+            severity switch
+            {
+                DiagnosticSeverity.Error => LSP.DiagnosticSeverity.Error,
+                DiagnosticSeverity.Warning => LSP.DiagnosticSeverity.Warning,
+                DiagnosticSeverity.Suggestion => LSP.DiagnosticSeverity.Hint,
+                DiagnosticSeverity.Information => LSP.DiagnosticSeverity.Information,
+                _ => LSP.DiagnosticSeverity.Information
+            };
+    }
+
+    #endregion
+
+    #region Document Open/Close/Change
+
+    public override Task OnTextDocumentOpenedAsync(LSP.DidOpenTextDocumentParams @params)
+    {
+        try
+        {
+            _documentManager.AddDocument(@params.TextDocument.Uri, @params.TextDocument.Text);
+
+            // temporary telemetry
+            _ = this.SendWindowLogMessageAsync($"text document opened: {@params.TextDocument.Uri}");
+        }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public override Task OnTextDocumentDidCloseAsync(LSP.DidCloseTextDocumentParams @params)
+    {
+        try
+        {
+            _documentManager.RemoveScript(@params.TextDocument.Uri);
+            this.SendWindowLogMessageAsync($"text document closed: {@params.TextDocument.Uri}");
+        }
+        catch (Exception ex)
+        {
+            this.SendWindowLogMessageAsync(ex);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public override Task OnTextDocumentDidChangeAsync(LSP.DidChangeTextDocumentParams @params)
+    {
+        try
+        {
+            if (_documentManager.TryGetDocument(@params.TextDocument.Uri, out var document))
+            {
+                // apply edits to current script text
+                var edits = @params.ContentChanges.Select(c =>
+                {
+                    if (c.Range != null)
+                    {
+                        document.Text.TryGetTextPosition(c.Range.Start.Line, c.Range.Start.Character, out var position);
+                        return TextEdit.Replacement(position, c.RangeLength ?? 0, c.Text);
+                    }
+                    else
+                    {
+                        return TextEdit.Replacement(0, document.Text.Length, c.Text);
+                    }
+                }).ToImmutableList();
+
+                var newText = new EditString(document.Text).ApplyAll(edits);
+
+                _documentManager.UpdateText(@params.TextDocument.Uri, newText);
+            }
+        }
+        catch (Exception ex)
+        {
+            this.SendWindowLogMessageAsync(ex);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    #endregion
+
+    #region Workspace Settings
+
+    public async Task<Dictionary<string, object>> GetWorkspaceSettingsAsync(IReadOnlyList<Setting> settings, CancellationToken cancellationToken)
+    {
+        var sendParams = new LSP.ConfigurationParams();
+        sendParams.Items = settings.Select(s => new LSP.ConfigurationItem { Section = s.Name }).ToArray();
+        var results = await this.SendWorkspaceConfigurationAsync(sendParams, cancellationToken).ConfigureAwait(false);
+        return results
+            .Select((r, i) => (s: settings[i], value: r))
+            .ToDictionary(t => t.s.Name, t => t.value!);
+    }
+
+    #endregion
+
+    #region Position and Range Conversion
+    public static LSP.Position GetLspPosition(string text, int textPosition)
+    {
+        if (text.TryGetLineAndOffset(textPosition, out var line, out var character))
+        {
+            return new LSP.Position
+            {
+                Line = line,
+                Character = character
+            };
+        }
+        else
+        {
+            return new LSP.Position
+            {
+                Line = 0,
+                Character = 0
+            };
+        }
+    }
+
+    public static int GetTextPosition(string text, LSP.Position position)
+    {
+        if (text.TryGetTextPosition(position.Line, position.Character, out var textPosition))
+        {
+            return textPosition;
+        }
+        else
+        {
+            return 0;
+        }
+    }
+
+    public static LSP.Range GetLspRange(string text, TextRange textRange)
+    {
+        var start = GetLspPosition(text, textRange.Start);
+        var end = GetLspPosition(text, textRange.End);
+        return new LSP.Range
+        {
+            Start = start,
+            End = end
+        };
+    }
+
+    public static TextRange GetTextRange(string text, LSP.Range range)
+    {
+        if (text.TryGetTextPosition(range.Start.Line + 1, range.Start.Character + 1, out var startPosition)
+            && text.TryGetTextPosition(range.End.Line + 1, range.End.Character + 1, out var endPosition))
+        {
+            return TextRange.FromBounds(startPosition, endPosition);
+        }
+        else
+        {
+            return TextRange.Empty;
+        }
+    }
+
+    public static LSP.TextEdit GetLspTextEdit(string text, TextEdit edit)
+    {
+        return new LSP.TextEdit
+        {
+            Range = GetLspRange(text, new TextRange(edit.Start, edit.DeleteLength)),
+            NewText = edit.InsertText
+        };
+    }
+
+    public static TextEdit GetTextEdit(string text, LSP.TextEdit edit)
+    {
+        var range = GetTextRange(text, edit.Range);
+        return TextEdit.Replacement(range.Start, range.Length, edit.NewText);
+    }
+
+    #endregion
+
+    #region Query Highlighting
+
+    //public override async Task OnTextDocumentSelectionAsync(TextDocumentSelectionParams @params, CancellationToken cancellationToken)
+    //{
+    //    try
+    //    {
+    //        var uri = new Uri(@params.Uri);
+    //        if (_scriptManager.TryGetScript(uri, out var script))
+    //        {
+    //            if (@params.Selections.Length > 0)
+    //            {
+    //                var position = GetTextPosition(script, @params.Selections[0].Start);
+    //                var block = script.GetBlockAtPosition(position);
+    //                if (block != null)
+    //                {
+    //                    var lspRange = GetLspRange(script, new TextRange(block.Start, block.Length));
+    //                    await this.SendSetDecorationsAsync(@params.Uri, "currentQuery", [lspRange], cancellationToken).ConfigureAwait(false);
+    //                }
+    //            }
+    //            else
+    //            {
+    //                // clear decoration
+    //                await this.SendSetDecorationsAsync(@params.Uri, "currentQuery", [], cancellationToken).ConfigureAwait(false);
+    //            }
+    //        }
+
+    //    }
+    //    catch (Exception e)
+    //    {
+    //        await this.SendWindowLogMessageAsync(e.Message);
+    //    }
+    //}
+
+    #endregion
+
+    #region Completion Lists
+
+    private static readonly CompletionOptions _completionOptions = CompletionOptions.Default
+        .WithIncludePunctuationOnlySyntax(false)
+        .WithAutoAppendWhitespace(false)
+        .WithIncludeExtendedSyntax(true)
+        .WithIncludeFunctions(true)
+        .WithIncludeSymbols(true)
+        .WithIncludeSyntax(true);
+
+    public override async Task<LSP.SumType<LSP.CompletionItem[], LSP.CompletionList>?> OnTextDocumentCompletionAsync(LSP.CompletionParams @params, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (_documentManager.TryGetDocument(@params.TextDocument.Uri, out var document))
+            {
+                var position = GetTextPosition(document.Text, @params.Position);
+                var elementRange = document.GetElement(position, cancellationToken);
+                var info = document.GetCompletionItems(position, _completionOptions, cancellationToken);
+
+                return info.Items.Select(CreateItem).ToArray();
+
+                LSP.CompletionItem CreateItem(CompletionItem item)
+                {
+                    LSP.CompletionItem lspItem;
+
+                    var displayText = item.DisplayText;
+                    var kind = GetCompletionItemKind(item.Kind);
+
+                    if (!string.IsNullOrEmpty(item.AfterText))
+                    {
+                        // Use snippet to control cursor position
+                        var snippetText = $"{item.BeforeText}$0{item.AfterText}";
+
+                        lspItem = new LSP.CompletionItem
+                        {
+                            Kind = kind,
+                            Label = displayText,
+                            SortText = item.OrderText,
+                            FilterText = item.MatchText,
+                            InsertTextFormat = LSP.InsertTextFormat.Snippet,
+                            InsertText = snippetText
+                        };
+                    }
+                    else
+                    {
+                        lspItem = new LSP.CompletionItem
+                        {
+                            Kind = kind,
+                            Label = displayText,
+                            SortText = item.OrderText,
+                            FilterText = item.MatchText,
+                            InsertText = item.BeforeText,
+                        };
+                    }
+
+                    // Retrigger completion after insertion?
+                    if (ShouldRetriggerCompletion(item))
+                    {
+                        lspItem.Command = new LSP.Command
+                        {
+                            Title = "Trigger Suggest",
+                            CommandIdentifier = "editor.action.triggerSuggest"
+                        };
+                    }
+
+                    return lspItem;
+                }
+
+                bool ShouldRetriggerCompletion(CompletionItem item)
+                {
+                    // Retrigger after function calls, member access, etc.
+                    return item.BeforeText.EndsWith("(") ||
+                            item.BeforeText.EndsWith("[") ||
+                            item.BeforeText.EndsWith(".") ||
+                            item.BeforeText.EndsWith("=") ||
+                            item.BeforeText.EndsWith(" ");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            var _ = this.SendWindowLogMessageAsync(ex);
+        }
+
+        return null;
+    }
+
+    private static LSP.CompletionItemKind GetCompletionItemKind(CompletionKind kind) =>
+        kind switch
+        {
+            CompletionKind.Keyword => LSP.CompletionItemKind.Keyword,
+            CompletionKind.Punctuation => LSP.CompletionItemKind.Text,
+            CompletionKind.Syntax => LSP.CompletionItemKind.Text,
+            CompletionKind.Identifier => LSP.CompletionItemKind.Variable,
+            CompletionKind.Example => LSP.CompletionItemKind.Constant,
+            CompletionKind.ScalarPrefix => LSP.CompletionItemKind.Operator,
+            CompletionKind.TabularPrefix => LSP.CompletionItemKind.Keyword,
+            CompletionKind.TabularSuffix => LSP.CompletionItemKind.Keyword,
+            CompletionKind.QueryPrefix => LSP.CompletionItemKind.Keyword,
+            CompletionKind.CommandPrefix => LSP.CompletionItemKind.Keyword,
+            CompletionKind.ScalarInfix => LSP.CompletionItemKind.Operator,
+            CompletionKind.RenderChart => LSP.CompletionItemKind.Template,
+            CompletionKind.Column => LSP.CompletionItemKind.Property,
+            CompletionKind.Table => LSP.CompletionItemKind.Class,
+            CompletionKind.BuiltInFunction => LSP.CompletionItemKind.Function,
+            CompletionKind.LocalFunction => LSP.CompletionItemKind.Method,
+            CompletionKind.DatabaseFunction => LSP.CompletionItemKind.Method,
+            CompletionKind.AggregateFunction => LSP.CompletionItemKind.Function,
+            CompletionKind.Parameter => LSP.CompletionItemKind.Property,
+            CompletionKind.Variable => LSP.CompletionItemKind.Variable,
+            CompletionKind.Database => LSP.CompletionItemKind.Module,
+            CompletionKind.Cluster => LSP.CompletionItemKind.Module,
+            CompletionKind.MaterialiedView => LSP.CompletionItemKind.Class,
+            CompletionKind.EntityGroup => LSP.CompletionItemKind.Class,
+            CompletionKind.Graph => LSP.CompletionItemKind.Class,
+            CompletionKind.ScalarType => LSP.CompletionItemKind.Keyword,
+            CompletionKind.Option => LSP.CompletionItemKind.Text,
+            CompletionKind.StoredQueryResult => LSP.CompletionItemKind.Class,
+            _ =>  LSP.CompletionItemKind.None
+        };
+#endregion
+
+    #region Semantic Tokens (classification)
+
+    public override Task<LSP.SemanticTokens?> OnTextDocumentTokensFullAsync(LSP.SemanticTokensParams @params, CancellationToken cancellationToken)
+    {
+        this.SendWindowLogMessageAsync("computing semantic tokens");
+        return GetSemanticTokens(@params, null, cancellationToken);
+    }
+
+    public override Task<LSP.SemanticTokens?> OnTextDocumentSemanticTokensRangeAsync(LSP.SemanticTokensRangeParams @params, CancellationToken cancellationToken)
+    {
+        this.SendWindowLogMessageAsync("computing semantic tokens");
+        return GetSemanticTokens(@params, @params.Range, cancellationToken);
+    }
+
+    private Task<LSP.SemanticTokens?> GetSemanticTokens(LSP.SemanticTokensParams @params, LSP.Range? range, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (_documentManager.TryGetDocument(@params.TextDocument.Uri, out var document))
+            {
+                var textRange = range != null
+                    ? GetTextRange(document.Text, range)
+                    : new TextRange(0, document.Text.Length);
+
+                var semanticTokens = new List<SemanticToken>();
+
+                var result = document.GetClassifications(textRange.Start, textRange.Length, clipToRange: true, waitForAnalysis: true, cancellationToken);
+                var tokens = result.Classifications.Select(Create).ToList();
+                semanticTokens.AddRange(tokens);
+
+                var data = _semanticEncoder.Encode(semanticTokens);
+                var semanticResults = new LSP.SemanticTokens { Data = data };
+                return Task.FromResult<LSP.SemanticTokens?>(semanticResults);
+            }
+
+            SemanticToken Create(ClassifiedRange cr)
+            {
+                var kind = GetSemanticTokenKind(cr.Kind);
+                var position = GetLspPosition(document.Text, cr.Start);
+                return new SemanticToken
+                {
+                    Line = position.Line,
+                    Character = position.Character,
+                    Length = cr.Length,
+                    Type = kind,
+                    Modifiers = ImmutableList<string>.Empty
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            var _ = this.SendWindowLogMessageAsync(ex);
+        }
+
+        return Task.FromResult<LSP.SemanticTokens?>(null);
+    }
+
+    private static readonly ImmutableList<string> _semanticTokenTypes =
+        Enum.GetValues<ClassificationKind>()
+        .Select(GetSemanticTokenKind)
+        .Distinct()
+        .ToImmutableList();
+
+    private readonly SemanticTokenEncoder _semanticEncoder = 
+        new SemanticTokenEncoder(_semanticTokenTypes, ImmutableList<string>.Empty);
+
+    private static string GetSemanticTokenKind(ClassificationKind kind) =>
+        kind switch
+        {
+            ClassificationKind.Comment => LSP.SemanticTokenTypes.Comment,
+            ClassificationKind.Punctuation => "punctuation",
+            ClassificationKind.Directive => "directive",
+            ClassificationKind.Literal => LSP.SemanticTokenTypes.Number,
+            ClassificationKind.StringLiteral => LSP.SemanticTokenTypes.String,
+            ClassificationKind.Type => LSP.SemanticTokenTypes.Type,
+            ClassificationKind.Column => "column",
+            ClassificationKind.Table => "table",
+            ClassificationKind.Database => "database",
+            ClassificationKind.Function => LSP.SemanticTokenTypes.Function,
+            ClassificationKind.Parameter => LSP.SemanticTokenTypes.Parameter,
+            ClassificationKind.Variable => LSP.SemanticTokenTypes.Variable,
+            ClassificationKind.Identifier => LSP.SemanticTokenTypes.Variable,
+            ClassificationKind.ClientParameter => "client-parameter",
+            ClassificationKind.QueryParameter => "query-parameter",
+            ClassificationKind.ScalarOperator => LSP.SemanticTokenTypes.Operator,
+            ClassificationKind.MathOperator => LSP.SemanticTokenTypes.Operator,
+            ClassificationKind.QueryOperator => "query-operator",
+            ClassificationKind.Command => "command",
+            ClassificationKind.Keyword => LSP.SemanticTokenTypes.Keyword,
+            ClassificationKind.MaterializedView => "materialized-view",
+            ClassificationKind.SchemaMember => "schema-member",
+            ClassificationKind.SignatureParameter => "signature-parameter",
+            ClassificationKind.Option => "option",
+            ClassificationKind.PlainText => "plaintext",
+            _ => "plaintext"
+        };
+
+    #endregion
+
+    #region Hover Text
+
+    private static readonly QuickInfoOptions _quickInfoOptions =
+        QuickInfoOptions.Default
+        .WithShowDiagnostics(false); // already shown in vs code editor
+
+    public override Task<LSP.Hover?> OnTextDocumentHoverAsync(LSP.TextDocumentPositionParams @params, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (_documentManager.TryGetDocument(@params.TextDocument.Uri, out var document))
+            {
+                var position = GetTextPosition(document.Text, @params.Position);
+                var textRange = document.GetElement(position, cancellationToken);
+                var info = document.GetQuickInfo(position, _quickInfoOptions, cancellationToken);
+
+                if (info != null)
+                {
+                    var hover = new LSP.Hover
+                    {
+                        Contents = new LSP.MarkupContent
+                        {
+                            Kind = LSP.MarkupKind.Markdown,
+                            Value = ToMarkdown(info)
+                        },
+                        Range = GetLspRange(document.Text, textRange)
+                    };
+                    return Task.FromResult<LSP.Hover?>(hover);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            var _ = this.SendWindowLogMessageAsync(ex);
+        }
+
+        return base.OnTextDocumentHoverAsync(@params, cancellationToken);
+    }
+
+    private static string ToMarkdown(QuickInfo info)
+    {
+        return string.Join("\n-----\n", info.Items.Select(ToMarkdown));
+    }
+
+    private static string ToMarkdown(QuickInfoItem item)
+    {
+        return $"{ToMarkdownGlyph(item.Kind)}\t{string.Concat(item.Parts.Select(ToMarkdown))}";
+    }
+
+    private static string ToMarkdownGlyph(QuickInfoKind kind)
+    {
+        return kind switch
+        {
+            QuickInfoKind.BuiltInFunction => "ƒ",
+            QuickInfoKind.LocalFunction => "ƒ",
+            QuickInfoKind.DatabaseFunction => "ƒ",
+            QuickInfoKind.Column => "🔤",
+            QuickInfoKind.Cluster => "🏢",
+            QuickInfoKind.Command => "💻",
+            QuickInfoKind.Database => "🗄️",
+            QuickInfoKind.Error => "❗",
+            QuickInfoKind.Graph => "📊",
+            QuickInfoKind.Literal => "🔢",
+            QuickInfoKind.Operator => "➗",
+            QuickInfoKind.Option => "⚙️",
+            QuickInfoKind.Parameter => "🎯",
+            QuickInfoKind.Pattern => "📐",
+            QuickInfoKind.Scalar => "🔢",
+            QuickInfoKind.Suggestion => "💡",
+            QuickInfoKind.Table => "📋",
+            QuickInfoKind.Type => "🏷️",
+            QuickInfoKind.Variable => "🔣",
+            QuickInfoKind.Warning => "⚠️",
+            _ => ""
+        };
+    }
+
+    private static string ToMarkdown(ClassifiedText classyText)
+    {
+        switch (classyText.Kind)
+        {
+            case ClassificationKind.Column:
+            case ClassificationKind.Table:
+            case ClassificationKind.Database:
+            case ClassificationKind.Function:
+            case ClassificationKind.Parameter:
+            case ClassificationKind.Variable:
+            case ClassificationKind.Identifier:
+            case ClassificationKind.ClientParameter:
+            case ClassificationKind.QueryParameter:
+                return $"**{classyText.Text}**"; // name like things are italic
+
+            case ClassificationKind.QueryOperator:
+            case ClassificationKind.ScalarOperator:
+            case ClassificationKind.Command:
+            case ClassificationKind.Type:
+            case ClassificationKind.Keyword:
+            case ClassificationKind.MaterializedView:
+            case ClassificationKind.SchemaMember:
+            case ClassificationKind.SignatureParameter:
+                return $"*{classyText.Text}*"; // keyword like things are bold
+
+            default:
+                return classyText.Text;
+        }
+    }
+    #endregion
+
+    #region Folding Ranges (Outlining)
+
+    public override Task<LSP.FoldingRange[]?> OnTextDocumentFoldingAsync(LSP.FoldingRangeParams @params, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (_documentManager.TryGetDocument(@params.TextDocument.Uri, out var document))
+            {
+                var foldingRanges = new List<LSP.FoldingRange>();
+                var info = document.GetOutlines(OutliningOptions.Default, cancellationToken);
+                foreach (var fr in info.Ranges)
+                {
+                    var lspRange = GetLspRange(document.Text, new TextRange(fr.Start, fr.Length));
+                    foldingRanges.Add(
+                        new LSP.FoldingRange
+                        {
+                            StartLine = lspRange.Start.Line,
+                            StartCharacter = lspRange.Start.Character,
+                            EndLine = lspRange.End.Line,
+                            EndCharacter = lspRange.End.Character,
+                            Kind = LSP.FoldingRangeKind.Region
+                        });
+                }
+
+                return Task.FromResult<LSP.FoldingRange[]?>(foldingRanges.ToArray());
+            }
+            
+        }
+        catch (Exception ex)
+        {
+            var _ = this.SendWindowLogMessageAsync(ex);
+        }
+
+        return Task.FromResult<LSP.FoldingRange[]?>(null);
+    }
+
+    #endregion
+
+    #region Formatting
+
+    public override Task<LSP.TextEdit[]?> OnTextDocumentFormattingAsync(LSP.DocumentFormattingParams @params, CancellationToken cancellationToken)
+    {
+        return FormatDocumentAsync(@params.TextDocument.Uri, @params.Options, null, cancellationToken);
+    }
+
+    public override Task<LSP.TextEdit[]?> OnTextDocumentRangeFormattingAsync(LSP.DocumentRangeFormattingParams @params, CancellationToken cancellationToken)
+    {
+        return FormatDocumentAsync(@params.TextDocument.Uri, @params.Options, @params.Range, cancellationToken);
+    }
+
+    private async Task<LSP.TextEdit[]?> FormatDocumentAsync(
+        Uri docId,
+        LSP.FormattingOptions lspOptions,
+        LSP.Range? lspRange, 
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (_documentManager.TryGetDocument(docId, out var document))
+            {
+                var textRange = lspRange != null
+                    ? GetTextRange(document.Text, lspRange)
+                    : new TextRange(0, document.Text.Length);
+
+                if (lspOptions.OtherOptions == null)
+                {
+                    // vs code does not send all formatting options, so request them from workspace settings
+                    var workspaceFormattingOptions = await GetWorkspaceSettingsAsync(FormatSettings.All, cancellationToken).ConfigureAwait(false);
+                    lspOptions.OtherOptions = workspaceFormattingOptions;
+                }
+
+                var formattingOptions = GetFormattingOptions(lspOptions);
+                var formatted = document.GetFormattedText(textRange, formattingOptions, cancellationToken);
+                var edits = formatted.Edits.Select(e => GetLspTextEdit(document.Text, e)).ToArray();
+                return edits;
+            }
+        }
+        catch (Exception ex)
+        {
+            var _ = this.SendWindowLogMessageAsync(ex);
+        }
+
+        return null;
+    }
+
+    private static readonly FormattingOptions _defaultFormattingOption =
+        FormattingOptions.Default;
+
+    private static FormattingOptions GetFormattingOptions(LSP.FormattingOptions lspOptions)
+    {
+        var options = FormattingOptions.Default
+            .WithIndentationSize(lspOptions.TabSize);
+
+        var otherOptions = lspOptions.OtherOptions;
+        if (otherOptions != null)
+        {
+            options = WithFormattingOptionsFromSettings(options, otherOptions);
+        }
+
+        return options;
+    }
+
+    private static FormattingOptions WithFormattingOptionsFromSettings(FormattingOptions options, Dictionary<string, object> settings)
+    {
+        options ??= FormattingOptions.Default;
+
+        return options
+            .WithInsertMissingTokens(FormatSettings.InsertMissingTokens.GetValue(settings))
+            .WithBrackettingStyle(FormatSettings.DefaultBrackettingStyle.GetValue(settings))
+            .WithSchemaStyle(FormatSettings.SchemaBrackettingStyle.GetValue(settings))
+            .WithDataTableValueStyle(FormatSettings.DataTableBrackettingStyle.GetValue(settings))
+            .WithFunctionBodyStyle(FormatSettings.FunctionBodyBrackettingStyle.GetValue(settings))
+            .WithFunctionParameterStyle(FormatSettings.FunctionParameterBrackettingStyle.GetValue(settings))
+            .WithFunctionArgumentStyle(FormatSettings.FunctionArgumentBrackettingStyle.GetValue(settings))
+            .WithPipeOperatorStyle(FormatSettings.PipeOperatorPlacementStyle.GetValue(settings))
+            .WithExpressionStyle(FormatSettings.ExpressionPlacementStyle.GetValue(settings))
+            .WithStatementStyle(FormatSettings.StatementPlacementStyle.GetValue(settings))
+            .WithSemicolonStyle(FormatSettings.SemicolonPlacementStyle.GetValue(settings));
+    }
+
+    public async Task<FormattingOptions> GetFormattingOptionsAsync(CancellationToken cancellationToken)
+    {
+        var settings = await GetWorkspaceSettingsAsync(FormatSettings.All, cancellationToken).ConfigureAwait(false);
+        return WithFormattingOptionsFromSettings(_defaultFormattingOption, settings);
+    }
+
+
+    #endregion
+
+    #region Document Highlighting
+
+    private static readonly FindRelatedOptions _defaultFindRelatedOptions =
+        FindRelatedOptions.None;
+
+    public override Task<LSP.DocumentHighlight[]?> OnTextDocumentHighlightAsync(LSP.TextDocumentPositionParams @params, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (_documentManager.TryGetDocument(@params.TextDocument.Uri, out var document))
+            {
+                var position = GetTextPosition(document.Text, @params.Position);
+
+                RelatedInfo relatedInfo = document.GetRelatedElements(position, _defaultFindRelatedOptions, cancellationToken);
+                var lspHighlights = relatedInfo.Elements.Select(elem =>
+                    new LSP.DocumentHighlight
+                    {
+                        Range = GetLspRange(document.Text, new TextRange(elem.Start, elem.Length)),
+                        Kind = elem.Kind switch
+                        {
+                            RelatedElementKind.Reference => LSP.DocumentHighlightKind.Read,
+                            RelatedElementKind.Declaration => LSP.DocumentHighlightKind.Write,
+                            _ => LSP.DocumentHighlightKind.Text
+                        }
+                    }).ToArray();
+
+                return Task.FromResult<LSP.DocumentHighlight[]?>(lspHighlights);
+            }
+            
+        }
+        catch (Exception ex)
+        {
+            var _ = this.SendWindowLogMessageAsync(ex);
+        }
+
+        return Task.FromResult<LSP.DocumentHighlight[]?>(null);
+    }
+
+    #endregion
+
+    #region Find References
+
+    public override Task<LSP.Location[]?> OnTextDocumentReferencesAsync(LSP.ReferenceParams @params, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (_documentManager.TryGetDocument(@params.TextDocument.Uri, out var document))
+            {
+                var position = GetTextPosition(document.Text, @params.Position);
+                RelatedInfo relatedInfo = document.GetRelatedElements(position, _defaultFindRelatedOptions, cancellationToken);
+                if (relatedInfo.Elements.Any(e => e.Kind == RelatedElementKind.Declaration || e.Kind == RelatedElementKind.Reference))
+                {
+                    var lspLocations = relatedInfo.Elements
+                        .Where(elem => elem.Kind == RelatedElementKind.Reference
+                            || (@params.Context.IncludeDeclaration && elem.Kind == RelatedElementKind.Declaration))
+                        .Select(elem =>
+                            new LSP.Location
+                            {
+                                Uri = @params.TextDocument.Uri,
+                                Range = GetLspRange(document.Text, elem.Range)
+                            }).ToArray();
+                    return Task.FromResult<LSP.Location[]?>(lspLocations);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            var _ = this.SendWindowLogMessageAsync(ex);
+        }
+
+        return Task.FromResult<LSP.Location[]?>(null);
+    }
+
+    #endregion
+
+    #region Goto Definition
+
+    public override Task<LSP.SumType<LSP.Location, LSP.Location[]>?> OnTextDocumentDefinitionAsync(LSP.TextDocumentPositionParams @params, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (_documentManager.TryGetDocument(@params.TextDocument.Uri, out var document))
+            {
+                var position = GetTextPosition(document.Text, @params.Position);
+                RelatedInfo relatedInfo = document.GetRelatedElements(position, _defaultFindRelatedOptions, cancellationToken);
+                var definitionElements = relatedInfo.Elements
+                    .Where(elem => elem.Kind == RelatedElementKind.Declaration)
+                    .ToArray();
+                if (definitionElements.Length == 1)
+                {
+                    var elem = definitionElements[0];
+                    var lspLocation = new LSP.Location
+                    {
+                        Uri = @params.TextDocument.Uri,
+                        Range = GetLspRange(document.Text, elem.Range)
+                    };
+                    return Task.FromResult<LSP.SumType<LSP.Location, LSP.Location[]>?>(lspLocation);
+                }
+                else if (definitionElements.Length > 1)
+                {
+                    var lspLocations = definitionElements
+                        .Select(elem =>
+                            new LSP.Location
+                            {
+                                Uri = @params.TextDocument.Uri,
+                                Range = GetLspRange(document.Text, elem.Range)
+                            }).ToArray();
+                    return Task.FromResult<LSP.SumType<LSP.Location, LSP.Location[]>?>(lspLocations);
+                }
+            }
+
+        }
+        catch (Exception ex)
+        {
+            var _ = this.SendWindowLogMessageAsync(ex);
+        }
+
+        return Task.FromResult<LSP.SumType<LSP.Location, LSP.Location[]>?>(null);
+    }
+
+    #endregion
+
+    #region Code Actions
+
+    /// <summary>
+    /// CodeActions created for this script so far
+    /// </summary>
+    private class DocumentActions
+    {
+        // a map from action id to action
+        public ImmutableDictionary<string, ApplyAction> Actions = ImmutableDictionary<string, ApplyAction>.Empty;
+    }
+
+    /// <summary>
+    /// Table of actions per script.
+    /// </summary>
+    private readonly ConditionalWeakTable<Document, DocumentActions> _scriptActions =
+        new ConditionalWeakTable<Document, DocumentActions>();
+
+    private static readonly CodeActionOptions _codeActionOptions =
+        CodeActionOptions.Default;
+
+    public override Task<LSP.SumType<LSP.Command, LSP.CodeAction>[]?> OnTextDocumentCodeActionAsync(LSP.CodeActionParams @params, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (_documentManager.TryGetDocument(@params.TextDocument.Uri, out var document))
+            {
+                var range = GetTextRange(document.Text, @params.Range);
+                var position = range.Start;
+
+                var lspActions = new List<LSP.SumType<LSP.Command, LSP.CodeAction>>();
+
+                var info = document.GetCodeActions(position, range.Start, range.Length, _codeActionOptions, cancellationToken: cancellationToken);
+
+                var scriptActions = _scriptActions.GetOrCreateValue(document);
+                foreach (var action in info.Actions)
+                {
+                    AddAction(action, action.Title);
+                }
+
+                 return Task.FromResult<LSP.SumType<LSP.Command, LSP.CodeAction>[]?>(lspActions.ToArray());
+
+                void AddAction(CodeAction action, string title)
+                {
+                    switch (action)
+                    {
+                        case ApplyAction apply:
+                            // add to map so we can look this action back when resolved.
+                            var id = $"Action{scriptActions.Actions.Count + 1}";
+                            scriptActions.Actions = scriptActions.Actions.Add(id, apply);
+                            lspActions.Add(new LSP.CodeAction
+                            {
+                                Title = action.Title,
+                                Kind = LSP.CodeActionKind.QuickFix,
+                                Data = $"{@params.TextDocument.Uri}|{position}|{id}"  // combine uri, text position and action id so we can look up later
+                            });
+                            break;
+                        case MenuAction menu:
+                            // LSP cannot describe nested actions, so flatten them out
+                            foreach (var subAction in menu.Actions)
+                            {
+                                AddAction(subAction, $"{menu.Title}: {subAction.Title}" );
+                            }
+                            break;
+                    }
+                }
+            }
+
+        }
+        catch (Exception ex)
+        {
+            var _ = this.SendWindowLogMessageAsync(ex);
+        }
+
+        return Task.FromResult<LSP.SumType<LSP.Command, LSP.CodeAction>[]?>(null);
+    }
+
+    public override async Task<LSP.CodeAction> OnCodeActionResolveAsync(LSP.CodeAction lspAction, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (lspAction.Data is string stringData)
+            {
+                var dataParts = stringData.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                if (dataParts.Length == 3)
+                {
+                    var docUriText = dataParts[0];
+                    var docUri = new Uri(docUriText);
+                    var position = int.Parse(dataParts[1]);
+                    var actionId = dataParts[2];
+
+                    if (_documentManager.TryGetDocument(docUri, out var document)
+                        && _scriptActions.TryGetValue(document, out var scriptActions)
+                        && scriptActions.Actions.TryGetValue(actionId, out var action))
+                    {
+                        var formatOptions = await GetFormattingOptionsAsync(cancellationToken).ConfigureAwait(false);
+                        var applyOptions = _codeActionOptions.WithFormattingOptions(formatOptions);
+
+                        var result = document.ApplyCodeAction(action, position, applyOptions, cancellationToken);
+
+                        var changes = new Dictionary<string, LSP.TextEdit[]>();
+
+                        foreach (var resultAction in result.Actions)
+                        {
+                            switch (resultAction)
+                            {
+                                case ChangeTextAction changeText:
+                                    changes[docUriText] = changeText.Changes
+                                        .Select(edit => GetLspTextEdit(document.Text, TextEdit.Replacement(edit.Start, edit.DeleteLength, edit.InsertText)))
+                                        .ToArray();
+                                    break;
+                                case MoveCaretAction:
+                                    break;
+                                case RenameAction:
+                                    break;
+                                default:
+                                    break;
+                            }
+                        }
+
+                        lspAction.Edit = new LSP.WorkspaceEdit
+                        {
+                            Changes = changes
+                        };
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            var _ = this.SendWindowLogMessageAsync(ex);
+        }
+
+        return lspAction;
+    }
+    #endregion
+
+    #region Run Query Command
+
+    [JsonRpcMethod("kusto/runQuery", UseSingleObjectParameterDeserialization = true)]
+    public async Task<RunQueryResults?> OnRunQueryAsync(RunQueryParams @params, CancellationToken cancellationToken)
+    {
+        if (@params.Selection == null)
+        {
+            await this.SendWindowShowMessageAsync("Failed to run: no query selected");
+            return null;
+        }
+
+        if (_documentManager.TryGetDocument(@params.TextDocument.Uri, out var document))
+        {
+            var range = GetTextRange(document.Text, @params.Selection);
+            var results = await _queryManager.RunQueryAsync(@params.TextDocument.Uri, range, cancellationToken).ConfigureAwait(false);
+
+            string dataHtml;
+            string? chartHtml = null;
+
+            if (results != null && results.Data != null)
+            {
+
+                var dataBuilder = new HtmlBuilder();
+                dataBuilder.WriteHtml(
+                    head: () =>
+                    {
+                    },                      
+                    body: () =>
+                    {
+                        dataBuilder.WriteTable(results.Data);
+                    }
+                );
+
+                dataHtml = dataBuilder.Text;
+
+                if (results.ChartOptions != null)
+                {
+                    chartHtml = _chartManager.RenderChartToHtmlDocument(results.Data, results.ChartOptions)
+                        ?? "<html>chart style not implemented yet</html>";
+                }
+            }
+            else
+            {
+                dataHtml = "<html>no results</html>";
+            }
+
+            return new RunQueryResults
+            {
+                Title = "Query Results",
+                DataHtml = dataHtml,
+                RowCount = results?.Data?.Rows?.Count,
+                ChartHtml = chartHtml
+            };
+        }
+
+        return null;
+    }
+
+    public class RunQueryParams
+    {
+        [DataMember(Name = "textDocument")]
+        public required LSP.TextDocumentIdentifier TextDocument { get; set; }
+         
+        [DataMember(Name = "selection")]
+        public required LSP.Range Selection { get; set; }
+    }
+
+    [DataContract]
+    public class RunQueryResults
+    {
+        [DataMember(Name = "title")]
+        public required string Title { get; set; }
+
+        [DataMember(Name = "dataHtml")]
+        public string? DataHtml { get; set; }
+
+        [DataMember(Name = "rowCount")]
+        public int? RowCount { get; set; }
+
+        [DataMember(Name = "chartHtml")]
+        public string? ChartHtml { get; set; }
+    }
+
+    #endregion
+
+    #region Workspace Commands
+
+    public override async Task<object?> OnWorkspaceExecuteCommandAsync(LSP.ExecuteCommandParams @params, CancellationToken cancellationToken)
+    {
+        return Task.FromResult<object?>(null);
+    }
+
+    #endregion
+
+    #region Query Boundaries
+
+    [JsonRpcMethod("kusto/getQueryBoundaries", UseSingleObjectParameterDeserialization = true)]
+    public Task<QueryBoundariesResult?> OnGetQueryBoundariesAsync(QueryBoundariesParams @params, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var uri = new Uri(@params.Uri);
+            if (_documentManager.TryGetDocument(uri, out var document))
+            {
+                var ranges = document.GetQueryRanges(cancellationToken).Select(r => GetLspRange(document.Text, r)).ToArray();
+                return Task.FromResult<QueryBoundariesResult?>(new QueryBoundariesResult
+                {
+                    Uri = @params.Uri,
+                    Ranges = ranges
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex);
+        }
+
+        return Task.FromResult<QueryBoundariesResult?>(null);
+    }
+
+    [DataContract]
+    public class QueryBoundariesParams
+    {
+        [DataMember(Name = "uri")]
+        public required string Uri { get; set; }
+    }
+
+    [DataContract]
+    public class QueryBoundariesResult
+    {
+        [DataMember(Name = "uri")]
+        public required string Uri { get; set; }
+
+        [DataMember(Name = "ranges")]
+        public required LSP.Range[] Ranges { get; set; }
+    }
+
+    #endregion
+
+    #region Connection Info
+
+    [JsonRpcMethod("kusto/getServerInfo", UseSingleObjectParameterDeserialization = true)]
+    public async Task<GetServerInfoResult?> OnGetServerInfoAsync(GetServerInfoParams @params, CancellationToken cancellationToken)
+    {
+        var clusterName = _connectionManager.GetClusterName(@params.Connection);
+        
+        // ensure server databases are loaded
+        await _symbolManager.GetOrLoadDatabaseNamesAsync(@params.Connection, cancellationToken).ConfigureAwait(false);
+
+        var globals = _symbolManager.Globals;
+        var clusterSymbol = globals.GetCluster(clusterName);
+        if (clusterSymbol != null)
+        {
+            var dbs = clusterSymbol.Databases.Select(db => new ServerDatabase
+            {
+                Name = db.Name,
+                AlternateName = db.AlternateName ?? ""
+            }).ToArray();
+            return new GetServerInfoResult
+            {
+                Cluster = clusterName,
+                Databases = dbs
+            };
+        }
+
+        return null;
+    }
+
+    [DataContract]
+    public class GetServerInfoParams
+    {
+        [DataMember(Name = "connection")]
+        public required string Connection { get; set; }
+    }
+
+    [DataContract]
+    public class GetServerInfoResult
+    {
+        [DataMember(Name = "cluster")]
+        public required string Cluster { get; set; }
+
+        [DataMember(Name = "databases")]
+        public required ServerDatabase[] Databases { get; set; }
+    }
+
+    [DataContract]
+    public class ServerDatabase
+    {
+        [DataMember(Name = "name")]
+        public required string Name { get; set; }
+
+        [DataMember(Name = "alternateName")]
+        public required string AlternateName { get; set; }
+    }
+
+    [JsonRpcMethod("kusto/getDatabaseInfo", UseSingleObjectParameterDeserialization = true)]
+    public async Task<GetDatabaseInfoResult?> OnGetDatabaseInfo(GetDatabaseInfoParams @params, CancellationToken cancellationToken)
+    {
+        var clusterName = @params.Cluster;
+        var databaseName = @params.Database;
+
+        // ensure database symbols are loaded
+        await _symbolManager.LoadSymbolsAsync(clusterName, databaseName, cancellationToken).ConfigureAwait(false);
+
+        var globals = _symbolManager.Globals;
+        var clusterSymbol = globals.GetCluster(clusterName);
+        if (clusterSymbol != null)
+        {
+            var databaseSymbol = clusterSymbol.GetDatabase(databaseName);
+            if (databaseSymbol != null)
+            {
+                return new GetDatabaseInfoResult
+                {
+                    Name = databaseName,
+                    Tables = databaseSymbol.Tables.Select(t => new DatabaseTable
+                    {
+                        Name = t.Name
+                    }).ToArray(),
+                };
+            }
+        }
+
+        return null;
+    }
+
+
+    [DataContract]
+    public class GetDatabaseInfoParams
+    {
+        [DataMember(Name = "cluster")]
+        public required string Cluster { get; set; }
+
+        [DataMember(Name = "database")]
+        public required string Database { get; set; }
+    }
+
+    [DataContract]
+    public class GetDatabaseInfoResult
+    {
+        [DataMember(Name = "name")]
+        public required string Name { get; set; }
+
+        [DataMember(Name = "tables")]
+        public DatabaseTable[]? Tables { get; set; }
+
+        //[DataMember(Name = "functions")]
+        //public DatabaseFunction[]? Functions { get; set; }
+    }
+
+    [DataContract]
+    public class DatabaseTable
+    {
+        [DataMember(Name = "name")]
+        public required string Name { get; set; }
+
+        [DataMember(Name = "folder")]
+        public string? Folder { get; set; }
+    }
+
+    [DataContract]
+    public class DatabaseFunction
+    {
+        public string Parameters { get; set; } = "";
+        public string Body { get; set; } = "";
+    }
+
+    #endregion
+
+    #region Document Connections
+
+    [JsonRpcMethod("kusto/connectionsUpdated", UseSingleObjectParameterDeserialization = true)]
+    public Task OnConnectionsUpdatedAsync(ConnectionsUpdatedParams @params, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Ensure cluster symbols exist for all configured connections
+            _ = _symbolManager.EnsureClustersAsync(@params.Connections, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    [DataContract]
+    public class ConnectionsUpdatedParams
+    {
+        [DataMember(Name = "connections")]
+        public required string[] Connections { get; set; }
+    }
+
+    [JsonRpcMethod("kusto/documentConnectionChanged", UseSingleObjectParameterDeserialization = true)]
+    public Task OnDocumentConnectionChangedAsync(DocumentConnectionChangedParams @params, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var uri = new Uri(@params.Uri);
+            _documentManager.UpdateConnection(uri, @params.Cluster, @params.Database);
+        }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    [DataContract]
+    public class DocumentConnectionChangedParams
+    {
+        [DataMember(Name = "uri")]
+        public required string Uri { get; set; }
+
+        [DataMember(Name = "cluster")]
+        public string? Cluster { get; set; }
+
+        [DataMember(Name = "database")]
+        public string? Database { get; set; }
+    }
+
+    #endregion
+}

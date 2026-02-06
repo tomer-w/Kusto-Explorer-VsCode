@@ -1,0 +1,22 @@
+# Source files
+features/**/*.ts
+*.ts
+tsconfig.json
+
+# Build artifacts not needed in package
+**/*.map
+.vscode/**
+.vscode-test/**
+**/*.vsix
+
+# Don't include debug symbols
+server/**/*.pdb
+
+# Development files
+.gitignore
+.git/**
+**/*.bat
+
+# Documentation (keep README.md)
+*.md
+!README.md

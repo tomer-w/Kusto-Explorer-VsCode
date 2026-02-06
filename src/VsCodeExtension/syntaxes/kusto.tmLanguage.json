@@ -1,0 +1,110 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Kusto",
+  "scopeName": "source.kusto",
+  "fileTypes": ["kql", "csl", "kusto"],
+  "patterns": [
+    {
+      "name": "comment.line.double-slash.kusto",
+      "match": "//.*"
+    },
+    {
+      "name": "comment.line.number-sign.kusto",
+      "match": "#.*"
+    },
+    {
+      "name": "string.quoted.double.kusto",
+      "match": "[hH]?\"[^\"]*\""
+    },
+    {
+      "name": "string.quoted.single.kusto",
+      "match": "[hH]?'[^']*'"
+    },
+    {
+      "name": "string.quoted.other.kusto",
+      "match": "[hH]?@\"[^\"]*\"|[hH]?@'[^']*'"
+    },
+    {
+      "name": "string.quoted.multi.backtick.kusto",
+      "begin": "[hH]?```",
+      "end": "```"
+    },
+    {
+      "name": "string.quoted.multi.tilde.kusto",
+      "begin": "[hH]?~~~",
+      "end": "~~~"
+    },
+    {
+      "name": "keyword.control.kusto",
+      "match": "\\b(where|summarize|extend|mvexpand|mv-expand|mv-apply|project|project-away|project-keep|project-rename|project-reorder|sort|join|union|limit|order|top|print|datatable|let|take|filter|distinct|count|render|search|find|parse|evaluate|invoke|fork|facet|make-series|partition|scan|lookup|getschema|serialize|range|sample|sample-distinct|top-nested|top-hitters|reduce|consume|materialize|external_data|externaldata)\\b"
+    },
+    {
+      "name": "keyword.operator.kusto",
+      "match": "\\b(and|or|in|has|contains|startswith|endswith|matches|between|!in|!has|!contains|!startswith|!endswith|has_cs|contains_cs|startswith_cs|endswith_cs|!has_cs|!contains_cs|!startswith_cs|!endswith_cs|has_any|has_all)\\b"
+    },
+    {
+      "name": "keyword.other.kusto",
+      "match": "\\b(by|on|kind|with|as|of|asc|desc|nulls|first|last|default|inner|outer|left|right|anti|semi|fullouter|leftanti|leftsemi|rightanti|rightsemi|innerunique)\\b"
+    },
+    {
+      "name": "support.type.kusto",
+      "match": "\\b(bool|boolean|date|datetime|decimal|double|dynamic|float|guid|int|int16|int32|int64|int8|long|real|string|time|timespan|uint|uint16|uint32|uint64|uint8|ulong|uniqueid)\\b"
+    },
+    {
+      "name": "constant.language.kusto",
+      "match": "\\b(true|false|null)\\b"
+    },
+    {
+      "name": "constant.numeric.kusto",
+      "match": "\\b(int|int32)\\s*\\([^)]*\\)"
+    },
+    {
+      "name": "constant.numeric.kusto",
+      "match": "\\b(long|int64)\\s*\\([^)]*\\)"
+    },
+    {
+      "name": "constant.numeric.kusto",
+      "match": "\\b(real|double)\\s*\\([^)]*\\)"
+    },
+    {
+      "name": "constant.numeric.kusto",
+      "match": "\\b(decimal)\\s*\\([^)]*\\)"
+    },
+    {
+      "name": "constant.numeric.kusto",
+      "match": "\\b0[xX][0-9a-fA-F]+\\b"
+    },
+    {
+      "name": "constant.numeric.kusto",
+      "match": "\\b[0-9]+(\\.[0-9]+)?([eE][\\+\\-]?[0-9]+)?\\b"
+    },
+    {
+      "name": "constant.numeric.timespan.kusto",
+      "match": "\\b[0-9]+(\\.[0-9]+)?(ms|microsecond|microseconds|millisecond|milliseconds|nanosecond|nanoseconds|tick|ticks|second|seconds|sec|minute|minutes|min|hour|hours|hr|hrs|day|days|[smhd])\\b"
+    },
+    {
+      "name": "constant.numeric.timespan.kusto",
+      "match": "\\b(time|timespan)\\s*\\([^)]*\\)"
+    },
+    {
+      "name": "constant.numeric.datetime.kusto",
+      "match": "\\b(datetime)\\s*\\([^)]*\\)"
+    },
+    {
+      "name": "constant.other.guid.kusto",
+      "match": "\\b(guid|uuid|uniqueid)\\s*\\([^)]*\\)"
+    },
+    {
+      "name": "constant.language.typeof.kusto",
+      "match": "\\b(typeof)\\s*\\([^)]*\\)"
+    },
+    {
+      "name": "support.function.kusto",
+      "match": "\\b(ago|now|datetime|timespan|time|guid|typeof|int|long|real|double|bool|decimal|dynamic|tostring|toint|tolong|todouble|toreal|todatetime|totimespan|tobool|toguid|todecimal|strlen|substring|toupper|tolower|trim|trim_start|trim_end|split|strcat|replace|extract|parse_json|parse_xml|parse_csv|parse_url|parse_path|parse_version|isempty|isnotempty|isnull|isnotnull|isnan|isinf|isfinite|coalesce|max_of|min_of|iff|iif|case|sum|avg|min|max|percentile|percentiles|stdev|variance|dcount|dcountif|countif|sumif|avgif|arg_max|arg_min|any|make_list|make_set|make_bag|make_list_if|make_set_if|make_bag_if|array_length|array_concat|array_slice|array_index_of|pack|pack_all|bag_keys|bag_pack|bag_merge|bag_remove_keys|set_union|set_intersect|set_difference|zip|repeat|toscalar|ingestion_time|format_datetime|format_timespan|bin|floor|ceiling|round|log|log10|log2|exp|exp10|exp2|pow|sqrt|abs|sign|sin|cos|tan|asin|acos|atan|atan2|degrees|radians|pi|hash|hash_sha256|hash_md5|base64_encode_tostring|base64_decode_tostring|url_encode|url_decode|gettype)\\b"
+    },
+    {
+      "name": "variable.other.kusto",
+      "match": "[0-9]*[_a-zA-Z][_a-zA-Z0-9]*"
+    }
+  ]
+}
