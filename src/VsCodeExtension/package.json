@@ -1,14 +1,14 @@
 {
   "name": "kusto-lsp",
   "displayName": "Kusto",
-  "description": "Kusto Language Support (KQL)",
+  "description": "Kusto Query Language (KQL)",
   "version": "1.0.0",
-  "publisher": "mattwar",
-  "author": "Matt Warren",
-  "license": "Apache-2.0",
+  "publisher": "Microsoft",
+  "author": "Microsoft",
+  "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/mattwar/Kusto.LSP"
+    "url": "https://github.com/microsoft/Kusto-Language-Server"
   },
   "engines": {
     "vscode": "^1.75.0"
