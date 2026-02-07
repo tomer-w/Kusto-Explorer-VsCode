@@ -107,7 +107,7 @@ A VS Code language server extension for Kusto Query Language (KQL)
 
 ## Creating the VSIX installer
 
-1. Must have svce installed (npm install -g @vscode/vsce)
+1. Must have vsce installed (npm install -g @vscode/vsce)
 2. run `npm run package` on command line within VsCodeExtension folder to build the .vsix file
 
 ## Installing the VSIX manually
