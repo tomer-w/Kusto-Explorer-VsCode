@@ -18,41 +18,44 @@ A VS Code language server extension for Kusto Query Language (KQL)
 
 1. Open or create a `.kql` file
 
-2. Select or add a connection in the connections section of the explorer panel
-```
-CONNECTIONS
-├── 📁 Production
-│   ├── 🗄️ mycluster.eastus.kusto.windows.net
-│   │   ├── 📊 MyDatabase
-│   │   ├── 📊 LogsDatabase
-│   │   └── 📊 TelemetryDB
-│   └── 🗄️ analytics.westus.kusto.windows.net
-│       └── 📊 AnalyticsDB
-├── 📁 Development
-│   └── 🗄️ devcluster.kusto.windows.net
-│       └── 📊 TestDatabase
-└── 🗄️ help.kusto.windows.net
-    └── 📊 Samples
-```
+2. Add or open a server in the connections section of the explorer panel
+    ```
+    CONNECTIONS
+    ├── 📁 Production
+    │   ├── 🗄️ mycluster.eastus.kusto.windows.net
+    │   │   ├── 📊 MyDatabase
+    │   │   ├── 📊 LogsDatabase
+    │   │   └── 📊 TelemetryDB
+    │   └── 🗄️ analytics.westus.kusto.windows.net
+    │       └── 📊 AnalyticsDB
+    ├── 📁 Development
+    │   └── 🗄️ devcluster.kusto.windows.net
+    │       └── 📊 TestDatabase
+    └── 🗄️ help.kusto.windows.net
+        └── 📊 Samples
+    ```
 
-3. Select a default database for the the document under the connection item
-```
-CONNECTIONS
-├── 📁 Production
-│   ├── 🗄️ mycluster.eastus.kusto.windows.net
-│   │   ├── 📊 MyDatabase
-│   │   ├── 📊 LogsDatabase
-│   │   └── 📊 TelemetryDB
-│   └── 🗄️ analytics.westus.kusto.windows.net
-│       └── 📊 AnalyticsDB
-├── 📁 Development
-│   └── 🗄️ devcluster.kusto.windows.net
-│       └── 📊 TestDatabase
-└── 🗄️ help.kusto.windows.net
-    └── ✓ 📊 Samples  (default)
-```
+3. Select a database for the the document under the server item.
+    ```
+    CONNECTIONS
+    ├── 📁 Production
+    │   ├── 🗄️ mycluster.eastus.kusto.windows.net
+    │   │   ├── 📊 MyDatabase
+    │   │   ├── 📊 LogsDatabase
+    │   │   └── 📊 TelemetryDB
+    │   └── 🗄️ analytics.westus.kusto.windows.net
+    │       └── 📊 AnalyticsDB
+    ├── 📁 Development
+    │   └── 🗄️ devcluster.kusto.windows.net
+    │       └── 📊 TestDatabase
+    └── 🗄️ help.kusto.windows.net
+        └── ✓ 📊 Samples  (default)
+    ```
 
-4. Write your query
+    The document will now be associated with the server and database each time you open it.
+    You can change this association at any time by selecting a different database.
+
+4. Write or edit your query
     ```
     StormEvents
     | where StartTime > ago(7d)
@@ -61,7 +64,7 @@ CONNECTIONS
     | render barchar
      ```
 
-5. Press F5 to execute
+5. Press F5 to run the query
 
     The results of the query will appear in the Results panel.
     ```
