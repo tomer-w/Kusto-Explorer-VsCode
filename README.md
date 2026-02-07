@@ -65,7 +65,7 @@ CONNECTIONS
 
     The results of the query will appear in the Results panel.
     ```
-    RESULTS: Table (10 rows)
+    RESULTS (10 rows)
 
     State          EventCount
     ─────────────  ──────────
