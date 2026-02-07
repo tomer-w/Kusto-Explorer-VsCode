@@ -97,6 +97,33 @@ public static class PlotlyFillModes
 }
 
 /// <summary>
+/// Display modes for indicator traces (card charts/KPIs).
+/// </summary>
+public static class PlotlyIndicatorModes
+{
+    /// <summary>Display only the numeric value.</summary>
+    public const string Number = "number";
+    
+    /// <summary>Display only the delta (change).</summary>
+    public const string Delta = "delta";
+    
+    /// <summary>Display only a gauge.</summary>
+    public const string Gauge = "gauge";
+    
+    /// <summary>Display number and delta.</summary>
+    public const string NumberAndDelta = "number+delta";
+    
+    /// <summary>Display number and gauge.</summary>
+    public const string NumberAndGauge = "number+gauge";
+    
+    /// <summary>Display delta and gauge.</summary>
+    public const string DeltaAndGauge = "delta+gauge";
+    
+    /// <summary>Display number, delta, and gauge.</summary>
+    public const string NumberDeltaAndGauge = "number+delta+gauge";
+}
+
+/// <summary>
 /// Axis scale types for Plotly charts.
 /// </summary>
 public static class PlotlyAxisTypes

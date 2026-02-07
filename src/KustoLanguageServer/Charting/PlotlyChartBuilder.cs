@@ -177,6 +177,7 @@ public sealed class PlotlyChartBuilder
 [JsonDerivedType(typeof(BoxTrace), typeDiscriminator: "box")]
 [JsonDerivedType(typeof(ViolinTrace), typeDiscriminator: "violin")]
 [JsonDerivedType(typeof(SurfaceTrace), typeDiscriminator: "surface")]
+[JsonDerivedType(typeof(IndicatorTrace), typeDiscriminator: "indicator")]
 public abstract record PlotlyTrace
 {
     /// <summary>
@@ -530,6 +531,54 @@ public sealed record SurfaceTrace : PlotlyTrace
 }
 
 /// <summary>
+/// Indicator trace for displaying single values/KPIs (card charts).
+/// </summary>
+public sealed record IndicatorTrace : PlotlyTrace
+{
+    /// <summary>
+    /// The value to display.
+    /// </summary>
+    [JsonPropertyName("value")]
+    public required double Value { get; init; }
+
+    /// <summary>
+    /// Display mode. Use <see cref="PlotlyIndicatorModes"/> constants.
+    /// </summary>
+    [JsonPropertyName("mode")]
+    public string Mode { get; init; } = PlotlyIndicatorModes.Number;
+
+    /// <summary>
+    /// Title configuration for the indicator.
+    /// </summary>
+    [JsonPropertyName("title")]
+    public PlotlyTitle? Title { get; init; }
+
+    /// <summary>
+    /// Number formatting configuration.
+    /// </summary>
+    [JsonPropertyName("number")]
+    public PlotlyIndicatorNumber? Number { get; init; }
+
+    /// <summary>
+    /// Delta configuration for showing change from a reference value.
+    /// </summary>
+    [JsonPropertyName("delta")]
+    public PlotlyIndicatorDelta? Delta { get; init; }
+
+    /// <summary>
+    /// Gauge configuration for gauge-style indicators.
+    /// </summary>
+    [JsonPropertyName("gauge")]
+    public object? Gauge { get; init; }
+
+    /// <summary>
+    /// Domain (position and size) of the indicator in the plot area.
+    /// </summary>
+    [JsonPropertyName("domain")]
+    public object? Domain { get; init; }
+}
+
+/// <summary>
 /// Marker styling for traces.
 /// </summary>
 public sealed record PlotlyMarker
@@ -701,6 +750,78 @@ public sealed record PlotlyFont
     /// </summary>
     [JsonPropertyName("color")]
     public string? Color { get; init; }
+}
+
+/// <summary>
+/// Number formatting for indicator traces.
+/// </summary>
+public sealed record PlotlyIndicatorNumber
+{
+    /// <summary>
+    /// Number format prefix (e.g., "$" for currency).
+    /// </summary>
+    [JsonPropertyName("prefix")]
+    public string? Prefix { get; init; }
+
+    /// <summary>
+    /// Number format suffix (e.g., "%" for percentage).
+    /// </summary>
+    [JsonPropertyName("suffix")]
+    public string? Suffix { get; init; }
+
+    /// <summary>
+    /// Font styling for the number.
+    /// </summary>
+    [JsonPropertyName("font")]
+    public PlotlyFont? Font { get; init; }
+
+    /// <summary>
+    /// Number format (e.g., ".2f" for 2 decimal places).
+    /// </summary>
+    [JsonPropertyName("valueformat")]
+    public string? ValueFormat { get; init; }
+}
+
+/// <summary>
+/// Delta configuration for indicator traces (shows change from reference).
+/// </summary>
+public sealed record PlotlyIndicatorDelta
+{
+    /// <summary>
+    /// Reference value to compare against.
+    /// </summary>
+    [JsonPropertyName("reference")]
+    public double? Reference { get; init; }
+
+    /// <summary>
+    /// Whether to show the delta as relative (percentage).
+    /// </summary>
+    [JsonPropertyName("relative")]
+    public bool? Relative { get; init; }
+
+    /// <summary>
+    /// Position of the delta ("left", "right", "top", "bottom").
+    /// </summary>
+    [JsonPropertyName("position")]
+    public string? Position { get; init; }
+
+    /// <summary>
+    /// Font styling for the delta.
+    /// </summary>
+    [JsonPropertyName("font")]
+    public PlotlyFont? Font { get; init; }
+
+    /// <summary>
+    /// Whether the delta is increasing or decreasing.
+    /// </summary>
+    [JsonPropertyName("increasing")]
+    public object? Increasing { get; init; }
+
+    /// <summary>
+    /// Whether the delta is decreasing.
+    /// </summary>
+    [JsonPropertyName("decreasing")]
+    public object? Decreasing { get; init; }
 }
 
 /// <summary>

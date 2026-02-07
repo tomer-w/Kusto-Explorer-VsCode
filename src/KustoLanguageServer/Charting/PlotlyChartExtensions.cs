@@ -152,6 +152,51 @@ public static class PlotlyChartExtensions
 
     #endregion
 
+    #region Indicator/Card Charts
+
+    /// <summary>
+    /// Adds an indicator trace to the builder for displaying a single KPI value (card chart).
+    /// </summary>
+    /// <param name="builder">The chart builder instance.</param>
+    /// <param name="value">The numeric value to display.</param>
+    /// <param name="title">Title text for the indicator. If null, no title is shown.</param>
+    /// <param name="mode">Display mode. Use <see cref="PlotlyIndicatorModes"/> constants. Default is number only.</param>
+    /// <param name="prefix">Prefix for the value (e.g., "$" for currency).</param>
+    /// <param name="suffix">Suffix for the value (e.g., "%" for percentage).</param>
+    /// <param name="valueFormat">Number format (e.g., ".2f" for 2 decimal places).</param>
+    /// <returns>A new immutable PlotlyChartBuilder with the indicator trace added.</returns>
+    /// <remarks>
+    /// Indicator traces are ideal for dashboards displaying single KPI values, counts, or metrics.
+    /// </remarks>
+    public static PlotlyChartBuilder AddIndicatorTrace(
+        this PlotlyChartBuilder builder,
+        double value,
+        string? title = null,
+        string? mode = null,
+        string? prefix = null,
+        string? suffix = null,
+        string? valueFormat = null)
+    {
+        var trace = new IndicatorTrace
+        {
+            Value = value,
+            Mode = mode ?? PlotlyIndicatorModes.Number,
+            Title = title != null ? new PlotlyTitle { Text = title } : null,
+            Number = (prefix != null || suffix != null || valueFormat != null)
+                ? new PlotlyIndicatorNumber
+                {
+                    Prefix = prefix,
+                    Suffix = suffix,
+                    ValueFormat = valueFormat
+                }
+                : null
+        };
+
+        return builder.AddTrace(trace);
+    }
+
+    #endregion
+
     #region Pie Charts
 
     /// <summary>

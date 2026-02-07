@@ -47,6 +47,9 @@ public class PlotlyChartManager : IChartManager
             case VisualizationKind.StackedAreaChart:
                 return BuildStackedAreaChart(data, options);
 
+            case VisualizationKind.Card:
+                return BuildCardChart(data, options);
+
             default:
                 return null;
         }
@@ -146,6 +149,52 @@ public class PlotlyChartManager : IChartManager
         return Build2dChart(builder, data, options, 
             (builder, x, y, name, yAxis) => builder.AddAreaChart(x, y, name, stackGroup: "1", yAxis: yAxis)
         );
+    }
+
+    private PlotlyChartBuilder? BuildCardChart(DataTable data, ChartVisualizationOptions options)
+    {
+        var builder = new PlotlyChartBuilder();
+
+        // Card charts expect a single aggregated value
+        // Get the first numeric column's first row value
+        if (data.Rows.Count == 0 || data.Columns.Count == 0)
+            return null;
+
+        // Try to find a numeric column
+        DataColumn? valueColumn = null;
+        foreach (DataColumn col in data.Columns)
+        {
+            if (IsNumeric(col.DataType))
+            {
+                valueColumn = col;
+                break;
+            }
+        }
+
+        if (valueColumn == null)
+            return null;
+
+        var firstRow = data.Rows[0];
+        var cellValue = firstRow[valueColumn];
+
+        if (cellValue == null || cellValue == DBNull.Value)
+            return null;
+
+        double value = Convert.ToDouble(cellValue);
+
+        // Sanitize infinity values
+        value = SanitizeDoubleValue(value);
+
+        // Determine title - use the column name or the provided title
+        string? title = options.Title ?? valueColumn.ColumnName;
+
+        builder = builder.AddIndicatorTrace(
+            value: value,
+            title: title,
+            mode: PlotlyIndicatorModes.Number
+        );
+
+        return builder;
     }
 
     /// <summary>
