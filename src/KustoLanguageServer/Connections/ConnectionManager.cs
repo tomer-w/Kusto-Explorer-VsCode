@@ -36,6 +36,23 @@ public class ConnectionManager : IConnectionManager
         }
     }
 
+    public async Task<string> GetServerKindAsync(string clusterOrConnection, CancellationToken cancellationToken)
+    {
+        var connection = this.GetConnection(clusterOrConnection);
+        var results = await connection.AdminProvider.ExecuteControlCommandAsync<ShowVersionResult>(".show version").ConfigureAwait(false);
+        var version = results.FirstOrDefault();
+        return version != null ? version.ServiceType : "Unknown";
+    }
+
+    public class ShowVersionResult
+    {
+        public string BuildVersion = default!;
+        public DateTime BuildTime;
+        public string ServiceType = default!;
+        public string ProductVersion = default!;
+        public string ServiceSubType = default!;
+    }
+
     public IConnection GetConnection(string clusterOrConnection, string? database = null)
     {
         KustoConnection connection;

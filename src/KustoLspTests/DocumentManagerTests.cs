@@ -32,7 +32,7 @@ public sealed class DocumentManagerTests
         }
 
         // update connection and wait for it to complete (may load symbols, etc)
-        await documentManager.UpdateConnectionAsync(id, "mycluster", "mydb");
+        await documentManager.UpdateConnectionAsync(id, "mycluster", "mydb", null);
 
         {
             // document now has globals that reference the cluster and database

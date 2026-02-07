@@ -30,7 +30,7 @@ public interface IDocumentManager
     /// <summary>
     /// Updates the document's associated connection information.
     /// </summary>
-    Task UpdateConnectionAsync(Uri documentId, string? clusterOrConnection, string? database);
+    Task UpdateConnectionAsync(Uri documentId, string? clusterOrConnection, string? database, string? serverKind);
 
     /// <summary>
     /// Updates the document's text

@@ -17,6 +17,7 @@ interface ServerInfo {
     connection: string;
     cluster: string;
     displayName?: string;
+    serverKind?: string;
 }
 
 interface ServerGroupInfo {
@@ -105,17 +106,38 @@ class ServerGroupTreeItem extends vscode.TreeItem {
     }
 }
 
+/**
+ * Returns the appropriate ThemeIcon for a server based on its kind.
+ * @param serverKind The kind of server (Engine, DataManager, ClusterManager)
+ * @returns A ThemeIcon for the server type
+ */
+function getServerKindIcon(serverKind?: string): vscode.ThemeIcon {
+    switch (serverKind) {
+        case 'Engine':
+            return new vscode.ThemeIcon('server'); // Server icon for query engine
+        case 'DataManager':
+            return new vscode.ThemeIcon('cloud-upload'); // Cloud upload for data ingestion
+        case 'ClusterManager':
+            return new vscode.ThemeIcon('settings-gear'); // Gear for cluster management
+        default:
+            return new vscode.ThemeIcon('server'); // Default server icon
+    }
+}
+
 class ServerTreeItem extends vscode.TreeItem {
     constructor(
         public readonly connection: string,
         public readonly clusterName: string, 
         public readonly displayName?: string,
-        public readonly groupName?: string
+        public readonly groupName?: string,
+        public readonly serverKind?: string
     ) {
-        super(displayName ?? clusterName, vscode.TreeItemCollapsibleState.Collapsed);
+        const name = displayName ?? clusterName;
+        
+        super(name, vscode.TreeItemCollapsibleState.Collapsed);
         this.id = `server:${clusterName}`;
         this.contextValue = 'server';
-        this.iconPath = new vscode.ThemeIcon('server');
+        this.iconPath = getServerKindIcon(serverKind);
         // Set command to prevent auto-expand on click (selection still fires)
         this.command = {
             command: 'kusto.selectServer',
@@ -475,6 +497,22 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
         } else {
             delete serverInfo.displayName;
         }
+
+        // refetch server kind
+        if (this.client) {
+            try {
+                const result = await this.client.sendRequest<{ serverKind: string } | null>(
+                    'kusto/getServerKind',
+                    { connection: newConnection }
+                );
+                if (result?.serverKind) {
+                    serverInfo.serverKind = result.serverKind;
+                }
+            } catch (error) {
+                console.error(`Failed to get server kind for ${newConnection}:`, error);
+                // Continue without updating server kind - it's optional
+            }
+        }
         
         // Update connections cache if cluster name changed
         if (oldCluster !== newCluster) {
@@ -557,6 +595,22 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
         };
         if (displayName && displayName !== cluster) {
             server.displayName = displayName;
+        }
+
+        // Fetch server kind from the language server
+        if (this.client) {
+            try {
+                const result = await this.client.sendRequest<{ serverKind: string } | null>(
+                    'kusto/getServerKind',
+                    { connection: connectionString }
+                );
+                if (result?.serverKind) {
+                    server.serverKind = result.serverKind;
+                }
+            } catch (error) {
+                console.error(`Failed to get server kind for ${connectionString}:`, error);
+                // Continue without server kind - it's optional
+            }
         }
 
         await this.addServer(server, groupName);
@@ -738,9 +792,24 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
      */
     async getDatabases(clusterName: string, client: LanguageClient): Promise<string[]> {
         try {
+            // Find server kind for this cluster
+            let serverKind: string | null = null;
+            for (const item of this.serversAndGroups.items) {
+                if (isServerGroup(item)) {
+                    const server = item.servers.find(s => s.cluster === clusterName);
+                    if (server) {
+                        serverKind = server.serverKind ?? null;
+                        break;
+                    }
+                } else if (item.cluster === clusterName) {
+                    serverKind = item.serverKind ?? null;
+                    break;
+                }
+            }
+
             const result = await client.sendRequest<{ cluster: string; databases: { name: string; alternateName: string }[] } | null>(
                 'kusto/getServerInfo',
-                { connection: clusterName }
+                { connection: clusterName, serverKind: serverKind }
             );
 
             if (result && result.databases) {
@@ -774,7 +843,7 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
                 if (isServerGroup(item)) {
                     groups.push(new ServerGroupTreeItem(item));
                 } else {
-                    servers.push(new ServerTreeItem(item.connection, item.cluster, item.displayName));
+                    servers.push(new ServerTreeItem(item.connection, item.cluster, item.displayName, undefined, item.serverKind));
                 }
             }
             
@@ -800,7 +869,7 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
         if (element instanceof ServerGroupTreeItem) {
             // Show servers within this group, sorted by display name
             const servers = element.groupInfo.servers.map(s => 
-                new ServerTreeItem(s.connection, s.cluster, s.displayName, element.groupInfo.name)
+                new ServerTreeItem(s.connection, s.cluster, s.displayName, element.groupInfo.name, s.serverKind)
             );
             
             servers.sort((a, b) => {
@@ -858,11 +927,11 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
                     const server = item.servers.find(s => s.cluster === element.clusterName);
                     if (server)
                     {
-                        return new ServerTreeItem(server.connection, server.cluster, server.displayName, item.name);
+                        return new ServerTreeItem(server.connection, server.cluster, server.displayName, item.name, server.serverKind);
                     }
                 } else if (item.cluster === element.clusterName)
                 {
-                    return new ServerTreeItem(item.connection, item.cluster, item.displayName);
+                    return new ServerTreeItem(item.connection, item.cluster, item.displayName, undefined, item.serverKind);
                 }
             }
             return undefined;
@@ -902,9 +971,24 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
         }
 
         try {
+            // Find server kind for this cluster
+            let serverKind: string | null = null;
+            for (const item of this.serversAndGroups.items) {
+                if (isServerGroup(item)) {
+                    const server = item.servers.find(s => s.cluster === clusterName);
+                    if (server) {
+                        serverKind = server.serverKind ?? null;
+                        break;
+                    }
+                } else if (item.cluster === clusterName) {
+                    serverKind = item.serverKind ?? null;
+                    break;
+                }
+            }
+
             const result = await client.sendRequest<{ cluster: string; databases: { name: string; alternateName: string }[] } | null>(
                 'kusto/getServerInfo',
-                { connection: clusterName }
+                { connection: clusterName, serverKind: serverKind }
             );
 
             if (result && result.databases) {
@@ -1051,12 +1135,37 @@ connectionsProvider.initializeServersAndGroups(context);
             updateStatusBar();
         }
 
+        // Get server kind from serversAndGroups if cluster is specified
+        let serverKind: string | null = null;
+        if (cluster) {
+            const serverInfo = findServerInfo(cluster);
+            serverKind = serverInfo?.serverKind ?? null;
+        }
+
         // Notify server of the connection change
         await client.sendNotification('kusto/documentConnectionChanged', {
             uri,
             cluster: cluster || null,
-            database: database || null
+            database: database || null,
+            serverKind: serverKind
         });
+    }
+
+    /**
+     * Helper function to find ServerInfo for a given cluster name.
+     */
+    function findServerInfo(cluster: string): ServerInfo | undefined {
+        for (const item of connectionsProvider.getServersAndGroups().items) {
+            if (isServerGroup(item)) {
+                const server = item.servers.find(s => s.cluster === cluster);
+                if (server) {
+                    return server;
+                }
+            } else if (isServer(item) && item.cluster === cluster) {
+                return item;
+            }
+        }
+        return undefined;
     }
 
     /**
@@ -1199,10 +1308,12 @@ connectionsProvider.initializeServersAndGroups(context);
     for (const document of vscode.workspace.textDocuments) {
         if (document.languageId === 'kusto') {
             const connection = getDocumentConnection(document.uri.toString());
+            const serverKind = connection?.cluster ? (findServerInfo(connection.cluster)?.serverKind ?? null) : null;
             await client.sendNotification('kusto/documentConnectionChanged', {
                 uri: document.uri.toString(),
                 cluster: connection?.cluster || null,
-                database: connection?.database || null
+                database: connection?.database || null,
+                serverKind: serverKind
             });
         }
     }
@@ -1212,10 +1323,12 @@ connectionsProvider.initializeServersAndGroups(context);
         vscode.workspace.onDidOpenTextDocument(async (document) => {
             if (document.languageId === 'kusto') {
                 const connection = getDocumentConnection(document.uri.toString());
+                const serverKind = connection?.cluster ? (findServerInfo(connection.cluster)?.serverKind ?? null) : null;
                 await client.sendNotification('kusto/documentConnectionChanged', {
                     uri: document.uri.toString(),
                     cluster: connection?.cluster || null,
-                    database: connection?.database || null
+                    database: connection?.database || null,
+                    serverKind: serverKind
                 });
             }
         })

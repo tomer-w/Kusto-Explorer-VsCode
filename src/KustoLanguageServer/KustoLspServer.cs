@@ -5,7 +5,6 @@ using Kusto.Language.Symbols;
 using Lsp.Common;
 using StreamJsonRpc;
 
-//using Microsoft.VisualStudio.LanguageServer.Protocol;
 using System.Collections.Immutable;
 using System.Data;
 using System.Runtime.CompilerServices;
@@ -84,6 +83,25 @@ public class KustoLspServer : LspServer, ILogger
     /// </summary>
     protected LSP.InitializeResult ServerSettings { get; private set; } = null!;
 
+    #region Events
+
+    private void _symbolManager_GlobalsChanged(object? sender, GlobalState e)
+    {
+    }
+
+    private void _scriptManager_ScriptChanged(object? sender, Uri id)
+    {
+    }
+
+    private void _diagnosticsManager_DiagnosticsUpdated(object? sender, DiagnosticInfo diagnostics)
+    {
+        var _ = PublishDiagnosticsAsync(diagnostics);
+    }
+
+    #endregion
+
+    #region LSP Implementation
+
     #region Initialize
 
     /// <summary>
@@ -94,15 +112,15 @@ public class KustoLspServer : LspServer, ILogger
         this.ClientSettings = @params;
 
         var semanticTokenOptions = new LSP.SemanticTokensOptions
+        {
+            Legend = new LSP.SemanticTokensLegend
             {
-                Legend = new LSP.SemanticTokensLegend
-                {
-                    TokenTypes = _semanticTokenTypes.ToArray(),
-                    TokenModifiers = @params.Capabilities.TextDocument?.SemanticTokens?.TokenModifiers ?? []
-                },
-                Full = true,
-                Range = true
-            };
+                TokenTypes = _semanticTokenTypes.ToArray(),
+                TokenModifiers = @params.Capabilities.TextDocument?.SemanticTokens?.TokenModifiers ?? []
+            },
+            Full = true,
+            Range = true
+        };
 
         var completionOptions = new LSP.CompletionOptions
         {
@@ -179,23 +197,6 @@ public class KustoLspServer : LspServer, ILogger
         };
 
         return Task.FromResult(this.ServerSettings);
-    }
-
-    #endregion
-
-    #region Events
-
-    private void _symbolManager_GlobalsChanged(object? sender, GlobalState e)
-    {
-    }
-
-    private void _scriptManager_ScriptChanged(object? sender, Uri id)
-    {
-    }
-
-    private void _diagnosticsManager_DiagnosticsUpdated(object? sender, DiagnosticInfo diagnostics)
-    {
-        var _ = PublishDiagnosticsAsync(diagnostics);
     }
 
     #endregion
@@ -304,7 +305,7 @@ public class KustoLspServer : LspServer, ILogger
 
     #endregion
 
-    #region Workspace Settings
+    #region Workspace Configuration
 
     public async Task<Dictionary<string, object>> GetWorkspaceSettingsAsync(IReadOnlyList<Setting> settings, CancellationToken cancellationToken)
     {
@@ -314,80 +315,6 @@ public class KustoLspServer : LspServer, ILogger
         return results
             .Select((r, i) => (s: settings[i], value: r))
             .ToDictionary(t => t.s.Name, t => t.value!);
-    }
-
-    #endregion
-
-    #region Position and Range Conversion
-    public static LSP.Position GetLspPosition(string text, int textPosition)
-    {
-        if (text.TryGetLineAndOffset(textPosition, out var line, out var character))
-        {
-            return new LSP.Position
-            {
-                Line = line,
-                Character = character
-            };
-        }
-        else
-        {
-            return new LSP.Position
-            {
-                Line = 0,
-                Character = 0
-            };
-        }
-    }
-
-    public static int GetTextPosition(string text, LSP.Position position)
-    {
-        if (text.TryGetTextPosition(position.Line, position.Character, out var textPosition))
-        {
-            return textPosition;
-        }
-        else
-        {
-            return 0;
-        }
-    }
-
-    public static LSP.Range GetLspRange(string text, TextRange textRange)
-    {
-        var start = GetLspPosition(text, textRange.Start);
-        var end = GetLspPosition(text, textRange.End);
-        return new LSP.Range
-        {
-            Start = start,
-            End = end
-        };
-    }
-
-    public static TextRange GetTextRange(string text, LSP.Range range)
-    {
-        if (text.TryGetTextPosition(range.Start.Line + 1, range.Start.Character + 1, out var startPosition)
-            && text.TryGetTextPosition(range.End.Line + 1, range.End.Character + 1, out var endPosition))
-        {
-            return TextRange.FromBounds(startPosition, endPosition);
-        }
-        else
-        {
-            return TextRange.Empty;
-        }
-    }
-
-    public static LSP.TextEdit GetLspTextEdit(string text, TextEdit edit)
-    {
-        return new LSP.TextEdit
-        {
-            Range = GetLspRange(text, new TextRange(edit.Start, edit.DeleteLength)),
-            NewText = edit.InsertText
-        };
-    }
-
-    public static TextEdit GetTextEdit(string text, LSP.TextEdit edit)
-    {
-        var range = GetTextRange(text, edit.Range);
-        return TextEdit.Replacement(range.Start, range.Length, edit.NewText);
     }
 
     #endregion
@@ -1144,7 +1071,11 @@ public class KustoLspServer : LspServer, ILogger
     }
     #endregion
 
-    #region Run Query Command
+    #endregion
+
+    #region Kusto Extensions
+
+    #region Run Query
 
     [JsonRpcMethod("kusto/runQuery", UseSingleObjectParameterDeserialization = true)]
     public async Task<RunQueryResults?> OnRunQueryAsync(RunQueryParams @params, CancellationToken cancellationToken)
@@ -1229,15 +1160,6 @@ public class KustoLspServer : LspServer, ILogger
 
     #endregion
 
-    #region Workspace Commands
-
-    public override async Task<object?> OnWorkspaceExecuteCommandAsync(LSP.ExecuteCommandParams @params, CancellationToken cancellationToken)
-    {
-        return Task.FromResult<object?>(null);
-    }
-
-    #endregion
-
     #region Query Boundaries
 
     [JsonRpcMethod("kusto/getQueryBoundaries", UseSingleObjectParameterDeserialization = true)]
@@ -1288,7 +1210,7 @@ public class KustoLspServer : LspServer, ILogger
     [JsonRpcMethod("kusto/getServerInfo", UseSingleObjectParameterDeserialization = true)]
     public async Task<GetServerInfoResult?> OnGetServerInfoAsync(GetServerInfoParams @params, CancellationToken cancellationToken)
     {
-        var clusterName = _connectionManager.GetClusterName(@params.Connection);
+        var clusterName = _connectionManager.GetConnection(@params.Connection).Hostname;
         
         // ensure server databases are loaded
         await _symbolManager.GetOrLoadDatabaseNamesAsync(@params.Connection, cancellationToken).ConfigureAwait(false);
@@ -1317,6 +1239,9 @@ public class KustoLspServer : LspServer, ILogger
     {
         [DataMember(Name = "connection")]
         public required string Connection { get; set; }
+
+        [DataMember(Name = "serverKind")]
+        public string? ServerKind { get; set; }
     }
 
     [DataContract]
@@ -1337,6 +1262,38 @@ public class KustoLspServer : LspServer, ILogger
 
         [DataMember(Name = "alternateName")]
         public required string AlternateName { get; set; }
+    }
+
+    [JsonRpcMethod("kusto/getServerKind", UseSingleObjectParameterDeserialization = true)]
+    public async Task<GetServerKindResult?> OnGetServerKindAsync(GetServerKindParams @params, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var serverKind = await _connectionManager.GetServerKindAsync(@params.Connection, cancellationToken).ConfigureAwait(false);
+            return new GetServerKindResult
+            {
+                ServerKind = serverKind
+            };
+        }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex);
+            return null;
+        }
+    }
+
+    [DataContract]
+    public class GetServerKindParams
+    {
+        [DataMember(Name = "connection")]
+        public required string Connection { get; set; }
+    }
+
+    [DataContract]
+    public class GetServerKindResult
+    {
+        [DataMember(Name = "serverKind")]
+        public required string ServerKind { get; set; }
     }
 
     [JsonRpcMethod("kusto/getDatabaseInfo", UseSingleObjectParameterDeserialization = true)]
@@ -1443,7 +1400,7 @@ public class KustoLspServer : LspServer, ILogger
         try
         {
             var uri = new Uri(@params.Uri);
-            _documentManager.UpdateConnectionAsync(uri, @params.Cluster, @params.Database);
+            _documentManager.UpdateConnectionAsync(uri, @params.Cluster, @params.Database, @params.ServerKind);
         }
         catch (Exception ex)
         {
@@ -1464,6 +1421,85 @@ public class KustoLspServer : LspServer, ILogger
 
         [DataMember(Name = "database")]
         public string? Database { get; set; }
+
+        [DataMember(Name = "serverKind")]
+        public string? ServerKind { get; set; }
+    }
+
+    #endregion
+
+    #endregion
+
+    #region Position and Range Conversion
+    public static LSP.Position GetLspPosition(string text, int textPosition)
+    {
+        if (text.TryGetLineAndOffset(textPosition, out var line, out var character))
+        {
+            return new LSP.Position
+            {
+                Line = line,
+                Character = character
+            };
+        }
+        else
+        {
+            return new LSP.Position
+            {
+                Line = 0,
+                Character = 0
+            };
+        }
+    }
+
+    public static int GetTextPosition(string text, LSP.Position position)
+    {
+        if (text.TryGetTextPosition(position.Line, position.Character, out var textPosition))
+        {
+            return textPosition;
+        }
+        else
+        {
+            return 0;
+        }
+    }
+
+    public static LSP.Range GetLspRange(string text, TextRange textRange)
+    {
+        var start = GetLspPosition(text, textRange.Start);
+        var end = GetLspPosition(text, textRange.End);
+        return new LSP.Range
+        {
+            Start = start,
+            End = end
+        };
+    }
+
+    public static TextRange GetTextRange(string text, LSP.Range range)
+    {
+        if (text.TryGetTextPosition(range.Start.Line + 1, range.Start.Character + 1, out var startPosition)
+            && text.TryGetTextPosition(range.End.Line + 1, range.End.Character + 1, out var endPosition))
+        {
+            return TextRange.FromBounds(startPosition, endPosition);
+        }
+        else
+        {
+            return TextRange.Empty;
+        }
+    }
+
+    public static LSP.TextEdit GetLspTextEdit(string text, TextEdit edit)
+    {
+        return new LSP.TextEdit
+        {
+            Range = GetLspRange(text, new TextRange(edit.Start, edit.DeleteLength)),
+            NewText = edit.InsertText
+        };
+    }
+
+    public static TextEdit GetTextEdit(string text, LSP.TextEdit edit)
+    {
+        var range = GetTextRange(text, edit.Range);
+        return TextEdit.Replacement(range.Start, range.Length, edit.NewText);
     }
 
     #endregion

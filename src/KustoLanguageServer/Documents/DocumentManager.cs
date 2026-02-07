@@ -68,6 +68,8 @@ public class DocumentManager : IDocumentManager
 
         public required Document Document { get; set; }
 
+        public string? ServerKind { get; set; }
+
         public string? Cluster { get; set; }
 
         public string? Database { get; set; }
@@ -123,16 +125,15 @@ public class DocumentManager : IDocumentManager
     /// <summary>
     /// Changes the cluster and database for the script.
     /// </summary>
-    public Task UpdateConnectionAsync(Uri id, string? cluster, string? database)
+    public Task UpdateConnectionAsync(Uri id, string? cluster, string? database, string? serverKind)
     {
         var info = GetOrCreateDocumentInfo(id);
         
         // Update connection info
         info.Cluster = cluster;
         info.Database = database;
+        info.ServerKind = serverKind;
 
-        _logger?.Log($"Set connection for {id} to cluster: {cluster}, database: {database}");
-        
         // Load symbols if we have a cluster
         if (cluster != null)
         {
@@ -221,8 +222,11 @@ public class DocumentManager : IDocumentManager
         {
             var originalScript = info.Document;
 
-            // update script with latest globals
+            // update script with latest symbols
             var newGlobals = originalScript.Globals.WithClusterList(_symbolManager.Globals.Clusters);
+
+            // set server kind (default to Engine if unknown)
+            newGlobals = newGlobals.WithServerKind(info.ServerKind ?? Kusto.Language.ServerKinds.Engine);
 
             if (info.Cluster == null 
                 && newGlobals.Cluster != Language.Symbols.ClusterSymbol.Unknown)
