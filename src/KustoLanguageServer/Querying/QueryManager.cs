@@ -35,6 +35,9 @@ public class QueryManager : IQueryManager
             {
                 // some servers will fails if query starts with a comment.
                 var query = document.GetQueryMinimalText(range.Start, Language.Editor.MinimalTextKind.RemoveLeadingWhitespaceAndComments, cancellationToken);
+                if (string.IsNullOrWhiteSpace(query))
+                    return Task.FromResult<QueryResult?>(new QueryResult(null, null, "Query is empty"));
+
                 var properties = new ClientRequestProperties();
                 try
                 {

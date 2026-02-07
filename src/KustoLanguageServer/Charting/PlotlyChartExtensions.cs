@@ -5,7 +5,7 @@ namespace Kusto.Lsp;
 /// </summary>
 public static class PlotlyChartExtensions
 {
-    #region Bar Charts
+    #region Traces
 
     /// <summary>
     /// Adds a bar or column chart trace to the builder.
@@ -23,7 +23,7 @@ public static class PlotlyChartExtensions
     /// <remarks>
     /// For DateTime values in x or y, consider setting the corresponding axis Type to PlotlyAxisTypes.Date for proper date formatting.
     /// </remarks>
-    public static PlotlyChartBuilder AddBarChart<TX, TY>(
+    public static PlotlyChartBuilder Add2DBarTrace<TX, TY>(
         this PlotlyChartBuilder builder,
         IEnumerable<TX> x,
         IEnumerable<TY> y,
@@ -45,10 +45,6 @@ public static class PlotlyChartExtensions
         return builder.AddTrace(trace);
     }
 
-    #endregion
-
-    #region Line Charts
-
     /// <summary>
     /// Adds a line chart trace to the builder.
     /// </summary>
@@ -64,7 +60,7 @@ public static class PlotlyChartExtensions
     /// <remarks>
     /// For time series data, use DateTime for x values and set axis Type to PlotlyAxisTypes.Date for proper formatting.
     /// </remarks>
-    public static PlotlyChartBuilder AddLineChart<TX, TY>(
+    public static PlotlyChartBuilder Add2DLineTrace<TX, TY>(
         this PlotlyChartBuilder builder,
         IEnumerable<TX> x,
         IEnumerable<TY> y,
@@ -95,7 +91,7 @@ public static class PlotlyChartExtensions
     /// <param name="name">Name of the trace to appear in the legend. If null, no name is shown.</param>
     /// <param name="yAxis">ID of the Y-axis to use (e.g., "y2" for secondary axis). If null, uses primary Y-axis.</param>
     /// <returns>A new immutable PlotlyChartBuilder with the scatter trace added.</returns>
-    public static PlotlyChartBuilder AddScatterChart<TX, TY>(
+    public static PlotlyChartBuilder Add2DScatterTrace<TX, TY>(
         this PlotlyChartBuilder builder,
         IEnumerable<TX> x,
         IEnumerable<TY> y,
@@ -114,10 +110,6 @@ public static class PlotlyChartExtensions
         return builder.AddTrace(trace);
     }
 
-    #endregion
-
-    #region 3D Surface Charts
-
     /// <summary>
     /// Adds a 3D surface plot trace to the builder.
     /// </summary>
@@ -133,7 +125,7 @@ public static class PlotlyChartExtensions
     /// <remarks>
     /// The Z array should be a rectangular 2D grid where Z[i][j] represents the height at position (X[i], Y[j]).
     /// </remarks>
-    public static PlotlyChartBuilder AddSurfacePlot<TZ>(
+    public static PlotlyChartBuilder Add3DSurfaceTrace<TZ>(
         this PlotlyChartBuilder builder,
         TZ[][] z,
         object[]? x = null,

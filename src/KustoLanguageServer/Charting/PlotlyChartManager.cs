@@ -14,21 +14,8 @@ public class PlotlyChartManager : IChartManager
     /// </summary>
     public string? RenderChartToHtmlDiv(DataTable data, ChartVisualizationOptions options)
     {
-        VisualizationKind kind = options.Visualization;
-        
-        switch (kind)
-        {
-            case VisualizationKind.BarChart:
-            case VisualizationKind.ColumnChart:
-                return RenderBarOrColumnChart(data, options);
-            
-            // Add more chart types here as needed
-            // case VisualizationKind.LineChart:
-            //     return RenderLineChart(data.TableData, options);
-            
-            default:
-                return null;
-        }
+        var builder = BuildChart(data, options);
+        return builder != null ? builder.ToHtmlDiv() : null;
     }
 
     public string? RenderChartToHtmlDocument(DataTable data, ChartVisualizationOptions options)
@@ -37,15 +24,81 @@ public class PlotlyChartManager : IChartManager
         return chartDiv != null ? PlotlyHtmlHelper.CreateHtmlDocument(chartDiv) : null;
     }
 
-    private string? RenderBarOrColumnChart(DataTable data, ChartVisualizationOptions options)
+    private PlotlyChartBuilder? BuildChart(DataTable data, ChartVisualizationOptions options)
     {
-        var keyColumn = GetKeyColumn(data, options);
-        if (keyColumn == null)
+        switch (options.Visualization)
+        {
+            case VisualizationKind.BarChart:
+            case VisualizationKind.ColumnChart:
+                return BuildBarOrColumnChart(data, options);
+
+            case VisualizationKind.LineChart:
+                return BuildLineChart(data, options);
+
+            case VisualizationKind.ScatterChart:
+                return BuildScatterChart(data, options);
+
+            default:
+                return null;
+        }
+    }
+
+    private PlotlyChartBuilder? BuildBarOrColumnChart(DataTable data, ChartVisualizationOptions options)
+    {
+        var builder = new PlotlyChartBuilder();
+        bool isHorizontal = options.Visualization == VisualizationKind.BarChart;
+
+        builder = options.Mode switch
+        {
+            VisualizationMode.Stacked => builder.SetStacked(),
+            VisualizationMode.Stacked100 => builder.SetStacked100(),
+            VisualizationMode.Unstacked => builder.SetGrouped(),
+            _ => builder
+        };
+
+        return Build2dChart(builder, data, options, 
+            (builder, keys, values, name, yAxis) =>
+                builder.Add2DBarTrace(
+                    x: keys,
+                    y: values,
+                    name: name,
+                    horizontal: isHorizontal,
+                    yAxis: yAxis,
+                    offsetGroup: null
+                )
+            );
+    }
+
+    private PlotlyChartBuilder? BuildLineChart(DataTable data, ChartVisualizationOptions options)
+    {
+        var builder = new PlotlyChartBuilder();
+        return Build2dChart(builder, data, options, 
+            (builder, x, y, name, yAxis) => builder.Add2DLineTrace(x, y, name, yAxis: yAxis)
+            );
+    }
+
+    private PlotlyChartBuilder? BuildScatterChart(DataTable data, ChartVisualizationOptions options)
+    {
+        var builder = new PlotlyChartBuilder();
+        return Build2dChart(builder, data, options, 
+            (builder, x, y, name, yAxis) => builder.Add2DScatterTrace(x, y, name, yAxis: yAxis)
+            );
+    }
+
+    /// <summary>
+    /// Common rendering logic for 2D charts (bar, column, line, scatter, etc.)
+    /// </summary>
+    private PlotlyChartBuilder? Build2dChart(
+        PlotlyChartBuilder builder,
+        DataTable data, 
+        ChartVisualizationOptions options,
+        Func<PlotlyChartBuilder, object[], double[], string, string?, PlotlyChartBuilder> addTrace)
+    {
+        var xColumn = Get2dXColumn(data, options);
+        if (xColumn == null)
             return null;
 
-        var valueColumns = GetValueColumns(data, options, keyColumn);
-
-        var builder = new PlotlyChartBuilder();
+        var yColumns = Get2dYColumns(data, options, xColumn);
 
         // Configure chart based on visualization options
         if (options.Title != null)
@@ -64,33 +117,23 @@ public class PlotlyChartManager : IChartManager
             builder = builder.SetLogY();
 
         if (TryGetDouble(options.Xmin, out var xMinD)
-            && TryGetDouble(options.Ymax, out var xMaxD))
+            && TryGetDouble(options.Xmax, out var xMaxD))
             builder = builder.SetXAxisRange(xMinD, xMaxD);
 
         if (TryGetDouble(options.Ymin, out var yMinD)
             && TryGetDouble(options.Ymax, out var yMaxD))
             builder = builder.SetYAxisRange(yMinD, yMaxD);
 
-        // Set stacking mode
-        builder = options.Mode switch
-        {
-            VisualizationMode.Stacked => builder.SetStacked(),
-            VisualizationMode.Stacked100 => builder.SetStacked100(),
-            VisualizationMode.Unstacked => builder.SetGrouped(),
-            _ => builder
-        };
-
         if (options.Legend != LegendVisualizationMode.Visible)
             builder = builder.HideLegend();
 
         // Add traces for each value column
-        bool isHorizontal = options.Visualization == VisualizationKind.BarChart;
-        bool useSecondaryAxis = false; // options.YSplit == SplitVisualizationMode.Axes && valueColumns.Length > 1;
+        bool useSecondaryAxis = false;
 
-        for (int i = 0; i < valueColumns.Length; i++)
+        for (int i = 0; i < yColumns.Length; i++)
         {
-            var valueColumn = valueColumns[i];
-            var (keys, values) = GetChartData(keyColumn, valueColumn);
+            var valueColumn = yColumns[i];
+            var (keys, values) = Get2DChartData(xColumn, valueColumn);
 
             if (keys != null && values != null)
             {
@@ -102,22 +145,13 @@ public class PlotlyChartManager : IChartManager
                     yAxis = "y2";
                 }
 
-                builder = builder.AddBarChart(
-                    x: keys,
-                    y: values,
-                    name: valueColumn.ColumnName,
-                    horizontal: isHorizontal,
-                    yAxis: yAxis,
-                    offsetGroup: null  // Don't use offsetgroup with group mode
-                );
+                builder = addTrace(builder, keys, values, valueColumn.ColumnName, yAxis);
             }
         }
 
         // Add secondary Y axis if needed
         if (useSecondaryAxis)
         {
-            //builder = builder.SetBarMode("group");
-
             builder = builder.AddSecondaryYAxis("yaxis2",
                 new PlotlyAxis
                 {
@@ -127,7 +161,7 @@ public class PlotlyChartManager : IChartManager
                 });
         }
 
-        return builder.ToHtmlDiv();
+        return builder;
     }
 
     private static bool TryGetDouble(object value, out double result)
@@ -143,7 +177,7 @@ public class PlotlyChartManager : IChartManager
         return false;
     }
 
-    private DataColumn? GetKeyColumn(DataTable data, ChartVisualizationOptions options)
+    private DataColumn? Get2dXColumn(DataTable data, ChartVisualizationOptions options)
     {
         return options.XColumn != null
             ? data.Columns[options.XColumn]
@@ -152,26 +186,27 @@ public class PlotlyChartManager : IChartManager
                 : data.Columns[0];
     }
 
-    private DataColumn[] GetValueColumns(DataTable data, ChartVisualizationOptions options, DataColumn keyColumn)
+    private DataColumn[] Get2dYColumns(DataTable data, ChartVisualizationOptions options, DataColumn keyColumn)
     {
         return options.YColumns != null
             ? data.Columns.OfType<DataColumn>().Where(c => options.YColumns.Contains(c.ColumnName)).ToArray()
             : data.Columns.OfType<DataColumn>().Where(c => c != keyColumn).ToArray();
     }
 
-    private (object[]? keys, double[]? values) GetChartData(DataColumn keyColumn, DataColumn valueColumn)
+    private (object[]? x, double[]? y) Get2DChartData(DataColumn xColumn, DataColumn yColumn)
     {
-        if (!IsNumeric(valueColumn.DataType))
+        if (!IsNumeric(yColumn.DataType))
             return (null, null);
 
-        var untypedKeys = GetColumnValues(keyColumn);
-        var untypedValues = GetColumnValues(valueColumn);
+        var xValues = GetColumnValues(xColumn);
+        var yValues = GetColumnValues(yColumn);
 
-        (untypedKeys, untypedValues) = TrimNullRows(untypedKeys, untypedValues);
+        (xValues, yValues) = TrimNullRows(xValues, yValues);
 
-        var typedValues = ConvertValues<double>(untypedValues);
-
-        return (untypedKeys, typedValues);
+        var x = xValues;
+        var y = ConvertToNumeric(yValues);
+        
+        return (x, y);
     }
 
     private object[] GetColumnValues(DataColumn column)
@@ -184,6 +219,28 @@ public class PlotlyChartManager : IChartManager
         return values.Select(v => (T)Convert.ChangeType(v, typeof(T))).ToArray();
     }
 
+    private double[] ConvertToNumeric(object[] values)
+    {
+        return values.Select(v => SanitizeDoubleValue(Convert.ToDouble(v))).ToArray();
+    }
+
+    /// <summary>
+    /// Sanitizes double values by replacing infinity with min/max values.
+    /// </summary>
+    private static double SanitizeDoubleValue(double value)
+    {
+        if (double.IsPositiveInfinity(value))
+            return double.MaxValue;
+        
+        if (double.IsNegativeInfinity(value))
+            return double.MinValue;
+        
+        return value;
+    }
+
+    /// <summary>
+    /// Trim (x,y) pairs if either is null/DBNull
+    /// </summary>
     private (object[] x, object[] y) TrimNullRows(object[] xValues, object[] yValues)
     {
         var result = new List<(object x, object y)>();

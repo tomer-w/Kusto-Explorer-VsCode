@@ -3,6 +3,7 @@ import { LanguageClient } from 'vscode-languageclient/node';
 
 let resultsView: vscode.WebviewView | undefined;
 let chartPanel: vscode.WebviewPanel | undefined;
+let chartPanelDisposed = true; // Track disposal state
 
 /**
  * Activates query execution features including results view and chart panel.
@@ -72,24 +73,35 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
 
                 // Display chart if available
                 if (results.chartHtml) {
-                    if (!chartPanel) {
+                    // Create panel if it doesn't exist or was disposed
+                    if (!chartPanel || chartPanelDisposed) {
                         chartPanel = vscode.window.createWebviewPanel(
                             'kusto',
                             'Chart Results',
-                            vscode.ViewColumn.Beside,  // Opens to the side of the active editor
+                            { 
+                                viewColumn: vscode.ViewColumn.Beside,
+                                preserveFocus: true  // Don't steal focus from editor
+                            },
                             { enableScripts: true }
                         );
+                        chartPanelDisposed = false;
+                        
                         // Clear reference when user closes it
                         chartPanel.onDidDispose(() => {
                             chartPanel = undefined;
+                            chartPanelDisposed = true;
                         });
                     }
 
                     chartPanel.webview.html = results.chartHtml;
+                    // Reveal without stealing focus
                     chartPanel.reveal(vscode.ViewColumn.Beside, true);
                 }
-                else if (chartPanel) {
+                else if (chartPanel && !chartPanelDisposed) {
+                    // Dispose the panel if no chart to show
                     chartPanel.dispose();
+                    chartPanelDisposed = true;
+                    chartPanel = undefined;
                 }
             } catch (error) {
                 vscode.window.showErrorMessage(`Failed to execute query: ${error}`);

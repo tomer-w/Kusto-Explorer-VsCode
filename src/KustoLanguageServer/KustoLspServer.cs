@@ -576,7 +576,7 @@ public class KustoLspServer : LspServer, ILogger
 
     #endregion
 
-    #region Hover Text
+    #region Hover Tips
 
     private static readonly QuickInfoOptions _quickInfoOptions =
         QuickInfoOptions.Default
