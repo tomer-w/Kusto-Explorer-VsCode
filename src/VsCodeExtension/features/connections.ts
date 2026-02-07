@@ -160,20 +160,20 @@ class TableTreeItem extends vscode.TreeItem {
 }
 
 class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem> {
-private _onDidChangeTreeData = new vscode.EventEmitter<KustoTreeItem | undefined>();
-readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
+    private _onDidChangeTreeData = new vscode.EventEmitter<KustoTreeItem | undefined>();
+    readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
-// Extension context for accessing global state
-private context: vscode.ExtensionContext | undefined;
+    // Extension context for accessing global state
+    private context: vscode.ExtensionContext | undefined;
 
-// Language client for notifications
-private client: LanguageClient | undefined;
+    // Language client for notifications
+    private client: LanguageClient | undefined;
 
-// Servers and groups data - loaded from global state
-private serversAndGroups: ServersAndGroupsData = { items: [] };
+    // Servers and groups data - loaded from global state
+    private serversAndGroups: ServersAndGroupsData = { items: [] };
 
-// Connection data - could come from LSP server
-private connections: { cluster: string, connection: string, databases?: { name: string, tables?: string[] }[] }[] = [];
+    // Connection data - could come from LSP server
+    private connections: { cluster: string, connection: string, databases?: { name: string, tables?: string[] }[] }[] = [];
 
     /**
      * Initializes the servers and groups from global state.
@@ -1063,52 +1063,36 @@ connectionsProvider.initializeServersAndGroups(context);
      * Updates the tree selection to match the active document's connection.
      */
     async function updateTreeSelectionForActiveDocument(): Promise<void> {
-        console.log('updateTreeSelectionForActiveDocument called');
-        
         const editor = vscode.window.activeTextEditor;
         if (!editor || editor.document.languageId !== 'kusto') {
-            console.log('No Kusto editor active - skipping tree selection update');
+            await selectNeutralTreeItem();
             return;
         }
-
-        console.log(`Active document: ${editor.document.uri.toString()}`);
         
         const connection = getDocumentConnection(editor.document.uri.toString());
-        console.log(`Connection for document:`, connection);
         
         if (!connection?.cluster) {
-            console.log('Active document has no connection - selecting "No Connection" item');
-            // Select "No Connection" item to indicate no specific connection
             await selectNeutralTreeItem();
             return;
         }
 
-        console.log(`Updating tree selection for cluster: ${connection.cluster}, database: ${connection.database}`);
-
-        // Set flag to prevent loop
         isProgrammaticSelection = true;
         try {
-            // Find the tree item to select
             const itemToSelect = await findTreeItem(connection.cluster, connection.database);
             
             if (itemToSelect) {
-                console.log(`Found tree item to select:`, itemToSelect.label);
-                console.log(`Calling treeView.reveal() with select=true, focus=false, expand=false`);
-                
                 try {
-                    await treeView.reveal(itemToSelect, { select: true, focus: false, expand: false });
-                    console.log(`treeView.reveal() completed successfully`);
-                } catch (revealError) {
-                    console.error(`treeView.reveal() failed:`, revealError);
+                    const currentEditor = vscode.window.activeTextEditor;
+                    if (currentEditor && currentEditor.document.languageId === 'kusto') {
+                        await treeView.reveal(itemToSelect, { select: true, focus: false, expand: false });
+                    }
+                } catch {
+                    // Silently ignore reveal errors
                 }
-            } else {
-                console.log(`Could not find tree item for cluster: ${connection.cluster}`);
             }
-        } catch (error) {
+        } catch {
             // Silently fail - tree might not be fully loaded yet
-            console.log('Could not update tree selection:', error);
         } finally {
-            // Reset flag after a short delay to ensure selection event has fired
             setTimeout(() => {
                 isProgrammaticSelection = false;
             }, 50);
@@ -1121,27 +1105,18 @@ connectionsProvider.initializeServersAndGroups(context);
     async function selectNeutralTreeItem(): Promise<void> {
         isProgrammaticSelection = true;
         try {
-            // Find the "No Connection" item (always first in root)
             const rootItems = await connectionsProvider.getChildren();
-            console.log(`Root items count: ${rootItems.length}`);
-            
             const noConnectionItem = rootItems.find(item => item instanceof NoConnectionTreeItem);
             
             if (noConnectionItem) {
-                console.log('Selecting "No Connection" item');
-                console.log(`Calling treeView.reveal() for NoConnectionTreeItem`);
-                
                 try {
                     await treeView.reveal(noConnectionItem, { select: true, focus: false, expand: false });
-                    console.log(`treeView.reveal() for NoConnectionTreeItem completed successfully`);
-                } catch (revealError) {
-                    console.error(`treeView.reveal() for NoConnectionTreeItem failed:`, revealError);
+                } catch {
+                    // Silently ignore reveal errors
                 }
-            } else {
-                console.log('Could not find "No Connection" item');
             }
-        } catch (error) {
-            console.log('Could not select neutral item:', error);
+        } catch {
+            // Silently fail
         } finally {
             setTimeout(() => {
                 isProgrammaticSelection = false;
@@ -1305,10 +1280,12 @@ connectionsProvider.initializeServersAndGroups(context);
     );
 
     // Initialize tree selection for active document (deferred to avoid activation issues)
-    console.log('[Kusto] Scheduling initial tree selection update');
+    // Only do this if a Kusto document is actually active
     setTimeout(async () => {
-        console.log('[Kusto] Running initial tree selection update');
-        await updateTreeSelectionForActiveDocument();
+        const editor = vscode.window.activeTextEditor;
+        if (editor && editor.document.languageId === 'kusto') {
+            await updateTreeSelectionForActiveDocument();
+        }
     }, 100);
 
     // Handle tree item expansion events

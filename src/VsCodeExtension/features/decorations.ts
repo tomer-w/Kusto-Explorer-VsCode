@@ -7,22 +7,23 @@ import { LanguageClient } from 'vscode-languageclient/node';
  * @param client The language client for LSP communication
  */
 export function activate(context: vscode.ExtensionContext, client: LanguageClient): void {
-// Decoration for separator line between queries
-const querySeparatorDecoration = vscode.window.createTextEditorDecorationType({
-    isWholeLine: true,
-    borderWidth: '0 0 3px 0',
-    borderStyle: 'solid',
-    borderColor: 'rgba(128, 128, 128, 0.25)',
-});
 
-// Map to track debounce timers per document URI
-const debounceTimers = new Map<string, NodeJS.Timeout>();
+    // Decoration for separator line between queries
+    const querySeparatorDecoration = vscode.window.createTextEditorDecorationType({
+        isWholeLine: true,
+        borderWidth: '0 0 3px 0',
+        borderStyle: 'solid',
+        borderColor: 'rgba(128, 128, 128, 0.25)',
+    });
 
-/**
- * Requests query boundaries from the server and updates decorations.
- * @param uri The document URI
- */
-async function updateQueryBoundaries(uri: string): Promise<void> {
+    // Map to track debounce timers per document URI
+    const debounceTimers = new Map<string, NodeJS.Timeout>();
+
+    /**
+     * Requests query boundaries from the server and updates decorations.
+     * @param uri The document URI
+     */
+    async function updateQueryBoundaries(uri: string): Promise<void> {
         try {
             const result = await client.sendRequest<{ uri: string; ranges: { start: { line: number; character: number }; end: { line: number; character: number } }[] } | null>(
                 'kusto/getQueryBoundaries',

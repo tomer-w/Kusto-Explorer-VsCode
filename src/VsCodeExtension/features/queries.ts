@@ -10,6 +10,7 @@ let chartPanel: vscode.WebviewPanel | undefined;
  * @param client The language client for LSP communication
  */
 export function activate(context: vscode.ExtensionContext, client: LanguageClient): void {
+
     // Register the results view webview provider
     vscode.window.registerWebviewViewProvider('kusto.resultsView', {
         resolveWebviewView(webviewView) {
@@ -31,6 +32,8 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
             }
 
             try {
+
+                // run query and get results from the server
                 const results = await client.sendRequest<{ title: string, dataHtml: string, rowCount?: number, chartHtml?: string } | null>(
                     'kusto/runQuery',
                     {
