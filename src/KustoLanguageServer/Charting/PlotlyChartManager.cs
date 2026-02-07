@@ -38,6 +38,15 @@ public class PlotlyChartManager : IChartManager
             case VisualizationKind.ScatterChart:
                 return BuildScatterChart(data, options);
 
+            case VisualizationKind.PieChart:
+                return BuildPieChart(data, options);
+
+            case VisualizationKind.AreaChart:
+                return BuildAreaChart(data, options);
+
+            case VisualizationKind.StackedAreaChart:
+                return BuildStackedAreaChart(data, options);
+
             default:
                 return null;
         }
@@ -83,6 +92,60 @@ public class PlotlyChartManager : IChartManager
         return Build2dChart(builder, data, options, 
             (builder, x, y, name, yAxis) => builder.Add2DScatterTrace(x, y, name, yAxis: yAxis)
             );
+    }
+
+    private PlotlyChartBuilder? BuildPieChart(DataTable data, ChartVisualizationOptions options)
+    {
+        var builder = new PlotlyChartBuilder();
+
+        // Configure chart title
+        if (options.Title != null)
+            builder = builder.WithTitle(options.Title);
+
+        if (options.Legend != LegendVisualizationMode.Visible)
+            builder = builder.HideLegend();
+
+        // Get label and value columns
+        var labelColumn = this.Get2dXColumn(data, options);
+        if (labelColumn == null)
+            return null;
+
+        var valueColumns = this.Get2dYColumns(data, options, labelColumn);
+        
+        // For pie charts, we typically use only the first value column
+        // Multiple value columns would create multiple pie charts
+        foreach (var valueColumn in valueColumns)
+        {
+            var (labels, values) = this.Get2DChartData(labelColumn, valueColumn);
+
+            if (labels != null && values != null)
+            {
+                builder = builder.AddPieTrace(
+                    labels: labels,
+                    values: values,
+                    name: valueColumn.ColumnName,
+                    hole: 0.0  // Can be made configurable via options if needed
+                );
+            }
+        }
+
+        return builder;
+    }
+
+    private PlotlyChartBuilder? BuildAreaChart(DataTable data, ChartVisualizationOptions options)
+    {
+        var builder = new PlotlyChartBuilder();
+        return Build2dChart(builder, data, options, 
+            (builder, x, y, name, yAxis) => builder.AddAreaChart(x, y, name, stackGroup: null, yAxis: yAxis)
+        );
+    }
+
+    private PlotlyChartBuilder? BuildStackedAreaChart(DataTable data, ChartVisualizationOptions options)
+    {
+        var builder = new PlotlyChartBuilder();
+        return Build2dChart(builder, data, options, 
+            (builder, x, y, name, yAxis) => builder.AddAreaChart(x, y, name, stackGroup: "1", yAxis: yAxis)
+        );
     }
 
     /// <summary>

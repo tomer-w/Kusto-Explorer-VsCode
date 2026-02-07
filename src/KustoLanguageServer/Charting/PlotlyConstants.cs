@@ -73,6 +73,30 @@ public static class PlotlyScatterModes
 }
 
 /// <summary>
+/// Fill modes for area charts using scatter traces.
+/// </summary>
+public static class PlotlyFillModes
+{
+    /// <summary>No fill (default for line/scatter charts).</summary>
+    public const string None = "none";
+    
+    /// <summary>Fill to Y=0.</summary>
+    public const string ToZeroY = "tozeroy";
+    
+    /// <summary>Fill to X=0.</summary>
+    public const string ToZeroX = "tozerox";
+    
+    /// <summary>Fill to the next trace (for stacked area charts).</summary>
+    public const string ToNextY = "tonexty";
+    
+    /// <summary>Fill to the next trace horizontally.</summary>
+    public const string ToNextX = "tonextx";
+    
+    /// <summary>Fill to the first point (for closed shapes).</summary>
+    public const string ToSelf = "toself";
+}
+
+/// <summary>
 /// Axis scale types for Plotly charts.
 /// </summary>
 public static class PlotlyAxisTypes

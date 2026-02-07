@@ -252,6 +252,12 @@ public sealed record ScatterTrace : PlotlyTrace
     public string Mode { get; init; } = PlotlyScatterModes.Lines;
 
     /// <summary>
+    /// Fill mode for area charts. Use <see cref="PlotlyFillModes"/> constants. If null, no fill.
+    /// </summary>
+    [JsonPropertyName("fill")]
+    public string? Fill { get; init; }
+
+    /// <summary>
     /// Line styling (color, width, dash style).
     /// </summary>
     [JsonPropertyName("line")]

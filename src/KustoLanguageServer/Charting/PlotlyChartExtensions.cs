@@ -110,6 +110,86 @@ public static class PlotlyChartExtensions
         return builder.AddTrace(trace);
     }
 
+    #endregion
+
+    #region Area Charts
+
+    /// <summary>
+    /// Adds an area chart trace to the builder.
+    /// </summary>
+    /// <typeparam name="TX">Type of X-axis values (e.g., DateTime for time series, numbers, strings).</typeparam>
+    /// <typeparam name="TY">Type of Y-axis values (must be numeric for proper rendering).</typeparam>
+    /// <param name="builder">The chart builder instance.</param>
+    /// <param name="x">X-axis values (typically dates or sequential numbers). Must be JSON-serializable.</param>
+    /// <param name="y">Y-axis values (numeric data points). Must be JSON-serializable.</param>
+    /// <param name="name">Name of the trace to appear in the legend. If null, no name is shown.</param>
+    /// <param name="stackGroup">Stack group identifier for stacked area charts. If null, areas are not stacked.</param>
+    /// <param name="yAxis">ID of the Y-axis to use (e.g., "y2" for secondary axis). If null, uses primary Y-axis.</param>
+    /// <returns>A new immutable PlotlyChartBuilder with the area chart trace added.</returns>
+    /// <remarks>
+    /// For unstacked area charts, the fill goes to y=0. For stacked area charts, set the same stackGroup for all traces.
+    /// </remarks>
+    public static PlotlyChartBuilder AddAreaChart<TX, TY>(
+        this PlotlyChartBuilder builder,
+        IEnumerable<TX> x,
+        IEnumerable<TY> y,
+        string? name = null,
+        string? stackGroup = null,
+        string? yAxis = null)
+    {
+        var trace = new ScatterTrace
+        {
+            X = x.Cast<object>().ToArray(),
+            Y = y.Cast<object>().ToArray(),
+            Mode = PlotlyScatterModes.Lines,
+            Fill = stackGroup != null ? PlotlyFillModes.ToNextY : PlotlyFillModes.ToZeroY,
+            Name = name,
+            YAxis = yAxis
+        };
+
+        return builder.AddTrace(trace);
+    }
+
+    #endregion
+
+    #region Pie Charts
+
+    /// <summary>
+    /// Adds a pie chart trace to the builder.
+    /// </summary>
+    /// <typeparam name="TLabel">Type of label values (typically strings or categories).</typeparam>
+    /// <typeparam name="TValue">Type of value data (must be numeric for proper rendering).</typeparam>
+    /// <param name="builder">The chart builder instance.</param>
+    /// <param name="labels">Category labels for each pie slice. Must be JSON-serializable.</param>
+    /// <param name="values">Numeric values representing the size of each slice. Must be JSON-serializable.</param>
+    /// <param name="name">Name of the trace to appear in the legend. If null, no name is shown.</param>
+    /// <param name="hole">Fraction of radius to cut out (0.0 for pie, >0 for donut chart). Default is 0 (full pie).</param>
+    /// <returns>A new immutable PlotlyChartBuilder with the pie chart trace added.</returns>
+    /// <remarks>
+    /// Pie charts are useful for showing proportions of a whole. Set hole to a value between 0 and 1 to create a donut chart.
+    /// </remarks>
+    public static PlotlyChartBuilder AddPieTrace<TLabel, TValue>(
+        this PlotlyChartBuilder builder,
+        IEnumerable<TLabel> labels,
+        IEnumerable<TValue> values,
+        string? name = null,
+        double hole = 0.0)
+    {
+        var trace = new PieTrace
+        {
+            Labels = labels.Cast<object>().ToArray(),
+            Values = values.Cast<object>().ToArray(),
+            Name = name,
+            Hole = hole > 0 ? hole : null
+        };
+
+        return builder.AddTrace(trace);
+    }
+
+    #endregion
+
+    #region 3D Surface Charts
+
     /// <summary>
     /// Adds a 3D surface plot trace to the builder.
     /// </summary>
