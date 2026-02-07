@@ -258,7 +258,7 @@ public class KustoLspServer : LspServer, ILogger
     {
         try
         {
-            _documentManager.RemoveScript(@params.TextDocument.Uri);
+            _documentManager.RemoveDocument(@params.TextDocument.Uri);
             this.SendWindowLogMessageAsync($"text document closed: {@params.TextDocument.Uri}");
         }
         catch (Exception ex)
@@ -291,7 +291,7 @@ public class KustoLspServer : LspServer, ILogger
 
                 var newText = new EditString(document.Text).ApplyAll(edits);
 
-                _documentManager.UpdateText(@params.TextDocument.Uri, newText);
+                _documentManager.UpdateTextAsync(@params.TextDocument.Uri, newText);
             }
         }
         catch (Exception ex)
@@ -1443,7 +1443,7 @@ public class KustoLspServer : LspServer, ILogger
         try
         {
             var uri = new Uri(@params.Uri);
-            _documentManager.UpdateConnection(uri, @params.Cluster, @params.Database);
+            _documentManager.UpdateConnectionAsync(uri, @params.Cluster, @params.Database);
         }
         catch (Exception ex)
         {

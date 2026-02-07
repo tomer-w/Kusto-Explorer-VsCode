@@ -13,6 +13,11 @@ public interface IDocumentManager
     ImmutableList<Uri> GetDocumentIds();
 
     /// <summary>
+    /// Gets the documents connection information
+    /// </summary>
+    DocumentConnection GetConnection(Uri documentId);
+
+    /// <summary>
     /// Adds a document to the manager
     /// </summary>
     void AddDocument(Uri documentId, string text);
@@ -20,27 +25,22 @@ public interface IDocumentManager
     /// <summary>
     /// Removes a document from the manager.
     /// </summary>
-    void RemoveScript(Uri documentId);
+    void RemoveDocument(Uri documentId);
 
     /// <summary>
     /// Updates the document's associated connection information.
     /// </summary>
-    void UpdateConnection(Uri documentId, string? clusterOrConnection, string? database);
-
-    /// <summary>
-    /// Gets the documents connection information
-    /// </summary>
-    (string? Cluster, string? Database) GetConnection(Uri documentId);
+    Task UpdateConnectionAsync(Uri documentId, string? clusterOrConnection, string? database);
 
     /// <summary>
     /// Updates the document's text
     /// </summary>
-    void UpdateText(Uri id, string newText);
+    Task UpdateTextAsync(Uri id, string newText);
 
     /// <summary>
     /// Updates the documents globals
     /// </summary>
-    void UpdateGlobals(Uri id);
+    Task UpdateGlobalsAsync(Uri id);
 
     /// <summary>
     /// Gets the current document for the specified id
@@ -62,3 +62,5 @@ public interface IDocumentManager
     /// </summary>
     event EventHandler<Uri>? DocumentChanged;
 }
+
+public record struct DocumentConnection(string? Cluster, string? Database);

@@ -54,14 +54,14 @@ public class SymbolManager : ISymbolManager
         public required SymbolResolver SymbolResolver { get; set; }
     }
 
-    private ConditionalWeakTable<KustoConnectionStringBuilder, SymbolInfo> _connectionToSymbolInfo =
-        new ConditionalWeakTable<KustoConnectionStringBuilder, SymbolInfo>();
+    private ConditionalWeakTable<IConnection, SymbolInfo> _connectionToSymbolInfo =
+        new ConditionalWeakTable<IConnection, SymbolInfo>();
 
-    private SymbolInfo GetSymbolInfo(KustoConnectionStringBuilder connection)
+    private SymbolInfo GetSymbolInfo(IConnection connection)
     {
         if (!_connectionToSymbolInfo.TryGetValue(connection, out var info))
         {
-            var symbolLoader = new ServerSymbolLoader(connection);
+            var symbolLoader = connection.SymbolLoader;
             var symbolResolver = new SymbolResolver(symbolLoader);
 
             info = new SymbolInfo

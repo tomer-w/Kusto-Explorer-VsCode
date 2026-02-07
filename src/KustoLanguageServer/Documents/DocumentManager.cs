@@ -23,7 +23,7 @@ public class DocumentManager : IDocumentManager
         {
             foreach (var id in _idToScriptInfoMap.Keys)
             {
-                UpdateGlobals(id);
+                UpdateGlobalsAsync(id);
             }
         };
     }
@@ -108,13 +108,13 @@ public class DocumentManager : IDocumentManager
         // If connection info was already set, ensure globals are loaded
         if (info.Cluster != null)
         {
-            LoadSymbols(info);
+            _ = LoadSymbolsAsync(info);
         }
 
         RaiseDocumentAdded(id);
     }
 
-    public void RemoveScript(Uri id)
+    public void RemoveDocument(Uri id)
     {
         ImmutableInterlocked.TryRemove(ref _idToScriptInfoMap, id, out _);
         RaiseDocumentRemoved(id);
@@ -122,49 +122,49 @@ public class DocumentManager : IDocumentManager
 
     /// <summary>
     /// Changes the cluster and database for the script.
-    /// If the script doesn't exist yet, creates a placeholder entry.
     /// </summary>
-    public void UpdateConnection(Uri id, string? cluster, string? database)
+    public Task UpdateConnectionAsync(Uri id, string? cluster, string? database)
     {
         var info = GetOrCreateDocumentInfo(id);
         
         // Update connection info
         info.Cluster = cluster;
         info.Database = database;
+
         _logger?.Log($"Set connection for {id} to cluster: {cluster}, database: {database}");
         
         // Load symbols if we have a cluster
         if (cluster != null)
         {
             // note: already calls UpdateScriptGlobals after loading symbols
-            LoadSymbols(info);
+            return LoadSymbolsAsync(info);
         }
         else
         {
             // No cluster, so just update globals to reflect that
-            UpdateGlobals(id);
+            return UpdateGlobalsAsync(id);
         }
     }
 
     /// <summary>
     /// Gets the current cluster and database for the script.
     /// </summary>
-    public (string? Cluster, string? Database) GetConnection(Uri documentId)
+    public DocumentConnection GetConnection(Uri documentId)
     {
         if (_idToScriptInfoMap.TryGetValue(documentId, out var info))
         {
-            return (info.Cluster, info.Database);
+            return new DocumentConnection(info.Cluster, info.Database);
         }
         else
         {
-            return (null, null);
+            return new DocumentConnection(null, null);
         }
     }
 
-    private void LoadSymbols(DocumentInfo info)
+    private Task LoadSymbolsAsync(DocumentInfo info)
     {
         // ensure symbols are loaded for this cluster and database
-        info.LoadSymbolsQueue.Run(async (useThisCancellationToken) =>
+        return info.LoadSymbolsQueue.Run(async (useThisCancellationToken) =>
         {
             if (info.Cluster != null)
             {
@@ -176,14 +176,14 @@ public class DocumentManager : IDocumentManager
             }
 
             // force additional update since globals may not have changed.
-            UpdateGlobals(info.Id);
+            await UpdateGlobalsAsync(info.Id);
         });
     }
 
     /// <summary>
     /// Change the text for the script.
     /// </summary>
-    public void UpdateText(Uri documentId, string newText)
+    public Task UpdateTextAsync(Uri documentId, string newText)
     {
         if (_idToScriptInfoMap.TryGetValue(documentId, out var info))
         {
@@ -193,18 +193,20 @@ public class DocumentManager : IDocumentManager
 
                 RaiseDocumentChanged(documentId);
 
-                ResolveSymbols(info);
+                return ResolveSymbolsAsync(info);
             }
         }
+
+        return Task.CompletedTask;
     }
 
     /// <summary>
     /// Resolve symbols for this document.
     /// </summary>
-    private void ResolveSymbols(DocumentInfo info)
+    private Task ResolveSymbolsAsync(DocumentInfo info)
     {
         // resolve symbols for this script using latest request queue.
-        info.ResolveSymbolsQueue.Run(async (useThisCancellationToken) =>
+        return info.ResolveSymbolsQueue.Run(async (useThisCancellationToken) =>
         {
             await _symbolManager.ResolveSymbolsAsync(info.Document, useThisCancellationToken).ConfigureAwait(false);
         });
@@ -213,7 +215,7 @@ public class DocumentManager : IDocumentManager
     /// <summary>
     /// Updates the script with the latest globals from the symbol manager.
     /// </summary>
-    public void UpdateGlobals(Uri documentId)
+    public Task UpdateGlobalsAsync(Uri documentId)
     {
         if (_idToScriptInfoMap.TryGetValue(documentId, out var info))
         {
@@ -253,6 +255,8 @@ public class DocumentManager : IDocumentManager
                 RaiseDocumentChanged(documentId);
             }
         }
+
+        return Task.CompletedTask;
     }
 
     /// <summary>

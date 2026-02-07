@@ -1,24 +1,26 @@
 ﻿using Kusto.Data;
+using Kusto.Data.Common;
+using Kusto.Data.Net.Client;
 using Kusto.Toolkit;
 using System.Collections.Immutable;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
-using System.Text.Json.Serialization;
-using LSP = Microsoft.VisualStudio.LanguageServer.Protocol;
 
 namespace Kusto.Lsp;
 
+/// <summary>
+/// Keeps track of connections to servers and databases, to allow reuse of <see cref="KustoConnectionStringBuilder"/> instances.
+/// The consumer of the builder must not modify it.
+/// </summary>
 public class ConnectionManager : IConnectionManager
 {
-    private ImmutableDictionary<string, BuilderInfo> _clusterToBuilderInfoMap =
-        ImmutableDictionary<string, BuilderInfo>.Empty;
+    private ImmutableDictionary<string, ConnectionInfo> _clusterToBuilderInfoMap =
+        ImmutableDictionary<string, ConnectionInfo>.Empty;
 
-    private class BuilderInfo
+    private class ConnectionInfo
     {
-        public required KustoConnectionStringBuilder Connection { get; set; }
+        public required KustoConnection Connection { get; set; }
 
-        public ImmutableDictionary<string, KustoConnectionStringBuilder> DatabaseConnections =
-            ImmutableDictionary<string, KustoConnectionStringBuilder>.Empty;
+        public ImmutableDictionary<string, KustoConnection> DatabaseConnections =
+            ImmutableDictionary<string, KustoConnection>.Empty;
     }
 
     public string GetClusterName(string clusterOrConnection)
@@ -34,22 +36,23 @@ public class ConnectionManager : IConnectionManager
         }
     }
 
-
-    public KustoConnectionStringBuilder GetConnection(string clusterOrConnection, string? database = null)
+    public IConnection GetConnection(string clusterOrConnection, string? database = null)
     {
-        KustoConnectionStringBuilder connection;
+        KustoConnection connection;
 
         if (!_clusterToBuilderInfoMap.TryGetValue(clusterOrConnection, out var info))
         {
-            connection = new KustoConnectionStringBuilder(clusterOrConnection);
+            var builder = new KustoConnectionStringBuilder(clusterOrConnection);
 
             // if is not explicitly a connection string, add federated security
             if (!clusterOrConnection.Contains(";"))
             {
-                connection.FederatedSecurity = true;
+                builder.FederatedSecurity = true;
             }
 
-            info = new BuilderInfo { Connection = connection };
+            connection = new KustoConnection(builder);
+
+            info = new ConnectionInfo { Connection = connection  };
 
             _clusterToBuilderInfoMap = _clusterToBuilderInfoMap.Add(clusterOrConnection, info);
 
@@ -65,7 +68,7 @@ public class ConnectionManager : IConnectionManager
         {
             if (!info.DatabaseConnections.TryGetValue(database, out var databaseConnection))
             {
-                databaseConnection = new KustoConnectionStringBuilder(connection) { InitialCatalog = database };
+                databaseConnection = connection.WithInitialCatalog(database);
                 ImmutableInterlocked.Update(ref info.DatabaseConnections, _map => _map.SetItem(database, databaseConnection));
             }
             connection = databaseConnection;
@@ -74,33 +77,61 @@ public class ConnectionManager : IConnectionManager
         return connection;
     }
 
-#if false
-    public record ServerConfiguration
+    private class KustoConnection : IConnection
     {
-        [JsonProperty("servers")]
-        public required ImmutableList<ServerOrFolder> Servers { get; init; }
-    }
+        private readonly KustoConnectionStringBuilder _builder;
 
-    [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
-    [JsonDerivedType(typeof(Server), "server")]
-    [JsonDerivedType(typeof(Folder), "folder")]
-    public abstract record ServerOrFolder
-    {
-    }
+        public KustoConnection(KustoConnectionStringBuilder builder)
+        {
+            _builder = builder;
+        }
 
-    public record Server : ServerOrFolder
-    {
-        [JsonProperty("name")]
-        public required string Name { get; init; }
+        public string Hostname => _builder.Hostname;
+        public string? InitialCatalog => _builder.InitialCatalog;
 
-        [JsonProperty("connection")]
-        public required string Connection { get; init; }
-    }
+        public KustoConnection WithInitialCatalog(string? initialCatalog)
+        {
+            var newBuilder = new KustoConnectionStringBuilder(_builder) { InitialCatalog = initialCatalog };
+            return new KustoConnection(newBuilder);
+        }
 
-    public record Folder : ServerOrFolder
-    {
-        [JsonProperty("servers")]
-        public required ImmutableList<Server> Servers { get; init; }
+        private ICslQueryProvider? _queryProvider;
+        public ICslQueryProvider QueryProvider
+        {
+            get
+            {
+                if (_queryProvider == null)
+                {
+                    Interlocked.CompareExchange(ref _queryProvider, KustoClientFactory.CreateCslQueryProvider(_builder), null);
+                }
+                return _queryProvider;
+            }
+        }
+
+        private ICslAdminProvider? _adminProvider;
+        public ICslAdminProvider AdminProvider
+        {
+            get 
+            { 
+                if (_adminProvider == null)
+                {
+                    Interlocked.CompareExchange(ref _adminProvider, KustoClientFactory.CreateCslAdminProvider(_builder), null);
+                }
+                return _adminProvider;
+            }
+        }
+
+        private SymbolLoader? _symbolLoader;
+        public SymbolLoader SymbolLoader
+        {
+            get
+            {
+                if (_symbolLoader == null)
+                {
+                    Interlocked.CompareExchange(ref _symbolLoader, new ServerSymbolLoader(_builder), null);
+                }
+                return _symbolLoader;
+            }
+        }
     }
-#endif
 }

@@ -1,6 +1,6 @@
 ﻿# Kusto Language Server
 
-A VS Code language server extension for Kusto Query Language (KQL)
+A VS Code extension for the Kusto Query Language (KQL)
 
 ## Features
 

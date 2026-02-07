@@ -28,7 +28,7 @@ public class QueryManager : IQueryManager
 
     public Task<QueryResult?> RunQueryAsync(Uri scriptId, TextRange range, CancellationToken cancellationToken)
     {
-        var connection = GetConnectionBuilder(scriptId);
+        var connection = GetConnection(scriptId);
         if (connection != null)
         {
             if (_documentManager.TryGetDocument(scriptId, out var document))
@@ -56,22 +56,20 @@ public class QueryManager : IQueryManager
         }
     }
 
-    private async Task<QueryResult?> ExecuteQueryAsync(KustoConnectionStringBuilder connection, string query, ClientRequestProperties properties, CancellationToken cancellationToken)
+    private async Task<QueryResult?> ExecuteQueryAsync(IConnection connection, string query, ClientRequestProperties properties, CancellationToken cancellationToken)
     {
         switch (KustoCode.GetKind(query))
         {
             case CodeKinds.Query:
                 {
-                    var provider = GetOrCreateQueryProvider(connection);
-                    var resultReader = await provider.ExecuteQueryAsync(connection.InitialCatalog, query, properties, cancellationToken).ConfigureAwait(false);
+                    var resultReader = await connection.QueryProvider.ExecuteQueryAsync(connection.InitialCatalog, query, properties, cancellationToken).ConfigureAwait(false);
                     var dataSet = KustoDataReaderParser.ParseV1(resultReader, null);
                     var dataTable = dataSet?.GetMainResultsOrNull();
                     return new QueryResult(dataTable?.TableData, dataTable?.VisualizationOptions, null);
                 }
             case CodeKinds.Command:
                 {
-                    var provider = GetOrCreateAdminProvider(connection);
-                    var resultReader = await provider.ExecuteControlCommandAsync(connection.InitialCatalog, query, properties).ConfigureAwait(false);
+                    var resultReader = await connection.AdminProvider.ExecuteControlCommandAsync(connection.InitialCatalog, query, properties).ConfigureAwait(false);
                     var dataSet = KustoDataReaderParser.ParseV1(resultReader, null);
                     var dataTable = dataSet?.GetMainResultsOrNull();
                     return new QueryResult(dataTable?.TableData, dataTable?.VisualizationOptions, null);
@@ -82,7 +80,7 @@ public class QueryManager : IQueryManager
         }
     }
 
-    private KustoConnectionStringBuilder? GetConnectionBuilder(Uri scriptId)
+    private IConnection? GetConnection(Uri scriptId)
     {
         var connectionInfo = _documentManager.GetConnection(scriptId);
         if (connectionInfo.Cluster != null)
@@ -90,35 +88,5 @@ public class QueryManager : IQueryManager
             return _connectionManager.GetConnection(connectionInfo.Cluster, connectionInfo.Database);
         }
         return null;
-    }
-
-    private readonly ConditionalWeakTable<KustoConnectionStringBuilder, ICslQueryProvider> _connectionToQueryProviderMap =
-        new ConditionalWeakTable<KustoConnectionStringBuilder, ICslQueryProvider>();
-
-    private ICslQueryProvider GetOrCreateQueryProvider(KustoConnectionStringBuilder connection)
-    {
-        if (!_connectionToQueryProviderMap.TryGetValue(connection, out var provider))
-        {
-            provider = KustoClientFactory.CreateCslQueryProvider(connection);
-            _connectionToQueryProviderMap.Add(connection, provider);
-        }
-        return provider;
-    }
-
-    private readonly ConditionalWeakTable<KustoConnectionStringBuilder, ICslAdminProvider> _connectionToAdminProviderMap =
-        new ConditionalWeakTable<KustoConnectionStringBuilder, ICslAdminProvider>();
-
-    /// <summary>
-    /// Gets or Creates an admin provider instance.
-    /// </summary>
-    private ICslAdminProvider GetOrCreateAdminProvider(KustoConnectionStringBuilder connection)
-    {
-        if (!_connectionToAdminProviderMap.TryGetValue(connection, out var provider))
-        {
-            provider = KustoClientFactory.CreateCslAdminProvider(connection);
-            _connectionToAdminProviderMap.Add(connection, provider);
-        }
-
-        return provider;
     }
 }
