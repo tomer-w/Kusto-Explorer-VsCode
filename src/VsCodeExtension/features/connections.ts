@@ -1224,12 +1224,21 @@ connectionsProvider.initializeServersAndGroups(context);
     // Update status bar when active editor changes
     context.subscriptions.push(
         vscode.window.onDidChangeActiveTextEditor(async (editor) => {
+            // Update context for view visibility
+            const isKustoDocument = editor && editor.document.languageId === 'kusto';
+            await vscode.commands.executeCommand('setContext', 'kusto.hasActiveDocument', isKustoDocument);
+            
             updateStatusBar();
             
             // Update tree selection to match the new active document
             await updateTreeSelectionForActiveDocument();
         })
     );
+
+    // Set initial context for view visibility
+    const initialEditor = vscode.window.activeTextEditor;
+    const initialIsKusto = initialEditor && initialEditor.document.languageId === 'kusto';
+    await vscode.commands.executeCommand('setContext', 'kusto.hasActiveDocument', initialIsKusto);
 
     // Initialize status bar for currently active editor
     updateStatusBar();

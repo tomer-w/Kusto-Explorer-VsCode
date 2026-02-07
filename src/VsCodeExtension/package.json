@@ -198,14 +198,16 @@
           "type": "webview",
           "id": "kusto.resultsView",
           "name": "Results",
-          "icon": "$(table)"
+          "icon": "$(table)",
+          "when": "kusto.hasActiveDocument"
         }
       ],
       "explorer": [
         {
           "id": "kusto.connections",
           "name": "Connections",
-          "icon": "$(database)"
+          "icon": "$(database)",
+          "when": "kusto.hasActiveDocument"
         }
       ]
     },
