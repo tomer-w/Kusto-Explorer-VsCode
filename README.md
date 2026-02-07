@@ -1,24 +1,102 @@
-# Kusto Language Server
+﻿# Kusto Language Server
 
 A VS Code language server extension for Kusto Query Language (KQL)
 
 ## Features
 
-- IntelliSense (completions/hover)
 - Syntax highlighting
+- Intellisense (auto completions)
+- Hover tips
+- Code Actions (refactorings, quick fixes)
 - Diagnostics (errors/warnings)
-- Code formatting
+- Query formatting
 - Query execution
 - Charting
 - Connection management
 
 ## Usage
 
-1. Open a `.kql`, `.csl`, or `.kusto` file
-2. Select or add a connection in the connections view of the explorer panel
+1. Open or create a `.kql` file
+
+2. Select or add a connection in the connections section of the explorer panel
+```
+CONNECTIONS
+├── 📁 Production
+│   ├── 🗄️ mycluster.eastus.kusto.windows.net
+│   │   ├── 📊 MyDatabase
+│   │   ├── 📊 LogsDatabase
+│   │   └── 📊 TelemetryDB
+│   └── 🗄️ analytics.westus.kusto.windows.net
+│       └── 📊 AnalyticsDB
+├── 📁 Development
+│   └── 🗄️ devcluster.kusto.windows.net
+│       └── 📊 TestDatabase
+└── 🗄️ help.kusto.windows.net
+    └── 📊 Samples
+```
+
 3. Select a default database for the the document under the connection item
+```
+CONNECTIONS
+├── 📁 Production
+│   ├── 🗄️ mycluster.eastus.kusto.windows.net
+│   │   ├── 📊 MyDatabase
+│   │   ├── 📊 LogsDatabase
+│   │   └── 📊 TelemetryDB
+│   └── 🗄️ analytics.westus.kusto.windows.net
+│       └── 📊 AnalyticsDB
+├── 📁 Development
+│   └── 🗄️ devcluster.kusto.windows.net
+│       └── 📊 TestDatabase
+└── 🗄️ help.kusto.windows.net
+    └── ✓ 📊 Samples  (default)
+```
+
 4. Write your query
+    ```
+    StormEvents
+    | where StartTime > ago(7d)
+    | summarize EventCount = count() by State
+    | top 10 by EventCount desc
+    | render barchar
+     ```
+
 5. Press F5 to execute
+
+    The results of the query will appear in the Results panel.
+    ```
+    RESULTS: Table (10 rows)
+
+    State          EventCount
+    ─────────────  ──────────
+    Texas          280
+    California     240
+    Oklahoma       200
+    Kansas         180
+    Florida        160
+    Nebraska       140
+    Iowa           120
+    Missouri       100
+    Louisiana      80
+    Arkansas       60
+    ```
+
+   If the query includes a render operator, a chart is displayed in its own panel.
+
+    ```
+    State          EventCount
+    ────────────────────────────────────────────────────
+    Texas          ████████████████████████████ 280
+    California     ████████████████████████ 240
+    Oklahoma       ████████████████████ 200
+    Kansas         ██████████████████ 180
+    Florida        ████████████████ 160
+    Nebraska       ██████████████ 140
+    Iowa           ████████████ 120
+    Missouri       ██████████ 100
+    Louisiana      ████████ 80
+    Arkansas       ██████ 60
+    ```
 
 ## Requirements
 
@@ -27,8 +105,8 @@ A VS Code language server extension for Kusto Query Language (KQL)
 ## Creating the VSIX installer
 
 1. Must have svce installed (npm install -g @vscode/vsce)
-2. run `npm run package` to build and package the extension into a .vsix file
+2. run `npm run package` on command line within VsCodeExtension folder to build the .vsix file
 
-## Installing the VSIX 
+## Installing the VSIX manually
 
-code --install-extension <vsix file>
+Run `code --install-extension <vsix file> [--force]` on command line.
