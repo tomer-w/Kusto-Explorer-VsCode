@@ -1110,7 +1110,8 @@ public class KustoLspServer : LspServer, ILogger
 
                 dataHtml = dataBuilder.Text;
 
-                if (results.ChartOptions != null)
+                if (results.ChartOptions != null
+                    && results.ChartOptions.Visualization != Data.Utils.VisualizationKind.None)
                 {
                     chartHtml = _chartManager.RenderChartToHtmlDocument(results.Data, results.ChartOptions)
                         ?? "<html>chart style not implemented yet</html>";
