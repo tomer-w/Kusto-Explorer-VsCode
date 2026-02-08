@@ -3,7 +3,6 @@ import { LanguageClient } from 'vscode-languageclient/node';
 
 let resultsView: vscode.WebviewView | undefined;
 let chartPanel: vscode.WebviewPanel | undefined;
-let chartPanelDisposed = true; // Track disposal state
 
 /**
  * Activates query execution features including results view and chart panel.
@@ -16,13 +15,132 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
     vscode.window.registerWebviewViewProvider('kusto.resultsView', {
         resolveWebviewView(webviewView) {
             resultsView = webviewView;
-            webviewView.webview.options = { enableScripts: true };
+            webviewView.webview.options = { 
+                enableScripts: true,
+                // Prevent the view from being disposed when hidden (e.g., when chart panel has focus)
+                enableForms: false
+            };
+            // Prevent disposal when hidden
+            webviewView.onDidDispose(() => {
+                resultsView = undefined;
+            });
             webviewView.webview.html = '<html>no results</html>';
+        }
+    }, {
+        webviewOptions: {
+            retainContextWhenHidden: true  // Keep the view alive even when hidden
         }
     });
 
     // Open the results view on start up
     vscode.commands.executeCommand('kusto.resultsView.focus');
+
+    /**
+     * Displays query results in the results view.
+     * @param dataHtml The HTML content to display
+     * @param rowCount Optional row count for badge
+     * @param hasChart Whether a chart is being displayed (affects show() behavior)
+     */
+    async function displayResults(dataHtml: string, rowCount?: number, hasChart?: boolean): Promise<void> {
+        // Ensure the view is visible (this triggers resolveWebviewView if not already called)
+        if (!resultsView) {
+            await vscode.commands.executeCommand('kusto.resultsView.focus');
+        }
+
+        if (!resultsView) {
+            return; // Still not available
+        }
+
+        try {
+            resultsView.webview.html = dataHtml;
+            
+            // Update badge
+            if (rowCount) {
+                resultsView.badge = {
+                    tooltip: `${rowCount} rows`,
+                    value: rowCount
+                };
+            } else {
+                resultsView.badge = undefined;
+            }
+            
+            // Only call show() if there's no chart - let the chart panel and results view coexist
+            // The retainContextWhenHidden option will keep the view alive
+            if (!hasChart) {
+                resultsView.show(true);  // show but preserve focus on editor
+            }
+        } catch (error) {
+            // Results view was disposed, try to recreate it
+            await vscode.commands.executeCommand('kusto.resultsView.focus');
+            
+            if (resultsView) {
+                try {
+                    resultsView.webview.html = dataHtml;
+                    
+                    if (rowCount) {
+                        resultsView.badge = {
+                            tooltip: `${rowCount} rows`,
+                            value: rowCount
+                        };
+                    }
+                    
+                    if (!hasChart) {
+                        resultsView.show(true);
+                    }
+                } catch (retryError) {
+                    vscode.window.showErrorMessage(`Failed to display results: ${retryError}`);
+                }
+            }
+        }
+    }
+
+    /**
+     * Displays or hides the chart panel.
+     * @param chartHtml The chart HTML to display, or undefined to hide the panel
+     */
+    function displayChart(chartHtml: string | undefined): void {
+        if (chartHtml) {
+            // Create panel only if it doesn't exist
+            if (!chartPanel) {
+                chartPanel = vscode.window.createWebviewPanel(
+                    'kusto',
+                    'Chart',
+                    { 
+                        viewColumn: vscode.ViewColumn.Beside,
+                        preserveFocus: true
+                    },
+                    { 
+                        enableScripts: true,
+                        retainContextWhenHidden: true
+                    }
+                );
+                
+                // Notify that chart panel exists
+                vscode.commands.executeCommand('kusto.chartPanelStateChanged', true);
+                
+                // Clear reference when user closes it
+                chartPanel.onDidDispose(() => {
+                    chartPanel = undefined;
+                    // Notify that chart panel no longer exists
+                    vscode.commands.executeCommand('kusto.chartPanelStateChanged', false);
+                });
+            }
+            
+            // Update content and reveal
+            chartPanel.webview.html = chartHtml;
+            chartPanel.reveal(vscode.ViewColumn.Beside, true);
+        } else if (chartPanel) {
+            // No chart to show, dispose the panel
+            try {
+                chartPanel.dispose();
+            } catch {
+                // Ignore disposal errors
+            }
+            chartPanel = undefined;
+            // Notify that chart panel no longer exists
+            vscode.commands.executeCommand('kusto.chartPanelStateChanged', false);
+        }
+    }
 
     // Register the runQuery command
     context.subscriptions.push(
@@ -33,7 +151,6 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
             }
 
             try {
-
                 // run query and get results from the server
                 const results = await client.sendRequest<{ title: string, dataHtml: string, rowCount?: number, chartHtml?: string } | null>(
                     'kusto/runQuery',
@@ -51,58 +168,11 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
                 }
 
                 // Display results in the results view
-                if (!resultsView) {
-                    // Ensure the view is visible (this triggers resolveWebviewView if not already called)
-                    await vscode.commands.executeCommand('kusto.resultsView.focus');
-                }
-
-                if (resultsView) {
-                    resultsView.webview.html = results.dataHtml;
-                    resultsView.show(true);  // show but preserve focus on editor
-
-                    if (results.rowCount) {
-                        resultsView.badge = {
-                            tooltip: `${results.rowCount} rows`,
-                            value: results.rowCount
-                        };
-                    }
-                    else {
-                        resultsView.badge = undefined;
-                    }
-                }
+                await displayResults(results.dataHtml, results.rowCount, !!results.chartHtml);
 
                 // Display chart if available
-                if (results.chartHtml) {
-                    // Create panel if it doesn't exist or was disposed
-                    if (!chartPanel || chartPanelDisposed) {
-                        chartPanel = vscode.window.createWebviewPanel(
-                            'kusto',
-                            'Chart Results',
-                            { 
-                                viewColumn: vscode.ViewColumn.Beside,
-                                preserveFocus: true  // Don't steal focus from editor
-                            },
-                            { enableScripts: true }
-                        );
-                        chartPanelDisposed = false;
-                        
-                        // Clear reference when user closes it
-                        chartPanel.onDidDispose(() => {
-                            chartPanel = undefined;
-                            chartPanelDisposed = true;
-                        });
-                    }
+                displayChart(results.chartHtml);
 
-                    chartPanel.webview.html = results.chartHtml;
-                    // Reveal without stealing focus
-                    chartPanel.reveal(vscode.ViewColumn.Beside, true);
-                }
-                else if (chartPanel && !chartPanelDisposed) {
-                    // Dispose the panel if no chart to show
-                    chartPanel.dispose();
-                    chartPanelDisposed = true;
-                    chartPanel = undefined;
-                }
             } catch (error) {
                 vscode.window.showErrorMessage(`Failed to execute query: ${error}`);
             }
