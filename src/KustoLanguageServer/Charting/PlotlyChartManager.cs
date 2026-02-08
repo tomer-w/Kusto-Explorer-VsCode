@@ -50,6 +50,9 @@ public class PlotlyChartManager : IChartManager
             case VisualizationKind.Card:
                 return BuildCardChart(data, options);
 
+            case VisualizationKind.ThreeDChart:
+                return BuildThreeDChart(data, options);
+
             default:
                 return null;
         }
@@ -193,6 +196,128 @@ public class PlotlyChartManager : IChartManager
             title: title,
             mode: PlotlyIndicatorModes.Number
         );
+
+        return builder;
+    }
+
+    private PlotlyChartBuilder? BuildThreeDChart(DataTable data, ChartVisualizationOptions options)
+    {
+        var builder = new PlotlyChartBuilder();
+
+        // 3D charts expect 3 columns: X, Y, Z
+        if (data.Columns.Count < 3 || data.Rows.Count == 0)
+            return null;
+
+        // Get the three columns
+        var xColumn = data.Columns[0];
+        var yColumn = data.Columns[1];
+        var zColumn = data.Columns[2];
+
+        // Z must be numeric
+        if (!IsNumeric(zColumn.DataType))
+            return null;
+
+        // Extract data from rows
+        var rows = data.Rows.OfType<DataRow>().ToList();
+
+        // Get unique X and Y values (sorted)
+        var xValues = rows
+            .Select(r => r[xColumn])
+            .Where(v => v != null && v != DBNull.Value)
+            .Distinct()
+            .OrderBy(v => v)
+            .ToArray();
+
+        var yValues = rows
+            .Select(r => r[yColumn])
+            .Where(v => v != null && v != DBNull.Value)
+            .Distinct()
+            .OrderBy(v => v)
+            .ToArray();
+
+        if (xValues.Length == 0 || yValues.Length == 0)
+            return null;
+
+        // Create a lookup dictionary for quick access: (x, y) -> z
+        var dataLookup = new Dictionary<(object x, object y), double>();
+        
+        foreach (var row in rows)
+        {
+            var x = row[xColumn];
+            var y = row[yColumn];
+            var z = row[zColumn];
+
+            if (x != null && x != DBNull.Value &&
+                y != null && y != DBNull.Value &&
+                z != null && z != DBNull.Value)
+            {
+                var zValue = SanitizeDoubleValue(Convert.ToDouble(z));
+                dataLookup[(x, y)] = zValue;
+            }
+        }
+
+        // Build the 2D Z array in the format Z[yIndex][xIndex]
+        var zGrid = new object[yValues.Length][];
+        
+        for (int i = 0; i < yValues.Length; i++)
+        {
+            zGrid[i] = new object[xValues.Length];
+            
+            for (int j = 0; j < xValues.Length; j++)
+            {
+                // Try to get the value from the lookup
+                if (dataLookup.TryGetValue((xValues[j], yValues[i]), out var zValue))
+                {
+                    zGrid[i][j] = zValue;
+                }
+                else
+                {
+                    // If no data point exists for this (x, y), use null or 0
+                    zGrid[i][j] = 0.0;
+                }
+            }
+        }
+
+        // Configure title
+        if (options.Title != null)
+            builder = builder.WithTitle(options.Title);
+
+        // Add the surface trace
+        builder = builder.Add3DSurfaceTrace(
+            z: zGrid,
+            x: xValues,
+            y: yValues,
+            name: zColumn.ColumnName
+        );
+
+        // Configure scene axes if titles are provided
+        var scene = new PlotlyScene();
+        bool hasSceneConfig = false;
+
+        if (options.XTitle != null)
+        {
+            scene = scene with { XAxis = new PlotlyAxis { Title = new PlotlyTitle { Text = options.XTitle } } };
+            hasSceneConfig = true;
+        }
+
+        if (options.YTitle != null)
+        {
+            scene = scene with { YAxis = new PlotlyAxis { Title = new PlotlyTitle { Text = options.YTitle } } };
+            hasSceneConfig = true;
+        }
+
+        // For 3D charts, we could use a "ZTitle" if it existed in options
+        // For now, use the column name for Z axis
+        scene = scene with { ZAxis = new PlotlyAxis { Title = new PlotlyTitle { Text = zColumn.ColumnName } } };
+        hasSceneConfig = true;
+
+        if (hasSceneConfig)
+        {
+            builder = builder.WithScene(scene);
+        }
+
+        if (options.Legend != LegendVisualizationMode.Visible)
+            builder = builder.HideLegend();
 
         return builder;
     }
