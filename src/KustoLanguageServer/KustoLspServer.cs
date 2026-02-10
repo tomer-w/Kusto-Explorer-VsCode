@@ -482,7 +482,7 @@ public class KustoLspServer : LspServer, ILogger
         };
 #endregion
 
-    #region Semantic Tokens (classification)
+    #region Semantic Tokens
 
     public override Task<LSP.SemanticTokens?> OnTextDocumentTokensFullAsync(LSP.SemanticTokensParams @params, CancellationToken cancellationToken)
     {
@@ -1558,8 +1558,8 @@ public class KustoLspServer : LspServer, ILogger
 
     public static TextRange GetTextRange(string text, LSP.Range range)
     {
-        if (text.TryGetTextPosition(range.Start.Line + 1, range.Start.Character + 1, out var startPosition)
-            && text.TryGetTextPosition(range.End.Line + 1, range.End.Character + 1, out var endPosition))
+        if (text.TryGetTextPosition(range.Start.Line, range.Start.Character, out var startPosition)
+            && text.TryGetTextPosition(range.End.Line, range.End.Character, out var endPosition))
         {
             return TextRange.FromBounds(startPosition, endPosition);
         }
