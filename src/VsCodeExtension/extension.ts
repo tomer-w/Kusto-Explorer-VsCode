@@ -48,9 +48,6 @@ export async function activate(context: ExtensionContext)
     // Start the client BEFORE activating features that send notifications
     await client.start();
 
-    outputChannel.appendLine('=== CLIENT STARTED ===');
-
-
     // Track Kusto session state - keep views visible while in a Kusto session
     let hasChartPanel = false;
     
@@ -62,11 +59,12 @@ export async function activate(context: ExtensionContext)
     };
 
     // Command to notify when chart panel state changes
-    const chartPanelStateChanged = vscode.commands.registerCommand('kusto.chartPanelStateChanged', (exists: boolean) => {
-        hasChartPanel = exists;
-        updateKustoContext();
-    });
-    context.subscriptions.push(chartPanelStateChanged);
+    context.subscriptions.push(
+        vscode.commands.registerCommand('kusto.chartPanelStateChanged', (exists: boolean) => {
+            hasChartPanel = exists;
+            updateKustoContext();
+        })
+    );
 
     // Update context on activation
     updateKustoContext();
