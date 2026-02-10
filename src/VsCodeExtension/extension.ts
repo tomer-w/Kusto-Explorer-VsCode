@@ -49,19 +49,16 @@ export async function activate(context: ExtensionContext)
     await client.start();
 
     // Track Kusto session state - keep views visible while in a Kusto session
-    let hasChartPanel = false;
-    
     const updateKustoContext = () => {
         // Check if any Kusto documents are open OR if chart panel exists
         const hasKustoDocument = vscode.workspace.textDocuments.some(doc => doc.languageId === 'kusto');
-        const isKustoActive = hasKustoDocument || hasChartPanel;
+        const isKustoActive = hasKustoDocument || queries.hasChartPanel();
         vscode.commands.executeCommand('setContext', 'kusto.hasActiveDocument', isKustoActive);
     };
 
-    // Command to notify when chart panel state changes
+    // Command to notify when chart panel state changes (triggers context update)
     context.subscriptions.push(
-        vscode.commands.registerCommand('kusto.chartPanelStateChanged', (exists: boolean) => {
-            hasChartPanel = exists;
+        vscode.commands.registerCommand('kusto.chartPanelStateChanged', () => {
             updateKustoContext();
         })
     );

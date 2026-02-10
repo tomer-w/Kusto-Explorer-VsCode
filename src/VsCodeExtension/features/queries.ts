@@ -5,6 +5,13 @@ let resultsView: vscode.WebviewView | undefined;
 let chartPanel: vscode.WebviewPanel | undefined;
 
 /**
+ * Returns whether a chart panel currently exists.
+ */
+export function hasChartPanel(): boolean {
+    return chartPanel !== undefined;
+}
+
+/**
  * Activates query execution features including results view and chart panel.
  * @param context The extension context
  * @param client The language client for LSP communication
@@ -115,14 +122,14 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
                     }
                 );
                 
-                // Notify that chart panel exists
-                vscode.commands.executeCommand('kusto.chartPanelStateChanged', true);
+                // Notify that chart panel state changed
+                vscode.commands.executeCommand('kusto.chartPanelStateChanged');
                 
                 // Clear reference when user closes it
                 chartPanel.onDidDispose(() => {
                     chartPanel = undefined;
-                    // Notify that chart panel no longer exists
-                    vscode.commands.executeCommand('kusto.chartPanelStateChanged', false);
+                    // Notify that chart panel state changed
+                    vscode.commands.executeCommand('kusto.chartPanelStateChanged');
                 });
             }
             
@@ -137,8 +144,8 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
                 // Ignore disposal errors
             }
             chartPanel = undefined;
-            // Notify that chart panel no longer exists
-            vscode.commands.executeCommand('kusto.chartPanelStateChanged', false);
+            // Notify that chart panel state changed
+            vscode.commands.executeCommand('kusto.chartPanelStateChanged');
         }
     }
 

@@ -265,6 +265,34 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
     }
 
     /**
+     * Sorts the servers and groups data structure.
+     * Groups are sorted alphabetically, then root-level servers.
+     * Servers within each group are also sorted alphabetically.
+     */
+    private sortServersAndGroups(): void {
+        const getServerSortName = (s: ServerInfo) => (s.displayName ?? s.cluster).toLowerCase();
+        const getGroupSortName = (g: ServerGroupInfo) => g.name.toLowerCase();
+        
+        // Sort servers within each group
+        for (const item of this.serversAndGroups.items) {
+            if (isServerGroup(item)) {
+                item.servers.sort((a, b) => getServerSortName(a).localeCompare(getServerSortName(b)));
+            }
+        }
+        
+        // Separate groups and root-level servers
+        const groups = this.serversAndGroups.items.filter(isServerGroup);
+        const servers = this.serversAndGroups.items.filter(isServer);
+        
+        // Sort each separately
+        groups.sort((a, b) => getGroupSortName(a).localeCompare(getGroupSortName(b)));
+        servers.sort((a, b) => getServerSortName(a).localeCompare(getServerSortName(b)));
+        
+        // Rebuild with servers first, then groups
+        this.serversAndGroups.items = [...servers, ...groups];
+    }
+
+    /**
      * Adds a new server to the root level or to a specific group.
      * @param server The server info to add
      * @param groupName Optional group name to add the server to
@@ -284,6 +312,7 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
             this.serversAndGroups.items.push(server);
         }
         
+        this.sortServersAndGroups();
         await this.saveServersAndGroups(this.serversAndGroups);
         this.refresh();
     }
@@ -294,6 +323,7 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
      */
     async addServerGroup(group: ServerGroupInfo): Promise<void> {
         this.serversAndGroups.items.push(group);
+        this.sortServersAndGroups();
         await this.saveServersAndGroups(this.serversAndGroups);
         this.refresh();
     }
@@ -406,6 +436,7 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
             this.serversAndGroups.items.push(serverCopy);
         }
         
+        this.sortServersAndGroups();
         await this.saveServersAndGroups(this.serversAndGroups);
         this.refresh();
     }
@@ -859,9 +890,9 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
                 return aName.localeCompare(bName, undefined, { sensitivity: 'base' });
             });
             
-            // Add groups first, then servers
-            items.push(...groups);
+            // Add servers first, then groups
             items.push(...servers);
+            items.push(...groups);
             
             return items;
         }
@@ -1032,6 +1063,59 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
 }
 
 /**
+ * Drag and drop controller for moving servers between groups.
+ */
+class KustoDragAndDropController implements vscode.TreeDragAndDropController<KustoTreeItem> {
+    readonly dropMimeTypes = ['application/vnd.code.tree.kusto.connections'];
+    readonly dragMimeTypes = ['application/vnd.code.tree.kusto.connections'];
+
+    constructor(private readonly provider: KustoConnectionsProvider) {}
+
+    handleDrag(source: readonly KustoTreeItem[], dataTransfer: vscode.DataTransfer, token: vscode.CancellationToken): void {
+        // Only allow dragging ServerTreeItem
+        const servers = source.filter((item): item is ServerTreeItem => item instanceof ServerTreeItem);
+        if (servers.length > 0) {
+            const dragData = servers.map(s => ({
+                cluster: s.clusterName,
+                groupName: s.groupName
+            }));
+            dataTransfer.set('application/vnd.code.tree.kusto.connections', new vscode.DataTransferItem(dragData));
+        }
+    }
+
+    async handleDrop(target: KustoTreeItem | undefined, dataTransfer: vscode.DataTransfer, token: vscode.CancellationToken): Promise<void> {
+        const transferItem = dataTransfer.get('application/vnd.code.tree.kusto.connections');
+        if (!transferItem) {
+            return;
+        }
+
+        const dragData = transferItem.value as { cluster: string; groupName?: string }[];
+        if (!dragData || dragData.length === 0) {
+            return;
+        }
+
+        // Determine target group
+        let targetGroupName: string | undefined;
+        if (target instanceof ServerGroupTreeItem) {
+            targetGroupName = target.groupInfo.name;
+        } else if (target instanceof ServerTreeItem && target.groupName) {
+            // Dropped on a server within a group - move to same group
+            targetGroupName = target.groupName;
+        }
+        // If target is undefined or NoConnectionTreeItem, move to root level (targetGroupName stays undefined)
+
+        // Move each dragged server
+        for (const item of dragData) {
+            // Skip if source and target are the same
+            if (item.groupName === targetGroupName) {
+                continue;
+            }
+            await this.provider.moveServer(item.cluster, item.groupName, targetGroupName);
+        }
+    }
+}
+
+/**
  * Initializes the Kusto connections tree panel and sets up all related features.
  * @param context The extension context for accessing global state
  * @param client The language client to use for communication with the LSP server
@@ -1042,10 +1126,11 @@ const connectionsProvider = new KustoConnectionsProvider();
 // Set the client reference for notifications
 connectionsProvider.setClient(client);
     
-// Create tree view to get access to expansion events
+// Create tree view with drag and drop support
 const treeView = vscode.window.createTreeView('kusto.connections', {
     treeDataProvider: connectionsProvider,
-    showCollapseAll: true
+    showCollapseAll: true,
+    dragAndDropController: new KustoDragAndDropController(connectionsProvider)
 });
 context.subscriptions.push(treeView);
 

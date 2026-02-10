@@ -2,7 +2,7 @@
   "name": "kusto-lsp",
   "displayName": "Kusto",
   "description": "Kusto Query Language (KQL)",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "publisher": "Microsoft",
   "author": "Microsoft",
   "license": "MIT",
