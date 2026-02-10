@@ -224,10 +224,9 @@ public class MultiQueryDocument : Document
                 var info = block.Service.GetClassifications(start, length, clipToRange, waitForAnalysis, cancellationToken);
                 classifiedRanges.AddRange(info.Classifications);
             }
-            return new ClassificationInfo(classifiedRanges);
         }
 
-        return ClassificationInfo.Empty;
+        return new ClassificationInfo(classifiedRanges);
     }
 
     public override IReadOnlyList<ClientParameter> GetQueryClientParameters(int position)

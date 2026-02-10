@@ -39,6 +39,26 @@
         "path": "./syntaxes/kusto.tmLanguage.json"
       }
     ],
+    "configurationDefaults": {
+      "[kusto]": {
+        "editor.semanticHighlighting.enabled": true,
+        "cSpell.enabled": false,
+        "editor.semanticTokenColorCustomizations": {
+          "[Default Dark+]": {
+            "enabled": true,
+            "rules": {
+              "keyword": "#C586C0"
+            }
+          },
+          "[Default Light+]": {
+            "enabled": true,
+            "rules": {
+              "keyword": "#0000FF"
+            }
+          }
+        }
+      }
+    },
     "commands": [
       {
         "command": "kusto.runQuery",
@@ -210,12 +230,6 @@
           "when": "kusto.hasActiveDocument"
         }
       ]
-    },
-    "configurationDefaults": {
-      "[kusto]": {
-        "editor.semanticHighlighting.enabled": true,
-        "cSpell.enabled": false
-      }
     },
     "configuration": [
       {

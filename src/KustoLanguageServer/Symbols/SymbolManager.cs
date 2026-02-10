@@ -34,6 +34,8 @@ public class SymbolManager : ISymbolManager
     {
         if (newGlobals != this.Globals)
         {
+            _logger?.Invoke("symbols updated");
+
             this.Globals = newGlobals;
 
             if (this.GlobalsChanged != null)

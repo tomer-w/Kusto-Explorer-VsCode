@@ -85,8 +85,10 @@ public class KustoLspServer : LspServer, ILogger
 
     #region Events
 
-    private void _symbolManager_GlobalsChanged(object? sender, GlobalState e)
+    private async void _symbolManager_GlobalsChanged(object? sender, GlobalState e)
     {
+        // since globals changed it is possible that some semantic tokens are now different, so request client to refresh them
+        await this.SendWorkspaceSemanticTokensRefresh();
     }
 
     private void _scriptManager_ScriptChanged(object? sender, Uri id)
@@ -111,16 +113,20 @@ public class KustoLspServer : LspServer, ILogger
     {
         this.ClientSettings = @params;
 
-        var semanticTokenOptions = new LSP.SemanticTokensOptions
-        {
-            Legend = new LSP.SemanticTokensLegend
-            {
-                TokenTypes = _semanticTokenTypes.ToArray(),
-                TokenModifiers = @params.Capabilities.TextDocument?.SemanticTokens?.TokenModifiers ?? []
-            },
-            Full = true,
-            Range = true
-        };
+        var semanticTokenOptions = @params.Capabilities?.TextDocument?.SemanticTokens != null
+            ? new LSP.SemanticTokensOptions
+                {
+                    Legend = new LSP.SemanticTokensLegend
+                    {
+                        TokenTypes = Enum.GetValues<ClassificationKind>().Select(ck => GetSemanticTokenKind(ck)).Where(tk => tk != null).OfType<string>().ToArray() ?? [],
+                        TokenModifiers = []
+                        //TokenTypes = @params.Capabilities.TextDocument.SemanticTokens.TokenTypes ?? [],
+                        //TokenModifiers = @params.Capabilities.TextDocument.SemanticTokens.TokenModifiers ?? []
+                    },
+                    Full = true,
+                    Range = true
+                }
+            : null;
 
         var completionOptions = new LSP.CompletionOptions
         {
@@ -139,15 +145,15 @@ public class KustoLspServer : LspServer, ILogger
                     Change = LSP.TextDocumentSyncKind.Full,
                     Save = new LSP.SaveOptions { IncludeText = true }
                 },
-                SemanticTokensOptions = semanticTokenOptions,
+                SemanticTokensOptions = semanticTokenOptions, // kusto classifications
                 CompletionProvider = completionOptions,
-                HoverProvider = true,
-                FoldingRangeProvider = true,
+                HoverProvider = true,  // kusto quick infos
+                FoldingRangeProvider = true, // kusto outlining
                 DocumentFormattingProvider = true,
                 DocumentRangeFormattingProvider = true,
-                DocumentHighlightProvider = true,
-                ReferencesProvider = true,    // find references?
-                DefinitionProvider = true,  // goto definition?
+                DocumentHighlightProvider = true, // highlights matching elements (brackets, names, etc)
+                ReferencesProvider = true, // find references
+                DefinitionProvider = true, // goto definition
                 CodeActionProvider = new LSP.CodeActionOptions
                 {
                     CodeActionKinds =
@@ -162,7 +168,7 @@ public class KustoLspServer : LspServer, ILogger
                     ],
                     ResolveProvider = true
                 },
-                //RenameProvider = new RenameOptions { PrepareProvider = true },
+                RenameProvider = new LSP.RenameOptions { PrepareProvider = false },
                 //ExecuteCommandProvider = new LSP.ExecuteCommandOptions
                 //{
                 //    Commands = 
@@ -171,7 +177,6 @@ public class KustoLspServer : LspServer, ILogger
                 //        "Query" 
                 //    ]
                 //},
-
 #if false
                 //DocumentSymbolProvider = true,  // mabye?
                 //WorkspaceSymbolProvider = true,  // maybe?
@@ -481,13 +486,11 @@ public class KustoLspServer : LspServer, ILogger
 
     public override Task<LSP.SemanticTokens?> OnTextDocumentTokensFullAsync(LSP.SemanticTokensParams @params, CancellationToken cancellationToken)
     {
-        this.SendWindowLogMessageAsync("computing semantic tokens");
         return GetSemanticTokens(@params, null, cancellationToken);
     }
 
     public override Task<LSP.SemanticTokens?> OnTextDocumentSemanticTokensRangeAsync(LSP.SemanticTokensRangeParams @params, CancellationToken cancellationToken)
     {
-        this.SendWindowLogMessageAsync("computing semantic tokens");
         return GetSemanticTokens(@params, @params.Range, cancellationToken);
     }
 
@@ -504,26 +507,42 @@ public class KustoLspServer : LspServer, ILogger
                 var semanticTokens = new List<SemanticToken>();
 
                 var result = document.GetClassifications(textRange.Start, textRange.Length, clipToRange: true, waitForAnalysis: true, cancellationToken);
-                var tokens = result.Classifications.Select(Create).ToList();
+                var tokens = result.Classifications.Select(Create).Where(t => t != null).OfType<SemanticToken>().ToList();
                 semanticTokens.AddRange(tokens);
+
+                if (_semanticEncoder == null)
+                {
+                    // make encode with the legend supplied by client during initialization, so we only encode token types/modifiers that client supports
+                    _semanticEncoder = new SemanticTokenEncoder(
+                        this.ServerSettings?.Capabilities?.SemanticTokensOptions?.Legend.TokenTypes.ToImmutableList() ?? ImmutableList<string>.Empty,
+                        this.ServerSettings?.Capabilities?.SemanticTokensOptions?.Legend.TokenModifiers.ToImmutableList() ?? ImmutableList<string>.Empty
+                        );
+                }
 
                 var data = _semanticEncoder.Encode(semanticTokens);
                 var semanticResults = new LSP.SemanticTokens { Data = data };
                 return Task.FromResult<LSP.SemanticTokens?>(semanticResults);
             }
 
-            SemanticToken Create(ClassifiedRange cr)
+            SemanticToken? Create(ClassifiedRange cr)
             {
                 var kind = GetSemanticTokenKind(cr.Kind);
-                var position = GetLspPosition(document.Text, cr.Start);
-                return new SemanticToken
+                if (kind != null)
                 {
-                    Line = position.Line,
-                    Character = position.Character,
-                    Length = cr.Length,
-                    Type = kind,
-                    Modifiers = ImmutableList<string>.Empty
-                };
+                    var position = GetLspPosition(document.Text, cr.Start);
+                    return new SemanticToken
+                    {
+                        Line = position.Line,
+                        Character = position.Character,
+                        Length = cr.Length,
+                        Type = kind,
+                        Modifiers = ImmutableList<string>.Empty
+                    };
+                }
+                else
+                {
+                    return null;
+                }
             }
         }
         catch (Exception ex)
@@ -534,47 +553,38 @@ public class KustoLspServer : LspServer, ILogger
         return Task.FromResult<LSP.SemanticTokens?>(null);
     }
 
-    private static readonly ImmutableList<string> _semanticTokenTypes =
-        Enum.GetValues<ClassificationKind>()
-        .Select(GetSemanticTokenKind)
-        .Distinct()
-        .ToImmutableList();
+    private SemanticTokenEncoder? _semanticEncoder;
 
-    private readonly SemanticTokenEncoder _semanticEncoder = 
-        new SemanticTokenEncoder(_semanticTokenTypes, ImmutableList<string>.Empty);
-
-    private static string GetSemanticTokenKind(ClassificationKind kind) =>
+    private static string? GetSemanticTokenKind(ClassificationKind kind) =>
         kind switch
         {
-            ClassificationKind.Comment => LSP.SemanticTokenTypes.Comment,
-            ClassificationKind.Punctuation => "punctuation",
-            ClassificationKind.Directive => "directive",
-            ClassificationKind.Literal => LSP.SemanticTokenTypes.Number,
-            ClassificationKind.StringLiteral => LSP.SemanticTokenTypes.String,
+            //ClassificationKind.Comment => LSP.SemanticTokenTypes.Comment,
+            //ClassificationKind.Directive => LSP.SemanticTokenTypes.Macro, //"directive",
+            //ClassificationKind.Literal => LSP.SemanticTokenTypes.Number,
+            //ClassificationKind.StringLiteral => LSP.SemanticTokenTypes.String,
             ClassificationKind.Type => LSP.SemanticTokenTypes.Type,
-            ClassificationKind.Column => "column",
-            ClassificationKind.Table => "table",
-            ClassificationKind.Database => "database",
+            ClassificationKind.Column => LSP.SemanticTokenTypes.Property, //"column",
+            ClassificationKind.Table => LSP.SemanticTokenTypes.Class, //"table",
+            ClassificationKind.Database => LSP.SemanticTokenTypes.Namespace, //"database",
             ClassificationKind.Function => LSP.SemanticTokenTypes.Function,
             ClassificationKind.Parameter => LSP.SemanticTokenTypes.Parameter,
             ClassificationKind.Variable => LSP.SemanticTokenTypes.Variable,
-            ClassificationKind.Identifier => LSP.SemanticTokenTypes.Variable,
-            ClassificationKind.ClientParameter => "client-parameter",
-            ClassificationKind.QueryParameter => "query-parameter",
-            ClassificationKind.ScalarOperator => LSP.SemanticTokenTypes.Operator,
-            ClassificationKind.MathOperator => LSP.SemanticTokenTypes.Operator,
-            ClassificationKind.QueryOperator => "query-operator",
-            ClassificationKind.Command => "command",
-            ClassificationKind.Keyword => LSP.SemanticTokenTypes.Keyword,
-            ClassificationKind.MaterializedView => "materialized-view",
-            ClassificationKind.SchemaMember => "schema-member",
-            ClassificationKind.SignatureParameter => "signature-parameter",
-            ClassificationKind.Option => "option",
-            ClassificationKind.PlainText => "plaintext",
-            _ => "plaintext"
+            //ClassificationKind.Identifier => LSP.SemanticTokenTypes.Variable,
+            //ClassificationKind.ClientParameter => LSP.SemanticTokenTypes.String, //"clientParameter",
+            ClassificationKind.QueryParameter => LSP.SemanticTokenTypes.Parameter, //"queryParameter",
+            //ClassificationKind.ScalarOperator => LSP.SemanticTokenTypes.Operator,
+            //ClassificationKind.MathOperator => LSP.SemanticTokenTypes.Operator,
+            //ClassificationKind.QueryOperator => LSP.SemanticTokenTypes.Keyword, //"queryOperator",
+            //ClassificationKind.Command => LSP.SemanticTokenTypes.Keyword, //"command",
+            //ClassificationKind.Keyword => LSP.SemanticTokenTypes.Keyword,
+            ClassificationKind.MaterializedView => LSP.SemanticTokenTypes.Class, //"materializedView",
+            ClassificationKind.SchemaMember => LSP.SemanticTokenTypes.Property, // "schemaMember",
+            ClassificationKind.SignatureParameter => LSP.SemanticTokenTypes.Parameter, //"signatureParameter",
+            //ClassificationKind.Option => LSP.SemanticTokenTypes.Keyword, //"option",
+            _ => null
         };
 
-    #endregion
+#endregion
 
     #region Hover Tips
 
@@ -810,6 +820,77 @@ public class KustoLspServer : LspServer, ILogger
         return WithFormattingOptionsFromSettings(_defaultFormattingOption, settings);
     }
 
+
+    #endregion
+
+    #region Rename
+
+    public override Task<LSP.RenameRange?> OnTextDocumentPrepareRenameAsync(LSP.PrepareRenameParams @params, CancellationToken cancellation)
+    {
+        try
+        {
+            if (_documentManager.TryGetDocument(@params.TextDocument.Uri, out var document))
+            {
+                var position = GetTextPosition(document.Text, @params.Position);
+
+                //// Use Kusto.Language to find the symbol at this position
+                //var symbol = document.GetReferencedSymbol(position);
+
+                //if (symbol == null || !CanRename(symbol))
+                //{
+                //    // Return null to indicate rename is not supported here
+                //    return Task.FromResult<RenameRange?>(null);
+                //}
+
+                //// Get the range of the symbol name
+                //var symbolRange = document.GetSymbolNameRange(position);
+
+                //return Task.FromResult<RenameRange?>(new RenameRange
+                //{
+                //    Range = GetLspRange(document.Text, symbolRange),
+                //    Placeholder = symbol.Name
+                //});
+            }
+        }
+        catch (Exception ex)
+        {
+            _ = SendWindowLogMessageAsync(ex);
+        }
+
+        return Task.FromResult<LSP.RenameRange?>(null);
+    }
+
+    public override Task<LSP.WorkspaceEdit?> OnTextDocumentRenameAsync(LSP.RenameParams @params, CancellationToken cancellationToken)
+    {
+        if (_documentManager.TryGetDocument(@params.TextDocument.Uri, out var document))
+        {
+            var position = GetTextPosition(document.Text, @params.Position);
+
+            RelatedInfo relatedInfo = document.GetRelatedElements(position, _defaultFindRelatedOptions, cancellationToken);
+
+            // only rename if a declaration is present, so we don't try renaming columns from database tables, etc.
+            if (relatedInfo.Elements.Any(e => e.Kind == RelatedElementKind.Declaration))
+            {
+                var edits = relatedInfo.Elements
+                    .Where(elem => elem.Kind == RelatedElementKind.Declaration || elem.Kind == RelatedElementKind.Reference)
+                    .Select(elem =>
+                        new LSP.TextEdit
+                        {
+                            Range = GetLspRange(document.Text, elem.Range),
+                            NewText = @params.NewName
+                        }).ToArray();
+                var workspaceEdit = new LSP.WorkspaceEdit
+                {
+                    Changes = new Dictionary<string, LSP.TextEdit[]>
+                    {
+                        [@params.TextDocument.Uri.ToString()] = edits
+                    }
+                };
+                return Task.FromResult<LSP.WorkspaceEdit?>(workspaceEdit);
+            }
+        }
+        return base.OnTextDocumentRenameAsync(@params, cancellationToken);
+    }
 
     #endregion
 
@@ -1071,7 +1152,7 @@ public class KustoLspServer : LspServer, ILogger
     }
     #endregion
 
-    #endregion
+#endregion
 
     #region Kusto Extensions
 

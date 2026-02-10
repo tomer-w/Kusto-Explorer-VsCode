@@ -1,7 +1,7 @@
 ﻿using Microsoft.VisualStudio.LanguageServer.Protocol;
 using Newtonsoft.Json;
 using StreamJsonRpc;
-//using VSLSP = Microsoft.VisualStudio.LanguageServer.Protocol;
+using LSP = Microsoft.VisualStudio.LanguageServer.Protocol;
 
 namespace Lsp.Common;
 
@@ -20,7 +20,9 @@ public abstract class LspServer
             {
                 // Use settings compatible with LSP
                 NullValueHandling = NullValueHandling.Ignore,
-                ConstructorHandling = ConstructorHandling.AllowNonPublicDefaultConstructor
+                ConstructorHandling = ConstructorHandling.AllowNonPublicDefaultConstructor,
+                // LSP properties are all camel case.
+                ContractResolver = new Newtonsoft.Json.Serialization.CamelCasePropertyNamesContractResolver()
             }
         };
 
@@ -217,7 +219,7 @@ public abstract class LspServer
     public async Task SendWorkspaceSemanticTokensRefresh()
     {
         // Send notification to client (out-of-band, not a response)
-        await _rpc.NotifyWithParameterObjectAsync("workspace/semanticTokens/refresh")
+        await _rpc.NotifyAsync("workspace/semanticTokens/refresh")
             .ConfigureAwait(false);
     }
 
@@ -371,6 +373,12 @@ public abstract class LspServer
     public virtual Task<WorkspaceEdit?> OnTextDocumentRenameAsync(RenameParams @params, CancellationToken cancellationToken)
     {
         return Task.FromResult<WorkspaceEdit?>(null);
+    }
+
+    [JsonRpcMethod("textDocument/prepareRename", UseSingleObjectParameterDeserialization = true)]
+    public virtual Task<LSP.RenameRange?> OnTextDocumentPrepareRenameAsync(PrepareRenameParams @params, CancellationToken cancellation)
+    {
+        return Task.FromResult<LSP.RenameRange?>(null);
     }
 
     [JsonRpcMethod(Methods.TextDocumentFoldingRangeName, UseSingleObjectParameterDeserialization = true)]

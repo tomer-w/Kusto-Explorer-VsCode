@@ -1,9 +1,10 @@
-import * as path from 'path';
+﻿import * as path from 'path';
 import * as vscode from 'vscode';
 import { workspace, ExtensionContext, window } from 'vscode';
 import * as conn from './features/connections'
 import * as queries from './features/queries'
 import * as decorations from './features/decorations'
+import * as semantics from './features/semantics'
 import
     {
         LanguageClient,
@@ -34,7 +35,7 @@ export async function activate(context: ExtensionContext)
         synchronize: { 
             fileEvents: workspace.createFileSystemWatcher('**/*.{kql,csl,kusto}')
         },
-        outputChannel: outputChannel,
+        outputChannel: outputChannel
     };
 
     client = new LanguageClient(
@@ -46,6 +47,9 @@ export async function activate(context: ExtensionContext)
 
     // Start the client BEFORE activating features that send notifications
     await client.start();
+
+    outputChannel.appendLine('=== CLIENT STARTED ===');
+
 
     // Track Kusto session state - keep views visible while in a Kusto session
     let hasChartPanel = false;
@@ -75,13 +79,16 @@ export async function activate(context: ExtensionContext)
     );
 
     // activate connections panel and related features
-    await conn.activate(context, client);    
+    await conn.activate(context, client);
 
-    // activate query execution features
-    queries.activate(context, client);
+    // activates semantic coloring
+    semantics.activate(context, client);
 
     // activate editor decorations
     decorations.activate(context, client);
+
+    // activate query execution features
+    queries.activate(context, client);
 }
 
 export function deactivate(): Thenable<void> | undefined
