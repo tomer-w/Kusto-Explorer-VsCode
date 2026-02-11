@@ -1,9 +1,6 @@
 ﻿using System.Collections.Immutable;
-using Kusto.Cloud.Platform.Utils;
 using Kusto.Data;
 using Kusto.Data.Common;
-using Kusto.Data.Common.Impl;
-using Kusto.Data.Data;
 using Kusto.Language;
 using Kusto.Language.Editor;
 
@@ -25,40 +22,34 @@ public class QueryManager : IQueryManager
         _logger = logger;
     }
 
-    public Task<QueryResult?> RunQueryAsync(
-        Uri documentId, 
+    public Task<RunResult?> RunQueryAsync(
+        Document document, 
         TextRange range, 
         ImmutableDictionary<string, string> queryOptions,
         ImmutableDictionary<string, string> queryParameters,
         CancellationToken cancellationToken)
     {
-        var connection = GetConnection(documentId);
+        var connection = GetConnection(document);
         if (connection != null)
         {
-            if (_documentManager.TryGetDocument(documentId, out var document))
-            {
-                // some servers will fails if query starts with a comment.
-                var query = document.GetQuery(range.Start, cancellationToken);
-                if (string.IsNullOrWhiteSpace(query))
-                    return Task.FromResult<QueryResult?>(new QueryResult { Query = query, Error = CreateDiagnostic(query, "Query is empty") });
+            // some servers will fails if query starts with a comment.
+            var query = document.GetQuery(range.Start, cancellationToken);
+            if (string.IsNullOrWhiteSpace(query))
+                return Task.FromResult<RunResult?>(new RunResult { Query = query, Error = CreateDiagnostic(query, "Query is empty") });
 
-                var context = new QueryContext
-                {
-                    Connection = connection,
-                    QueryOptions = queryOptions,
-                    QueryParameters = queryParameters
-                };
-
-                return this.ExecuteQueryAsync(query, context, cancellationToken);
-            }
-            else
+            var context = new QueryContext
             {
-                return Task.FromResult<QueryResult?>(new QueryResult { Error = new Diagnostic("KLS002", "Invalid Document") });
-            }
+                Query = query,
+                Connection = connection,
+                Options = queryOptions,
+                Parameters = queryParameters
+            };
+
+            return this.ExecuteQueryAsync(context, cancellationToken);
         }
         else
         {
-            return Task.FromResult<QueryResult?>(new QueryResult { Error = new Diagnostic("KLS003", "Invalid Connection") });
+            return Task.FromResult<RunResult?>(new RunResult { Error = new Diagnostic("KLS003", "Invalid Connection") });
         }
     }
 
@@ -83,15 +74,18 @@ public class QueryManager : IQueryManager
         /// </summary>
         public required IConnection Connection { get; init; }
 
-        /// <summary>
-        /// The query options for this query.
-        /// </summary>
-        public required ImmutableDictionary<string, string> QueryOptions { get; init; }
+
+        public required EditString Query { get; init; }
 
         /// <summary>
-        /// The query parameters for this query.
+        /// The options for this query.
         /// </summary>
-        public required ImmutableDictionary<string, string> QueryParameters { get; init; }
+        public required ImmutableDictionary<string, string> Options { get; init; }
+
+        /// <summary>
+        /// The parameters for this query.
+        /// </summary>
+        public required ImmutableDictionary<string, string> Parameters { get; init; }
 
         /// <summary>
         ///  the name of the stored query result to store the result of this execution into.
@@ -99,33 +93,31 @@ public class QueryManager : IQueryManager
         public string? StoredQueryResultName { get; init; }
     }
 
-    private Task<QueryResult?> ExecuteQueryAsync(EditString query, QueryContext context, CancellationToken cancellationToken)
+    private Task<RunResult?> ExecuteQueryAsync(QueryContext context, CancellationToken cancellationToken)
     {
-        switch (KustoCode.GetKind(query))
+        if (IsDirective(context.Query))
         {
-            case CodeKinds.Query:
-            default:
-                return HandleQuery(query, context, cancellationToken);
-            case CodeKinds.Command:
-                return HandleCommand(query, context, cancellationToken);
-            case CodeKinds.Directive:
-                return HandleDirective(query, context, cancellationToken);
+            return HandleDirective(context, cancellationToken);
+        }
+        else
+        {
+            return HandleQuery(context, cancellationToken);
         }
     }
 
-    private async Task<QueryResult?> HandleQuery(EditString query, QueryContext context, CancellationToken cancellationToken)
+    private async Task<RunResult?> HandleQuery(QueryContext context, CancellationToken cancellationToken)
     {
-        query = RemoveLeadingTrivia(query);
-        var properties = CreateClientRequestProperties(context);
+        // some servers will if there is any comment or whitespace preceeding the first token
+        var query = RemoveLeadingTrivia(context.Query);
 
         try
         {
+            // handle stored query results
             if (context.StoredQueryResultName != null)
             {
                 // execute command that runs the query and stores the result using the name
                 var command = query.ReplaceAt(0, query.Length, CslCommandGenerator.GenerateStoredQueryResultSetOrReplaceCommand(context.StoredQueryResultName, query, previewCount: 0));
-                var contextWithoutName = context with { StoredQueryResultName = null };
-                var result = await HandleCommand(command, contextWithoutName, cancellationToken).ConfigureAwait(false);
+                var result = await ExecuteQueryAsync(context with { Query = command, StoredQueryResultName = null }, cancellationToken).ConfigureAwait(false);
                 if (result == null || result.Error != null)
                     return result;
 
@@ -133,42 +125,24 @@ public class QueryManager : IQueryManager
                 query = query.ReplaceAt(0, query.Length, $"stored_query_result({KustoFacts.GetStringLiteral(context.StoredQueryResultName)})");
             }
 
-            var resultReader = await context.Connection.QueryProvider.ExecuteQueryAsync(context.Connection.InitialCatalog, query, properties, cancellationToken).ConfigureAwait(false);
-            var dataSet = KustoDataReaderParser.ParseV1(resultReader, null);
-            var dataTable = dataSet?.GetMainResultsOrNull();
-            return new QueryResult
+            var results = await context.Connection.ExecuteAsync(query, context.Options, context.Parameters, cancellationToken).ConfigureAwait(false);
+            return new RunResult
             {
                 Query = query,
-                Data = dataTable?.TableData,
-                ChartOptions = dataTable?.VisualizationOptions
+                Data = results.Data,
+                ChartOptions = results.ChartOptions
             };
         }
         catch (Exception e)
         {
-            return new QueryResult { Query = query, Error = CreateDiagnostic(query, e) };
+            return new RunResult { Query = query, Error = CreateDiagnostic(query, e) };
         }
     }
 
-    private async Task<QueryResult?> HandleCommand(EditString query, QueryContext context, CancellationToken cancellationToken)
+    private static bool IsDirective(string query)
     {
-        query = RemoveLeadingTrivia(query);
-        var properties = CreateClientRequestProperties(context);
-        try
-        {
-            var resultReader = await context.Connection.AdminProvider.ExecuteControlCommandAsync(context.Connection.InitialCatalog, query, properties).ConfigureAwait(false);
-            var dataSet = KustoDataReaderParser.ParseV1(resultReader, null);
-            var dataTable = dataSet?.GetMainResultsOrNull();
-            return new QueryResult
-            {
-                Query = query,
-                Data = dataTable?.TableData,
-                ChartOptions = dataTable?.VisualizationOptions
-            };
-        }
-        catch (Exception e)
-        {
-            return new QueryResult { Query = query, Error = CreateDiagnostic(query, e) };
-        }
+        var firstToken = Kusto.Language.Parsing.TokenParser.ParseToken(query);
+        return firstToken.Kind == Kusto.Language.Syntax.SyntaxKind.DirectiveToken;
     }
 
     private static EditString RemoveLeadingTrivia(EditString query)
@@ -184,9 +158,9 @@ public class QueryManager : IQueryManager
         }
     }
 
-    private Task<QueryResult?> HandleDirective(EditString query, QueryContext context, CancellationToken cancellationToken)
+    private Task<RunResult?> HandleDirective(QueryContext context, CancellationToken cancellationToken)
     {
-        if (ClientDirective.TryParse(query, out var directive))
+        if (ClientDirective.TryParse(context.Query, out var directive))
         {
             switch (directive.Name)
             {
@@ -209,20 +183,20 @@ public class QueryManager : IQueryManager
                 case "query":
                 case "save":
                 default:
-                    return Task.FromResult<QueryResult?>(
-                        new QueryResult { Query = query, Error = CreateDiagnostic(query, $"Unhandled directive: {directive.Name}") }
+                    return Task.FromResult<RunResult?>(
+                        new RunResult { Query = context.Query, Error = CreateDiagnostic(context.Query, $"Unhandled directive: {directive.Name}") }
                         );
             }
         }
         else
         {
-            return Task.FromResult<QueryResult?>(
-                new QueryResult { Query = query, Error = CreateDiagnostic(query, "Invalid Directive") }
+            return Task.FromResult<RunResult?>(
+                new RunResult { Query = context.Query, Error = CreateDiagnostic(context.Query, "Invalid Directive") }
                 );
         }
     }
 
-    private Task<QueryResult?> HandleConnectOrDatabaseDirective( ClientDirective directive, QueryContext context, CancellationToken cancellationToken)
+    private Task<RunResult?> HandleConnectOrDatabaseDirective(ClientDirective directive, QueryContext context, CancellationToken cancellationToken)
     {
         if (TryGetDirectiveClusterAndDatabase(directive, out var clusterName, out var databaseName)
             && clusterName != null)
@@ -231,16 +205,16 @@ public class QueryManager : IQueryManager
             {
                 // change default cluster and database and continue
                 var conn = _connectionManager.GetConnection(clusterName, databaseName);
-                var newContext = context with { Connection = conn };
-                return this.ExecuteQueryAsync(directive.AfterDirectiveText, newContext, cancellationToken);
+                var newContext = context with { Query = directive.AfterDirectiveText, Connection = conn };
+                return this.ExecuteQueryAsync(newContext, cancellationToken);
             }
             else
             {
                 // result is request to change document's default cluster & database
-                return Task.FromResult<QueryResult?>(new QueryResult { Query = directive.Text, Cluster = clusterName, Database = databaseName });
+                return Task.FromResult<RunResult?>(new RunResult { Query = directive.Text, Cluster = clusterName, Database = databaseName });
             }
         }
-        return Task.FromResult<QueryResult?>(null);
+        return Task.FromResult<RunResult?>(null);
     }
 
     internal static bool TryGetDirectiveClusterAndDatabase(
@@ -326,41 +300,41 @@ public class QueryManager : IQueryManager
         return argument.Value as string ?? "";
     }
 
-    private Task<QueryResult?> HandleClientRequestPropertyDirective(ClientDirective directive, QueryContext context, CancellationToken cancellationToken)
+    private Task<RunResult?> HandleClientRequestPropertyDirective(ClientDirective directive, QueryContext context, CancellationToken cancellationToken)
     {
-        var properties = context.QueryOptions;
+        var properties = context.Options;
 
         var newProperties = SetKeyValuePairs(directive, properties);
-        context = context with { QueryOptions = newProperties };
+        context = context with { Options = newProperties };
 
         if (!string.IsNullOrWhiteSpace(directive.AfterDirectiveText))
         {
             // execute remaining part of query with these changes
-            return ExecuteQueryAsync(directive.AfterDirectiveText, context, cancellationToken);
+            return ExecuteQueryAsync(context with { Query = directive.AfterDirectiveText }, cancellationToken);
         }
         else
         {
             // This change is the result
-            return Task.FromResult<QueryResult?>(new QueryResult { QueryOptions = newProperties });
+            return Task.FromResult<RunResult?>(new RunResult { QueryOptions = newProperties });
         }
     }
 
-    private Task<QueryResult?> HandleQueryParameterDirective(ClientDirective directive, QueryContext context, CancellationToken cancellationToken)
+    private Task<RunResult?> HandleQueryParameterDirective(ClientDirective directive, QueryContext context, CancellationToken cancellationToken)
     {
-        var parameters = context.QueryParameters;
+        var parameters = context.Parameters;
 
         var newParameters = SetKeyValuePairs(directive, parameters);
-        context = context with { QueryParameters = newParameters };
+        context = context with { Parameters = newParameters };
 
         if (!string.IsNullOrWhiteSpace(directive.AfterDirectiveText))
         {
             // execute remaining part of query with these changes
-            return ExecuteQueryAsync(directive.AfterDirectiveText, context, cancellationToken);
+            return ExecuteQueryAsync(context with { Query = directive.AfterDirectiveText }, cancellationToken);
         }
         else
         {
             // this change is the result
-            return Task.FromResult<QueryResult?>(new QueryResult { QueryParameters = newParameters });
+            return Task.FromResult<RunResult?>(new RunResult { QueryParameters = newParameters });
         }
     }
 
@@ -384,9 +358,9 @@ public class QueryManager : IQueryManager
         return map;
     }
  
-    private IConnection? GetConnection(Uri scriptId)
+    private IConnection? GetConnection(Document document)
     {
-        var connectionInfo = _documentManager.GetConnection(scriptId);
+        var connectionInfo = _documentManager.GetConnection(document.Id);
         if (connectionInfo.Cluster != null)
         {
             return _connectionManager.GetConnection(connectionInfo.Cluster, connectionInfo.Database);
@@ -394,106 +368,17 @@ public class QueryManager : IQueryManager
         return null;
     }
 
-    private ClientRequestProperties CreateClientRequestProperties(QueryContext context)
-    {
-        var crp = new ClientRequestProperties();
-
-        foreach (var kvp in context.QueryOptions)
-        {
-            SetQueryOption(crp, kvp.Key, kvp.Value);
-        }
-
-        crp.SetParameters(context.QueryParameters);
-
-        return crp;
-    }
-
-    private void SetQueryOption(ClientRequestProperties crp, string name, string value)
-    {
-        if (value != null && value == "##null")
-        {
-            crp.ClearOption(name);
-            return;
-        }
-
-        switch (name)
-        {
-            // Booleans
-            case ClientRequestProperties_Debugging.OptionNoExecute:
-            case ClientRequestProperties_Debugging.OptionPerfTrace:
-            case ClientRequestProperties.OptionValidatePermissions:
-            case ClientRequestProperties.OptionQueryResultsApplyGetSchema:
-            case ClientRequestProperties.OptionNoTruncation:
-            case ClientRequestProperties.OptionDeferPartialQueryFailures:
-            case ClientRequestProperties.OptionNoRequestTimeout:
-            case ClientRequestProperties.OptionAllowProjectionAndExtensionUnderSearch:
-            case ClientRequestProperties.OptionRequestCalloutDisabled:
-            case ClientRequestProperties_FaultInjection.OptionDebugQueryExecutionEnableExpiry:
-            case ClientRequestProperties_FaultInjection.OptionDebugQueryExecutionEnableOom:
-            case ClientRequestProperties.OptionDoNotImpersonate:
-                crp.SetOption(name, Boolean.Parse(value!));
-                break;
-
-            // Long
-            case ClientRequestProperties.OptionTruncationMaxSize:
-            case ClientRequestProperties.OptionTruncationMaxRecords:
-            case ClientRequestProperties.OptionTakeMaxRecords:
-            case ClientRequestProperties.OptionMaxMemoryConsumptionPerIterator:
-            case ClientRequestProperties.OptionMaxMemoryConsumptionPerQueryPerNode:
-            case ClientRequestProperties_FaultInjection.OptionDebugQueryPlanBurnCpuMsec:
-            case ClientRequestProperties.OptionMaxOutputColumns:
-            case ClientRequestProperties.OptionMaxEntitiesToUnion:
-            case ClientRequestProperties.OptionSqlMaxStringSize:
-                crp.SetOption(name, CslLongLiteral.Parse(value!));
-                break;
-
-            // TimeSpan
-            case ClientRequestProperties.OptionServerTimeout:
-                if (CslTimeSpanLiteral.TryParse(value, out var timeSpan))
-                {
-                    crp.SetOption(name, timeSpan);
-                }
-                else
-                {
-                    value = value.TrimBalancedSingleAndDoubleQuotes();
-                    crp.SetOption(name, ExtendedTimeSpan.Parse(value));
-                }
-                return;
-
-            // DateTime
-            case ClientRequestProperties.OptionQueryDateTimeScopeFrom:
-            case ClientRequestProperties.OptionQueryDateTimeScopeTo:
-            case ClientRequestProperties.OptionQueryNow:
-                if (CslDateTimeLiteral.TryParse(value, out var dateTime))
-                {
-                    crp.SetOption(name, dateTime);
-                }
-                else
-                {
-                    value = value.TrimBalancedSingleAndDoubleQuotes();
-                    crp.SetOption(name, ExtendedDateTime.ParseInexactUtc(value));
-                }
-                break;
-
-            // All others are strings
-            default:
-                crp.SetOption(name, value);
-                break;
-        }
-    }
-
-    private Task<QueryResult?> HandleStoreQueryResultDirective(ClientDirective directive, QueryContext context, CancellationToken cancellationToken)
+    private Task<RunResult?> HandleStoreQueryResultDirective(ClientDirective directive, QueryContext context, CancellationToken cancellationToken)
     {
         if (directive.Arguments.Count > 0)
         {
             var name = directive.Arguments[0].Text;
-            var contextWithName = context with { StoredQueryResultName = name };
-            return ExecuteQueryAsync(directive.AfterDirectiveText, contextWithName, cancellationToken);
+            return ExecuteQueryAsync(context with { Query = directive.AfterDirectiveText, StoredQueryResultName = name }, cancellationToken);
         }
         else
         {
-            return Task.FromResult<QueryResult?>(
-                new QueryResult { Query = directive.Text, Error = CreateDiagnostic(directive.Text, "Invalid directive") });
+            return Task.FromResult<RunResult?>(
+                new RunResult { Query = directive.Text, Error = CreateDiagnostic(directive.Text, "Invalid directive") });
         }
     }
 }

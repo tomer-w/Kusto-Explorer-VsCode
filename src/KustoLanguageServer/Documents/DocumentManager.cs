@@ -96,7 +96,7 @@ public class DocumentManager : IDocumentManager
     {
         return ImmutableInterlocked.GetOrAdd(
             ref _idToScriptInfoMap, id, 
-            _ => new DocumentInfo(id) { Document = new MultiQueryDocument("", _symbolManager.Globals) }
+            _ => new DocumentInfo(id) { Document = new MultiQueryDocument(id, "", _symbolManager.Globals) }
             );
     }
 

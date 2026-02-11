@@ -7,7 +7,8 @@ namespace Kusto.Lsp;
 public interface ISymbolManager
 {
     /// <summary>
-    /// The current aggregate global state.
+    /// The shared <see cref="GlobalState"/> containing all the common loaded symbols.
+    /// Individual documents will have other <see cref="GlobalState"/> instances with different default clusters and databases.
     /// </summary>
     GlobalState Globals { get; }
 

@@ -1174,12 +1174,7 @@ public class KustoLspServer : LspServer, ILogger
         {
             var range = GetTextRange(document.Text, @params.Selection);
 
-            var results = await _queryManager.RunQueryAsync(
-                @params.TextDocument.Uri, 
-                range, 
-                queryOptions, 
-                queryParameters, 
-                cancellationToken).ConfigureAwait(false);
+            var results = await _queryManager.RunQueryAsync(document, range, queryOptions, queryParameters, cancellationToken).ConfigureAwait(false);
 
             string dataHtml;
             string? chartHtml = null;
@@ -1301,7 +1296,7 @@ public class KustoLspServer : LspServer, ILogger
     [JsonRpcMethod("kusto/getServerInfo", UseSingleObjectParameterDeserialization = true)]
     public async Task<GetServerInfoResult?> OnGetServerInfoAsync(GetServerInfoParams @params, CancellationToken cancellationToken)
     {
-        var clusterName = _connectionManager.GetConnection(@params.Connection).Hostname;
+        var clusterName = _connectionManager.GetConnection(@params.Connection).Cluster;
         
         // ensure server databases are loaded
         await _symbolManager.GetOrLoadDatabaseNamesAsync(@params.Connection, cancellationToken).ConfigureAwait(false);

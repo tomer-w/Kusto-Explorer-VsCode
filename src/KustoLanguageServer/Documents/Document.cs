@@ -12,6 +12,11 @@ namespace Kusto.Lsp;
 public abstract class Document
 {
     /// <summary>
+    /// The id of the document.
+    /// </summary>
+    public abstract Uri Id { get; }
+
+    /// <summary>
     /// The text of the query.
     /// </summary>
     public abstract string Text { get; }
@@ -141,31 +146,34 @@ public record DocumentEdits
 /// </summary>
 public class MultiQueryDocument : Document
 {
+    private readonly Uri _id;
     private readonly CodeScript _script;
 
-    private MultiQueryDocument(CodeScript script)
+    private MultiQueryDocument(Uri id, CodeScript script)
     {
+        _id = id;
         _script = script ?? throw new ArgumentNullException(nameof(script));
     }
 
-    public MultiQueryDocument(string text, GlobalState globals)
-        : this(CodeScript.From(text, globals))
+    public MultiQueryDocument(Uri id, string text, GlobalState globals)
+        : this(id, CodeScript.From(text, globals))
     {
     }
 
     public CodeScript Script => _script;
 
+    public override Uri Id => _id;
     public override string Text => _script.Text;
     public override GlobalState Globals => _script.Globals;
 
     public override Document WithText(string text)
     {
-        return new MultiQueryDocument(_script.WithText(text));
+        return new MultiQueryDocument(_id, _script.WithText(text));
     }
 
     public override Document WithGlobals(GlobalState globals)
     {  
-        return new MultiQueryDocument(_script.WithGlobals(globals)); 
+        return new MultiQueryDocument(_id, _script.WithGlobals(globals)); 
     }
 
     public override CodeActionResult ApplyCodeAction(ApplyAction action, int caretPosition, CodeActionOptions? options = null, CancellationToken cancellationToken = default)
@@ -347,28 +355,31 @@ public class MultiQueryDocument : Document
 /// </summary>
 public class SingleQueryDocument : Document
 {
+    private readonly Uri _id;
     private readonly string _text;
     private readonly GlobalState _globals;
     private readonly KustoCodeService _service;
 
-    public SingleQueryDocument(string text, GlobalState globals)
+    public SingleQueryDocument(Uri id, string text, GlobalState globals)
     {
+        _id = id;
         _text = text;
         _globals = globals;
         _service = new KustoCodeService(text, globals);
     }
 
+    public override Uri Id => _id;
     public override string Text => _text;
     public override GlobalState Globals => _globals;
 
     public override Document WithText(string text)
     {
-        return new SingleQueryDocument(text, _globals);
+        return new SingleQueryDocument(_id, text, _globals);
     }
 
     public override Document WithGlobals(GlobalState globals)
     {
-        return new SingleQueryDocument(_text, globals);
+        return new SingleQueryDocument(_id, _text, globals);
     }
 
     public KustoCode GetCode()

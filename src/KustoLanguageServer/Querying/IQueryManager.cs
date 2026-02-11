@@ -11,8 +11,8 @@ public interface IQueryManager
     /// <summary>
     /// Runs the query at the specified position in the script.
     /// </summary>
-    Task<QueryResult?> RunQueryAsync(
-        Uri documentId, 
+    Task<RunResult?> RunQueryAsync(
+        Document document, 
         TextRange range, 
         ImmutableDictionary<string, string> queryOptions, 
         ImmutableDictionary<string, string> queryParameters,
@@ -20,7 +20,10 @@ public interface IQueryManager
         );
 }
 
-public record QueryResult
+/// <summary>
+/// The result of running a document query.
+/// </summary>
+public record RunResult
 {
     /// <summary>
     /// The query text that was ultimately executed.

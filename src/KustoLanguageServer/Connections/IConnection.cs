@@ -1,32 +1,56 @@
-﻿using Kusto.Data.Common;
-using Kusto.Toolkit;
+﻿using Kusto.Data;
+using Kusto.Data.Utils;
+using System.Collections.Immutable;
+using System.Data;
 
 namespace Kusto.Lsp;
 
 public interface IConnection
 {
     /// <summary>
-    /// The host name of the server/cluster
+    /// The cluster (host name of server)
     /// </summary>
-    string Hostname { get; }
+    string Cluster { get; }
 
     /// <summary>
-    /// The default database
+    /// The default database, optional
     /// </summary>
-    string? InitialCatalog { get; }
+    string? Database { get; }
 
     /// <summary>
-    /// The <see cref="ICslQueryProvider"/> associated with this connection.
+    /// Executes a query over the connection.
     /// </summary>
-    public ICslQueryProvider QueryProvider { get; }
+    public Task<ExecuteResult> ExecuteAsync(
+        string query,
+        ImmutableDictionary<string, string>? options = null,
+        ImmutableDictionary<string, string>? parameters = null,
+        CancellationToken cancellationToken = default
+        );
 
     /// <summary>
-    /// The <see cref="ICslAdminProvider"/> associated with this connection
+    /// Execute a query over the connection, returning the typed results.
     /// </summary>
-    public ICslAdminProvider AdminProvider { get; }
+    public Task<IEnumerable<T>> ExecuteAsync<T>(
+        string query,
+        ImmutableDictionary<string, string>? options = null,
+        ImmutableDictionary<string, string>? parameters = null,
+        CancellationToken cancellationToken = default
+        );
+}
 
+/// <summary>
+/// A connection that has access for a <see cref="KustoConnectionStringBuilder"/>
+/// </summary>
+public interface IKustoConnection : IConnection
+{
     /// <summary>
-    /// The <see cref="SymbolLoader"/> associated with this connection.
+    /// Gets a copy of the underying connection string builder
     /// </summary>
-    public SymbolLoader SymbolLoader { get; }
+    public KustoConnectionStringBuilder GetBuilder();
+}
+
+public record ExecuteResult
+{
+    public DataTable? Data { get; init; }
+    public ChartVisualizationOptions? ChartOptions { get; init; }
 }

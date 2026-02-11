@@ -1,8 +1,15 @@
-﻿using Kusto.Data;
+﻿using Kusto.Cloud.Platform.Data;
+using Kusto.Cloud.Platform.Utils;
+using Kusto.Data;
 using Kusto.Data.Common;
+using Kusto.Data.Common.Impl;
+using Kusto.Data.Data;
 using Kusto.Data.Net.Client;
+using Kusto.Data.Utils;
+using Kusto.Language.Editor;
 using Kusto.Toolkit;
 using System.Collections.Immutable;
+using System.Data;
 
 namespace Kusto.Lsp;
 
@@ -28,7 +35,7 @@ public class ConnectionManager : IConnectionManager
         try
         {
             var kcsb = GetConnection(clusterOrConnection);
-            return kcsb.Hostname;
+            return kcsb.Cluster;
         }
         catch
         {
@@ -39,7 +46,7 @@ public class ConnectionManager : IConnectionManager
     public async Task<string> GetServerKindAsync(string clusterOrConnection, CancellationToken cancellationToken)
     {
         var connection = this.GetConnection(clusterOrConnection);
-        var results = await connection.AdminProvider.ExecuteControlCommandAsync<ShowVersionResult>(".show version").ConfigureAwait(false);
+        var results = await connection.ExecuteAsync<ShowVersionResult>(".show version").ConfigureAwait(false);
         var version = results.FirstOrDefault();
         return version != null ? version.ServiceType : "Unknown";
     }
@@ -73,8 +80,8 @@ public class ConnectionManager : IConnectionManager
 
             _clusterToBuilderInfoMap = _clusterToBuilderInfoMap.Add(clusterOrConnection, info);
 
-            if (connection.Hostname != clusterOrConnection)
-                _clusterToBuilderInfoMap = _clusterToBuilderInfoMap.Add(connection.Hostname, info);
+            if (connection.Cluster != clusterOrConnection)
+                _clusterToBuilderInfoMap = _clusterToBuilderInfoMap.Add(connection.Cluster, info);
         }
         else
         {
@@ -94,7 +101,7 @@ public class ConnectionManager : IConnectionManager
         return connection;
     }
 
-    private class KustoConnection : IConnection
+    private class KustoConnection : IKustoConnection
     {
         private readonly KustoConnectionStringBuilder _builder;
 
@@ -103,13 +110,18 @@ public class ConnectionManager : IConnectionManager
             _builder = builder;
         }
 
-        public string Hostname => _builder.Hostname;
-        public string? InitialCatalog => _builder.InitialCatalog;
+        public string Cluster => _builder.Hostname;
+        public string? Database => _builder.InitialCatalog;
 
         public KustoConnection WithInitialCatalog(string? initialCatalog)
         {
             var newBuilder = new KustoConnectionStringBuilder(_builder) { InitialCatalog = initialCatalog };
             return new KustoConnection(newBuilder);
+        }
+
+        public KustoConnectionStringBuilder GetBuilder()
+        {
+            return new KustoConnectionStringBuilder(_builder);
         }
 
         private ICslQueryProvider? _queryProvider;
@@ -138,16 +150,128 @@ public class ConnectionManager : IConnectionManager
             }
         }
 
-        private SymbolLoader? _symbolLoader;
-        public SymbolLoader SymbolLoader
+        public async Task<ExecuteResult> ExecuteAsync(
+            string query,
+            ImmutableDictionary<string, string>? options,
+            ImmutableDictionary<string, string>? parameters,
+            CancellationToken cancellationToken
+            )
         {
-            get
+            var properties = CreateClientRequestProperties(options ?? ImmutableDictionary<string, string>.Empty, parameters ?? ImmutableDictionary<string, string>.Empty);
+            var resultReader = (Kusto.Language.KustoCode.GetKind(query) == CodeKinds.Command)
+                ? await this.AdminProvider.ExecuteControlCommandAsync(this.Database, query, properties).ConfigureAwait(false)
+                : await this.QueryProvider.ExecuteQueryAsync(this.Database, query, properties, cancellationToken).ConfigureAwait(false);
+            var dataSet = KustoDataReaderParser.ParseV1(resultReader, null);
+            var mainResult = dataSet?.GetMainResultsOrNull();
+            return new ExecuteResult { Data=mainResult?.TableData, ChartOptions=mainResult?.VisualizationOptions };
+        }
+
+        public async Task<IEnumerable<T>> ExecuteAsync<T>(
+            string query,
+            ImmutableDictionary<string, string>? options,
+            ImmutableDictionary<string, string>? parameters,
+            CancellationToken cancellationToken
+            )
+        {
+            var results = await ExecuteAsync(query, options, parameters, cancellationToken).ConfigureAwait(false);
+            if (results.Data != null)
             {
-                if (_symbolLoader == null)
-                {
-                    Interlocked.CompareExchange(ref _symbolLoader, new ServerSymbolLoader(_builder), null);
-                }
-                return _symbolLoader;
+                var reader = new ObjectReader<T>(results.Data.CreateDataReader());
+                return reader;
+            }
+            else
+            {
+                return Array.Empty<T>();
+            }
+        }
+
+        private ClientRequestProperties CreateClientRequestProperties(
+            ImmutableDictionary<string, string> options,
+            ImmutableDictionary<string, string> parameters)
+        {
+            var crp = new ClientRequestProperties();
+
+            foreach (var kvp in options)
+            {
+                SetQueryOption(crp, kvp.Key, kvp.Value);
+            }
+
+            crp.SetParameters(parameters);
+
+            return crp;
+        }
+
+        private void SetQueryOption(ClientRequestProperties crp, string name, string value)
+        {
+            if (value != null && value == "##null")
+            {
+                crp.ClearOption(name);
+                return;
+            }
+
+            switch (name)
+            {
+                // Booleans
+                case ClientRequestProperties_Debugging.OptionNoExecute:
+                case ClientRequestProperties_Debugging.OptionPerfTrace:
+                case ClientRequestProperties.OptionValidatePermissions:
+                case ClientRequestProperties.OptionQueryResultsApplyGetSchema:
+                case ClientRequestProperties.OptionNoTruncation:
+                case ClientRequestProperties.OptionDeferPartialQueryFailures:
+                case ClientRequestProperties.OptionNoRequestTimeout:
+                case ClientRequestProperties.OptionAllowProjectionAndExtensionUnderSearch:
+                case ClientRequestProperties.OptionRequestCalloutDisabled:
+                case ClientRequestProperties_FaultInjection.OptionDebugQueryExecutionEnableExpiry:
+                case ClientRequestProperties_FaultInjection.OptionDebugQueryExecutionEnableOom:
+                case ClientRequestProperties.OptionDoNotImpersonate:
+                    crp.SetOption(name, Boolean.Parse(value!));
+                    break;
+
+                // Long
+                case ClientRequestProperties.OptionTruncationMaxSize:
+                case ClientRequestProperties.OptionTruncationMaxRecords:
+                case ClientRequestProperties.OptionTakeMaxRecords:
+                case ClientRequestProperties.OptionMaxMemoryConsumptionPerIterator:
+                case ClientRequestProperties.OptionMaxMemoryConsumptionPerQueryPerNode:
+                case ClientRequestProperties_FaultInjection.OptionDebugQueryPlanBurnCpuMsec:
+                case ClientRequestProperties.OptionMaxOutputColumns:
+                case ClientRequestProperties.OptionMaxEntitiesToUnion:
+                case ClientRequestProperties.OptionSqlMaxStringSize:
+                    crp.SetOption(name, CslLongLiteral.Parse(value!));
+                    break;
+
+                // TimeSpan
+                case ClientRequestProperties.OptionServerTimeout:
+                    if (CslTimeSpanLiteral.TryParse(value, out var timeSpan))
+                    {
+                        crp.SetOption(name, timeSpan);
+                    }
+                    else
+                    {
+                        value = value.TrimBalancedSingleAndDoubleQuotes();
+                        crp.SetOption(name, ExtendedTimeSpan.Parse(value));
+                    }
+                    return;
+
+                // DateTime
+                case ClientRequestProperties.OptionQueryDateTimeScopeFrom:
+                case ClientRequestProperties.OptionQueryDateTimeScopeTo:
+                case ClientRequestProperties.OptionQueryNow:
+                    if (CslDateTimeLiteral.TryParse(value, out var dateTime))
+                    {
+                        crp.SetOption(name, dateTime);
+                    }
+                    else
+                    {
+                        value = value.TrimBalancedSingleAndDoubleQuotes();
+                        crp.SetOption(name, ExtendedDateTime.ParseInexactUtc(value));
+                    }
+                    break;
+
+                // All others are strings
+                default:
+                    crp.SetOption(name, value);
+                    break;
             }
         }
     }

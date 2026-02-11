@@ -9,6 +9,7 @@ namespace Kusto.Lsp;
 public class SymbolManager : ISymbolManager
 {
     private readonly IConnectionManager _connectionManager;
+    private readonly ISymbolLoaderFactory _symbolLoaderFactory;
     private readonly Action<string>? _logger;
 
     /// <summary>
@@ -17,9 +18,13 @@ public class SymbolManager : ISymbolManager
     /// </summary>
     private readonly TaskQueue _taskQueue = new TaskQueue();
 
-    public SymbolManager(IConnectionManager connectionManager, Action<string>? logger = null)
+    public SymbolManager(
+        IConnectionManager connectionManager, 
+        ISymbolLoaderFactory? symbolLoaderFactory = null,
+        Action<string>? logger = null)
     {
         _connectionManager = connectionManager;
+        _symbolLoaderFactory = symbolLoaderFactory ?? SymbolLoader.Factory;
         _logger = logger;
     }
 
@@ -51,31 +56,19 @@ public class SymbolManager : ISymbolManager
 
     private class SymbolInfo
     {
-        public required SymbolLoader SymbolLoader { get; set; }
-
-        public required SymbolResolver SymbolResolver { get; set; }
+        public required ISymbolLoader SymbolLoader { get; set; }
     }
 
-    private ConditionalWeakTable<IConnection, SymbolInfo> _connectionToSymbolInfo =
-        new ConditionalWeakTable<IConnection, SymbolInfo>();
+    private ConditionalWeakTable<IConnection, ISymbolLoader> _connectionToLoaderMap =
+        new ConditionalWeakTable<IConnection, ISymbolLoader>();
 
-    private SymbolInfo GetSymbolInfo(IConnection connection)
+    private ISymbolLoader GetSymbolLoader(IConnection connection)
     {
-        if (!_connectionToSymbolInfo.TryGetValue(connection, out var info))
+        if (!_connectionToLoaderMap.TryGetValue(connection, out var loader))
         {
-            var symbolLoader = connection.SymbolLoader;
-            var symbolResolver = new SymbolResolver(symbolLoader);
-
-            info = new SymbolInfo
-            {
-                SymbolLoader = symbolLoader,
-                SymbolResolver = symbolResolver
-            };
-
-            _connectionToSymbolInfo.Add(connection, info);
+            loader = _connectionToLoaderMap.GetOrAdd(connection, _conn => _symbolLoaderFactory.CreateLoader(_conn));
         }
-
-        return info;
+        return loader;
     }
 
     /// <summary>
@@ -84,7 +77,7 @@ public class SymbolManager : ISymbolManager
     public async Task<ImmutableList<string>> GetOrLoadDatabaseNamesAsync(string clusterOrConnection, CancellationToken cancellationToken)
     {
         var connection = _connectionManager.GetConnection(clusterOrConnection);
-        var cluster = connection.Hostname;
+        var cluster = connection.Cluster;
         var globals = this.Globals;
 
         var clusterSymbol = globals.GetCluster(cluster);
@@ -107,9 +100,10 @@ public class SymbolManager : ISymbolManager
         return _taskQueue.Run(cancellationToken, async (useThisCancellationToken) =>
         {
             var connection = _connectionManager.GetConnection(clusterOrConnection);
-            var info = GetSymbolInfo(connection);
+            var loader = GetSymbolLoader(connection);
 
-            var cluster = connection.Hostname;
+
+            var cluster = connection.Cluster;
             var globals = this.Globals;
 
             _logger?.Invoke($"Loading symbols for cluster '{cluster}', database '{database}'");
@@ -119,7 +113,7 @@ public class SymbolManager : ISymbolManager
                 var clusterSymbol = globals.GetCluster(cluster);
                 if (clusterSymbol == null)
                 {
-                    globals = await info.SymbolLoader.AddClusterAsync(globals, cluster, useThisCancellationToken).ConfigureAwait(false);
+                    globals = await loader.AddClusterAsync(globals, cluster, useThisCancellationToken).ConfigureAwait(false);
                     clusterSymbol = globals.GetCluster(cluster);
                 }
 
@@ -128,12 +122,7 @@ public class SymbolManager : ISymbolManager
                     var databaseSymbol = clusterSymbol?.GetDatabase(database);
                     if (databaseSymbol == null || databaseSymbol.IsOpen)
                     {
-                        databaseSymbol = await info.SymbolLoader.LoadDatabaseAsync(database, cancellationToken: useThisCancellationToken).ConfigureAwait(false);
-                        if (clusterSymbol != null && databaseSymbol != null)
-                        {
-                            clusterSymbol = clusterSymbol.AddOrUpdateDatabase(databaseSymbol);
-                            globals = globals.AddOrReplaceCluster(clusterSymbol);
-                        }
+                        globals = await loader.AddDatabaseAsync(globals, clusterSymbol!.Name, database, cancellationToken: useThisCancellationToken).ConfigureAwait(false);
                     }
                 }
 
@@ -163,14 +152,14 @@ public class SymbolManager : ISymbolManager
                 try
                 {
                     var connection = _connectionManager.GetConnection(clusterOrConnection);
-                    var info = GetSymbolInfo(connection);
-                    var cluster = connection.Hostname;
+                    var loader = GetSymbolLoader(connection);
+                    var cluster = connection.Cluster;
 
                     var clusterSymbol = globals.GetCluster(cluster);
                     if (clusterSymbol == null)
                     {
                         _logger?.Invoke($"Adding cluster symbol for '{cluster}'");
-                        globals = await info.SymbolLoader.AddClusterAsync(globals, cluster, useThisCancellationToken).ConfigureAwait(false);
+                        globals = await loader.AddClusterAsync(globals, cluster, useThisCancellationToken).ConfigureAwait(false);
                         changed = true;
                     }
                 }
@@ -195,23 +184,11 @@ public class SymbolManager : ISymbolManager
         return _taskQueue.Run(cancellationToken, async (useThisCancellationToken) =>
         {
             var connection = _connectionManager.GetConnection(document.Globals.Cluster.Name);
-            var info = GetSymbolInfo(connection);
+            var loader = GetSymbolLoader(connection);
 
             try
             {
-                var newGlobals = document.Globals;
-
-                if (document is MultiQueryDocument md)
-                {
-                    var newScript = await info.SymbolResolver.AddReferencedDatabasesAsync(md.Script, cancellationToken).ConfigureAwait(false);
-                    newGlobals = this.Globals.WithClusterList(newScript.Globals.Clusters);
-                }
-                else if (document is SingleQueryDocument sd)
-                {
-                    var newCode = await info.SymbolResolver.AddReferencedDatabasesAsync(sd.GetCode(), cancellationToken).ConfigureAwait(false);
-                    newGlobals = this.Globals.WithClusterList(newCode.Globals.Clusters);
-                }
-
+                var newGlobals = await loader.AddReferencedSymbols(document.Globals, document, cancellationToken).ConfigureAwait(false);
                 SetGlobals(newGlobals);
             }
             catch (Exception e)
