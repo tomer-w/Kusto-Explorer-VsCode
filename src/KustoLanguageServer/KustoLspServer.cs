@@ -1167,10 +1167,19 @@ public class KustoLspServer : LspServer, ILogger
             return null;
         }
 
+        var queryOptions = ImmutableDictionary<string, string>.Empty;
+        var queryParameters = ImmutableDictionary<string, string>.Empty;
+
         if (_documentManager.TryGetDocument(@params.TextDocument.Uri, out var document))
         {
             var range = GetTextRange(document.Text, @params.Selection);
-            var results = await _queryManager.RunQueryAsync(@params.TextDocument.Uri, range, cancellationToken).ConfigureAwait(false);
+
+            var results = await _queryManager.RunQueryAsync(
+                @params.TextDocument.Uri, 
+                range, 
+                queryOptions, 
+                queryParameters, 
+                cancellationToken).ConfigureAwait(false);
 
             string dataHtml;
             string? chartHtml = null;

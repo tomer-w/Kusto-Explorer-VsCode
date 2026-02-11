@@ -82,9 +82,9 @@ public abstract class Document
     public abstract DocumentEdits GetFormattedText(TextRange range, FormattingOptions? options = null, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets the minimal text for the query at the position.
+    /// Gets the text of the query at the current text position.
     /// </summary>
-    public abstract string GetQueryMinimalText(int position, MinimalTextKind kind, CancellationToken cancellationToken = default);
+    public abstract EditString GetQuery(int position, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets the outlines for the document.
@@ -298,11 +298,14 @@ public class MultiQueryDocument : Document
         return new DocumentEdits { OriginalText = _script.Text, Edits = edits.ToImmutableList() };
     }
 
-    public override string GetQueryMinimalText(int position, MinimalTextKind kind, CancellationToken cancellationToken = default)
+    public override EditString GetQuery(int position, CancellationToken cancellationToken = default)
     {
         var block = _script.GetBlockAtPosition(position);
         if (block != null)
-            return block.Service.GetMinimalText(kind, cancellationToken);
+        {
+            // return edit of selecting just the block text to enable position mapping back to the original document for things like diagnostics and completion.
+            return new EditString(_script.Text).Substring(block.Start, block.Length);
+        }
         return "";
     }
 
@@ -434,9 +437,9 @@ public class SingleQueryDocument : Document
         }
     }
 
-    public override string GetQueryMinimalText(int position, MinimalTextKind kind, CancellationToken cancellationToken = default)
+    public override EditString GetQuery(int position, CancellationToken cancellationToken = default)
     {
-        return _service.GetMinimalText(kind, cancellationToken);
+        return new EditString(_text);
     }
 
     public override OutlineInfo GetOutlines(OutliningOptions options, CancellationToken cancellationToken = default)
