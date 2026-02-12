@@ -11,10 +11,10 @@
     "url": "https://github.com/microsoft/Kusto-Language-Server"
   },
   "engines": {
-    "vscode": "^1.75.0"
+    "vscode": "^1.90.0"
   },
   "categories": [ "Programming Languages" ],
-  "activationEvents": [ "onLanguage:kusto" ],
+  "activationEvents": [ "onLanguage:kusto", "onLanguageModelTool:kusto_getDatabaseSchema", "onChatParticipant:kusto" ],
   "main": "./out/extension.js",
   "scripts": {
     "compile": "tsc -p .",
@@ -25,7 +25,16 @@
     "publish": "vsce publish"
   },
   "contributes": {
-    "languages": [
+  "chatParticipants": [
+    {
+      "id": "kusto",
+      "fullName": "Kusto",
+      "name": "kusto",
+      "description": "KQL expert assistant that helps write Kusto queries using your connected database schema",
+      "isSticky": true
+    }
+  ],
+  "languages": [
       {
         "id": "kusto",
         "extensions": [ ".kql", ".csl", ".kusto" ],
@@ -311,13 +320,37 @@
           }
         }
       }
+    ],
+    "languageModelTools": [
+      {
+        "name": "kusto_getDatabaseSchema",
+        "displayName": "Get Kusto Database Schema",
+        "toolReferenceName": "kustoSchema",
+        "canBeReferencedInPrompt": true,
+        "userDescription": "Gets the schema of a Kusto (Azure Data Explorer) database including tables, columns, functions, materialized views, and external tables.",
+        "tags": [ "kusto", "kql", "schema", "database", "adx", "azure data explorer", "tables", "columns" ],
+        "modelDescription": "Retrieves the database schema for writing KQL queries. Returns table names, column names and types, functions, materialized views, and external tables. Call this when the user asks about Kusto/KQL queries or needs to know what data is available.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "cluster": {
+              "type": "string",
+              "description": "The Kusto cluster hostname. If not provided, uses the active document's connection."
+            },
+            "database": {
+              "type": "string",
+              "description": "The database name. If not provided, uses the active document's connection."
+            }
+          }
+        }
+      }
     ]
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.0"
   },
   "devDependencies": {
-    "@types/vscode": "^1.75.0",
+    "@types/vscode": "^1.90.0",
     "@types/node": "^18.0.0",
     "typescript": "^5.0.0"
   }
