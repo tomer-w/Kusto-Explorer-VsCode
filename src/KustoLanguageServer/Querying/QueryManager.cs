@@ -1,8 +1,9 @@
-﻿using System.Collections.Immutable;
-using Kusto.Data;
+﻿using Kusto.Data;
 using Kusto.Data.Common;
 using Kusto.Language;
 using Kusto.Language.Editor;
+using Kusto.Toolkit;
+using System.Collections.Immutable;
 
 namespace Kusto.Lsp;
 
@@ -29,28 +30,63 @@ public class QueryManager : IQueryManager
         ImmutableDictionary<string, string> queryParameters,
         CancellationToken cancellationToken)
     {
-        var connection = GetConnection(document);
+        // some servers will fails if query starts with a comment.
+        var query = document.GetQuery(range.Start, cancellationToken);
+
+        var context = new QueryContext
+        {
+            Query = query,
+            Options = queryOptions,
+            Parameters = queryParameters
+        };
+
+        // handle any directives
+        if (IsDirective(context.Query))
+        {
+            if (IsDirectiveOnly(context.Query))
+            {
+                // a single directive by itself has a special result
+                return Task.FromResult(ExecuteDirective(context));
+            }
+
+            // otherwise apply one or more directives to the context
+            // and use that context for query execution
+            do
+            {
+                context = ApplyDirective(context);
+            }
+            while (IsDirective(context.Query));
+        }
+
+        var connection = (context.Cluster != null)
+            ? _connectionManager.GetConnection(context.Cluster, context.Database)
+            : GetConnection(document);
+
         if (connection != null)
         {
-            // some servers will fails if query starts with a comment.
-            var query = document.GetQuery(range.Start, cancellationToken);
-            if (string.IsNullOrWhiteSpace(query))
-                return Task.FromResult<RunResult?>(new RunResult { Query = query, Error = CreateDiagnostic(query, "Query is empty") });
-
-            var context = new QueryContext
-            {
-                Query = query,
-                Connection = connection,
-                Options = queryOptions,
-                Parameters = queryParameters
-            };
-
-            return this.ExecuteQueryAsync(context, cancellationToken);
+            return ExecuteQueryAsync(connection, context, cancellationToken);
         }
         else
         {
-            return Task.FromResult<RunResult?>(new RunResult { Error = new Diagnostic("KLS003", "Invalid Connection") });
+            return Task.FromResult<RunResult?>(
+                new RunResult
+                {
+                    Query = query,
+                    Error = CreateDiagnostic(query, "Invalid Connection")
+                });
         }
+    }
+
+    private static bool IsDirective(string text)
+    {
+        var firstToken = Kusto.Language.Parsing.TokenParser.ParseToken(text);
+        return firstToken.Kind == Kusto.Language.Syntax.SyntaxKind.DirectiveToken;
+    }
+
+    private static bool IsDirectiveOnly(string text)
+    {
+        return ClientDirective.TryParse(text, out ClientDirective directive)
+            && string.IsNullOrWhiteSpace(directive.AfterDirectiveText);
     }
 
     private Diagnostic CreateDiagnostic(EditString query, Exception exception)
@@ -70,12 +106,19 @@ public class QueryManager : IQueryManager
     private record QueryContext
     {
         /// <summary>
-        /// The connection to use for this query.
+        /// The query to execute
         /// </summary>
-        public required IConnection Connection { get; init; }
-
-
         public required EditString Query { get; init; }
+
+        /// <summary>
+        /// The default cluster to use for this query
+        /// </summary>
+        public string? Cluster { get; init; }
+
+        /// <summary>
+        /// The default database to use for this query
+        /// </summary>
+        public string? Database { get; init; }
 
         /// <summary>
         /// The options for this query.
@@ -93,31 +136,28 @@ public class QueryManager : IQueryManager
         public string? StoredQueryResultName { get; init; }
     }
 
-    private Task<RunResult?> ExecuteQueryAsync(QueryContext context, CancellationToken cancellationToken)
-    {
-        if (IsDirective(context.Query))
-        {
-            return HandleDirective(context, cancellationToken);
-        }
-        else
-        {
-            return HandleQuery(context, cancellationToken);
-        }
-    }
-
-    private async Task<RunResult?> HandleQuery(QueryContext context, CancellationToken cancellationToken)
+    private async Task<RunResult?> ExecuteQueryAsync(IConnection connection, QueryContext context, CancellationToken cancellationToken)
     {
         // some servers will if there is any comment or whitespace preceeding the first token
         var query = RemoveLeadingTrivia(context.Query);
+
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return new RunResult
+            {
+                Query = query,
+                Error = CreateDiagnostic(query, "No query")
+            };
+        }
 
         try
         {
             // handle stored query results
             if (context.StoredQueryResultName != null)
             {
-                // execute command that runs the query and stores the result using the name
+                // execute command to execute query and store results on server
                 var command = query.ReplaceAt(0, query.Length, CslCommandGenerator.GenerateStoredQueryResultSetOrReplaceCommand(context.StoredQueryResultName, query, previewCount: 0));
-                var result = await ExecuteQueryAsync(context with { Query = command, StoredQueryResultName = null }, cancellationToken).ConfigureAwait(false);
+                var result = await ExecuteQueryAsync(connection, context with { Query = command, StoredQueryResultName = null }, cancellationToken).ConfigureAwait(false);
                 if (result == null || result.Error != null)
                     return result;
 
@@ -125,7 +165,7 @@ public class QueryManager : IQueryManager
                 query = query.ReplaceAt(0, query.Length, $"stored_query_result({KustoFacts.GetStringLiteral(context.StoredQueryResultName)})");
             }
 
-            var results = await context.Connection.ExecuteAsync(query, context.Options, context.Parameters, cancellationToken).ConfigureAwait(false);
+            var results = await connection.ExecuteAsync(query, context.Options, context.Parameters, cancellationToken).ConfigureAwait(false);
             return new RunResult
             {
                 Query = query,
@@ -137,12 +177,6 @@ public class QueryManager : IQueryManager
         {
             return new RunResult { Query = query, Error = CreateDiagnostic(query, e) };
         }
-    }
-
-    private static bool IsDirective(string query)
-    {
-        var firstToken = Kusto.Language.Parsing.TokenParser.ParseToken(query);
-        return firstToken.Kind == Kusto.Language.Syntax.SyntaxKind.DirectiveToken;
     }
 
     private static EditString RemoveLeadingTrivia(EditString query)
@@ -158,7 +192,7 @@ public class QueryManager : IQueryManager
         }
     }
 
-    private Task<RunResult?> HandleDirective(QueryContext context, CancellationToken cancellationToken)
+    private RunResult? ExecuteDirective(QueryContext context)
     {
         if (ClientDirective.TryParse(context.Query, out var directive))
         {
@@ -166,13 +200,104 @@ public class QueryManager : IQueryManager
             {
                 case "connect":
                 case "database":
-                    return HandleConnectOrDatabaseDirective(directive, context, cancellationToken);
+                    return ExecuteConnectOrDatabaseDirective(directive, context);
                 case "crp":
-                    return HandleClientRequestPropertyDirective(directive, context, cancellationToken);
+                    return ExecuteClientRequestPropertyDirective(directive, context);
                 case "qp":
-                    return HandleQueryParameterDirective(directive, context, cancellationToken);
+                    return ExecuteQueryParameterDirective(directive, context);
                 case "sqr":
-                    return HandleStoreQueryResultDirective(directive, context, cancellationToken);
+                    // no-op
+                    return null;
+                case "welcome":
+                case "upload":
+                case "download":
+                case "truesight":
+                case "run":
+                case "browse":
+                case "automate":
+                case "query":
+                case "save":
+                    return new RunResult
+                    {
+                        Query = context.Query,
+                        Error = CreateDiagnostic(context.Query, $"Unhandled directive: {directive.Name}")
+                    };
+                default:
+                    return new RunResult
+                    {
+                        Query = context.Query,
+                        Error = CreateDiagnostic(context.Query, $"Unknown directive: {directive.Name}")
+                    };
+            }
+        }
+        else
+        {
+            return new RunResult
+            {
+                Query = context.Query,
+                Error = CreateDiagnostic(context.Query, "Invalid Directive")
+            };
+        }
+
+        RunResult? ExecuteConnectOrDatabaseDirective(ClientDirective directive, QueryContext context)
+        {
+            var newContext = ApplyConnectOrDatabaseDirective(directive, context);
+            if (newContext.Cluster != null)
+            {
+                return new RunResult
+                {
+                    Query = context.Query,
+                    Cluster = newContext.Cluster,
+                    Database = newContext.Database
+                };
+            }
+            return null;
+        }
+
+        RunResult? ExecuteClientRequestPropertyDirective(ClientDirective directive, QueryContext context)
+        {
+            var newContext = ApplyClientRequestPropertyDirective(directive, context);
+            if (newContext.Options != context.Options)
+            {
+                return new RunResult
+                {
+                    Query = context.Query,
+                    QueryOptions = newContext.Options
+                };
+            }
+            return null;
+        }
+
+        RunResult? ExecuteQueryParameterDirective(ClientDirective directive, QueryContext context)
+        {
+            var newContext = ApplyQueryParameterDirective(directive, context);
+            if (newContext.Parameters != context.Parameters)
+            {
+                return new RunResult
+                {
+                    Query = context.Query,
+                    QueryParameters = context.Parameters
+                };
+            }
+            return null;
+        }
+    }
+
+    private QueryContext ApplyDirective(QueryContext context)
+    {
+        if (ClientDirective.TryParse(context.Query, out var directive))
+        {
+            switch (directive.Name)
+            {
+                case "connect":
+                case "database":
+                    return ApplyConnectOrDatabaseDirective(directive, context);
+                case "crp":
+                    return ApplyClientRequestPropertyDirective(directive, context);
+                case "qp":
+                    return ApplyQueryParameterDirective(directive, context);
+                case "sqr":
+                    return ApplyStoreQueryResultDirective(directive, context);
                 case "welcome":
                 case "upload":
                 case "download":
@@ -183,41 +308,50 @@ public class QueryManager : IQueryManager
                 case "query":
                 case "save":
                 default:
-                    return Task.FromResult<RunResult?>(
-                        new RunResult { Query = context.Query, Error = CreateDiagnostic(context.Query, $"Unhandled directive: {directive.Name}") }
-                        );
+                    return context;
             }
+
         }
-        else
-        {
-            return Task.FromResult<RunResult?>(
-                new RunResult { Query = context.Query, Error = CreateDiagnostic(context.Query, "Invalid Directive") }
-                );
-        }
+
+        return context;
     }
 
-    private Task<RunResult?> HandleConnectOrDatabaseDirective(ClientDirective directive, QueryContext context, CancellationToken cancellationToken)
+    private QueryContext ApplyConnectOrDatabaseDirective(ClientDirective directive, QueryContext context)
     {
         if (TryGetDirectiveClusterAndDatabase(directive, out var clusterName, out var databaseName)
             && clusterName != null)
         {
-            if (!string.IsNullOrEmpty(directive.AfterDirectiveText))
-            {
-                // change default cluster and database and continue
-                var conn = _connectionManager.GetConnection(clusterName, databaseName);
-                var newContext = context with { Query = directive.AfterDirectiveText, Connection = conn };
-                return this.ExecuteQueryAsync(newContext, cancellationToken);
-            }
-            else
-            {
-                // result is request to change document's default cluster & database
-                return Task.FromResult<RunResult?>(new RunResult { Query = directive.Text, Cluster = clusterName, Database = databaseName });
-            }
+            // change default cluster and database and continue
+            var conn = _connectionManager.GetConnection(clusterName, databaseName);
+            return context with { Query = directive.AfterDirectiveText, Cluster = clusterName, Database = databaseName };
         }
-        return Task.FromResult<RunResult?>(null);
+        return context;
     }
 
-    internal static bool TryGetDirectiveClusterAndDatabase(
+    private QueryContext ApplyClientRequestPropertyDirective(ClientDirective directive, QueryContext context)
+    {
+        var properties = context.Options;
+        var newProperties = SetKeyValuePairs(directive, properties);
+        return context with { Options = newProperties };
+    }
+
+    private QueryContext ApplyQueryParameterDirective(ClientDirective directive, QueryContext context)
+    {
+        var newParameters = SetKeyValuePairs(directive, context.Parameters);
+        return context = context with { Query = directive.AfterDirectiveText, Parameters = newParameters };
+    }
+
+    private QueryContext ApplyStoreQueryResultDirective(ClientDirective directive, QueryContext context)
+    {
+        if (directive.Arguments.Count > 0)
+        {
+            var name = directive.Arguments[0].Text;
+            return context with { Query = directive.AfterDirectiveText, StoredQueryResultName = name };
+        }
+        return context;
+    }
+
+    private static bool TryGetDirectiveClusterAndDatabase(
         ClientDirective directive, out string? clusterName, out string? databaseName)
     {
         clusterName = null;
@@ -276,7 +410,7 @@ public class QueryManager : IQueryManager
         return false;
     }
 
-    internal static string? GetStringValueAfterPrefix(string text, string prefix, int start, out int end)
+    private static string? GetStringValueAfterPrefix(string text, string prefix, int start, out int end)
     {
         var index = text.IndexOf(prefix, start);
         if (index >= 0)
@@ -295,47 +429,9 @@ public class QueryManager : IQueryManager
         return null;
     }
 
-    internal static string GetDirectiveArgumentStringValue(ClientDirectiveArgument argument)
+    private static string GetDirectiveArgumentStringValue(ClientDirectiveArgument argument)
     {
         return argument.Value as string ?? "";
-    }
-
-    private Task<RunResult?> HandleClientRequestPropertyDirective(ClientDirective directive, QueryContext context, CancellationToken cancellationToken)
-    {
-        var properties = context.Options;
-
-        var newProperties = SetKeyValuePairs(directive, properties);
-        context = context with { Options = newProperties };
-
-        if (!string.IsNullOrWhiteSpace(directive.AfterDirectiveText))
-        {
-            // execute remaining part of query with these changes
-            return ExecuteQueryAsync(context with { Query = directive.AfterDirectiveText }, cancellationToken);
-        }
-        else
-        {
-            // This change is the result
-            return Task.FromResult<RunResult?>(new RunResult { QueryOptions = newProperties });
-        }
-    }
-
-    private Task<RunResult?> HandleQueryParameterDirective(ClientDirective directive, QueryContext context, CancellationToken cancellationToken)
-    {
-        var parameters = context.Parameters;
-
-        var newParameters = SetKeyValuePairs(directive, parameters);
-        context = context with { Parameters = newParameters };
-
-        if (!string.IsNullOrWhiteSpace(directive.AfterDirectiveText))
-        {
-            // execute remaining part of query with these changes
-            return ExecuteQueryAsync(context with { Query = directive.AfterDirectiveText }, cancellationToken);
-        }
-        else
-        {
-            // this change is the result
-            return Task.FromResult<RunResult?>(new RunResult { QueryParameters = newParameters });
-        }
     }
 
     private static ImmutableDictionary<string, string> SetKeyValuePairs(ClientDirective directive, ImmutableDictionary<string, string> map)
@@ -366,19 +462,5 @@ public class QueryManager : IQueryManager
             return _connectionManager.GetConnection(connectionInfo.Cluster, connectionInfo.Database);
         }
         return null;
-    }
-
-    private Task<RunResult?> HandleStoreQueryResultDirective(ClientDirective directive, QueryContext context, CancellationToken cancellationToken)
-    {
-        if (directive.Arguments.Count > 0)
-        {
-            var name = directive.Arguments[0].Text;
-            return ExecuteQueryAsync(context with { Query = directive.AfterDirectiveText, StoredQueryResultName = name }, cancellationToken);
-        }
-        else
-        {
-            return Task.FromResult<RunResult?>(
-                new RunResult { Query = directive.Text, Error = CreateDiagnostic(directive.Text, "Invalid directive") });
-        }
     }
 }

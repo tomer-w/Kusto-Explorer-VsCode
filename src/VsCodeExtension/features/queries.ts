@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
-import * as conn from './connections';
+import { setDocumentConnection } from './connections';
 
 let resultsView: vscode.WebviewView | undefined;
 let chartPanel: vscode.WebviewPanel | undefined;
@@ -180,6 +180,15 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
 
                 if (!results) {
                     return; // No results or error
+                }
+
+                // If query changed cluster/database, update document connection
+                if (results.cluster) {
+                    await setDocumentConnection(
+                        editor.document.uri.toString(),
+                        results.cluster,
+                        results.database
+                    );
                 }
 
                 // Display results in the results view
