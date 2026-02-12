@@ -31,6 +31,53 @@ interface ServersAndGroupsData {
     items: ServerOrGroup[];
 }
 
+// Data types for database entities (from LSP server)
+interface DatabaseTableInfo {
+    name: string;
+    description?: string;
+    columns?: DatabaseColumnInfo[];
+}
+
+interface DatabaseColumnInfo {
+    name: string;
+    type: string;
+}
+
+interface DatabaseFunctionInfo {
+    name: string;
+    description?: string;
+    parameters?: string;
+    body?: string;
+}
+
+interface DatabaseParameterInfo {
+    name: string;
+    type: string;
+}
+
+interface DatabaseEntityGroupInfo {
+    name: string;
+    description?: string;
+    entities?: string[];
+}
+
+interface DatabaseGraphModelInfo {
+    name: string;
+    edges?: string[];
+    nodes?: string[];
+    snapshots?: string[];
+}
+
+interface DatabaseInfo {
+    name: string;
+    tables?: DatabaseTableInfo[];
+    externalTables?: DatabaseTableInfo[];
+    materializedViews?: DatabaseTableInfo[];
+    functions?: DatabaseFunctionInfo[];
+    entityGroups?: DatabaseEntityGroupInfo[];
+    graphModels?: DatabaseGraphModelInfo[];
+}
+
 /**
  * Type guard to check if an item is a ServerGroupInfo
  */
@@ -81,12 +128,19 @@ function getHostName(connection: string): string {
 
 // Define tree item types
 type KustoTreeItem = 
-      NoConnectionTreeItem
-    | ServerGroupTreeItem 
-    | ServerTreeItem 
-    | DatabaseTreeItem 
-    | FolderTreeItem 
-    | TableTreeItem;
+  NoConnectionTreeItem
+| ServerGroupTreeItem 
+| ServerTreeItem 
+| DatabaseTreeItem 
+| DatabaseFolderTreeItem 
+| TableTreeItem
+| ExternalTableTreeItem
+| MaterializedViewTreeItem
+| ColumnTreeItem
+| FunctionTreeItem
+| EntityGroupTreeItem
+| EntityGroupMemberTreeItem
+| GraphModelTreeItem;
 
 class NoConnectionTreeItem extends vscode.TreeItem {
     constructor() {
@@ -165,37 +219,179 @@ class DatabaseTreeItem extends vscode.TreeItem {
     }
 }
 
-class FolderTreeItem extends vscode.TreeItem {
-    constructor(public readonly label: string) {
+/** Folder types for organizing database entities */
+type DatabaseFolderType = 'tables' | 'externalTables' | 'materializedViews' | 'functions' | 'entityGroups' | 'graphModels';
+
+class DatabaseFolderTreeItem extends vscode.TreeItem {
+    constructor(
+        public readonly clusterName: string,
+        public readonly databaseName: string,
+        public readonly folderType: DatabaseFolderType,
+        label: string,
+        icon: string
+    ) {
         super(label, vscode.TreeItemCollapsibleState.Collapsed);
-     }
+        this.id = `folder:${clusterName}:${databaseName}:${folderType}`;
+        this.contextValue = 'databaseFolder';
+        this.iconPath = new vscode.ThemeIcon(icon);
+    }
 }
 
-
 class TableTreeItem extends vscode.TreeItem {
-    constructor(public readonly clusterName: string, public readonly databaseName: string, public readonly tableName: string) {
-        super(tableName, vscode.TreeItemCollapsibleState.None);
-        this.id = `table:${clusterName}:${databaseName}:${tableName}`;
+    constructor(
+        public readonly clusterName: string,
+        public readonly databaseName: string,
+        public readonly tableInfo: DatabaseTableInfo
+    ) {
+        // Collapsible if there are columns
+        const hasColumns = tableInfo.columns && tableInfo.columns.length > 0;
+        super(tableInfo.name, hasColumns ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
+        this.id = `table:${clusterName}:${databaseName}:${tableInfo.name}`;
         this.contextValue = 'table';
         this.iconPath = new vscode.ThemeIcon('table');
+        this.description = 'table';
+        if (tableInfo.description) {
+            this.tooltip = tableInfo.description;
+        }
+    }
+}
+
+class ExternalTableTreeItem extends vscode.TreeItem {
+    constructor(
+        public readonly clusterName: string,
+        public readonly databaseName: string,
+        public readonly tableInfo: DatabaseTableInfo
+    ) {
+        // Collapsible if there are columns
+        const hasColumns = tableInfo.columns && tableInfo.columns.length > 0;
+        super(tableInfo.name, hasColumns ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
+        this.id = `externalTable:${clusterName}:${databaseName}:${tableInfo.name}`;
+        this.contextValue = 'externalTable';
+        this.iconPath = new vscode.ThemeIcon('cloud');
+        this.description = 'external table';
+        if (tableInfo.description) {
+            this.tooltip = tableInfo.description;
+        }
+    }
+}
+
+class MaterializedViewTreeItem extends vscode.TreeItem {
+    constructor(
+        public readonly clusterName: string,
+        public readonly databaseName: string,
+        public readonly viewInfo: DatabaseTableInfo
+    ) {
+        // Collapsible if there are columns
+        const hasColumns = viewInfo.columns && viewInfo.columns.length > 0;
+        super(viewInfo.name, hasColumns ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
+        this.id = `materializedView:${clusterName}:${databaseName}:${viewInfo.name}`;
+        this.contextValue = 'materializedView';
+        this.iconPath = new vscode.ThemeIcon('eye');
+        this.description = 'materialized view';
+        if (viewInfo.description) {
+            this.tooltip = viewInfo.description;
+        }
+    }
+}
+
+/** Entity type for column parent tracking */
+type ColumnParentType = 'table' | 'externalTable' | 'materializedView';
+
+class ColumnTreeItem extends vscode.TreeItem {
+    constructor(
+        public readonly clusterName: string,
+        public readonly databaseName: string,
+        public readonly parentName: string,
+        public readonly parentType: ColumnParentType,
+        public readonly columnInfo: DatabaseColumnInfo
+    ) {
+        super(columnInfo.name, vscode.TreeItemCollapsibleState.None);
+        this.id = `column:${clusterName}:${databaseName}:${parentType}:${parentName}:${columnInfo.name}`;
+        this.contextValue = 'column';
+        this.iconPath = new vscode.ThemeIcon('symbol-field');
+        this.description = columnInfo.type;
+    }
+}
+
+class FunctionTreeItem extends vscode.TreeItem {
+    constructor(
+        public readonly clusterName: string,
+        public readonly databaseName: string,
+        public readonly functionInfo: DatabaseFunctionInfo
+    ) {
+        super(functionInfo.name, vscode.TreeItemCollapsibleState.None);
+        this.id = `function:${clusterName}:${databaseName}:${functionInfo.name}`;
+        this.contextValue = 'function';
+        this.iconPath = new vscode.ThemeIcon('symbol-function');
+        if (functionInfo.parameters) {
+            this.description = functionInfo.parameters;
+        }
+        if (functionInfo.description) {
+            this.tooltip = functionInfo.description;
+        }
+    }
+}
+
+class EntityGroupTreeItem extends vscode.TreeItem {
+    constructor(
+        public readonly clusterName: string,
+        public readonly databaseName: string,
+        public readonly groupInfo: DatabaseEntityGroupInfo
+    ) {
+        // Collapsible if there are entities
+        const hasEntities = groupInfo.entities && groupInfo.entities.length > 0;
+        super(groupInfo.name, hasEntities ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
+        this.id = `entityGroup:${clusterName}:${databaseName}:${groupInfo.name}`;
+        this.contextValue = 'entityGroup';
+        this.iconPath = new vscode.ThemeIcon('symbol-namespace');
+        if (groupInfo.description) {
+            this.tooltip = groupInfo.description;
+        }
+    }
+}
+
+class EntityGroupMemberTreeItem extends vscode.TreeItem {
+    constructor(
+        public readonly clusterName: string,
+        public readonly databaseName: string,
+        public readonly groupName: string,
+        public readonly entityName: string
+    ) {
+        super(entityName, vscode.TreeItemCollapsibleState.None);
+        this.id = `entityGroupMember:${clusterName}:${databaseName}:${groupName}:${entityName}`;
+        this.contextValue = 'entityGroupMember';
+        this.iconPath = new vscode.ThemeIcon('symbol-reference');
+    }
+}
+
+class GraphModelTreeItem extends vscode.TreeItem {
+    constructor(
+        public readonly clusterName: string,
+        public readonly databaseName: string,
+        public readonly graphInfo: DatabaseGraphModelInfo
+    ) {
+        super(graphInfo.name, vscode.TreeItemCollapsibleState.None);
+        this.id = `graphModel:${clusterName}:${databaseName}:${graphInfo.name}`;
+        this.contextValue = 'graphModel';
+        this.iconPath = new vscode.ThemeIcon('type-hierarchy');
     }
 }
 
 class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem> {
-    private _onDidChangeTreeData = new vscode.EventEmitter<KustoTreeItem | undefined>();
-    readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
+private _onDidChangeTreeData = new vscode.EventEmitter<KustoTreeItem | undefined>();
+readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
-    // Extension context for accessing global state
-    private context: vscode.ExtensionContext | undefined;
+// Extension context for accessing global state
+private context: vscode.ExtensionContext | undefined;
 
-    // Language client for notifications
-    private client: LanguageClient | undefined;
+// Language client for notifications
+private client: LanguageClient | undefined;
 
-    // Servers and groups data - loaded from global state
-    private serversAndGroups: ServersAndGroupsData = { items: [] };
+// Servers and groups data - loaded from global state
+private serversAndGroups: ServersAndGroupsData = { items: [] };
 
-    // Connection data - could come from LSP server
-    private connections: { cluster: string, connection: string, databases?: { name: string, tables?: string[] }[] }[] = [];
+// Connection data - cluster to databases mapping
+private connections: { cluster: string, connection: string, databases?: DatabaseInfo[] }[] = [];
 
     /**
      * Initializes the servers and groups from global state.
@@ -746,7 +942,7 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
      * @param cluster The cluster name to find or create
      * @returns The connection info for the cluster
      */
-    private ensureConnection(cluster: string): { cluster: string, connection: string, databases?: { name: string, tables?: string[] }[] } {
+    private ensureConnection(cluster: string): { cluster: string, connection: string, databases?: DatabaseInfo[] } {
         let connectionInfo = this.connections.find(c => c.cluster === cluster);
         if (!connectionInfo) {
             // Look for the server in serversAndGroups
@@ -772,25 +968,30 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
         return connectionInfo;
     }
 
-    setClusterDatabases(cluster: string, databases: { name: string, tables?: string[] }[]) {
+    setClusterDatabases(cluster: string, databases: DatabaseInfo[]) {
         const connectionInfo = this.ensureConnection(cluster);
         connectionInfo.databases = databases;
         this.refresh();
     }
 
-    setDatabaseContents(cluster: string, database: string, tables: string[]) {
+    setDatabaseInfo(cluster: string, databaseInfo: DatabaseInfo) {
         const connectionInfo = this.ensureConnection(cluster);
-        let databaseInfo = connectionInfo.databases?.find(d => d.name === database);
-        if (!databaseInfo) {
-            // Create database entry if it doesn't exist
-            if (!connectionInfo.databases) {
-                connectionInfo.databases = [];
-            }
-            databaseInfo = { name: database, tables: [] };
+        if (!connectionInfo.databases) {
+            connectionInfo.databases = [];
+        }
+        // Update or add the database info
+        const existingIndex = connectionInfo.databases.findIndex(d => d.name === databaseInfo.name);
+        if (existingIndex >= 0) {
+            connectionInfo.databases[existingIndex] = databaseInfo;
+        } else {
             connectionInfo.databases.push(databaseInfo);
         }
-        databaseInfo.tables = tables;
         this.refresh();
+    }
+
+    getDatabaseInfo(cluster: string, database: string): DatabaseInfo | undefined {
+        const connectionInfo = this.connections.find(c => c.cluster === cluster);
+        return connectionInfo?.databases?.find(d => d.name === database);
     }
 
     /**
@@ -925,16 +1126,86 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
         }
         
         if (element instanceof DatabaseTreeItem) {
-            // Show tables for this database, sorted by name
-            const cluster = this.connections.find(c => c.cluster === element.clusterName);
-            const database = cluster?.databases?.find(db => db.name === element.databaseName);
-            const tables = database?.tables?.map(t => new TableTreeItem(element.clusterName, element.databaseName, t)) ?? [];
+            // Show folders for different entity types under the database
+            const folders: DatabaseFolderTreeItem[] = [];
+            const dbInfo = this.getDatabaseInfo(element.clusterName, element.databaseName);
             
-            tables.sort((a, b) => 
-                a.tableName.localeCompare(b.tableName, undefined, { sensitivity: 'base' })
-            );
+            // Only show folders for entity types that have items
+            if (dbInfo?.tables && dbInfo.tables.length > 0) {
+                folders.push(new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'tables', 'Tables', 'table'));
+            }
+            if (dbInfo?.externalTables && dbInfo.externalTables.length > 0) {
+                folders.push(new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'externalTables', 'External Tables', 'cloud'));
+            }
+            if (dbInfo?.materializedViews && dbInfo.materializedViews.length > 0) {
+                folders.push(new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'materializedViews', 'Materialized Views', 'eye'));
+            }
+            if (dbInfo?.functions && dbInfo.functions.length > 0) {
+                folders.push(new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'functions', 'Functions', 'symbol-function'));
+            }
+            if (dbInfo?.entityGroups && dbInfo.entityGroups.length > 0) {
+                folders.push(new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'entityGroups', 'Entity Groups', 'symbol-namespace'));
+            }
+            if (dbInfo?.graphModels && dbInfo.graphModels.length > 0) {
+                folders.push(new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'graphModels', 'Graph Models', 'type-hierarchy'));
+            }
             
-            return tables;
+            return folders;
+        }
+
+        if (element instanceof DatabaseFolderTreeItem) {
+            // Show entities within the folder
+            const dbInfo = this.getDatabaseInfo(element.clusterName, element.databaseName);
+            if (!dbInfo) return [];
+
+            switch (element.folderType) {
+                case 'tables':
+                    return (dbInfo.tables ?? [])
+                        .map(t => new TableTreeItem(element.clusterName, element.databaseName, t))
+                        .sort((a, b) => a.tableInfo.name.localeCompare(b.tableInfo.name, undefined, { sensitivity: 'base' }));
+                case 'externalTables':
+                    return (dbInfo.externalTables ?? [])
+                        .map(t => new ExternalTableTreeItem(element.clusterName, element.databaseName, t))
+                        .sort((a, b) => a.tableInfo.name.localeCompare(b.tableInfo.name, undefined, { sensitivity: 'base' }));
+                case 'materializedViews':
+                    return (dbInfo.materializedViews ?? [])
+                        .map(v => new MaterializedViewTreeItem(element.clusterName, element.databaseName, v))
+                        .sort((a, b) => a.viewInfo.name.localeCompare(b.viewInfo.name, undefined, { sensitivity: 'base' }));
+                case 'functions':
+                    return (dbInfo.functions ?? [])
+                        .map(f => new FunctionTreeItem(element.clusterName, element.databaseName, f))
+                        .sort((a, b) => a.functionInfo.name.localeCompare(b.functionInfo.name, undefined, { sensitivity: 'base' }));
+                case 'entityGroups':
+                    return (dbInfo.entityGroups ?? [])
+                        .map(g => new EntityGroupTreeItem(element.clusterName, element.databaseName, g))
+                        .sort((a, b) => a.groupInfo.name.localeCompare(b.groupInfo.name, undefined, { sensitivity: 'base' }));
+                case 'graphModels':
+                    return (dbInfo.graphModels ?? [])
+                        .map(g => new GraphModelTreeItem(element.clusterName, element.databaseName, g))
+                        .sort((a, b) => a.graphInfo.name.localeCompare(b.graphInfo.name, undefined, { sensitivity: 'base' }));
+            }
+        }
+
+        // Handle table/view expansion to show columns
+        if (element instanceof TableTreeItem) {
+            return (element.tableInfo.columns ?? [])
+                .map(c => new ColumnTreeItem(element.clusterName, element.databaseName, element.tableInfo.name, 'table', c));
+        }
+
+        if (element instanceof ExternalTableTreeItem) {
+            return (element.tableInfo.columns ?? [])
+                .map(c => new ColumnTreeItem(element.clusterName, element.databaseName, element.tableInfo.name, 'externalTable', c));
+        }
+
+        if (element instanceof MaterializedViewTreeItem) {
+            return (element.viewInfo.columns ?? [])
+                .map(c => new ColumnTreeItem(element.clusterName, element.databaseName, element.viewInfo.name, 'materializedView', c));
+        }
+
+        // Handle entity group expansion to show member entities
+        if (element instanceof EntityGroupTreeItem) {
+            return (element.groupInfo.entities ?? [])
+                .map(e => new EntityGroupMemberTreeItem(element.clusterName, element.databaseName, element.groupInfo.name, e));
         }
 
         return [];
@@ -942,9 +1213,45 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
 
     getParent(element: KustoTreeItem): KustoTreeItem | undefined
     {
+        // Entity items -> parent is the folder
         if (element instanceof TableTreeItem)
         {
-            // Parent is the database
+            return new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'tables', 'Tables', 'table');
+        }
+        if (element instanceof ExternalTableTreeItem)
+        {
+            return new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'externalTables', 'External Tables', 'cloud');
+        }
+        if (element instanceof MaterializedViewTreeItem)
+        {
+            return new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'materializedViews', 'Materialized Views', 'eye');
+        }
+        if (element instanceof FunctionTreeItem)
+        {
+            return new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'functions', 'Functions', 'symbol-function');
+        }
+        if (element instanceof EntityGroupTreeItem)
+        {
+            return new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'entityGroups', 'Entity Groups', 'symbol-namespace');
+        }
+        if (element instanceof EntityGroupMemberTreeItem)
+        {
+            // Parent is the entity group - need to find it
+            const dbInfo = this.getDatabaseInfo(element.clusterName, element.databaseName);
+            const groupInfo = dbInfo?.entityGroups?.find(g => g.name === element.groupName);
+            if (groupInfo) {
+                return new EntityGroupTreeItem(element.clusterName, element.databaseName, groupInfo);
+            }
+            return undefined;
+        }
+        if (element instanceof GraphModelTreeItem)
+        {
+            return new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'graphModels', 'Graph Models', 'type-hierarchy');
+        }
+
+        // Folder -> parent is the database
+        if (element instanceof DatabaseFolderTreeItem)
+        {
             return new DatabaseTreeItem(element.clusterName, element.databaseName);
         }
 
@@ -1034,7 +1341,7 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
 
     /**
      * Called when a database tree item is expanded.
-     * Fetches table list from the language server.
+     * Fetches full database info from the language server.
      * @param clusterName The cluster name
      * @param databaseName The database name of the expanded database
      * @returns A promise that resolves when the database contents have been loaded
@@ -1046,18 +1353,17 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
         }
 
         try {
-            const result = await client.sendRequest<{ name: string; tables?: { name: string }[] } | null>(
+            const result = await client.sendRequest<DatabaseInfo | null>(
                 'kusto/getDatabaseInfo',
                 { cluster: clusterName, database: databaseName }
             );
 
-            if (result && result.tables) {
-                const tables = result.tables.map(t => t.name);
-                this.setDatabaseContents(clusterName, databaseName, tables);
+            if (result) {
+                this.setDatabaseInfo(clusterName, result);
             }
         } catch (error) {
             console.error(`Failed to get database info for ${clusterName}/${databaseName}:`, error);
-            vscode.window.showErrorMessage(`Failed to load tables for ${clusterName}/${databaseName}`);
+            vscode.window.showErrorMessage(`Failed to load database info for ${clusterName}/${databaseName}`);
         }
     }
 }

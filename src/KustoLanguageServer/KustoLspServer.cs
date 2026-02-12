@@ -1409,15 +1409,57 @@ public class KustoLspServer : LspServer, ILogger
                 return new GetDatabaseInfoResult
                 {
                     Name = databaseName,
-                    Tables = databaseSymbol.Tables.Select(t => new DatabaseTable
-                    {
-                        Name = t.Name
-                    }).ToArray(),
+                    Tables = databaseSymbol.Tables.Select(ToTableInfo).ToArray(),
+                    ExternalTables = databaseSymbol.ExternalTables.Select(ToTableInfo).ToArray(),
+                    MaterializedViews = databaseSymbol.MaterializedViews.Select(ToTableInfo).ToArray(),
+                    Functions = databaseSymbol.Functions.Select(ToFunctionInfo).ToArray(),
+                    EntityGroups = databaseSymbol.EntityGroups.Select(ToEntityGroupInfo).ToArray(),
+                    GraphModels = databaseSymbol.GraphModels.Select(g => ToGraphModelInfo(g)).ToArray()
                 };
             }
         }
 
         return null;
+
+        static DatabaseTableInfo ToTableInfo(TableSymbol table) =>
+            new()
+            {
+                Name = table.Name,
+                Description = table.Description,
+                Columns = table.Columns.Select(c => new DatabaseColumnInfo
+                {
+                    Name = c.Name,
+                    Type = c.Type.Name
+                }).ToArray()
+            };
+
+        static DatabaseFunctionInfo ToFunctionInfo(FunctionSymbol func) =>
+            new()
+            {
+                Name = func.Name,
+                Description = func.Description,
+                Parameters = func.Signatures.FirstOrDefault()?.Parameters is { } prms
+                    ? Parameter.GetParameterListDeclaration(prms)
+                    : "()",
+                Body = func.Signatures.FirstOrDefault()?.Body ?? ""
+            };
+
+        static DatabaseEntityGroupInfo ToEntityGroupInfo(EntityGroupSymbol group) =>
+            new()
+            {
+                Name = group.Name,
+                Description = group.Description,
+                Entities = group.Members.Select(m => m.Name).ToArray()
+            };
+
+        static DatabaseGraphModelInfo ToGraphModelInfo(GraphModelSymbol graph) =>
+            new()
+            {
+                Name = graph.Name,
+                Edges = graph.Edges.Select(e => e.Body ?? "").ToArray(),
+                Nodes = graph.Nodes.Select(n => n.Body ?? "").ToArray(),
+                Snapshots = graph.Snapshots.Select(s => s.Name).ToArray()
+            };
     }
 
 
@@ -1438,27 +1480,100 @@ public class KustoLspServer : LspServer, ILogger
         public required string Name { get; set; }
 
         [DataMember(Name = "tables")]
-        public DatabaseTable[]? Tables { get; set; }
+        public DatabaseTableInfo[]? Tables { get; set; }
 
-        //[DataMember(Name = "functions")]
-        //public DatabaseFunction[]? Functions { get; set; }
+        [DataMember(Name = "externalTables")]
+        public DatabaseTableInfo[]? ExternalTables { get; set; }
+
+        [DataMember(Name = "materializedViews")]
+        public DatabaseTableInfo[]? MaterializedViews { get; set; }
+
+        [DataMember(Name = "functions")]
+        public DatabaseFunctionInfo[]? Functions { get; set; }
+
+        [DataMember(Name = "entityGroups")]
+        public DatabaseEntityGroupInfo[]? EntityGroups { get; set; }
+
+        [DataMember(Name = "graphModels")]
+        public DatabaseGraphModelInfo[]? GraphModels { get; set; }
     }
 
     [DataContract]
-    public class DatabaseTable
+    public class DatabaseTableInfo
     {
         [DataMember(Name = "name")]
         public required string Name { get; set; }
 
-        [DataMember(Name = "folder")]
-        public string? Folder { get; set; }
+        [DataMember(Name = "description")]
+        public string? Description { get; set; }
+
+        [DataMember(Name = "columns")]
+        public DatabaseColumnInfo[]? Columns { get; set; }
     }
 
     [DataContract]
-    public class DatabaseFunction
+    public class DatabaseColumnInfo
     {
-        public string Parameters { get; set; } = "";
-        public string Body { get; set; } = "";
+        [DataMember(Name = "name")]
+        public required string Name { get; set; }
+
+        [DataMember(Name = "type")]
+        public required string Type { get; set; }
+    }
+
+    [DataContract]
+    public class DatabaseFunctionInfo
+    {
+        [DataMember(Name = "name")]
+        public required string Name { get; set; }
+
+        [DataMember(Name = "description")]
+        public string? Description { get; set; }
+
+        [DataMember(Name = "parameters")]
+        public string? Parameters { get; set; }
+
+        [DataMember(Name = "body")]
+        public string? Body { get; set; }
+    }
+
+    [DataContract]
+    public class DatabaseParameterInfo
+    {
+        [DataMember(Name = "name")]
+        public required string Name { get; set; }
+
+        [DataMember(Name = "type")]
+        public required string Type { get; set; }
+    }
+
+    [DataContract]
+    public class DatabaseEntityGroupInfo
+    {
+        [DataMember(Name = "name")]
+        public required string Name { get; set; }
+
+        [DataMember(Name = "description")]
+        public string? Description { get; set; }
+
+        [DataMember(Name = "entities")]
+        public string[]? Entities { get; set; }
+    }
+
+    [DataContract]
+    public class DatabaseGraphModelInfo
+    {
+        [DataMember(Name = "name")]
+        public required string Name { get; set; }
+
+        [DataMember(Name = "edges")]
+        public string[]? Edges { get; set; }
+
+        [DataMember(Name = "nodes")]
+        public string[]? Nodes { get; set; }
+
+        [DataMember(Name = "snapshots")]
+        public string[]? Snapshots { get; set; }
     }
 
     #endregion
