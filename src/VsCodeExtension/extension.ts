@@ -5,6 +5,7 @@ import * as conn from './features/connections'
 import * as queries from './features/queries'
 import * as decorations from './features/decorations'
 import * as semantics from './features/semantics'
+import * as copilot from './features/copilot'
 import
     {
         LanguageClient,
@@ -84,6 +85,9 @@ export async function activate(context: ExtensionContext)
 
     // activate query execution features
     queries.activate(context, client);
+
+    // activate copilot hooks
+    copilot.activate(context, client);
 }
 
 export function deactivate(): Thenable<void> | undefined

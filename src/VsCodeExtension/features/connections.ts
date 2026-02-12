@@ -1952,3 +1952,87 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
         })
     );
 }
+
+// =============================================================================
+// Exported functions for use by other modules (e.g., Copilot integration)
+// =============================================================================
+
+/**
+ * Gets the list of configured server connections.
+ * @returns Array of cluster names
+ */
+export function getConfiguredConnections(): string[] {
+    return connectionsProvider?.getConnections() ?? [];
+}
+
+/**
+ * Gets the list of databases for a cluster.
+ * @param cluster The cluster name
+ * @returns Promise resolving to array of database names
+ */
+export async function getDatabasesForCluster(cluster: string): Promise<string[]> {
+    if (!connectionsProvider || !languageClient) {
+        return [];
+    }
+    return connectionsProvider.getDatabases(cluster, languageClient);
+}
+
+/**
+ * Gets the schema information for a database.
+ * Fetches from server if not cached.
+ * @param cluster The cluster name
+ * @param database The database name
+ * @returns Promise resolving to database info or undefined
+ */
+export async function getDatabaseSchema(cluster: string, database: string): Promise<DatabaseInfo | undefined> {
+    if (!connectionsProvider || !languageClient) {
+        return undefined;
+    }
+    
+    // Check if we already have the info cached
+    let dbInfo = connectionsProvider.getDatabaseInfo(cluster, database);
+    if (dbInfo && dbInfo.tables) {
+        return dbInfo;
+    }
+    
+    // Fetch from server
+    try {
+        const result = await languageClient.sendRequest<DatabaseInfo | null>(
+            'kusto/getDatabaseInfo',
+            { cluster, database }
+        );
+        
+        if (result) {
+            connectionsProvider.setDatabaseInfo(cluster, result);
+            return result;
+        }
+    } catch (error) {
+        console.error(`Failed to get database info for ${cluster}/${database}:`, error);
+    }
+    
+    return undefined;
+}
+
+/**
+ * Gets the connection for the active document.
+ * @returns The cluster and database for the active document, or undefined
+ */
+export function getActiveDocumentConnection(): { cluster: string; database: string | undefined } | undefined {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || editor.document.languageId !== 'kusto') {
+        return undefined;
+    }
+    
+    const connection = getDocumentConnection(editor.document.uri.toString());
+    if (!connection?.cluster) {
+        return undefined;
+    }
+    
+    return {
+        cluster: connection.cluster,
+        database: connection.database
+    };
+}
+
+// Re-export types for use by other modules
+export type { DatabaseInfo, DatabaseTableInfo, DatabaseColumnInfo, DatabaseFunctionInfo, DatabaseEntityGroupInfo, DatabaseGraphModelInfo };
