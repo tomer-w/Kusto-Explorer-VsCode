@@ -1212,7 +1212,9 @@ public class KustoLspServer : LspServer, ILogger
                 Title = "Query Results",
                 DataHtml = dataHtml,
                 RowCount = results?.Data?.Rows?.Count,
-                ChartHtml = chartHtml
+                ChartHtml = chartHtml,
+                Cluster = results?.Cluster,
+                Database = results?.Database
             };
         }
 
@@ -1242,6 +1244,12 @@ public class KustoLspServer : LspServer, ILogger
 
         [DataMember(Name = "chartHtml")]
         public string? ChartHtml { get; set; }
+
+        [DataMember(Name = "cluster")]
+        public string? Cluster { get; set; }
+
+        [DataMember(Name = "database")]
+        public string? Database { get; set; }
     }
 
     #endregion

@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
+import * as conn from './connections';
 
 let resultsView: vscode.WebviewView | undefined;
 let chartPanel: vscode.WebviewPanel | undefined;
@@ -159,7 +160,14 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
 
             try {
                 // run query and get results from the server
-                const results = await client.sendRequest<{ title: string, dataHtml: string, rowCount?: number, chartHtml?: string } | null>(
+                const results = await client.sendRequest<{ 
+                    title: string, 
+                    dataHtml: string, 
+                    rowCount?: number, 
+                    chartHtml?: string,
+                    cluster?: string,
+                    database?: string 
+                } | null>(
                     'kusto/runQuery',
                     {
                         textDocument: { uri: editor.document.uri.toString() },
