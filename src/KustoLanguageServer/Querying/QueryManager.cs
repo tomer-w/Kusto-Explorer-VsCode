@@ -33,7 +33,7 @@ public class QueryManager : IQueryManager
         // some servers will fails if query starts with a comment.
         var query = document.GetQuery(range.Start, cancellationToken);
 
-        var context = new QueryContext
+        var context = new ExecutionContext
         {
             Query = query,
             Options = queryOptions,
@@ -103,7 +103,7 @@ public class QueryManager : IQueryManager
         return new Diagnostic("KLS100", message).WithLocation(start, end - start);
     }
 
-    private record QueryContext
+    private record ExecutionContext
     {
         /// <summary>
         /// The query to execute
@@ -136,7 +136,7 @@ public class QueryManager : IQueryManager
         public string? StoredQueryResultName { get; init; }
     }
 
-    private async Task<RunResult?> ExecuteQueryAsync(IConnection connection, QueryContext context, CancellationToken cancellationToken)
+    private async Task<RunResult?> ExecuteQueryAsync(IConnection connection, ExecutionContext context, CancellationToken cancellationToken)
     {
         // some servers will if there is any comment or whitespace preceeding the first token
         var query = RemoveLeadingTrivia(context.Query);
@@ -192,7 +192,7 @@ public class QueryManager : IQueryManager
         }
     }
 
-    private RunResult? ExecuteDirective(QueryContext context)
+    private RunResult? ExecuteDirective(ExecutionContext context)
     {
         if (ClientDirective.TryParse(context.Query, out var directive))
         {
@@ -239,7 +239,7 @@ public class QueryManager : IQueryManager
             };
         }
 
-        RunResult? ExecuteConnectOrDatabaseDirective(ClientDirective directive, QueryContext context)
+        RunResult? ExecuteConnectOrDatabaseDirective(ClientDirective directive, ExecutionContext context)
         {
             var newContext = ApplyConnectOrDatabaseDirective(directive, context);
             if (newContext.Cluster != null)
@@ -254,7 +254,7 @@ public class QueryManager : IQueryManager
             return null;
         }
 
-        RunResult? ExecuteClientRequestPropertyDirective(ClientDirective directive, QueryContext context)
+        RunResult? ExecuteClientRequestPropertyDirective(ClientDirective directive, ExecutionContext context)
         {
             var newContext = ApplyClientRequestPropertyDirective(directive, context);
             if (newContext.Options != context.Options)
@@ -268,7 +268,7 @@ public class QueryManager : IQueryManager
             return null;
         }
 
-        RunResult? ExecuteQueryParameterDirective(ClientDirective directive, QueryContext context)
+        RunResult? ExecuteQueryParameterDirective(ClientDirective directive, ExecutionContext context)
         {
             var newContext = ApplyQueryParameterDirective(directive, context);
             if (newContext.Parameters != context.Parameters)
@@ -283,7 +283,7 @@ public class QueryManager : IQueryManager
         }
     }
 
-    private QueryContext ApplyDirective(QueryContext context)
+    private ExecutionContext ApplyDirective(ExecutionContext context)
     {
         if (ClientDirective.TryParse(context.Query, out var directive))
         {
@@ -316,7 +316,7 @@ public class QueryManager : IQueryManager
         return context;
     }
 
-    private QueryContext ApplyConnectOrDatabaseDirective(ClientDirective directive, QueryContext context)
+    private ExecutionContext ApplyConnectOrDatabaseDirective(ClientDirective directive, ExecutionContext context)
     {
         if (TryGetDirectiveClusterAndDatabase(directive, out var clusterName, out var databaseName)
             && clusterName != null)
@@ -328,20 +328,20 @@ public class QueryManager : IQueryManager
         return context;
     }
 
-    private QueryContext ApplyClientRequestPropertyDirective(ClientDirective directive, QueryContext context)
+    private ExecutionContext ApplyClientRequestPropertyDirective(ClientDirective directive, ExecutionContext context)
     {
         var properties = context.Options;
         var newProperties = SetKeyValuePairs(directive, properties);
         return context with { Options = newProperties };
     }
 
-    private QueryContext ApplyQueryParameterDirective(ClientDirective directive, QueryContext context)
+    private ExecutionContext ApplyQueryParameterDirective(ClientDirective directive, ExecutionContext context)
     {
         var newParameters = SetKeyValuePairs(directive, context.Parameters);
         return context = context with { Query = directive.AfterDirectiveText, Parameters = newParameters };
     }
 
-    private QueryContext ApplyStoreQueryResultDirective(ClientDirective directive, QueryContext context)
+    private ExecutionContext ApplyStoreQueryResultDirective(ClientDirective directive, ExecutionContext context)
     {
         if (directive.Arguments.Count > 0)
         {
