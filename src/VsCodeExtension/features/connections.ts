@@ -249,7 +249,6 @@ class TableTreeItem extends vscode.TreeItem {
         this.id = `table:${clusterName}:${databaseName}:${tableInfo.name}`;
         this.contextValue = 'table';
         this.iconPath = new vscode.ThemeIcon('table');
-        this.description = 'table';
         if (tableInfo.description) {
             this.tooltip = tableInfo.description;
         }
@@ -268,7 +267,6 @@ class ExternalTableTreeItem extends vscode.TreeItem {
         this.id = `externalTable:${clusterName}:${databaseName}:${tableInfo.name}`;
         this.contextValue = 'externalTable';
         this.iconPath = new vscode.ThemeIcon('cloud');
-        this.description = 'external table';
         if (tableInfo.description) {
             this.tooltip = tableInfo.description;
         }
@@ -287,7 +285,6 @@ class MaterializedViewTreeItem extends vscode.TreeItem {
         this.id = `materializedView:${clusterName}:${databaseName}:${viewInfo.name}`;
         this.contextValue = 'materializedView';
         this.iconPath = new vscode.ThemeIcon('eye');
-        this.description = 'materialized view';
         if (viewInfo.description) {
             this.tooltip = viewInfo.description;
         }
