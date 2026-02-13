@@ -21,6 +21,7 @@ public class KustoLspServer : LspServer, ILogger
     private readonly IDiagnosticsManager _diagnosticsManager;
     private readonly IQueryManager _queryManager;
     private readonly IChartManager _chartManager;
+    private readonly IResultsManager _resultsManager;
     private readonly ImmutableList<string> _args;
 
     public KustoLspServer(
@@ -32,7 +33,8 @@ public class KustoLspServer : LspServer, ILogger
         IDocumentManager documentManager,
         IDiagnosticsManager diagnosticsManager,
         IQueryManager queryManager,
-        IChartManager chartManager)
+        IChartManager chartManager,
+        IResultsManager resultsManager)
         : base(input, output)
     {
         _args = args.ToImmutableList();
@@ -42,6 +44,7 @@ public class KustoLspServer : LspServer, ILogger
         _diagnosticsManager = diagnosticsManager;
         _queryManager = queryManager;
         _chartManager = chartManager;
+        _resultsManager = resultsManager;
         InitEvents();
     }
 
@@ -58,6 +61,7 @@ public class KustoLspServer : LspServer, ILogger
         _diagnosticsManager = new DiagnosticsManager(_documentManager);
         _queryManager = new QueryManager(_connectionManager, _documentManager, this);
         _chartManager = new PlotlyChartManager();
+        _resultsManager = new ResultsManager();
         InitEvents();
     }
 
@@ -1181,25 +1185,15 @@ public class KustoLspServer : LspServer, ILogger
 
             if (results != null && results.Data != null)
             {
+                // cache results for lookup later
+                _resultsManager.SetResults(document, range.Start, new ExecuteResult { Data = results.Data, ChartOptions = results.ChartOptions });
 
-                var dataBuilder = new HtmlBuilder();
-                dataBuilder.WriteHtml(
-                    head: () =>
-                    {
-                    },                      
-                    body: () =>
-                    {
-                        dataBuilder.WriteTable(results.Data);
-                    }
-                );
-
-                dataHtml = dataBuilder.Text;
+                dataHtml = GetDataAsHtml(results.Data);
 
                 if (results.ChartOptions != null
                     && results.ChartOptions.Visualization != Data.Utils.VisualizationKind.None)
                 {
-                    chartHtml = _chartManager.RenderChartToHtmlDocument(results.Data, results.ChartOptions)
-                        ?? "<html>chart style not implemented yet</html>";
+                    chartHtml = GetChartAsHtml(results.Data, results.ChartOptions);
                 }
             }
             else
@@ -1224,32 +1218,99 @@ public class KustoLspServer : LspServer, ILogger
     public class RunQueryParams
     {
         [DataMember(Name = "textDocument")]
-        public required LSP.TextDocumentIdentifier TextDocument { get; set; }
+        public required LSP.TextDocumentIdentifier TextDocument { get; init; }
          
         [DataMember(Name = "selection")]
-        public required LSP.Range Selection { get; set; }
+        public required LSP.Range Selection { get; init; }
     }
 
     [DataContract]
     public class RunQueryResults
     {
         [DataMember(Name = "title")]
-        public required string Title { get; set; }
+        public required string Title { get; init; }
 
         [DataMember(Name = "dataHtml")]
-        public string? DataHtml { get; set; }
+        public string? DataHtml { get; init; }
 
         [DataMember(Name = "rowCount")]
-        public int? RowCount { get; set; }
+        public int? RowCount { get; init; }
 
         [DataMember(Name = "chartHtml")]
-        public string? ChartHtml { get; set; }
+        public string? ChartHtml { get; init; }
 
         [DataMember(Name = "cluster")]
-        public string? Cluster { get; set; }
+        public string? Cluster { get; init; }
 
         [DataMember(Name = "database")]
-        public string? Database { get; set; }
+        public string? Database { get; init; }
+    }
+
+    [JsonRpcMethod("kusto/getLastRunDataAsHtml", UseSingleObjectParameterDeserialization = true)]
+    public async Task<string?> OnGetLastRunDataAsHtmlAsync(GetResultsParams @params, CancellationToken cancellationToken)
+    {
+        if (_documentManager.TryGetDocument(@params.TextDocument.Uri, out var document))
+        {
+            var position = GetTextPosition(document.Text, @params.Position);
+            var cachedResults = _resultsManager.GetResults(document, position);
+            if (cachedResults?.Data != null)
+            {
+                return GetDataAsHtml(cachedResults.Data);
+            }
+        }
+
+        return null;
+    }
+
+    private string GetDataAsHtml(DataTable data)
+    {
+        var dataBuilder = new HtmlBuilder();
+        dataBuilder.WriteHtml(
+            head: () =>
+            {
+            },
+            body: () =>
+            {
+                dataBuilder.WriteTable(data);
+            }
+        );
+
+        return dataBuilder.Text;
+    }
+
+    [JsonRpcMethod("kusto/getLastRunChartAsHtml", UseSingleObjectParameterDeserialization = true)]
+    public async Task<string?> OnGetLastRunChartAsHtmlAsync(GetResultsParams @params, CancellationToken cancellationToken)
+    {
+        if (_documentManager.TryGetDocument(@params.TextDocument.Uri, out var document))
+        {
+            var position = GetTextPosition(document.Text, @params.Position);
+            var cachedResults = _resultsManager.GetResults(document, position);
+            if (cachedResults != null
+                && cachedResults.Data != null
+                && cachedResults.ChartOptions != null
+                && cachedResults.ChartOptions.Visualization != Data.Utils.VisualizationKind.None)
+            {
+                return GetChartAsHtml(cachedResults.Data, cachedResults.ChartOptions);
+            }
+        }
+
+        return null;
+    }
+
+    private string GetChartAsHtml(DataTable data, Data.Utils.ChartVisualizationOptions chartOptions)
+    {
+        return _chartManager.RenderChartToHtmlDocument(data, chartOptions)
+            ?? "<html>chart style not implemented yet</html>";
+    }
+
+    [DataContract]
+    public class GetResultsParams
+    {
+        [DataMember(Name = "textDocument")]
+        public required LSP.TextDocumentIdentifier TextDocument { get; init; }
+
+        [DataMember(Name = "position")]
+        public required LSP.Position Position { get; init; }
     }
 
     #endregion
@@ -1284,17 +1345,17 @@ public class KustoLspServer : LspServer, ILogger
     public class QueryBoundariesParams
     {
         [DataMember(Name = "uri")]
-        public required string Uri { get; set; }
+        public required string Uri { get; init; }
     }
 
     [DataContract]
     public class QueryBoundariesResult
     {
         [DataMember(Name = "uri")]
-        public required string Uri { get; set; }
+        public required string Uri { get; init; }
 
         [DataMember(Name = "ranges")]
-        public required LSP.Range[] Ranges { get; set; }
+        public required LSP.Range[] Ranges { get; init; }
     }
 
     #endregion

@@ -2,6 +2,7 @@ using Kusto.Language;
 using Kusto.Language.Editor;
 using Kusto.Language.Symbols;
 using System.Collections.Immutable;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace Kusto.Lsp;
@@ -35,6 +36,16 @@ public abstract class Document
     /// Returns a new document with the globals modified.
     /// </summary>
     public abstract Document WithGlobals(GlobalState globals);
+
+    /// <summary>
+    /// Gets the section of the document at the current position that maintains identity across edits of other sections.
+    /// </summary>
+    public abstract IDocumentSection? GetSection(int position, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the range of the section that overlaps the position.
+    /// </summary>
+    public abstract TextRange? GetSectionRange(int position, CancellationToken cancellation = default);
 
     /// <summary>
     /// Applies the code action to the document and returns the resulting text and new caret position.
@@ -87,11 +98,6 @@ public abstract class Document
     public abstract DocumentEdits GetFormattedText(TextRange range, FormattingOptions? options = null, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets the text of the query at the current text position.
-    /// </summary>
-    public abstract EditString GetQuery(int position, CancellationToken cancellationToken = default);
-
-    /// <summary>
     /// Gets the outlines for the document.
     /// </summary>
     public abstract OutlineInfo GetOutlines(OutliningOptions options, CancellationToken cancellationToken = default);
@@ -105,6 +111,14 @@ public abstract class Document
     /// Gets the locations of the items related to the item at the position in the document.
     /// </summary>
     public abstract RelatedInfo GetRelatedElements(int position, FindRelatedOptions options = FindRelatedOptions.None, CancellationToken cancellationToken = default);
+}
+
+public interface IDocumentSection
+{
+    /// <summary>
+    /// The text of the document in this section
+    /// </summary>
+    public string Text { get; }
 }
 
 /// <summary>
@@ -174,6 +188,40 @@ public class MultiQueryDocument : Document
     public override Document WithGlobals(GlobalState globals)
     {  
         return new MultiQueryDocument(_id, _script.WithGlobals(globals)); 
+    }
+
+
+    private static readonly ConditionalWeakTable<CodeBlock, IDocumentSection> _blockSections =
+        new ConditionalWeakTable<CodeBlock, IDocumentSection>();
+
+    private record BlockSection(CodeService Service) : IDocumentSection
+    {
+        public string Text => this.Service.Text;
+    }
+
+    public override IDocumentSection? GetSection(int position, CancellationToken cancellationToken = default)
+    {
+        var block = _script.GetBlockAtPosition(position);
+        if (block != null)
+        {
+            if (!_blockSections.TryGetValue(block, out var section))
+            {
+                section = _blockSections.GetOrAdd(block, _block => new BlockSection(_block.Service));
+            }
+            return section;
+        }
+
+        return null;
+    }
+
+    public override TextRange? GetSectionRange(int position, CancellationToken cancellation = default)
+    {
+        var block = _script.GetBlockAtPosition(position);
+        if (block != null)
+        {
+            return new TextRange(block.Start, block.Length);
+        }
+        return null;
     }
 
     public override CodeActionResult ApplyCodeAction(ApplyAction action, int caretPosition, CodeActionOptions? options = null, CancellationToken cancellationToken = default)
@@ -306,17 +354,6 @@ public class MultiQueryDocument : Document
         return new DocumentEdits { OriginalText = _script.Text, Edits = edits.ToImmutableList() };
     }
 
-    public override EditString GetQuery(int position, CancellationToken cancellationToken = default)
-    {
-        var block = _script.GetBlockAtPosition(position);
-        if (block != null)
-        {
-            // return edit of selecting just the block text to enable position mapping back to the original document for things like diagnostics and completion.
-            return new EditString(_script.Text).Substring(block.Start, block.Length);
-        }
-        return "";
-    }
-
     public override OutlineInfo GetOutlines(OutliningOptions options, CancellationToken cancellationToken = default)
     {
         var ranges = new List<OutlineRange>();
@@ -389,6 +426,27 @@ public class SingleQueryDocument : Document
         return code;
     }
 
+    private record Section(CodeService Service) : IDocumentSection
+    {
+        public string Text => this.Service.Text;
+    }
+
+    private Section? _section;
+
+    public override IDocumentSection GetSection(int position, CancellationToken cancellationToken = default)
+    {
+        if (_section == null)
+        {
+            Interlocked.CompareExchange(ref _section, new Section(_service), null);
+        }
+        return _section;
+    }
+
+    public override TextRange? GetSectionRange(int position, CancellationToken cancellation = default)
+    {
+        return new TextRange(0, _text.Length);
+    }
+
     public override CodeActionResult ApplyCodeAction(ApplyAction action, int caretPosition, CodeActionOptions? options = null, CancellationToken cancellationToken = default)
     {
         return _service.ApplyCodeAction(action, caretPosition, options, cancellationToken);
@@ -446,11 +504,6 @@ public class SingleQueryDocument : Document
         {
             return new DocumentEdits { OriginalText = _text, Edits = [] };
         }
-    }
-
-    public override EditString GetQuery(int position, CancellationToken cancellationToken = default)
-    {
-        return new EditString(_text);
     }
 
     public override OutlineInfo GetOutlines(OutliningOptions options, CancellationToken cancellationToken = default)

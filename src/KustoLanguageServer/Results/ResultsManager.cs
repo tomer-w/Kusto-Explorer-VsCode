@@ -1,0 +1,32 @@
+﻿using System.Runtime.CompilerServices;
+
+namespace Kusto.Lsp;
+
+public class ResultsManager : IResultsManager
+{
+    private readonly ConditionalWeakTable<IDocumentSection, ExecuteResult> _cachedResults
+        = new ConditionalWeakTable<IDocumentSection, ExecuteResult>();
+
+    /// <summary>
+    /// Caches the results for the query at the position in the document.
+    /// </summary>
+    public void SetResults(Document document, int position, ExecuteResult result)
+    {
+        var section = document.GetSection(position);
+        if (section != null)
+        {
+            _cachedResults.AddOrUpdate(section, result);
+        }
+    }
+
+    /// <summary>
+    /// Gets the cached results for the query at the position in the document.
+    /// </summary>
+    public ExecuteResult? GetResults(Document document, int position)
+    {
+        var section = document.GetSection(position);
+        if (section != null && _cachedResults.TryGetValue(section, out var result))
+            return result;
+        return null;
+    }
+}
