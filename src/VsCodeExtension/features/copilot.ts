@@ -1,73 +1,32 @@
 ﻿import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 import * as conn from './connections';
+import * as server from './server';
 
 const COPILOT_PARTICIPANT_ID = 'kusto';
 const MAX_SCHEMA_CHARS = 30000; // Approximate limit to stay within token limits
 
+
 // =============================================================================
-// Schema Compression - Reduce schema size to fit within token limits
+// Activation
 // =============================================================================
 
 /**
- * Compresses the database schema to fit within token limits.
- * Prioritizes table/column names over descriptions.
+ * Activates Copilot integration features for Kusto.
+ * @param context The extension context
+ * @param client The language client for LSP communication
  */
-function compressSchema(dbSchema: conn.DatabaseInfo): string {
-    const lines: string[] = [];
-    lines.push(`Database: ${dbSchema.name}`);
+export function activate(context: vscode.ExtensionContext, client: LanguageClient): void {
+    // Register the Language Model Tool - can be referenced with #kusto_getDatabaseSchema
+    const schemaTool = vscode.lm.registerTool('kusto_getDatabaseSchema', new KustoDatabaseSchemaTool());
+    context.subscriptions.push(schemaTool);
     
-    // Helper to format columns compactly
-    const formatColumns = (columns?: conn.DatabaseColumnInfo[]): string => {
-        if (!columns || columns.length === 0) return '';
-        return columns.map(c => `${c.name}:${c.type}`).join(', ');
-    };
-    
-    // Tables (most important)
-    if (dbSchema.tables && dbSchema.tables.length > 0) {
-        lines.push('\nTables:');
-        for (const table of dbSchema.tables) {
-            const cols = formatColumns(table.columns);
-            lines.push(`  ${table.name}(${cols})`);
-        }
-    }
-    
-    // Materialized Views
-    if (dbSchema.materializedViews && dbSchema.materializedViews.length > 0) {
-        lines.push('\nMaterialized Views:');
-        for (const view of dbSchema.materializedViews) {
-            const cols = formatColumns(view.columns);
-            lines.push(`  ${view.name}(${cols})`);
-        }
-    }
-    
-    // External Tables
-    if (dbSchema.externalTables && dbSchema.externalTables.length > 0) {
-        lines.push('\nExternal Tables:');
-        for (const table of dbSchema.externalTables) {
-            const cols = formatColumns(table.columns);
-            lines.push(`  ${table.name}(${cols})`);
-        }
-    }
-    
-    // Functions (compact format)
-    if (dbSchema.functions && dbSchema.functions.length > 0) {
-        lines.push('\nFunctions:');
-        for (const func of dbSchema.functions) {
-            lines.push(`  ${func.name}${func.parameters ?? '()'}`);
-        }
-    }
-    
-    let result = lines.join('\n');
-    
-    // If still too large, truncate and add note
-    if (result.length > MAX_SCHEMA_CHARS) {
-        result = result.substring(0, MAX_SCHEMA_CHARS);
-        result += '\n\n[Schema truncated due to size...]';
-    }
-    
-    return result;
+    // Register the Chat Participant - user invokes with @kusto
+    const participant = vscode.chat.createChatParticipant(COPILOT_PARTICIPANT_ID, handleChatRequest);
+    participant.iconPath = new vscode.ThemeIcon('database');
+    context.subscriptions.push(participant);
 }
+
 
 // =============================================================================
 // Language Model Tool - Can be referenced with #kusto_getDatabaseSchema
@@ -168,7 +127,7 @@ async function handleChatRequest(
     // Fetch the database schema
     stream.progress(`Fetching schema for ${activeConnection.cluster}/${activeConnection.database}...`);
     
-    let dbSchema: conn.DatabaseInfo | undefined;
+    let dbSchema: server.DatabaseInfo | undefined;
     try {
         dbSchema = await conn.getDatabaseSchema(activeConnection.cluster, activeConnection.database);
     } catch (error) {
@@ -244,22 +203,67 @@ User question: ${request.prompt}`;
     return { metadata: { command: '' } };
 }
 
+
 // =============================================================================
-// Activation
+// Schema Compression - Reduce schema size to fit within token limits
 // =============================================================================
 
 /**
- * Activates Copilot integration features for Kusto.
- * @param context The extension context
- * @param client The language client for LSP communication
+ * Compresses the database schema to fit within token limits.
+ * Prioritizes table/column names over descriptions.
  */
-export function activate(context: vscode.ExtensionContext, client: LanguageClient): void {
-    // Register the Language Model Tool - can be referenced with #kusto_getDatabaseSchema
-    const schemaTool = vscode.lm.registerTool('kusto_getDatabaseSchema', new KustoDatabaseSchemaTool());
-    context.subscriptions.push(schemaTool);
+function compressSchema(dbSchema: server.DatabaseInfo): string {
+    const lines: string[] = [];
+    lines.push(`Database: ${dbSchema.name}`);
     
-    // Register the Chat Participant - user invokes with @kusto
-    const participant = vscode.chat.createChatParticipant(COPILOT_PARTICIPANT_ID, handleChatRequest);
-    participant.iconPath = new vscode.ThemeIcon('database');
-    context.subscriptions.push(participant);
+    // Helper to format columns compactly
+    const formatColumns = (columns?: server.DatabaseColumnInfo[]): string => {
+        if (!columns || columns.length === 0) return '';
+        return columns.map(c => `${c.name}:${c.type}`).join(', ');
+    };
+    
+    // Tables (most important)
+    if (dbSchema.tables && dbSchema.tables.length > 0) {
+        lines.push('\nTables:');
+        for (const table of dbSchema.tables) {
+            const cols = formatColumns(table.columns);
+            lines.push(`  ${table.name}(${cols})`);
+        }
+    }
+    
+    // Materialized Views
+    if (dbSchema.materializedViews && dbSchema.materializedViews.length > 0) {
+        lines.push('\nMaterialized Views:');
+        for (const view of dbSchema.materializedViews) {
+            const cols = formatColumns(view.columns);
+            lines.push(`  ${view.name}(${cols})`);
+        }
+    }
+    
+    // External Tables
+    if (dbSchema.externalTables && dbSchema.externalTables.length > 0) {
+        lines.push('\nExternal Tables:');
+        for (const table of dbSchema.externalTables) {
+            const cols = formatColumns(table.columns);
+            lines.push(`  ${table.name}(${cols})`);
+        }
+    }
+    
+    // Functions (compact format)
+    if (dbSchema.functions && dbSchema.functions.length > 0) {
+        lines.push('\nFunctions:');
+        for (const func of dbSchema.functions) {
+            lines.push(`  ${func.name}${func.parameters ?? '()'}`);
+        }
+    }
+    
+    let result = lines.join('\n');
+    
+    // If still too large, truncate and add note
+    if (result.length > MAX_SCHEMA_CHARS) {
+        result = result.substring(0, MAX_SCHEMA_CHARS);
+        result += '\n\n[Schema truncated due to size...]';
+    }
+    
+    return result;
 }

@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
+import * as server from './server';
 
 /**
  * Activates editor decoration features like query separators.
@@ -25,10 +26,7 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
      */
     async function updateQueryBoundaries(uri: string): Promise<void> {
         try {
-            const result = await client.sendRequest<{ uri: string; ranges: { start: { line: number; character: number }; end: { line: number; character: number } }[] } | null>(
-                'kusto/getQueryRanges',
-                { uri }
-            );
+            const result = await server.getQueryRanges(client, uri);
 
             if (!result) {
                 return;

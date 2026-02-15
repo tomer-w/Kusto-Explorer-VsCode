@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 import { setDocumentConnection } from './connections';
+import * as server from './server';
 
 let resultsView: vscode.WebviewView | undefined;
 let chartPanel: vscode.WebviewPanel | undefined;
@@ -63,21 +64,12 @@ async function runQuery(client: LanguageClient): Promise<void> {
 
     try {
         // run query and get results from the server
-        const results = await client.sendRequest<{
-            title: string,
-            dataHtml: string,
-            rowCount?: number,
-            chartHtml?: string,
-            cluster?: string,
-            database?: string
-        } | null>(
-            'kusto/runQuery',
+        const results = await server.runQuery(
+            client,
+            editor.document.uri.toString(),
             {
-                textDocument: { uri: editor.document.uri.toString() },
-                selection: {
-                    start: { line: editor.selection.start.line, character: editor.selection.start.character },
-                    end: { line: editor.selection.end.line, character: editor.selection.end.character }
-                }
+                start: { line: editor.selection.start.line, character: editor.selection.start.character },
+                end: { line: editor.selection.end.line, character: editor.selection.end.character }
             }
         );
 
@@ -256,12 +248,9 @@ async function copyQuery(client: LanguageClient): Promise<void> {
 
     try {
         // Get query boundaries from the server
-        const result = await client.sendRequest<{
-            uri: string;
-            ranges: { start: { line: number; character: number }; end: { line: number; character: number } }[]
-        } | null>(
-            'kusto/getQueryRanges',
-            { uri: editor.document.uri.toString() }
+        const result = await server.getQueryRanges(
+            client,
+            editor.document.uri.toString()
         );
 
         if (!result || !result.ranges.length) {

@@ -1,9 +1,288 @@
 import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
+import * as lspServer from './server';
+import type { DatabaseInfo, DatabaseTableInfo, DatabaseColumnInfo, DatabaseFunctionInfo, DatabaseEntityGroupInfo, DatabaseGraphModelInfo, DatabaseParameterInfo } from './server';
 
 // Storage keys
 const SERVERS_STORAGE_KEY = 'kusto.serversAndGroups';
 const DOCUMENT_CONNECTIONS_KEY = 'kusto.documentConnections';
+
+
+// =============================================================================
+// Activation function
+// =============================================================================
+
+/**
+ * Initializes the Kusto connections tree panel and sets up all related features.
+ * @param context The extension context for accessing global state
+ * @param client The language client to use for communication with the LSP server
+ */
+export async function activate(context: vscode.ExtensionContext, client: LanguageClient): Promise<void> {
+    // Initialize module-level state
+    extensionContext = context;
+    languageClient = client;
+    connectionsProvider = new KustoConnectionsProvider();
+    
+    // Set the client reference for notifications
+    connectionsProvider.setClient(client);
+    
+    // Create tree view with drag and drop support
+    treeView = vscode.window.createTreeView('kusto.connections', {
+        treeDataProvider: connectionsProvider,
+        showCollapseAll: true,
+        dragAndDropController: new KustoDragAndDropController(connectionsProvider)
+    });
+    context.subscriptions.push(treeView);
+
+    // Initialize servers and groups from global state
+    connectionsProvider.initializeServersAndGroups(context);
+
+    // Send initial connections list to server
+    const initialConnections = connectionsProvider.getConnections();
+    client.sendNotification('kusto/connectionsUpdated', {
+        connections: initialConnections
+    });
+
+    // Create status bar item for connection status
+    connectionStatusBarItem = vscode.window.createStatusBarItem(
+        vscode.StatusBarAlignment.Left,
+        0  // priority (higher = more to the left)
+    );
+    connectionStatusBarItem.text = "$(database) not connected";
+    connectionStatusBarItem.tooltip = "Click to change connection";
+    connectionStatusBarItem.command = "kusto.connectDatabase";
+    connectionStatusBarItem.show();
+
+    // Load document connections on startup
+    await loadDocumentConnections();
+
+    // Initialize connection info for documents that are already open
+    for (const document of vscode.workspace.textDocuments) {
+        if (document.languageId === 'kusto') {
+            const connection = getDocumentConnection(document.uri.toString());
+            const serverKind = connection?.cluster ? (findServerInfo(connection.cluster)?.serverKind ?? null) : null;
+            await client.sendNotification('kusto/documentConnectionChanged', {
+                uri: document.uri.toString(),
+                cluster: connection?.cluster || null,
+                database: connection?.database || null,
+                serverKind: serverKind
+            });
+        }
+    }
+
+    // Handle document open events - notify server of connection
+    context.subscriptions.push(
+        vscode.workspace.onDidOpenTextDocument(async (document) => {
+            if (document.languageId === 'kusto') {
+                const connection = getDocumentConnection(document.uri.toString());
+                const serverKind = connection?.cluster ? (findServerInfo(connection.cluster)?.serverKind ?? null) : null;
+                await client.sendNotification('kusto/documentConnectionChanged', {
+                    uri: document.uri.toString(),
+                    cluster: connection?.cluster || null,
+                    database: connection?.database || null,
+                    serverKind: serverKind
+                });
+            }
+        })
+    );
+
+    // Update status bar when active editor changes
+    context.subscriptions.push(
+        vscode.window.onDidChangeActiveTextEditor(async () => {
+            updateStatusBar();
+            await updateTreeSelectionForActiveDocument();
+        })
+    );
+
+    // Set initial context for view visibility
+    const initialEditor = vscode.window.activeTextEditor;
+    const initialIsKusto = initialEditor && initialEditor.document.languageId === 'kusto';
+    await vscode.commands.executeCommand('setContext', 'kusto.hasActiveDocument', initialIsKusto);
+
+    // Initialize status bar for currently active editor
+    updateStatusBar();
+
+    // Handle tree selection changes - update document connection when user clicks
+    context.subscriptions.push(
+        treeView.onDidChangeSelection(async (event) => {
+            // Ignore if this is a programmatic selection (not user-initiated)
+            if (isProgrammaticSelection) {
+                return;
+            }
+
+            if (event.selection.length === 0) {
+                return;
+            }
+
+            const editor = vscode.window.activeTextEditor;
+            if (!editor || editor.document.languageId !== 'kusto') {
+                return;
+            }
+
+            const selected = event.selection[0];
+            
+            if (selected instanceof NoConnectionTreeItem) {
+                await setDocumentConnection(editor.document.uri.toString(), undefined, undefined);
+            } else if (selected instanceof ServerTreeItem) {
+                await setDocumentConnection(editor.document.uri.toString(), selected.clusterName, undefined);
+            } else if (selected instanceof DatabaseTreeItem) {
+                await setDocumentConnection(editor.document.uri.toString(), selected.clusterName, selected.databaseName);
+            }
+        })
+    );
+
+    // Initialize tree selection for active document (deferred to avoid activation issues)
+    setTimeout(async () => {
+        const editor = vscode.window.activeTextEditor;
+        if (editor && editor.document.languageId === 'kusto') {
+            await updateTreeSelectionForActiveDocument();
+        }
+    }, 100);
+
+    // Handle tree item expansion events
+    context.subscriptions.push(
+        treeView.onDidExpandElement(async (event) => {
+            const element = event.element;
+            
+            if (element instanceof ServerTreeItem) {
+                await connectionsProvider!.onServerExpanded(element.clusterName, client);
+            } else if (element instanceof DatabaseTreeItem) {
+                await connectionsProvider!.onDatabaseExpanded(element.clusterName, element.databaseName, client);
+            }
+        })
+    );
+
+    // Register commands for managing servers and groups
+    context.subscriptions.push(
+        vscode.commands.registerCommand('kusto.selectServer', () => {}),
+        vscode.commands.registerCommand('kusto.selectDatabase', () => {}),
+
+        vscode.commands.registerCommand('kusto.addServer', async () => {
+            await connectionsProvider!.promptAddServer();
+        }),
+
+        vscode.commands.registerCommand('kusto.addServerToGroup', async (item: ServerGroupTreeItem) => {
+            await connectionsProvider!.promptAddServer(item.groupInfo.name);
+        }),
+
+        vscode.commands.registerCommand('kusto.addServerGroup', async () => {
+            await connectionsProvider!.promptAddServerGroup();
+        }),
+
+        vscode.commands.registerCommand('kusto.removeServer', async (item: ServerTreeItem) => {
+            const confirm = await vscode.window.showWarningMessage(
+                `Are you sure you want to remove connection "${item.displayName ?? item.clusterName}"?`,
+                { modal: true },
+                'Remove'
+            );
+            if (confirm === 'Remove') {
+                await connectionsProvider!.removeServer(item.clusterName, item.groupName);
+            }
+        }),
+
+        vscode.commands.registerCommand('kusto.removeServerGroup', async (item: ServerGroupTreeItem) => {
+            const confirm = await vscode.window.showWarningMessage(
+                `Are you sure you want to remove group "${item.groupInfo.name}" and all its connections?`,
+                { modal: true },
+                'Remove'
+            );
+            if (confirm === 'Remove') {
+                await connectionsProvider!.removeServerGroup(item.groupInfo.name);
+            }
+        }),
+
+        vscode.commands.registerCommand('kusto.moveServer', async (item: ServerTreeItem) => {
+            await connectionsProvider!.promptMoveServer(
+                item.clusterName,
+                item.displayName ?? item.clusterName,
+                item.groupName
+            );
+        }),
+
+        vscode.commands.registerCommand('kusto.editServer', async (item: ServerTreeItem) => {
+            await connectionsProvider!.promptEditServer(
+                item.connection,
+                item.clusterName,
+                item.displayName,
+                item.groupName
+            );
+        }),
+
+        vscode.commands.registerCommand('kusto.renameServer', async (item: ServerTreeItem) => {
+            await connectionsProvider!.promptRenameServer(
+                item.clusterName,
+                item.displayName ?? item.clusterName,
+                item.groupName
+            );
+        }),
+
+        vscode.commands.registerCommand('kusto.renameServerGroup', async (item: ServerGroupTreeItem) => {
+            await connectionsProvider!.promptRenameServerGroup(item.groupInfo.name);
+        }),
+
+        vscode.commands.registerCommand('kusto.connectDatabase', async () => {
+            const editor = vscode.window.activeTextEditor;
+            if (!editor || editor.document.languageId !== 'kusto') {
+                return;
+            }
+
+            const connections = connectionsProvider!.getConnections();
+            
+            if (connections.length === 0) {
+                const addServer = await vscode.window.showInformationMessage(
+                    'No server connections configured.',
+                    'Add Server'
+                );
+                if (addServer) {
+                    await vscode.commands.executeCommand('kusto.addServer');
+                }
+                return;
+            }
+
+            const cluster = await vscode.window.showQuickPick(connections, {
+                placeHolder: 'Select a cluster',
+                title: 'Select Cluster'
+            });
+
+            if (!cluster) {
+                return;
+            }
+
+            const databases = await connectionsProvider!.getDatabases(cluster, client);
+            
+            if (databases.length === 0) {
+                const noDbSelection = await vscode.window.showInformationMessage(
+                    `No databases found for cluster "${cluster}".`,
+                    'Connect without database'
+                );
+                if (noDbSelection) {
+                    await setDocumentConnection(editor.document.uri.toString(), cluster, undefined);
+                }
+                return;
+            }
+
+            const databaseChoices = ['<None>', ...databases];
+            const database = await vscode.window.showQuickPick(databaseChoices, {
+                placeHolder: 'Select a database',
+                title: `Select Database for ${cluster}`
+            });
+
+            if (!database) {
+                return;
+            }
+
+            await setDocumentConnection(
+                editor.document.uri.toString(),
+                cluster,
+                database === '<None>' ? undefined : database
+            );
+        })
+    );
+}
+
+// =============================================================================
+// Connection Tree Provider
+// =============================================================================
 
 // Data types for document connections
 interface DocumentConnection {
@@ -32,52 +311,6 @@ interface ServersAndGroupsData {
 }
 
 // Data types for database entities (from LSP server)
-interface DatabaseTableInfo {
-    name: string;
-    description?: string;
-    columns?: DatabaseColumnInfo[];
-}
-
-interface DatabaseColumnInfo {
-    name: string;
-    type: string;
-}
-
-interface DatabaseFunctionInfo {
-    name: string;
-    description?: string;
-    parameters?: string;
-    body?: string;
-}
-
-interface DatabaseParameterInfo {
-    name: string;
-    type: string;
-}
-
-interface DatabaseEntityGroupInfo {
-    name: string;
-    description?: string;
-    entities?: string[];
-}
-
-interface DatabaseGraphModelInfo {
-    name: string;
-    edges?: string[];
-    nodes?: string[];
-    snapshots?: string[];
-}
-
-interface DatabaseInfo {
-    name: string;
-    tables?: DatabaseTableInfo[];
-    externalTables?: DatabaseTableInfo[];
-    materializedViews?: DatabaseTableInfo[];
-    functions?: DatabaseFunctionInfo[];
-    entityGroups?: DatabaseEntityGroupInfo[];
-    graphModels?: DatabaseGraphModelInfo[];
-}
-
 /**
  * Type guard to check if an item is a ServerGroupInfo
  */
@@ -374,21 +607,22 @@ class GraphModelTreeItem extends vscode.TreeItem {
     }
 }
 
-class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem> {
-private _onDidChangeTreeData = new vscode.EventEmitter<KustoTreeItem | undefined>();
-readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
+class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem> 
+{
+    private _onDidChangeTreeData = new vscode.EventEmitter<KustoTreeItem | undefined>();
+    readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
-// Extension context for accessing global state
-private context: vscode.ExtensionContext | undefined;
+    // Extension context for accessing global state
+    private context: vscode.ExtensionContext | undefined;
 
-// Language client for notifications
-private client: LanguageClient | undefined;
+    // Language client for notifications
+    private client: LanguageClient | undefined;
 
-// Servers and groups data - loaded from global state
-private serversAndGroups: ServersAndGroupsData = { items: [] };
+    // Servers and groups data - loaded from global state
+    private serversAndGroups: ServersAndGroupsData = { items: [] };
 
-// Connection data - cluster to databases mapping
-private connections: { cluster: string, connection: string, databases?: DatabaseInfo[] }[] = [];
+    // Connection data - cluster to databases mapping
+    private connections: { cluster: string, connection: string, databases?: DatabaseInfo[] }[] = [];
 
     /**
      * Initializes the servers and groups from global state.
@@ -725,10 +959,7 @@ private connections: { cluster: string, connection: string, databases?: Database
         // refetch server kind
         if (this.client) {
             try {
-                const result = await this.client.sendRequest<{ serverKind: string } | null>(
-                    'kusto/getServerKind',
-                    { connection: newConnection }
-                );
+                const result = await lspServer.getServerKind(this.client, newConnection);
                 if (result?.serverKind) {
                     serverInfo.serverKind = result.serverKind;
                 }
@@ -824,10 +1055,7 @@ private connections: { cluster: string, connection: string, databases?: Database
         // Fetch server kind from the language server
         if (this.client) {
             try {
-                const result = await this.client.sendRequest<{ serverKind: string } | null>(
-                    'kusto/getServerKind',
-                    { connection: connectionString }
-                );
+                const result = await lspServer.getServerKind(this.client, connectionString);
                 if (result?.serverKind) {
                     server.serverKind = result.serverKind;
                 }
@@ -1036,10 +1264,7 @@ private connections: { cluster: string, connection: string, databases?: Database
                 }
             }
 
-            const result = await client.sendRequest<{ cluster: string; databases: { name: string; alternateName: string }[] } | null>(
-                'kusto/getServerInfo',
-                { connection: clusterName, serverKind: serverKind }
-            );
+            const result = await lspServer.getServerInfo(client, clusterName, serverKind);
 
             if (result && result.databases) {
                 return result.databases.map(db => db.name);
@@ -1321,10 +1546,7 @@ private connections: { cluster: string, connection: string, databases?: Database
                 }
             }
 
-            const result = await client.sendRequest<{ cluster: string; databases: { name: string; alternateName: string }[] } | null>(
-                'kusto/getServerInfo',
-                { connection: clusterName, serverKind: serverKind }
-            );
+            const result = await lspServer.getServerInfo(client, clusterName, serverKind);
 
             if (result && result.databases) {
                 const databases = result.databases.map(db => ({ name: db.name }));
@@ -1350,10 +1572,7 @@ private connections: { cluster: string, connection: string, databases?: Database
         }
 
         try {
-            const result = await client.sendRequest<DatabaseInfo | null>(
-                'kusto/getDatabaseInfo',
-                { cluster: clusterName, database: databaseName }
-            );
+            const result = await lspServer.getDatabaseInfo(client, clusterName, databaseName);
 
             if (result) {
                 this.setDatabaseInfo(clusterName, result);
@@ -1679,278 +1898,6 @@ async function updateTreeSelectionForActiveDocument(): Promise<void> {
 }
 
 // =============================================================================
-// Activation function
-// =============================================================================
-
-/**
- * Initializes the Kusto connections tree panel and sets up all related features.
- * @param context The extension context for accessing global state
- * @param client The language client to use for communication with the LSP server
- */
-export async function activate(context: vscode.ExtensionContext, client: LanguageClient): Promise<void> {
-    // Initialize module-level state
-    extensionContext = context;
-    languageClient = client;
-    connectionsProvider = new KustoConnectionsProvider();
-    
-    // Set the client reference for notifications
-    connectionsProvider.setClient(client);
-    
-    // Create tree view with drag and drop support
-    treeView = vscode.window.createTreeView('kusto.connections', {
-        treeDataProvider: connectionsProvider,
-        showCollapseAll: true,
-        dragAndDropController: new KustoDragAndDropController(connectionsProvider)
-    });
-    context.subscriptions.push(treeView);
-
-    // Initialize servers and groups from global state
-    connectionsProvider.initializeServersAndGroups(context);
-
-    // Send initial connections list to server
-    const initialConnections = connectionsProvider.getConnections();
-    client.sendNotification('kusto/connectionsUpdated', {
-        connections: initialConnections
-    });
-
-    // Create status bar item for connection status
-    connectionStatusBarItem = vscode.window.createStatusBarItem(
-        vscode.StatusBarAlignment.Left,
-        0  // priority (higher = more to the left)
-    );
-    connectionStatusBarItem.text = "$(database) not connected";
-    connectionStatusBarItem.tooltip = "Click to change connection";
-    connectionStatusBarItem.command = "kusto.connectDatabase";
-    connectionStatusBarItem.show();
-
-    // Load document connections on startup
-    await loadDocumentConnections();
-
-    // Initialize connection info for documents that are already open
-    for (const document of vscode.workspace.textDocuments) {
-        if (document.languageId === 'kusto') {
-            const connection = getDocumentConnection(document.uri.toString());
-            const serverKind = connection?.cluster ? (findServerInfo(connection.cluster)?.serverKind ?? null) : null;
-            await client.sendNotification('kusto/documentConnectionChanged', {
-                uri: document.uri.toString(),
-                cluster: connection?.cluster || null,
-                database: connection?.database || null,
-                serverKind: serverKind
-            });
-        }
-    }
-
-    // Handle document open events - notify server of connection
-    context.subscriptions.push(
-        vscode.workspace.onDidOpenTextDocument(async (document) => {
-            if (document.languageId === 'kusto') {
-                const connection = getDocumentConnection(document.uri.toString());
-                const serverKind = connection?.cluster ? (findServerInfo(connection.cluster)?.serverKind ?? null) : null;
-                await client.sendNotification('kusto/documentConnectionChanged', {
-                    uri: document.uri.toString(),
-                    cluster: connection?.cluster || null,
-                    database: connection?.database || null,
-                    serverKind: serverKind
-                });
-            }
-        })
-    );
-
-    // Update status bar when active editor changes
-    context.subscriptions.push(
-        vscode.window.onDidChangeActiveTextEditor(async () => {
-            updateStatusBar();
-            await updateTreeSelectionForActiveDocument();
-        })
-    );
-
-    // Set initial context for view visibility
-    const initialEditor = vscode.window.activeTextEditor;
-    const initialIsKusto = initialEditor && initialEditor.document.languageId === 'kusto';
-    await vscode.commands.executeCommand('setContext', 'kusto.hasActiveDocument', initialIsKusto);
-
-    // Initialize status bar for currently active editor
-    updateStatusBar();
-
-    // Handle tree selection changes - update document connection when user clicks
-    context.subscriptions.push(
-        treeView.onDidChangeSelection(async (event) => {
-            // Ignore if this is a programmatic selection (not user-initiated)
-            if (isProgrammaticSelection) {
-                return;
-            }
-
-            if (event.selection.length === 0) {
-                return;
-            }
-
-            const editor = vscode.window.activeTextEditor;
-            if (!editor || editor.document.languageId !== 'kusto') {
-                return;
-            }
-
-            const selected = event.selection[0];
-            
-            if (selected instanceof NoConnectionTreeItem) {
-                await setDocumentConnection(editor.document.uri.toString(), undefined, undefined);
-            } else if (selected instanceof ServerTreeItem) {
-                await setDocumentConnection(editor.document.uri.toString(), selected.clusterName, undefined);
-            } else if (selected instanceof DatabaseTreeItem) {
-                await setDocumentConnection(editor.document.uri.toString(), selected.clusterName, selected.databaseName);
-            }
-        })
-    );
-
-    // Initialize tree selection for active document (deferred to avoid activation issues)
-    setTimeout(async () => {
-        const editor = vscode.window.activeTextEditor;
-        if (editor && editor.document.languageId === 'kusto') {
-            await updateTreeSelectionForActiveDocument();
-        }
-    }, 100);
-
-    // Handle tree item expansion events
-    context.subscriptions.push(
-        treeView.onDidExpandElement(async (event) => {
-            const element = event.element;
-            
-            if (element instanceof ServerTreeItem) {
-                await connectionsProvider!.onServerExpanded(element.clusterName, client);
-            } else if (element instanceof DatabaseTreeItem) {
-                await connectionsProvider!.onDatabaseExpanded(element.clusterName, element.databaseName, client);
-            }
-        })
-    );
-
-    // Register commands for managing servers and groups
-    context.subscriptions.push(
-        vscode.commands.registerCommand('kusto.selectServer', () => {}),
-        vscode.commands.registerCommand('kusto.selectDatabase', () => {}),
-
-        vscode.commands.registerCommand('kusto.addServer', async () => {
-            await connectionsProvider!.promptAddServer();
-        }),
-
-        vscode.commands.registerCommand('kusto.addServerToGroup', async (item: ServerGroupTreeItem) => {
-            await connectionsProvider!.promptAddServer(item.groupInfo.name);
-        }),
-
-        vscode.commands.registerCommand('kusto.addServerGroup', async () => {
-            await connectionsProvider!.promptAddServerGroup();
-        }),
-
-        vscode.commands.registerCommand('kusto.removeServer', async (item: ServerTreeItem) => {
-            const confirm = await vscode.window.showWarningMessage(
-                `Are you sure you want to remove connection "${item.displayName ?? item.clusterName}"?`,
-                { modal: true },
-                'Remove'
-            );
-            if (confirm === 'Remove') {
-                await connectionsProvider!.removeServer(item.clusterName, item.groupName);
-            }
-        }),
-
-        vscode.commands.registerCommand('kusto.removeServerGroup', async (item: ServerGroupTreeItem) => {
-            const confirm = await vscode.window.showWarningMessage(
-                `Are you sure you want to remove group "${item.groupInfo.name}" and all its connections?`,
-                { modal: true },
-                'Remove'
-            );
-            if (confirm === 'Remove') {
-                await connectionsProvider!.removeServerGroup(item.groupInfo.name);
-            }
-        }),
-
-        vscode.commands.registerCommand('kusto.moveServer', async (item: ServerTreeItem) => {
-            await connectionsProvider!.promptMoveServer(
-                item.clusterName,
-                item.displayName ?? item.clusterName,
-                item.groupName
-            );
-        }),
-
-        vscode.commands.registerCommand('kusto.editServer', async (item: ServerTreeItem) => {
-            await connectionsProvider!.promptEditServer(
-                item.connection,
-                item.clusterName,
-                item.displayName,
-                item.groupName
-            );
-        }),
-
-        vscode.commands.registerCommand('kusto.renameServer', async (item: ServerTreeItem) => {
-            await connectionsProvider!.promptRenameServer(
-                item.clusterName,
-                item.displayName ?? item.clusterName,
-                item.groupName
-            );
-        }),
-
-        vscode.commands.registerCommand('kusto.renameServerGroup', async (item: ServerGroupTreeItem) => {
-            await connectionsProvider!.promptRenameServerGroup(item.groupInfo.name);
-        }),
-
-        vscode.commands.registerCommand('kusto.connectDatabase', async () => {
-            const editor = vscode.window.activeTextEditor;
-            if (!editor || editor.document.languageId !== 'kusto') {
-                return;
-            }
-
-            const connections = connectionsProvider!.getConnections();
-            
-            if (connections.length === 0) {
-                const addServer = await vscode.window.showInformationMessage(
-                    'No server connections configured.',
-                    'Add Server'
-                );
-                if (addServer) {
-                    await vscode.commands.executeCommand('kusto.addServer');
-                }
-                return;
-            }
-
-            const cluster = await vscode.window.showQuickPick(connections, {
-                placeHolder: 'Select a cluster',
-                title: 'Select Cluster'
-            });
-
-            if (!cluster) {
-                return;
-            }
-
-            const databases = await connectionsProvider!.getDatabases(cluster, client);
-            
-            if (databases.length === 0) {
-                const noDbSelection = await vscode.window.showInformationMessage(
-                    `No databases found for cluster "${cluster}".`,
-                    'Connect without database'
-                );
-                if (noDbSelection) {
-                    await setDocumentConnection(editor.document.uri.toString(), cluster, undefined);
-                }
-                return;
-            }
-
-            const databaseChoices = ['<None>', ...databases];
-            const database = await vscode.window.showQuickPick(databaseChoices, {
-                placeHolder: 'Select a database',
-                title: `Select Database for ${cluster}`
-            });
-
-            if (!database) {
-                return;
-            }
-
-            await setDocumentConnection(
-                editor.document.uri.toString(),
-                cluster,
-                database === '<None>' ? undefined : database
-            );
-        })
-    );
-}
-
-// =============================================================================
 // Exported functions for use by other modules (e.g., Copilot integration)
 // =============================================================================
 
@@ -1994,10 +1941,7 @@ export async function getDatabaseSchema(cluster: string, database: string): Prom
     
     // Fetch from server
     try {
-        const result = await languageClient.sendRequest<DatabaseInfo | null>(
-            'kusto/getDatabaseInfo',
-            { cluster, database }
-        );
+        const result = await lspServer.getDatabaseInfo(languageClient, cluster, database);
         
         if (result) {
             connectionsProvider.setDatabaseInfo(cluster, result);
@@ -2030,6 +1974,3 @@ export function getActiveDocumentConnection(): { cluster: string; database: stri
         database: connection.database
     };
 }
-
-// Re-export types for use by other modules
-export type { DatabaseInfo, DatabaseTableInfo, DatabaseColumnInfo, DatabaseFunctionInfo, DatabaseEntityGroupInfo, DatabaseGraphModelInfo };

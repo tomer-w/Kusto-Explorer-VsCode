@@ -2,48 +2,6 @@ import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 
 /**
- * Forces VS Code to invalidate semantic token cache by making a real edit on all visible Kusto editors.
- */
-export async function forceRefreshSemanticTokens(): Promise<void>
-{
-    for (const editor of vscode.window.visibleTextEditors)
-    {
-        if (editor.document.languageId === 'kusto')
-        {
-            try
-            {
-                // Get position at end of document
-                const lastLine = Math.max(0, editor.document.lineCount - 1);
-                const charOffset = editor.document.lineAt(lastLine).text.length;
-                const endPos = new vscode.Position(lastLine, charOffset);
-
-                // Insert a space at end (this changes document version)
-                await editor.edit((editBuilder) =>
-                {
-                    editBuilder.insert(endPos, ' ');
-                }, {
-                    undoStopBefore: false,
-                    undoStopAfter: false
-                });
-
-                // Immediately delete it (restores original content)
-                await editor.edit((editBuilder) =>
-                {
-                    // Delete the space we just inserted (from endPos to endPos+1 character)
-                    editBuilder.delete(new vscode.Range(endPos, endPos.translate(0, 1)));
-                }, {
-                    undoStopBefore: false,
-                    undoStopAfter: false
-                });
-            }
-            catch (e)
-            {
-            }
-        }
-    }
-}
-
-/**
  * Activates editor semantic features like semantic token colorings
  * @param context The extension context
  * @param client The language client for LSP communication
@@ -93,3 +51,45 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
         })
     );
 }
+/**
+ * Forces VS Code to invalidate semantic token cache by making a real edit on all visible Kusto editors.
+ */
+export async function forceRefreshSemanticTokens(): Promise<void>
+{
+    for (const editor of vscode.window.visibleTextEditors)
+    {
+        if (editor.document.languageId === 'kusto')
+        {
+            try
+            {
+                // Get position at end of document
+                const lastLine = Math.max(0, editor.document.lineCount - 1);
+                const charOffset = editor.document.lineAt(lastLine).text.length;
+                const endPos = new vscode.Position(lastLine, charOffset);
+
+                // Insert a space at end (this changes document version)
+                await editor.edit((editBuilder) =>
+                {
+                    editBuilder.insert(endPos, ' ');
+                }, {
+                    undoStopBefore: false,
+                    undoStopAfter: false
+                });
+
+                // Immediately delete it (restores original content)
+                await editor.edit((editBuilder) =>
+                {
+                    // Delete the space we just inserted (from endPos to endPos+1 character)
+                    editBuilder.delete(new vscode.Range(endPos, endPos.translate(0, 1)));
+                }, {
+                    undoStopBefore: false,
+                    undoStopAfter: false
+                });
+            }
+            catch (e)
+            {
+            }
+        }
+    }
+}
+
