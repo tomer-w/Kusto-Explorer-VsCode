@@ -37,6 +37,20 @@ export function getQueryRanges(
 }
 
 /**
+ * Gets the query range containing the given position in a document.
+ */
+export function getQueryRange(
+    client: LanguageClient,
+    uri: string,
+    position: Position
+): Promise<Range | null> {
+    return client.sendRequest<Range | null>(
+        'kusto/getQueryRange',
+        { uri, position }
+    );
+}
+
+/**
  * Gets the server kind for a connection string.
  */
 export function getServerKind(
@@ -134,10 +148,22 @@ export interface RunQueryResult {
     database?: string;
 }
 
+/** Position in a document. */
+export interface Position {
+    line: number;
+    character: number;
+}
+
+/** Range in a document. */
+export interface Range {
+    start: Position;
+    end: Position;
+}
+
 /** Result of getting query ranges for a document. */
 export interface QueryRangesResult {
     uri: string;
-    ranges: { start: { line: number; character: number }; end: { line: number; character: number } }[];
+    ranges: Range[];
 }
 
 /** Result of getting the server kind for a connection. */
@@ -153,7 +179,7 @@ export interface ServerInfoResult {
 
 /** Selection range passed to runQuery. */
 export interface SelectionRange {
-    start: { line: number; character: number };
-    end: { line: number; character: number };
+    start: Position;
+    end: Position;
 }
 

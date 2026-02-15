@@ -1325,7 +1325,7 @@ public class KustoLspServer : LspServer, ILogger
             var uri = new Uri(@params.Uri);
             if (_documentManager.TryGetDocument(uri, out var document))
             {
-                var ranges = document.GetQueryRanges(cancellationToken).Select(r => GetLspRange(document.Text, r)).ToArray();
+                var ranges = document.GetSectionRanges().Select(r => GetLspRange(document.Text, r)).ToArray();
                 return Task.FromResult<QueryRangesResult?>(new QueryRangesResult
                 {
                     Uri = @params.Uri,
@@ -1356,6 +1356,40 @@ public class KustoLspServer : LspServer, ILogger
 
         [DataMember(Name = "ranges")]
         public required LSP.Range[] Ranges { get; init; }
+    }
+
+    [JsonRpcMethod("kusto/getQueryRange", UseSingleObjectParameterDeserialization = true)]
+    public Task<LSP.Range?> OnGetQueryRangeAsync(QueryRangeParams @params, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var uri = new Uri(@params.Uri);
+            if (_documentManager.TryGetDocument(uri, out var document))
+            {
+                var position = GetTextPosition(document.Text, @params.Position);
+                if (document.GetSectionRange(position) is { } textRange)
+                {
+                    var lspRange = GetLspRange(document.Text, textRange);
+                    return Task.FromResult<LSP.Range?>(lspRange);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex);
+        }
+
+        return Task.FromResult<LSP.Range?>(null);
+    }
+
+    [DataContract]
+    public class QueryRangeParams
+    {
+        [DataMember(Name = "uri")]
+        public required string Uri { get; init; }
+
+        [DataMember(Name = "position")]
+        public required LSP.Position Position { get; init; }
     }
 
     #endregion

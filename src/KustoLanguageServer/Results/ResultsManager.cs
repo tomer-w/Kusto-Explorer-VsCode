@@ -4,8 +4,8 @@ namespace Kusto.Lsp;
 
 public class ResultsManager : IResultsManager
 {
-    private readonly ConditionalWeakTable<IDocumentSection, ExecuteResult> _cachedResults
-        = new ConditionalWeakTable<IDocumentSection, ExecuteResult>();
+    private readonly ConditionalWeakTable<ISection, ExecuteResult> _cachedResults
+        = new ConditionalWeakTable<ISection, ExecuteResult>();
 
     /// <summary>
     /// Caches the results for the query at the position in the document.

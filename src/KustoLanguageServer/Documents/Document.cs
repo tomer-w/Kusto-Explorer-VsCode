@@ -38,14 +38,20 @@ public abstract class Document
     public abstract Document WithGlobals(GlobalState globals);
 
     /// <summary>
-    /// Gets the section of the document at the current position that maintains identity across edits of other sections.
+    /// Gets the section of the document at the current position.
+    /// This item maintains identity across edits of other sections.
     /// </summary>
-    public abstract IDocumentSection? GetSection(int position, CancellationToken cancellationToken = default);
+    public abstract ISection? GetSection(int position);
 
     /// <summary>
-    /// Gets the range of the section that overlaps the position.
+    /// Gets the text range of the section that overlaps the position.
     /// </summary>
-    public abstract TextRange? GetSectionRange(int position, CancellationToken cancellation = default);
+    public abstract TextRange? GetSectionRange(int position);
+
+    /// <summary>
+    /// Gets the text ranges for all the document sections.
+    /// </summary>
+    public abstract IReadOnlyList<TextRange> GetSectionRanges();
 
     /// <summary>
     /// Applies the code action to the document and returns the resulting text and new caret position.
@@ -56,11 +62,6 @@ public abstract class Document
     /// Gets the analyzer diagnostics for the document.
     /// </summary>
     public abstract IReadOnlyList<Diagnostic> GetAnalyzerDiagnostics(bool waitForAnalysis = true, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Gets the text ranges for the individual queries in the document.
-    /// </summary>
-    public abstract IReadOnlyList<TextRange> GetQueryRanges(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets the classifications for the range within the document.
@@ -113,7 +114,10 @@ public abstract class Document
     public abstract RelatedInfo GetRelatedElements(int position, FindRelatedOptions options = FindRelatedOptions.None, CancellationToken cancellationToken = default);
 }
 
-public interface IDocumentSection
+/// <summary>
+/// An instance representing a document section that lasts as long as the text stays the same.
+/// </summary>
+public interface ISection
 {
     /// <summary>
     /// The text of the document in this section
@@ -191,15 +195,15 @@ public class MultiQueryDocument : Document
     }
 
 
-    private static readonly ConditionalWeakTable<CodeBlock, IDocumentSection> _blockSections =
-        new ConditionalWeakTable<CodeBlock, IDocumentSection>();
+    private static readonly ConditionalWeakTable<CodeBlock, ISection> _blockSections =
+        new ConditionalWeakTable<CodeBlock, ISection>();
 
-    private record BlockSection(CodeService Service) : IDocumentSection
+    private record BlockSection(CodeService Service) : ISection
     {
         public string Text => this.Service.Text;
     }
 
-    public override IDocumentSection? GetSection(int position, CancellationToken cancellationToken = default)
+    public override ISection? GetSection(int position)
     {
         var block = _script.GetBlockAtPosition(position);
         if (block != null)
@@ -214,7 +218,7 @@ public class MultiQueryDocument : Document
         return null;
     }
 
-    public override TextRange? GetSectionRange(int position, CancellationToken cancellation = default)
+    public override TextRange? GetSectionRange(int position)
     {
         var block = _script.GetBlockAtPosition(position);
         if (block != null)
@@ -222,6 +226,11 @@ public class MultiQueryDocument : Document
             return new TextRange(block.Start, block.Length);
         }
         return null;
+    }
+
+    public override IReadOnlyList<TextRange> GetSectionRanges()
+    {
+        return _script.Blocks.Select(b => new TextRange(b.Start, b.Length)).ToImmutableList();
     }
 
     public override CodeActionResult ApplyCodeAction(ApplyAction action, int caretPosition, CodeActionOptions? options = null, CancellationToken cancellationToken = default)
@@ -380,11 +389,6 @@ public class MultiQueryDocument : Document
             return block.Service.GetRelatedElements(position, options, cancellationToken);
         return RelatedInfo.Empty;
     }
-
-    public override IReadOnlyList<TextRange> GetQueryRanges(CancellationToken cancellationToken = default)
-    {
-        return _script.Blocks.Select(b => new TextRange(b.Start, b.Length)).ToImmutableList();
-    }
 }
 
 /// <summary>
@@ -426,14 +430,14 @@ public class SingleQueryDocument : Document
         return code;
     }
 
-    private record Section(CodeService Service) : IDocumentSection
+    private record Section(CodeService Service) : ISection
     {
         public string Text => this.Service.Text;
     }
 
     private Section? _section;
 
-    public override IDocumentSection GetSection(int position, CancellationToken cancellationToken = default)
+    public override ISection GetSection(int position)
     {
         if (_section == null)
         {
@@ -442,9 +446,14 @@ public class SingleQueryDocument : Document
         return _section;
     }
 
-    public override TextRange? GetSectionRange(int position, CancellationToken cancellation = default)
+    public override TextRange? GetSectionRange(int position)
     {
         return new TextRange(0, _text.Length);
+    }
+
+    public override IReadOnlyList<TextRange> GetSectionRanges()
+    {
+        return [new TextRange(0, _text.Length)];
     }
 
     public override CodeActionResult ApplyCodeAction(ApplyAction action, int caretPosition, CodeActionOptions? options = null, CancellationToken cancellationToken = default)
@@ -485,11 +494,6 @@ public class SingleQueryDocument : Document
     public override TextRange GetElement(int position, CancellationToken cancellationToken = default)
     {
         return _service.GetElement(position, cancellationToken);
-    }
-
-    public override IReadOnlyList<TextRange> GetQueryRanges(CancellationToken cancellationToken = default)
-    {
-        return ImmutableList.Create(new TextRange(0, _text.Length));
     }
 
     public override DocumentEdits GetFormattedText(TextRange range, FormattingOptions? options = null, CancellationToken cancellationToken = default)

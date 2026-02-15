@@ -247,25 +247,13 @@ async function copyQuery(client: LanguageClient): Promise<void> {
     }
 
     try {
-        // Get query boundaries from the server
-        const result = await server.getQueryRanges(
-            client,
-            editor.document.uri.toString()
-        );
-
-        if (!result || !result.ranges.length) {
-            return;
-        }
-
-        // Find the query range that contains the cursor
+        // Get the query range containing the cursor position from the server
         const cursorPos = editor.selection.active;
-        const queryRange = result.ranges.find(r => {
-            const range = new vscode.Range(
-                r.start.line, r.start.character,
-                r.end.line, r.end.character
-            );
-            return range.contains(cursorPos);
-        });
+        const queryRange = await server.getQueryRange(
+            client,
+            editor.document.uri.toString(),
+            { line: cursorPos.line, character: cursorPos.character }
+        );
 
         if (!queryRange) {
             return;

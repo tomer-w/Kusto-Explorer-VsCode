@@ -31,7 +31,7 @@ public class QueryManager : IQueryManager
         CancellationToken cancellationToken)
     {
         // some servers will fails if query starts with a comment.
-        if (document.GetSectionRange(range.Start, cancellationToken) is not { } sectionRange)
+        if (document.GetSectionRange(range.Start) is not { } sectionRange)
             return Task.FromResult<RunResult?>(null);
 
         // start with query as an edited down section of the whole document
