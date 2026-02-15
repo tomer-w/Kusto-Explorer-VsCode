@@ -26,7 +26,7 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
     async function updateQueryBoundaries(uri: string): Promise<void> {
         try {
             const result = await client.sendRequest<{ uri: string; ranges: { start: { line: number; character: number }; end: { line: number; character: number } }[] } | null>(
-                'kusto/getQueryBoundaries',
+                'kusto/getQueryRanges',
                 { uri }
             );
 

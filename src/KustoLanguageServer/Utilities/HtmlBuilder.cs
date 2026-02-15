@@ -15,20 +15,42 @@ public class HtmlBuilder : TextBuilder
     public void WriteTagNested(string tag, string attributes, Action content)
     {
         this.WriteOnNewLine();
-        this.WriteTag(tag, attributes);
+        this.WriteStartTag(tag, attributes);
         this.WriteLine();
         this.WriteNested(content);
         this.WriteOnNewLine();
-        this.WriteLine($"</{tag}>");
+        this.WriteEndTag(tag);
     }
+
+    public void WriteTagNested(string tag, string attributes, string content) =>
+        WriteTagNested(tag, attributes, () => Write(content));
 
     public void WriteTagInline(string tag, string attributes, Action content)
     {
-        this.WriteTag(tag, attributes);
+        this.WriteStartTag(tag, attributes);
         content();
-        this.Write($"</{tag}>");
+        this.WriteEndTag(tag);
     }
 
+    public void WriteTagInline(string tag, string attributes, string content) =>
+        WriteTagInline(tag, attributes, () => Write(content));
+
+    public void WriteStartTag(string tag, string attributes)
+    {
+        if (string.IsNullOrWhiteSpace(attributes))
+        {
+            this.Write($"<{tag}>");
+        }
+        else
+        {
+            this.Write($"<{tag} {attributes}>");
+        }
+    }
+
+    public void WriteEndTag(string tag)
+    {
+        this.WriteLine($"</{tag}>");
+    }
 
     public void WriteHtml(Action content)
     {
@@ -51,9 +73,19 @@ public class HtmlBuilder : TextBuilder
         this.WriteTagNested("head", this.Options.HeaderAttributes, content);
     }
 
+    public void WriteHead(string content)
+    {
+        this.WriteHead(() => Write(content));
+    }
+
     public void WriteBody(Action content)
     {
         this.WriteTagNested("body", this.Options.BodyAttributes, content);
+    }
+
+    public void WriteBody(string content)
+    {
+        this.WriteBody(() => Write(content));
     }
 
     public void WriteH1(Action content)
@@ -100,18 +132,6 @@ public class HtmlBuilder : TextBuilder
     public void WriteTableRowDetail(Action content)
     {
         this.WriteTagInline("td", this.Options.TableRowDetailAttributes, content);
-    }
-
-    public void WriteTag(string tag, string attributes)
-    {
-        if (string.IsNullOrWhiteSpace(attributes))
-        {
-            this.Write($"<{tag}>");
-        }
-        else
-        {
-            this.Write($"<{tag} {attributes}>");
-        }
     }
 
     public void WriteTable(DataTable table)

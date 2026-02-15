@@ -1315,10 +1315,10 @@ public class KustoLspServer : LspServer, ILogger
 
     #endregion
 
-    #region Query Boundaries
+    #region Query Ranges
 
-    [JsonRpcMethod("kusto/getQueryBoundaries", UseSingleObjectParameterDeserialization = true)]
-    public Task<QueryBoundariesResult?> OnGetQueryBoundariesAsync(QueryBoundariesParams @params, CancellationToken cancellationToken)
+    [JsonRpcMethod("kusto/getQueryRanges", UseSingleObjectParameterDeserialization = true)]
+    public Task<QueryRangesResult?> OnGetQueryRangesAsync(QueryRangesParams @params, CancellationToken cancellationToken)
     {
         try
         {
@@ -1326,7 +1326,7 @@ public class KustoLspServer : LspServer, ILogger
             if (_documentManager.TryGetDocument(uri, out var document))
             {
                 var ranges = document.GetQueryRanges(cancellationToken).Select(r => GetLspRange(document.Text, r)).ToArray();
-                return Task.FromResult<QueryBoundariesResult?>(new QueryBoundariesResult
+                return Task.FromResult<QueryRangesResult?>(new QueryRangesResult
                 {
                     Uri = @params.Uri,
                     Ranges = ranges
@@ -1338,18 +1338,18 @@ public class KustoLspServer : LspServer, ILogger
             _ = this.SendWindowLogMessageAsync(ex);
         }
 
-        return Task.FromResult<QueryBoundariesResult?>(null);
+        return Task.FromResult<QueryRangesResult?>(null);
     }
 
     [DataContract]
-    public class QueryBoundariesParams
+    public class QueryRangesParams
     {
         [DataMember(Name = "uri")]
         public required string Uri { get; init; }
     }
 
     [DataContract]
-    public class QueryBoundariesResult
+    public class QueryRangesResult
     {
         [DataMember(Name = "uri")]
         public required string Uri { get; init; }
@@ -1357,6 +1357,11 @@ public class KustoLspServer : LspServer, ILogger
         [DataMember(Name = "ranges")]
         public required LSP.Range[] Ranges { get; init; }
     }
+
+    #endregion
+
+    #region Query to HTML
+
 
     #endregion
 

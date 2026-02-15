@@ -108,6 +108,16 @@
         "command": "kusto.renameServerGroup",
         "title": "Rename",
         "icon": "$(edit)"
+      },
+      {
+        "command": "kusto.copyQuery",
+        "title": "Copy Query",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "kusto.copyData",
+        "title": "Copy Data",
+        "icon": "$(copy)"
       }
     ],
     "menus": {
@@ -121,6 +131,11 @@
           "command": "kusto.addServerGroup",
           "when": "view == kusto.connections",
           "group": "navigation@2"
+        },
+        {
+          "command": "kusto.copyData",
+          "when": "view == kusto.resultsView",
+          "group": "navigation@1"
         }
       ],
       "view/item/context": [
@@ -174,9 +189,20 @@
           "group": "navigation@1"
         },
         {
+          "command": "kusto.copyQuery",
+          "when": "editorLangId == kusto",
+          "group": "9_cutcopypaste"
+        },
+        {
           "command": "kusto.connectDatabase",
           "when": "editorLangId == kusto",
           "group": "navigation@2"
+        }
+      ],
+      "webview/context": [
+        {
+          "command": "kusto.copyData",
+          "when": "webviewId == 'kusto.resultsView'"
         }
       ]
     },
