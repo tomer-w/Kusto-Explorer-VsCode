@@ -22,6 +22,7 @@ public class KustoLspServer : LspServer, ILogger
     private readonly IQueryManager _queryManager;
     private readonly IChartManager _chartManager;
     private readonly IResultsManager _resultsManager;
+    private readonly IDefinitionManager _definitionManager;
     private readonly ImmutableList<string> _args;
 
     public KustoLspServer(
@@ -34,7 +35,8 @@ public class KustoLspServer : LspServer, ILogger
         IDiagnosticsManager diagnosticsManager,
         IQueryManager queryManager,
         IChartManager chartManager,
-        IResultsManager resultsManager)
+        IResultsManager resultsManager,
+        IDefinitionManager definitionManager)
         : base(input, output)
     {
         _args = args.ToImmutableList();
@@ -45,6 +47,7 @@ public class KustoLspServer : LspServer, ILogger
         _queryManager = queryManager;
         _chartManager = chartManager;
         _resultsManager = resultsManager;
+        _definitionManager = definitionManager;
         InitEvents();
     }
 
@@ -62,6 +65,7 @@ public class KustoLspServer : LspServer, ILogger
         _queryManager = new QueryManager(_connectionManager, _documentManager, this);
         _chartManager = new PlotlyChartManager();
         _resultsManager = new ResultsManager();
+        _definitionManager = new DefinitionManager(_connectionManager);
         InitEvents();
     }
 
@@ -1394,11 +1398,6 @@ public class KustoLspServer : LspServer, ILogger
 
     #endregion
 
-    #region Query to HTML
-
-
-    #endregion
-
     #region Connection Info
 
     [JsonRpcMethod("kusto/getServerInfo", UseSingleObjectParameterDeserialization = true)]
@@ -1676,6 +1675,46 @@ public class KustoLspServer : LspServer, ILogger
         public string[]? Snapshots { get; set; }
     }
 
+    #endregion
+
+    #region Enitity Definition
+
+    [JsonRpcMethod("kusto/getEntityDefinition", UseSingleObjectParameterDeserialization = true)]
+    public async Task<string?> OnGetEntityDefinitionAsync(EntityDefinitionParams @params, CancellationToken cancellationToken)
+    {
+        if (Kusto.Data.Common.ExtendedEntityType.FastTryParse(@params.EntityType, out var entityType))
+        {
+            var entityId = new EntityId()
+            {
+                Cluster = @params.Cluster,
+                Database = @params.Database,
+                EntityType = entityType,
+                EntityName = @params.EntityName
+            };
+
+            return await _definitionManager.GetDefinitionAsync(entityId, cancellationToken).ConfigureAwait(false);
+        }
+
+        return null;
+    }
+
+    public class EntityDefinitionParams
+    {
+        [DataMember(Name="cluster")]
+        public required string Cluster { get; init; }
+
+        [DataMember(Name="database")]
+        public required string Database { get; init; }
+
+        /// <summary>
+        /// Kind of entity: Table, ExternalTable, etc.
+        /// </summary>
+        [DataMember(Name = "entityType")]
+        public required string EntityType { get; init; }
+
+        [DataMember(Name="entityName")]
+        public required string EntityName { get; init; }
+    }
     #endregion
 
     #region Document Connections

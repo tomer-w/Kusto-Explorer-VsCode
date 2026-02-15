@@ -2,7 +2,7 @@ import { LanguageClient } from 'vscode-languageclient/node';
 
 /**
  * Wrapper methods for LSP requests to the Kusto Language Server.
- * Centralizes all client.sendRequest calls so return type signatures
+ * Centralizes all custom client.sendRequest calls so return type signatures
  * are defined in one place.
  */
 
