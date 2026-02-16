@@ -37,6 +37,11 @@ class KustoCodeLensProvider implements vscode.CodeLensProvider {
                 range.end.line, range.end.character
             );
 
+            // Skip empty or whitespace-only query ranges
+            if (document.getText(vsRange).trim().length === 0) {
+                continue;
+            }
+
             lenses.push(new vscode.CodeLens(vsRange, {
                 title: '▶ Run',
                 command: 'kusto.runQuery',
