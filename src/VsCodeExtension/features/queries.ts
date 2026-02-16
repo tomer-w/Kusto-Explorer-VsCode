@@ -117,15 +117,25 @@ async function displayLastRunQueryResults(
  * @param client The language client for LSP communication
  * @param uri The document URI
  * @param position The position within the document
- * @param hasChart Whether the query returned a chart
  */
 async function displayLastRunQueryChart(
     client: LanguageClient,
     uri: string,
     position: server.Position
 ): Promise<void> {
-    var chartHtml = await server.getLastRunChartAsHtml(client, uri, position);
+    const darkMode = isDarkMode();
+    const chartHtml = await server.getLastRunChartAsHtml(client, uri, position, darkMode);
     displayChart(chartHtml ?? undefined);
+}
+
+/**
+ * Determines if VS Code is currently using a dark color theme.
+ */
+function isDarkMode(): boolean {
+    const colorTheme = vscode.window.activeColorTheme;
+    // ColorThemeKind: Light = 1, Dark = 2, HighContrast = 3, HighContrastLight = 4
+    return colorTheme.kind === vscode.ColorThemeKind.Dark || 
+           colorTheme.kind === vscode.ColorThemeKind.HighContrast;
 }
 
 /**
@@ -169,7 +179,8 @@ async function displayResults(dataHtml: string, rowCount?: number, hasChart?: bo
         {
             resultsView.show(true);  // show but preserve focus on editor
         }
-    } catch (error)
+    } 
+    catch (error)
     {
         // Results view was disposed, try to recreate it
         await vscode.commands.executeCommand('kusto.resultsView.focus');

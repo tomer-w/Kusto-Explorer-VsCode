@@ -136,6 +136,42 @@ public sealed class PlotlyChartBuilder
     }
 
     /// <summary>
+    /// Sets the template/theme for the chart. Use <see cref="PlotlyTemplates"/> constants.
+    /// </summary>
+    public PlotlyChartBuilder WithTemplate(string template)
+    {
+        return new PlotlyChartBuilder(_traces, _layout with { Template = template }, _config);
+    }
+
+    /// <summary>
+    /// Applies dark mode styling to the chart (dark backgrounds, light text).
+    /// </summary>
+    public PlotlyChartBuilder WithDarkMode()
+    {
+        return new PlotlyChartBuilder(_traces, _layout with 
+        { 
+            PaperBackgroundColor = "#1e1e1e",
+            PlotBackgroundColor = "#1e1e1e",
+            Font = new PlotlyFont { Color = "#f2f5fa" },
+            Colorway = PlotlyColorways.Default,
+            XAxis = (_layout.XAxis ?? new PlotlyAxis()) with 
+            { 
+                Color = "#f2f5fa", 
+                GridColor = "#444444",
+                LineColor = "#666666",
+                ZeroLineColor = "#666666"
+            },
+            YAxis = (_layout.YAxis ?? new PlotlyAxis()) with 
+            { 
+                Color = "#f2f5fa", 
+                GridColor = "#444444",
+                LineColor = "#666666",
+                ZeroLineColor = "#666666"
+            }
+        }, _config);
+    }
+
+    /// <summary>
     /// Returns the text of an HTML div containing the Plotly chart.
     /// The Plotly.js library must be loaded separately elsewhere in the HTML document.
     /// </summary>
@@ -155,10 +191,12 @@ public sealed class PlotlyChartBuilder
         var sb = new StringBuilder();
         sb.AppendLine($"<div id=\"{divId}\" style=\"width:100%; height:100%;\"></div>");
         sb.AppendLine("<script>");
+        sb.AppendLine("try {");
         sb.AppendLine($"  var data = {dataJson};");
         sb.AppendLine($"  var layout = {layoutJson};");
         sb.AppendLine($"  var config = {configJson};");
         sb.AppendLine($"  Plotly.newPlot('{divId}', data, layout, config);");
+        sb.AppendLine("} catch(e) { console.error('Plotly error:', e); document.getElementById('" + divId + "').innerText = 'Chart error: ' + e.message; }");
         sb.AppendLine("</script>");
 
         return sb.ToString();
@@ -666,6 +704,30 @@ public sealed record PlotlyAxis
     /// </summary>
     [JsonPropertyName("autorange")]
     public bool? AutoRange { get; init; }
+
+    /// <summary>
+    /// Color for axis line, tick marks, and tick labels. Use hex, RGB, or named colors.
+    /// </summary>
+    [JsonPropertyName("color")]
+    public string? Color { get; init; }
+
+    /// <summary>
+    /// Color of the grid lines. Use hex, RGB, or named colors.
+    /// </summary>
+    [JsonPropertyName("gridcolor")]
+    public string? GridColor { get; init; }
+
+    /// <summary>
+    /// Color of the axis line. Use hex, RGB, or named colors.
+    /// </summary>
+    [JsonPropertyName("linecolor")]
+    public string? LineColor { get; init; }
+
+    /// <summary>
+    /// Color of the zero line. Use hex, RGB, or named colors.
+    /// </summary>
+    [JsonPropertyName("zerolinecolor")]
+    public string? ZeroLineColor { get; init; }
 }
 
 /// <summary>
@@ -893,9 +955,29 @@ public sealed record PlotlyLayout
 
     /// <summary>
     /// Template/theme to use for the chart. Use <see cref="PlotlyTemplates"/> constants.
+    /// This property is not serialized directly - it's handled specially in ToHtmlDiv to reference
+    /// the actual Plotly template object.
     /// </summary>
-    [JsonPropertyName("template")]
-    public string? Template { get; init; } = PlotlyTemplates.Plotly;
+    [JsonIgnore]
+    public string? Template { get; init; }
+
+    /// <summary>
+    /// Background color of the plotting area. Use hex, RGB, or named colors.
+    /// </summary>
+    [JsonPropertyName("plot_bgcolor")]
+    public string? PlotBackgroundColor { get; init; }
+
+    /// <summary>
+    /// Background color of the paper/canvas around the plot. Use hex, RGB, or named colors.
+    /// </summary>
+    [JsonPropertyName("paper_bgcolor")]
+    public string? PaperBackgroundColor { get; init; }
+
+    /// <summary>
+    /// Default font settings for the entire chart.
+    /// </summary>
+    [JsonPropertyName("font")]
+    public PlotlyFont? Font { get; init; }
 
     /// <summary>
     /// Hover behavior. Use <see cref="PlotlyHoverModes"/> constants.

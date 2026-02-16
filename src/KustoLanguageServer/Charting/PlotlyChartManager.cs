@@ -12,50 +12,40 @@ public class PlotlyChartManager : IChartManager
     /// <summary>
     /// Renders chart as HTML using Plotly.js.
     /// </summary>
-    public string? RenderChartToHtmlDiv(DataTable data, ChartVisualizationOptions options)
+    public string? RenderChartToHtmlDiv(DataTable data, ChartVisualizationOptions options, bool darkMode = false)
     {
-        var builder = BuildChart(data, options);
+        var builder = BuildChart(data, options, darkMode);
         return builder != null ? builder.ToHtmlDiv() : null;
     }
 
-    public string? RenderChartToHtmlDocument(DataTable data, ChartVisualizationOptions options)
+    public string? RenderChartToHtmlDocument(DataTable data, ChartVisualizationOptions options, bool darkMode = false)
     {
-        var chartDiv = RenderChartToHtmlDiv(data, options);
-        return chartDiv != null ? PlotlyHtmlHelper.CreateHtmlDocument(chartDiv) : null;
+        var chartDiv = RenderChartToHtmlDiv(data, options, darkMode);
+        return chartDiv != null ? PlotlyHtmlHelper.CreateHtmlDocument(chartDiv, darkMode) : null;
     }
 
-    private PlotlyChartBuilder? BuildChart(DataTable data, ChartVisualizationOptions options)
+    private PlotlyChartBuilder? BuildChart(DataTable data, ChartVisualizationOptions options, bool darkMode)
     {
-        switch (options.Visualization)
+        var builder = options.Visualization switch
         {
-            case VisualizationKind.BarChart:
-            case VisualizationKind.ColumnChart:
-                return BuildBarOrColumnChart(data, options);
+            VisualizationKind.BarChart or VisualizationKind.ColumnChart => BuildBarOrColumnChart(data, options),
+            VisualizationKind.LineChart => BuildLineChart(data, options),
+            VisualizationKind.ScatterChart => BuildScatterChart(data, options),
+            VisualizationKind.PieChart => BuildPieChart(data, options),
+            VisualizationKind.AreaChart => BuildAreaChart(data, options),
+            VisualizationKind.StackedAreaChart => BuildStackedAreaChart(data, options),
+            VisualizationKind.Card => BuildCardChart(data, options),
+            VisualizationKind.ThreeDChart => BuildThreeDChart(data, options),
+            _ => null
+        };
 
-            case VisualizationKind.LineChart:
-                return BuildLineChart(data, options);
-
-            case VisualizationKind.ScatterChart:
-                return BuildScatterChart(data, options);
-
-            case VisualizationKind.PieChart:
-                return BuildPieChart(data, options);
-
-            case VisualizationKind.AreaChart:
-                return BuildAreaChart(data, options);
-
-            case VisualizationKind.StackedAreaChart:
-                return BuildStackedAreaChart(data, options);
-
-            case VisualizationKind.Card:
-                return BuildCardChart(data, options);
-
-            case VisualizationKind.ThreeDChart:
-                return BuildThreeDChart(data, options);
-
-            default:
-                return null;
+        // Apply dark mode styling if requested
+        if (builder != null && darkMode)
+        {
+            builder = builder.WithDarkMode();
         }
+
+        return builder;
     }
 
     private PlotlyChartBuilder? BuildBarOrColumnChart(DataTable data, ChartVisualizationOptions options)

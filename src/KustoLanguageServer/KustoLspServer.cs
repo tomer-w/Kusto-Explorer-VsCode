@@ -1311,7 +1311,7 @@ public class KustoLspServer : LspServer, ILogger
     }
 
     [JsonRpcMethod("kusto/getLastRunChartAsHtml", UseSingleObjectParameterDeserialization = true)]
-    public async Task<string?> OnGetLastRunChartAsHtmlAsync(GetResultsParams @params, CancellationToken cancellationToken)
+    public Task<string?> OnGetLastRunChartAsHtmlAsync(GetChartParams @params, CancellationToken cancellationToken)
     {
         if (_documentManager.TryGetDocument(@params.TextDocument.Uri, out var document))
         {
@@ -1322,16 +1322,16 @@ public class KustoLspServer : LspServer, ILogger
                 && cachedResults.ChartOptions != null
                 && cachedResults.ChartOptions.Visualization != Data.Utils.VisualizationKind.None)
             {
-                return GetChartAsHtml(cachedResults.Data, cachedResults.ChartOptions);
+                return Task.FromResult<string?>(GetChartAsHtml(cachedResults.Data, cachedResults.ChartOptions, @params.DarkMode));
             }
         }
 
-        return null;
+        return Task.FromResult<string?>(null);
     }
 
-    private string GetChartAsHtml(DataTable data, Data.Utils.ChartVisualizationOptions chartOptions)
+    private string GetChartAsHtml(DataTable data, Data.Utils.ChartVisualizationOptions chartOptions, bool darkMode = false)
     {
-        return _chartManager.RenderChartToHtmlDocument(data, chartOptions)
+        return _chartManager.RenderChartToHtmlDocument(data, chartOptions, darkMode)
             ?? "<html>chart style not implemented yet</html>";
     }
 
@@ -1343,6 +1343,19 @@ public class KustoLspServer : LspServer, ILogger
 
         [DataMember(Name = "position")]
         public required LSP.Position Position { get; init; }
+    }
+
+    [DataContract]
+    public class GetChartParams
+    {
+        [DataMember(Name = "textDocument")]
+        public required LSP.TextDocumentIdentifier TextDocument { get; init; }
+
+        [DataMember(Name = "position")]
+        public required LSP.Position Position { get; init; }
+
+        [DataMember(Name = "darkMode")]
+        public bool DarkMode { get; init; }
     }
 
     #endregion

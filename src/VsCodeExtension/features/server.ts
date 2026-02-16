@@ -139,18 +139,21 @@ export function getLastRunDataAsHtml(
  * @param client The language client for LSP communication
  * @param uri The document URI
  * @param position The position within the document
+ * @param darkMode Whether to render the chart in dark mode
  * @returns The chart as HTML, or null if not available
  */
 export function getLastRunChartAsHtml(
     client: LanguageClient,
     uri: string,
-    position: Position
+    position: Position,
+    darkMode: boolean = false
 ): Promise<string | null> {
     return client.sendRequest<string | null>(
         'kusto/getLastRunChartAsHtml',
         {
             textDocument: { uri },
-            position
+            position,
+            darkMode
         }
     );
 }

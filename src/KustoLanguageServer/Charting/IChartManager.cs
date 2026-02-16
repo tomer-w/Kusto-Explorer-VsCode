@@ -8,6 +8,6 @@ public interface IChartManager
     /// <summary>
     /// Renders chart as html.
     /// </summary>
-    string? RenderChartToHtmlDiv(DataTable data, ChartVisualizationOptions options);
-    string? RenderChartToHtmlDocument(DataTable data, ChartVisualizationOptions options);
+    string? RenderChartToHtmlDiv(DataTable data, ChartVisualizationOptions options, bool darkMode = false);
+    string? RenderChartToHtmlDocument(DataTable data, ChartVisualizationOptions options, bool darkMode = false);
 }
