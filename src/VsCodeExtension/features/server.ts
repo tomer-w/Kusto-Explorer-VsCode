@@ -91,6 +91,28 @@ export function getDatabaseInfo(
     );
 }
 
+/**
+ * Gets the definition (source code) for a database entity.
+ * @param client The language client for LSP communication
+ * @param cluster The cluster name
+ * @param database The database name
+ * @param entityType The type of entity (e.g., 'Table', 'ExternalTable', 'Function', etc.)
+ * @param entityName The name of the entity
+ * @returns The entity definition as a string, or null if not found
+ */
+export function getEntityDefinition(
+    client: LanguageClient,
+    cluster: string,
+    database: string,
+    entityType: string,
+    entityName: string
+): Promise<string | null> {
+    return client.sendRequest<string | null>(
+        'kusto/getEntityDefinition',
+        { cluster, database, entityType, entityName }
+    );
+}
+
 
 export interface DatabaseTableInfo {
     name: string;

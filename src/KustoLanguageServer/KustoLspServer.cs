@@ -1682,17 +1682,24 @@ public class KustoLspServer : LspServer, ILogger
     [JsonRpcMethod("kusto/getEntityDefinition", UseSingleObjectParameterDeserialization = true)]
     public async Task<string?> OnGetEntityDefinitionAsync(EntityDefinitionParams @params, CancellationToken cancellationToken)
     {
-        if (Kusto.Data.Common.ExtendedEntityType.FastTryParse(@params.EntityType, out var entityType))
+        try
         {
-            var entityId = new EntityId()
+            if (Kusto.Data.Common.ExtendedEntityType.FastTryParse(@params.EntityType, out var entityType))
             {
-                Cluster = @params.Cluster,
-                Database = @params.Database,
-                EntityType = entityType,
-                EntityName = @params.EntityName
-            };
+                var entityId = new EntityId()
+                {
+                    Cluster = @params.Cluster,
+                    Database = @params.Database,
+                    EntityType = entityType,
+                    EntityName = @params.EntityName
+                };
 
-            return await _definitionManager.GetDefinitionAsync(entityId, cancellationToken).ConfigureAwait(false);
+                return await _definitionManager.GetDefinitionAsync(entityId, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex);
         }
 
         return null;

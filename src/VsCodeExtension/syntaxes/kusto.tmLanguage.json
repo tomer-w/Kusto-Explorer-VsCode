@@ -36,7 +36,7 @@
     },
     {
       "name": "keyword.control.kusto",
-      "match": "\\b(where|summarize|extend|mvexpand|mv-expand|mv-apply|project-away|project-keep|project-rename|project-reorder|project|sort|join|union|limit|order|print|datatable|let|take|filter|distinct|count|render|search|find|parse|evaluate|invoke|fork|facet|make-series|partition|scan|lookup|getschema|serialize|range|sample|sample-distinct|top-nested|top-hitters|top|reduce|consume|materialize|external_data|externaldata)\\b"
+      "match": "\\b(where|summarize|extend|mvexpand|mv-expand|mv-apply|project-away|project-keep|project-rename|project-reorder|project|sort|join|union|limit|order|print|datatable|let|take|filter|distinct|count|render|search|find|parse|evaluate|invoke|fork|facet|make-series|partition|scan|lookup|getschema|serialize|range|sample|sample-distinct|top-nested|top-hitters|top|reduce|consume|materialize|external_data|externaldata|create-or-alter|create-merge)\\b"
     },
     {
       "name": "keyword.operator.kusto",

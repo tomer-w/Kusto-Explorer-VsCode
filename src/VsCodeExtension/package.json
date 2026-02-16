@@ -118,6 +118,11 @@
         "command": "kusto.copyData",
         "title": "Copy Data",
         "icon": "$(copy)"
+      },
+      {
+        "command": "kusto.copyEntity",
+        "title": "Copy Entity",
+        "icon": "$(copy)"
       }
     ],
     "menus": {
@@ -173,6 +178,11 @@
           "command": "kusto.renameServerGroup",
           "when": "view == kusto.connections && viewItem == serverGroup",
           "group": "7_modification"
+        },
+        {
+          "command": "kusto.copyEntity",
+          "when": "view == kusto.connections && viewItem =~ /^(table|externalTable|materializedView|function|entityGroup|graphModel)$/",
+          "group": "9_cutcopypaste"
         }
       ],
       "editor/title": [

@@ -25,42 +25,180 @@ public class DefinitionManager : IDefinitionManager
             switch (id.EntityType)
             {
                 case EntityType.Table:
-                    var tableSchema = await GetTableSchemaAsync(connection, id.Database, id.EntityName, cancellationToken);
-                    return tableSchema?.ToCslString();
+                    var tableDef = await GetTableDefinitionAsync(connection, id.Database, id.EntityName, cancellationToken).ConfigureAwait(false);
+                    return WithEOL(tableDef);
+                case EntityType.ExternalTable:
+                    var externalTablDef = await GetExternalTableDefinitionAsync(connection, id.Database, id.EntityName, cancellationToken).ConfigureAwait(false);
+                    return WithEOL(externalTablDef);
+                case EntityType.Function:
+                    var functionDef = await GetFunctionDefinitionAsync(connection, id.Database, id.EntityName, cancellationToken);
+                    return WithEOL(functionDef);
             }
         }
 
         return null;
     }
 
-    private async Task<TableSchema?> GetTableSchemaAsync(IConnection connection, string databaseName, string tableName, CancellationToken cancellationToken)
+    private string? WithEOL(string? text)
+    {
+        if (text != null
+            && Kusto.Language.Parsing.TextFacts.GetLastLineBreakEnd(text) < text.Length)
+        {
+            return text + "\n";
+        }
+        return text;
+    }
+
+    private async Task<string?> GetTableDefinitionAsync(IConnection connection, string databaseName, string tableName, CancellationToken cancellationToken)
     {
         var entityInfo = await GetEntityInfoAsync(connection, databaseName, "Table", tableName, cancellationToken).ConfigureAwait(false);
-        return entityInfo != null ? GetTableSchema(entityInfo) : null;
-    }
+        if (entityInfo != null)
+        {
+            var table = KustoFacts.BracketNameIfNecessary(entityInfo.EntityName);
+            var columnSchema = entityInfo.CslOutputSchema;
+            var props = GetProperties(entityInfo.Folder, entityInfo.DocString, entityInfo.Properties);
+            var propsClause = GetWithPropertiesClause(props);
 
-    private TableSchema GetTableSchema(DatabasesEntitiesShowCommandResult result)
-    {
-        return new TableSchema(result.EntityName, GetColumnSchemas(result), result.Folder, result.DocString);
-    }
-
-    private IEnumerable<ColumnSchema> GetColumnSchemas(DatabasesEntitiesShowCommandResult result)
-    {
-        var columns = Kusto.Language.Symbols.TableSymbol.From(result.CslOutputSchema).Columns;
-        var columnDocs = result.Properties != null && result.Properties.TryGetValue("column_docs", out var columnDocsProps) ? columnDocsProps as JObject : null;
-        return columns.Select(c =>
-            new ColumnSchema
+            if (propsClause != null)
             {
-                Name = c.Name,
-                CslType = c.Type.Name,
-                DocString = columnDocs?.GetValue(c.Name)?.ToString()
-            });
+                return
+                    $$"""
+                    .create-merge table {{table}}
+                        ({{columnSchema}})
+                        {{propsClause}}
+                    """;
+            }
+            else
+            {
+                return
+                    $$"""
+                    .create-merge table {{table}}
+                        ({{columnSchema}})
+                    """;
+            }
+        }
+        return null;
     }
 
-    private async Task<DatabasesEntitiesShowCommandResult?> GetEntityInfoAsync(IConnection connection, string databaseName, string kind, string entityName, CancellationToken cancellationToken)
+    private async Task<string?> GetExternalTableDefinitionAsync(IConnection connection, string databaseName, string tableName, CancellationToken cancellationToken)
     {
-        //var command = $"{CslCommandGenerator.GenerateDatabaseEntityShowCommand(databaseName, entityName)} | where EntityType = {KustoFacts.GetSingleQuotedStringLiteral(kind)}";
-        var command = CslCommandGenerator.GenerateDatabaseEntityShowCommand(databaseName, entityName);
+        var entityInfo = await GetEntityInfoAsync(connection, databaseName, "ExternalTable", tableName, cancellationToken).ConfigureAwait(false);
+        if (entityInfo != null)
+        {
+            var table = KustoFacts.BracketNameIfNecessary(entityInfo.EntityName);
+            var columnSchema = entityInfo.CslOutputSchema;
+            var props = GetProperties(entityInfo.Folder, entityInfo.DocString, entityInfo.Properties);
+            var propsClause = GetWithPropertiesClause(props);
+
+            if (propsClause != null)
+            {
+                return
+                    $$"""
+                    .create-merge table {{table}}
+                        ({{columnSchema}})
+                        {{propsClause}}
+                    """;
+            }
+            else
+            {
+                return
+                    $$"""
+                    .create-merge table {{table}}
+                        ({{columnSchema}})
+                    """;
+            }
+        }
+        return null;
+    }
+
+    private async Task<string?> GetFunctionDefinitionAsync(IConnection connection, string databaseName, string functionName, CancellationToken cancellationToken)
+    {
+        var entityInfo = await GetEntityInfoAsync(connection, databaseName, "Function", functionName, cancellationToken).ConfigureAwait(false);
+        if (entityInfo != null)
+        {
+            var function = KustoFacts.BracketNameIfNecessary(entityInfo.EntityName);
+            var props = GetProperties(entityInfo.Folder, entityInfo.DocString, entityInfo.Properties);
+            var propClause = GetWithPropertiesClause(props);
+
+            if (propClause != null)
+            {
+                return
+                    $$"""
+                    .create-or-alter function
+                        {{propClause}}
+                    {{function}} {{entityInfo.CslInputSchema}}
+                    {{entityInfo.Content}}
+                    """;
+            }
+            else
+            {
+                return
+                    $$"""
+                    .create-or-alter function {{function}} {{entityInfo.CslInputSchema}}
+                    {{entityInfo.Content}}
+                    """;
+            }
+
+        }
+        return null;
+    }
+
+    private List<(string name, string literal)> GetProperties(string? folder, string? docstring, JObject? jsonProperties)
+    {
+        var props = new List<(string name, string literal)>();
+        if (!string.IsNullOrWhiteSpace(folder))
+            props.Add(("folder", KustoFacts.GetSingleQuotedStringLiteral(folder)));
+        if (!string.IsNullOrWhiteSpace(docstring))
+            props.Add(("docstring", KustoFacts.GetSingleQuotedStringLiteral(docstring)));
+        if (jsonProperties != null)
+            AddJsonProperties(props, jsonProperties);
+        return props;
+    }
+
+    private void AddJsonProperties(List<(string name, string literal)> list, JObject properties)
+    {
+        foreach (var kvp in ((IDictionary<string, JToken>)properties))
+        {
+            var literal = ToKustoLiteral(kvp.Value);
+            list.Add((kvp.Key, literal));
+        }
+    }
+
+    private string? GetWithPropertiesClause(List<(string name, string literal)> list)
+    {
+        if (list.Count > 0)
+        {
+            var propStrings = string.Join($", ", list.Select(x => $"{x.name}={x.literal}"));
+            return $"with ({propStrings})";
+        }
+        return null;
+    }
+
+    private string ToKustoLiteral(JToken token)
+    {
+        switch (token.Type)
+        {
+            case JTokenType.String:
+                return KustoFacts.GetSingleQuotedStringLiteral(token.ToString());
+            case JTokenType.Integer:
+            case JTokenType.Float:
+                return token.ToString();
+            case JTokenType.Boolean:
+                return token.ToString().ToLower();
+            case JTokenType.Array:
+            case JTokenType.Object:
+                return $"dynamic({token.ToString()})";
+            case JTokenType.Null:
+                return "null";
+            default:
+                throw new NotSupportedException($"Unsupported property value type: {token.Type}");
+        }
+    }
+
+    private async Task<DatabasesEntitiesShowCommandResult?> GetEntityInfoAsync(IConnection connection, string databaseName, string entityType, string entityName, CancellationToken cancellationToken)
+    {
+        var command = $"{CslCommandGenerator.GenerateDatabaseEntityShowCommand(databaseName, entityName)} | where EntityType == {KustoFacts.GetSingleQuotedStringLiteral(entityType)}";
+        //var command = CslCommandGenerator.GenerateDatabaseEntityShowCommand(databaseName, entityName);
         var results = await connection.ExecuteAsync<DatabasesEntitiesShowCommandResult>(command, cancellationToken: cancellationToken).ConfigureAwait(false);
         return results.FirstOrDefault();
     }

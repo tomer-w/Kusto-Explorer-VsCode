@@ -220,6 +220,59 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
             await connectionsProvider!.promptRenameServerGroup(item.groupInfo.name);
         }),
 
+        vscode.commands.registerCommand('kusto.copyEntity', async (item: TableTreeItem | ExternalTableTreeItem | MaterializedViewTreeItem | FunctionTreeItem | EntityGroupTreeItem | GraphModelTreeItem) => {
+            if (!client) {
+                return;
+            }
+
+            // Map contextValue to the entity type expected by the server
+            const entityTypeMap: Record<string, string> = {
+                'table': 'Table',
+                'externalTable': 'ExternalTable',
+                'materializedView': 'MaterializedView',
+                'function': 'Function',
+                'entityGroup': 'EntityGroup',
+                'graphModel': 'GraphModel'
+            };
+
+            const entityType = entityTypeMap[item.contextValue ?? ''];
+            if (!entityType) {
+                return;
+            }
+
+            // Get entity name from the appropriate info property
+            let entityName: string;
+            if (item instanceof TableTreeItem || item instanceof ExternalTableTreeItem) {
+                entityName = item.tableInfo.name;
+            } else if (item instanceof MaterializedViewTreeItem) {
+                entityName = item.viewInfo.name;
+            } else if (item instanceof FunctionTreeItem) {
+                entityName = item.functionInfo.name;
+            } else if (item instanceof EntityGroupTreeItem) {
+                entityName = item.groupInfo.name;
+            } else if (item instanceof GraphModelTreeItem) {
+                entityName = item.graphInfo.name;
+            } else {
+                return;
+            }
+
+            try {
+                const definition = await lspServer.getEntityDefinition(
+                    client,
+                    item.clusterName,
+                    item.databaseName,
+                    entityType,
+                    entityName
+                );
+
+                if (definition) {
+                    await vscode.env.clipboard.writeText(definition);
+                }
+            } catch (error) {
+                vscode.window.showErrorMessage(`Failed to copy entity: ${error}`);
+            }
+        }),
+
         vscode.commands.registerCommand('kusto.connectDatabase', async () => {
             const editor = vscode.window.activeTextEditor;
             if (!editor || editor.document.languageId !== 'kusto') {
