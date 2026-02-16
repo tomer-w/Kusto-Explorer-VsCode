@@ -6,6 +6,7 @@ import * as queries from './features/queries'
 import * as decorations from './features/decorations'
 import * as semantics from './features/semantics'
 import * as copilot from './features/copilot'
+import * as codelens from './features/codelens'
 import
     {
         LanguageClient,
@@ -88,6 +89,9 @@ export async function activate(context: ExtensionContext)
 
     // activate copilot hooks
     copilot.activate(context, client);
+
+    // activate codelens for queries
+    codelens.activate(context, client);
 }
 
 export function deactivate(): Thenable<void> | undefined

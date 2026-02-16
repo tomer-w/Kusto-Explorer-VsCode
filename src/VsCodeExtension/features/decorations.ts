@@ -24,7 +24,7 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
      * Requests query boundaries from the server and updates decorations.
      * @param uri The document URI
      */
-    async function updateQueryBoundaries(uri: string): Promise<void> {
+    async function updateQuerySeparators(uri: string): Promise<void> {
         try {
             const result = await server.getQueryRanges(client, uri);
 
@@ -67,7 +67,7 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
                 }
             }
         } catch (error) {
-            console.error(`Failed to get query boundaries for ${uri}:`, error);
+            console.error(`Failed to get query ranges for ${uri}:`, error);
         }
     }
 
@@ -75,7 +75,7 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
     context.subscriptions.push(
         vscode.workspace.onDidOpenTextDocument(async (document) => {
             if (document.languageId === 'kusto') {
-                await updateQueryBoundaries(document.uri.toString());
+                await updateQuerySeparators(document.uri.toString());
             }
         })
     );
@@ -95,7 +95,7 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
                 // Set new timer - waits for typing to stop before requesting boundaries
                 // This ensures didChange notifications are sent to the server first
                 const timer = setTimeout(() => {
-                    updateQueryBoundaries(uri);
+                    updateQuerySeparators(uri);
                     debounceTimers.delete(uri);
                 }, 300); // 300ms after last change
                 
@@ -107,7 +107,7 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
     // Update decorations for already open documents
     for (const document of vscode.workspace.textDocuments) {
         if (document.languageId === 'kusto') {
-            updateQueryBoundaries(document.uri.toString());
+            updateQuerySeparators(document.uri.toString());
         }
     }
 }
