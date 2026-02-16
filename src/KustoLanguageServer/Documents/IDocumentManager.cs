@@ -45,7 +45,7 @@ public interface IDocumentManager
     /// <summary>
     /// Gets the current document for the specified id
     /// </summary>
-    bool TryGetDocument(Uri id, [NotNullWhen(true)] out Document? document);
+    bool TryGetDocument(Uri id, [NotNullWhen(true)] out IDocument? document);
 
     /// <summary>
     /// An event fired when the document is added.

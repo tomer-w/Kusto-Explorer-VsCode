@@ -24,7 +24,7 @@ public class QueryManager : IQueryManager
     }
 
     public Task<RunResult?> RunQueryAsync(
-        Document document, 
+        IDocument document, 
         TextRange range, 
         ImmutableDictionary<string, string> queryOptions,
         ImmutableDictionary<string, string> queryParameters,
@@ -458,7 +458,7 @@ public class QueryManager : IQueryManager
         return map;
     }
  
-    private IConnection? GetConnection(Document document)
+    private IConnection? GetConnection(IDocument document)
     {
         var connectionInfo = _documentManager.GetConnection(document.Id);
         if (connectionInfo.Cluster != null)

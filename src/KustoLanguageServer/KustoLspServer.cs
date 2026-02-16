@@ -1038,8 +1038,8 @@ public class KustoLspServer : LspServer, ILogger
     /// <summary>
     /// Table of actions per script.
     /// </summary>
-    private readonly ConditionalWeakTable<Document, DocumentActions> _scriptActions =
-        new ConditionalWeakTable<Document, DocumentActions>();
+    private readonly ConditionalWeakTable<IDocument, DocumentActions> _scriptActions =
+        new ConditionalWeakTable<IDocument, DocumentActions>();
 
     private static readonly CodeActionOptions _codeActionOptions =
         CodeActionOptions.Default;

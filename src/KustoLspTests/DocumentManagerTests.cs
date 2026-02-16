@@ -74,7 +74,7 @@ public sealed class DocumentManagerTests
             return Task.CompletedTask;
         }
 
-        public Task ResolveSymbolsAsync(Document document, CancellationToken cancellationToken)
+        public Task ResolveSymbolsAsync(IDocument document, CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
         }

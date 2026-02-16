@@ -41,7 +41,8 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
     context.subscriptions.push(
         vscode.commands.registerCommand('kusto.runQuery', () => runQuery(client)),
         vscode.commands.registerCommand('kusto.copyData', () => copyData()),
-        vscode.commands.registerCommand('kusto.copyQuery', () => copyQuery(client))
+        vscode.commands.registerCommand('kusto.copyQuery', () => copyQuery(client)),
+        vscode.commands.registerCommand('kusto.formatQuery', () => formatQuery(client))
     );
 }
 
@@ -277,6 +278,54 @@ async function copyQuery(client: LanguageClient): Promise<void> {
 
     } catch (error) {
         vscode.window.showErrorMessage(`Failed to copy query: ${error}`);
+    }
+}
+
+/**
+ * Formats the query at the current cursor position using the LSP range formatting.
+ * @param client The language client for LSP communication
+ */
+async function formatQuery(client: LanguageClient): Promise<void> {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || editor.document.languageId !== 'kusto') {
+        return;
+    }
+
+    try {
+        // Get the query range containing the cursor position
+        const cursorPos = editor.selection.active;
+        const queryRange = await server.getQueryRange(
+            client,
+            editor.document.uri.toString(),
+            { line: cursorPos.line, character: cursorPos.character }
+        );
+
+        if (!queryRange) {
+            return;
+        }
+
+        const range = new vscode.Range(
+            queryRange.start.line, queryRange.start.character,
+            queryRange.end.line, queryRange.end.character
+        );
+
+        // Invoke the LSP document range formatting
+        const edits = await vscode.commands.executeCommand<vscode.TextEdit[]>(
+            'vscode.executeFormatRangeProvider',
+            editor.document.uri,
+            range,
+            editor.options
+        );
+
+        if (edits && edits.length > 0) {
+            await editor.edit(editBuilder => {
+                for (const edit of edits) {
+                    editBuilder.replace(edit.range, edit.newText);
+                }
+            });
+        }
+    } catch (error) {
+        vscode.window.showErrorMessage(`Failed to format query: ${error}`);
     }
 }
 

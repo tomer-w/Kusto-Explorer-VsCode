@@ -12,7 +12,7 @@ public interface IQueryManager
     /// Runs the query at the specified position in the script.
     /// </summary>
     Task<RunResult?> RunQueryAsync(
-        Document document, 
+        IDocument document, 
         TextRange range, 
         ImmutableDictionary<string, string> queryOptions, 
         ImmutableDictionary<string, string> queryParameters,

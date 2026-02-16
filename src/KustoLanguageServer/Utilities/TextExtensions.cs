@@ -1,4 +1,5 @@
 ﻿using System.Runtime.CompilerServices;
+using Kusto.Language.Editor;
 
 namespace Kusto.Lsp;
 
@@ -43,4 +44,10 @@ public static class TextExtensions
         lineOffset = 0;
         return false;
     }
+
+    /// <summary>
+    /// True if the ranges interect
+    /// </summary>
+    public static bool Intersects(this TextRange range, TextRange other) =>
+        Math.Max(range.Start, other.Start) < Math.Min(range.End, other.End);
 }

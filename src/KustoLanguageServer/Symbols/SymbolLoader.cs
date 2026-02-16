@@ -50,16 +50,12 @@ public class SymbolLoader : ISymbolLoader
         return globals;
     }
 
-    public async Task<GlobalState> AddReferencedSymbols(GlobalState globals, Document document, CancellationToken cancellationToken)
+    public async Task<GlobalState> AddReferencedSymbols(GlobalState globals, IDocument document, CancellationToken cancellationToken)
     {
-        switch (document)
+        if (document is SectionedDocument mqDoc)
         {
-            case MultiQueryDocument mqDoc:
-                var newScript = await _resolver.AddReferencedDatabasesAsync(mqDoc.Script, cancellationToken).ConfigureAwait(false);
-                return newScript.Globals;
-            case SingleQueryDocument sqDoc:
-                var newCode = await _resolver.AddReferencedDatabasesAsync(sqDoc.GetCode(), cancellationToken).ConfigureAwait(false);
-                return newCode.Globals;
+            var newScript = await _resolver.AddReferencedDatabasesAsync(mqDoc.Script, cancellationToken).ConfigureAwait(false);
+            return newScript.Globals;
         }
         return globals;
     }

@@ -35,5 +35,5 @@ public interface ISymbolManager
     /// <summary>
     /// Resolve references to unloaded clusters and databases in the specified document.
     /// </summary>
-    Task ResolveSymbolsAsync(Document document, CancellationToken cancellationToken);
+    Task ResolveSymbolsAsync(IDocument document, CancellationToken cancellationToken);
 }

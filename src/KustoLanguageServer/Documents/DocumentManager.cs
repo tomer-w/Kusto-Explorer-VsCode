@@ -66,7 +66,7 @@ public class DocumentManager : IDocumentManager
     {
         public Uri Id { get; }
 
-        public required Document Document { get; set; }
+        public required IDocument Document { get; set; }
 
         public string? ServerKind { get; set; }
 
@@ -96,7 +96,7 @@ public class DocumentManager : IDocumentManager
     {
         return ImmutableInterlocked.GetOrAdd(
             ref _idToScriptInfoMap, id, 
-            _ => new DocumentInfo(id) { Document = new MultiQueryDocument(id, "", _symbolManager.Globals) }
+            _ => new DocumentInfo(id) { Document = new SectionedDocument(id, "", _symbolManager.Globals) }
             );
     }
 
@@ -266,7 +266,7 @@ public class DocumentManager : IDocumentManager
     /// <summary>
     /// Gets the document for the given id.
     /// </summary>
-    public bool TryGetDocument(Uri documentId, [NotNullWhen(true)] out Document? document)
+    public bool TryGetDocument(Uri documentId, [NotNullWhen(true)] out IDocument? document)
     {
         if (_idToScriptInfoMap.TryGetValue(documentId, out var info))
         {

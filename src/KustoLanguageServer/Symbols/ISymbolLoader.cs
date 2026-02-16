@@ -17,7 +17,7 @@ public interface ISymbolLoader
     /// <summary>
     /// Loads symbols for referenced clusters and databases in the document.
     /// </summary>
-    Task<GlobalState> AddReferencedSymbols(GlobalState globals, Document document, CancellationToken cancellationToken);
+    Task<GlobalState> AddReferencedSymbols(GlobalState globals, IDocument document, CancellationToken cancellationToken);
 }
 
 public interface ISymbolLoaderFactory

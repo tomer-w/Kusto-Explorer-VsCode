@@ -120,6 +120,10 @@
         "icon": "$(copy)"
       },
       {
+        "command": "kusto.formatQuery",
+        "title": "Format Query"
+      },
+      {
         "command": "kusto.copyEntity",
         "title": "Copy Entity",
         "icon": "$(copy)"
@@ -207,6 +211,11 @@
           "command": "kusto.connectDatabase",
           "when": "editorLangId == kusto",
           "group": "navigation@2"
+        },
+        {
+          "command": "kusto.formatQuery",
+          "when": "editorLangId == kusto",
+          "group": "1_modification"
         }
       ],
       "webview/context": [

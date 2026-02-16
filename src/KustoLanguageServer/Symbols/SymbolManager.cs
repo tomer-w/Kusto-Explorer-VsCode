@@ -179,7 +179,7 @@ public class SymbolManager : ISymbolManager
     /// <summary>
     /// Resolve references to unloaded clusters and databases.
     /// </summary>
-    public Task ResolveSymbolsAsync(Document document, CancellationToken cancellationToken)
+    public Task ResolveSymbolsAsync(IDocument document, CancellationToken cancellationToken)
     {
         return _taskQueue.Run(cancellationToken, async (useThisCancellationToken) =>
         {

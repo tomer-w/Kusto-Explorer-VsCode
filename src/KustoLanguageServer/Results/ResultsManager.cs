@@ -10,7 +10,7 @@ public class ResultsManager : IResultsManager
     /// <summary>
     /// Caches the results for the query at the position in the document.
     /// </summary>
-    public void SetResults(Document document, int position, ExecuteResult result)
+    public void SetResults(IDocument document, int position, ExecuteResult result)
     {
         var section = document.GetSection(position);
         if (section != null)
@@ -22,7 +22,7 @@ public class ResultsManager : IResultsManager
     /// <summary>
     /// Gets the cached results for the query at the position in the document.
     /// </summary>
-    public ExecuteResult? GetResults(Document document, int position)
+    public ExecuteResult? GetResults(IDocument document, int position)
     {
         var section = document.GetSection(position);
         if (section != null && _cachedResults.TryGetValue(section, out var result))

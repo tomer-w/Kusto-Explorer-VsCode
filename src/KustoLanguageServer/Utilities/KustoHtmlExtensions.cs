@@ -7,17 +7,17 @@ namespace Kusto.Lsp;
 public static class KustoHtmlExtensions
 {
     /// <summary>
-    /// Converts the text of the <see cref="Document"> into an HTML fragment.
+    /// Converts the text of the <see cref="IDocument"> into an HTML fragment.
     /// </summary>
-    public static string ToHmtlFragment(this Document document, bool isDarkTheme = false)
+    public static string ToHmtlFragment(this IDocument document, bool isDarkTheme = false)
     {
         return ToHmtlFragment(document, 0, document.Text.Length, isDarkTheme);
     }
 
     /// <summary>
-    /// Converts the range of text in the <see cref="Document"> into an HTML fragment.
+    /// Converts the range of text in the <see cref="IDocument"> into an HTML fragment.
     /// </summary>
-    public static string ToHmtlFragment(this Document document, int start, int length, bool isDarkTheme = false)
+    public static string ToHmtlFragment(this IDocument document, int start, int length, bool isDarkTheme = false)
     {
         var builder = new HtmlBuilder();
         var style = isDarkTheme
@@ -38,7 +38,7 @@ public static class KustoHtmlExtensions
     /// </summary>
     public static void WriteDocument(
         this HtmlBuilder builder, 
-        Document document, 
+        IDocument document, 
         int start, 
         int length, 
         string? defaultStyle = null,
