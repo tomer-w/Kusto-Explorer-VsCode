@@ -27,12 +27,22 @@ public class DefinitionManager : IDefinitionManager
                 case EntityType.Table:
                     var tableDef = await GetTableDefinitionAsync(connection, id.Database, id.EntityName, cancellationToken).ConfigureAwait(false);
                     return WithEOL(tableDef);
-                case EntityType.ExternalTable:
-                    var externalTablDef = await GetExternalTableDefinitionAsync(connection, id.Database, id.EntityName, cancellationToken).ConfigureAwait(false);
-                    return WithEOL(externalTablDef);
                 case EntityType.Function:
-                    var functionDef = await GetFunctionDefinitionAsync(connection, id.Database, id.EntityName, cancellationToken);
+                    var functionDef = await GetFunctionDefinitionAsync(connection, id.Database, id.EntityName, cancellationToken).ConfigureAwait(false);
                     return WithEOL(functionDef);
+                case EntityType.MaterializedView:
+                    var mvDef = await GetMaterializedViewDefinitionAsync(connection, id.Database, id.EntityName, cancellationToken).ConfigureAwait(false);
+                    return WithEOL(mvDef);
+                case EntityType.EntityGroup:
+                    var egDef = await GetEntityGroupDefinitionAsync(connection, id.Database, id.EntityName, cancellationToken).ConfigureAwait(false);
+                    return WithEOL(egDef);
+                case EntityType.Graph:
+                    var gmDef = await GetGraphModelDefinitionAsync(connection, id.Database, id.EntityName, cancellationToken).ConfigureAwait(false);
+                    return WithEOL(gmDef);
+                case EntityType.ExternalTable:
+                    break; // noway to have a single command that reconstructs external table
+                default:
+                    break;
             }
         }
 
@@ -54,7 +64,7 @@ public class DefinitionManager : IDefinitionManager
         var entityInfo = await GetEntityInfoAsync(connection, databaseName, "Table", tableName, cancellationToken).ConfigureAwait(false);
         if (entityInfo != null)
         {
-            var table = KustoFacts.BracketNameIfNecessary(entityInfo.EntityName);
+            var table = KustoFacts.BracketNameIfNecessary(entityInfo.EntityName, KustoDialect.EngineCommand);
             var columnSchema = entityInfo.CslOutputSchema;
             var props = GetProperties(entityInfo.Folder, entityInfo.DocString, entityInfo.Properties);
             var propsClause = GetWithPropertiesClause(props);
@@ -80,43 +90,12 @@ public class DefinitionManager : IDefinitionManager
         return null;
     }
 
-    private async Task<string?> GetExternalTableDefinitionAsync(IConnection connection, string databaseName, string tableName, CancellationToken cancellationToken)
+    private async Task<string?> GetFunctionDefinitionAsync(IConnection connection, string databaseName, string entityName, CancellationToken cancellationToken)
     {
-        var entityInfo = await GetEntityInfoAsync(connection, databaseName, "ExternalTable", tableName, cancellationToken).ConfigureAwait(false);
+        var entityInfo = await GetEntityInfoAsync(connection, databaseName, "Function", entityName, cancellationToken).ConfigureAwait(false);
         if (entityInfo != null)
         {
-            var table = KustoFacts.BracketNameIfNecessary(entityInfo.EntityName);
-            var columnSchema = entityInfo.CslOutputSchema;
-            var props = GetProperties(entityInfo.Folder, entityInfo.DocString, entityInfo.Properties);
-            var propsClause = GetWithPropertiesClause(props);
-
-            if (propsClause != null)
-            {
-                return
-                    $$"""
-                    .create-merge table {{table}}
-                        ({{columnSchema}})
-                        {{propsClause}}
-                    """;
-            }
-            else
-            {
-                return
-                    $$"""
-                    .create-merge table {{table}}
-                        ({{columnSchema}})
-                    """;
-            }
-        }
-        return null;
-    }
-
-    private async Task<string?> GetFunctionDefinitionAsync(IConnection connection, string databaseName, string functionName, CancellationToken cancellationToken)
-    {
-        var entityInfo = await GetEntityInfoAsync(connection, databaseName, "Function", functionName, cancellationToken).ConfigureAwait(false);
-        if (entityInfo != null)
-        {
-            var function = KustoFacts.BracketNameIfNecessary(entityInfo.EntityName);
+            var function = KustoFacts.BracketNameIfNecessary(entityInfo.EntityName, KustoDialect.EngineCommand);
             var props = GetProperties(entityInfo.Folder, entityInfo.DocString, entityInfo.Properties);
             var propClause = GetWithPropertiesClause(props);
 
@@ -142,6 +121,65 @@ public class DefinitionManager : IDefinitionManager
         }
         return null;
     }
+
+    private async Task<string?> GetMaterializedViewDefinitionAsync(IConnection connection, string databaseName, string entityName, CancellationToken cancellationToken)
+    {
+        var entityInfo = await GetEntityInfoAsync(connection, databaseName, "MaterializedView", entityName, cancellationToken).ConfigureAwait(false);
+
+        var mvCommand = CslCommandGenerator.GenerateMaterializedViewShowCommand(entityName);
+        var mvInfo = (await connection.ExecuteAsync<MaterializedViewShowCommandResult>(mvCommand, cancellationToken: cancellationToken).ConfigureAwait(false)).FirstOrDefault();
+
+        if (entityInfo != null && mvInfo != null)
+        {
+            var view = KustoFacts.BracketNameIfNecessary(entityInfo.EntityName, KustoDialect.EngineCommand);
+            var table = KustoFacts.BracketNameIfNecessary(mvInfo.SourceTable, KustoDialect.EngineCommand);
+            return
+                $$"""
+                .create-or-alter materialized-view {{view}} on table {{table}} { 
+                {{mvInfo.Query}} 
+                }
+                """;
+        }
+        return null;
+    }
+
+    private async Task<string?> GetEntityGroupDefinitionAsync(IConnection connection, string databaseName, string entityName, CancellationToken cancellationToken)
+    {
+        var entityInfo = await GetEntityInfoAsync(connection, databaseName, "EntityGroup", entityName, cancellationToken).ConfigureAwait(false);
+
+        if (entityInfo != null)
+        {
+            var name = KustoFacts.BracketNameIfNecessary(entityInfo.EntityName, KustoDialect.EngineCommand);
+           
+            return
+                $$"""
+                .create-or-alter entity_group {{name}} ({{entityInfo.Content}})
+                """;
+        }
+        return null;
+    }
+
+    private async Task<string?> GetGraphModelDefinitionAsync(IConnection connection, string databaseName, string entityName, CancellationToken cancellationToken)
+    {
+        var entityInfo = await GetEntityInfoAsync(connection, databaseName, "Graph", entityName, cancellationToken).ConfigureAwait(false);
+
+        var gmCommand = CslCommandGenerator.GenerateGraphModelShowCommand(entityName, details: true);
+        var gmInfo = (await connection.ExecuteAsync<GraphModelsShowDetailsCommandResult>(gmCommand, cancellationToken: cancellationToken).ConfigureAwait(false)).FirstOrDefault();
+
+        if (entityInfo != null && gmInfo != null)
+        {
+            var name = KustoFacts.BracketNameIfNecessary(entityInfo.EntityName, KustoDialect.EngineCommand);
+            return
+                $$"""
+                .create-or-alter graph_model {{name}} 
+                ```
+                {{gmInfo.Model}}
+                ```
+                """;
+        }
+        return null;
+    }
+
 
     private List<(string name, string literal)> GetProperties(string? folder, string? docstring, JObject? jsonProperties)
     {

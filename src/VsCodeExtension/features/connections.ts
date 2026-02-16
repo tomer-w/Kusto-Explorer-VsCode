@@ -232,7 +232,7 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
                 'materializedView': 'MaterializedView',
                 'function': 'Function',
                 'entityGroup': 'EntityGroup',
-                'graphModel': 'GraphModel'
+                'graphModel': 'Graph'
             };
 
             const entityType = entityTypeMap[item.contextValue ?? ''];

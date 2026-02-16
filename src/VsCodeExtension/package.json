@@ -181,7 +181,7 @@
         },
         {
           "command": "kusto.copyEntity",
-          "when": "view == kusto.connections && viewItem =~ /^(table|externalTable|materializedView|function|entityGroup|graphModel)$/",
+          "when": "view == kusto.connections && viewItem =~ /^(table|materializedView|function|entityGroup|graphModel)$/",
           "group": "9_cutcopypaste"
         }
       ],
