@@ -113,6 +113,50 @@ export function getEntityDefinition(
     );
 }
 
+/**
+ * Gets the HTML representation of data from the last run query.
+ * @param client The language client for LSP communication
+ * @param uri The document URI
+ * @param position The position within the document
+ * @returns The data result with HTML and row count, or null if not available
+ */
+export function getLastRunDataAsHtml(
+    client: LanguageClient,
+    uri: string,
+    position: Position
+): Promise<LastRunDataResult | null> {
+    return client.sendRequest<LastRunDataResult | null>(
+        'kusto/getLastRunDataAsHtml',
+        {
+            textDocument: { uri },
+            position
+        }
+    );
+}
+
+/**
+ * Gets the HTML representation of a chart from the last run query.
+ * @param client The language client for LSP communication
+ * @param uri The document URI
+ * @param position The position within the document
+ * @returns The chart as HTML, or null if not available
+ */
+export function getLastRunChartAsHtml(
+    client: LanguageClient,
+    uri: string,
+    position: Position
+): Promise<string | null> {
+    return client.sendRequest<string | null>(
+        'kusto/getLastRunChartAsHtml',
+        {
+            textDocument: { uri },
+            position
+        }
+    );
+}
+
+
+
 
 export interface DatabaseTableInfo {
     name: string;
@@ -163,11 +207,18 @@ export interface DatabaseInfo {
 /** Result of running a query. */
 export interface RunQueryResult {
     title: string;
-    dataHtml: string;
-    rowCount?: number;
-    chartHtml?: string;
+    hasData: boolean;
+    hasChart: boolean;
+    hasDiagnostics: boolean;
     cluster?: string;
     database?: string;
+}
+
+/** Result of getting last run data as HTML. */
+export interface LastRunDataResult {
+    html: string;
+    rowCount: number;
+    hasChart: boolean;
 }
 
 /** Position in a document. */

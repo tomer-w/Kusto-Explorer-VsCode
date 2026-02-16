@@ -1184,33 +1184,40 @@ public class KustoLspServer : LspServer, ILogger
 
             var results = await _queryManager.RunQueryAsync(document, range, queryOptions, queryParameters, cancellationToken).ConfigureAwait(false);
 
-            string dataHtml;
-            string? chartHtml = null;
+            bool hasData = false;
+            bool hasChart = false;
 
             if (results != null && results.Data != null)
             {
                 // cache results for lookup later
-                _resultsManager.SetResults(document, range.Start, new ExecuteResult { Data = results.Data, ChartOptions = results.ChartOptions });
+                _resultsManager.SetResults(document, range.Start, 
+                    new ExecuteResult
+                    {
+                        Data = results.Data,
+                        ChartOptions = results.ChartOptions,
+                        Diagnostics = results.Error != null ? [results.Error] : null
+                    });
 
-                dataHtml = GetDataAsHtml(results.Data);
+                hasData = true;
 
                 if (results.ChartOptions != null
                     && results.ChartOptions.Visualization != Data.Utils.VisualizationKind.None)
                 {
-                    chartHtml = GetChartAsHtml(results.Data, results.ChartOptions);
+                    hasChart = true;
                 }
             }
             else
             {
-                dataHtml = "<html>no results</html>";
+                // cache results for lookup later
+                _resultsManager.SetResults(document, range.Start, null);
             }
 
             return new RunQueryResults
             {
                 Title = "Query Results",
-                DataHtml = dataHtml,
-                RowCount = results?.Data?.Rows?.Count,
-                ChartHtml = chartHtml,
+                HasData = hasData,
+                HasChart = hasChart,
+                HasDiagnostics = results?.Error != null,
                 Cluster = results?.Cluster,
                 Database = results?.Database
             };
@@ -1234,14 +1241,14 @@ public class KustoLspServer : LspServer, ILogger
         [DataMember(Name = "title")]
         public required string Title { get; init; }
 
-        [DataMember(Name = "dataHtml")]
-        public string? DataHtml { get; init; }
+        [DataMember(Name = "hasData")]
+        public bool HasData { get; init; }
 
-        [DataMember(Name = "rowCount")]
-        public int? RowCount { get; init; }
+        [DataMember(Name = "hasChart")]
+        public bool HasChart { get; init; }
 
-        [DataMember(Name = "chartHtml")]
-        public string? ChartHtml { get; init; }
+        [DataMember(Name = "hasDiagnostics")]
+        public bool HasDiagnostics { get; init; }
 
         [DataMember(Name = "cluster")]
         public string? Cluster { get; init; }
@@ -1251,7 +1258,7 @@ public class KustoLspServer : LspServer, ILogger
     }
 
     [JsonRpcMethod("kusto/getLastRunDataAsHtml", UseSingleObjectParameterDeserialization = true)]
-    public async Task<string?> OnGetLastRunDataAsHtmlAsync(GetResultsParams @params, CancellationToken cancellationToken)
+    public Task<GetLastRunDataResult?> OnGetLastRunDataAsHtmlAsync(GetResultsParams @params, CancellationToken cancellationToken)
     {
         if (_documentManager.TryGetDocument(@params.TextDocument.Uri, out var document))
         {
@@ -1259,11 +1266,32 @@ public class KustoLspServer : LspServer, ILogger
             var cachedResults = _resultsManager.GetResults(document, position);
             if (cachedResults?.Data != null)
             {
-                return GetDataAsHtml(cachedResults.Data);
+                var hasChart = cachedResults.ChartOptions != null
+                    && cachedResults.ChartOptions.Visualization != Data.Utils.VisualizationKind.None;
+
+                return Task.FromResult<GetLastRunDataResult?>(new GetLastRunDataResult
+                {
+                    Html = GetDataAsHtml(cachedResults.Data),
+                    RowCount = cachedResults.Data.Rows.Count,
+                    HasChart = hasChart
+                });
             }
         }
 
-        return null;
+        return Task.FromResult<GetLastRunDataResult?>(null);
+    }
+
+    [DataContract]
+    public class GetLastRunDataResult
+    {
+        [DataMember(Name = "html")]
+        public required string Html { get; init; }
+
+        [DataMember(Name = "rowCount")]
+        public int RowCount { get; init; }
+
+        [DataMember(Name = "hasChart")]
+        public bool HasChart { get; init; }
     }
 
     private string GetDataAsHtml(DataTable data)

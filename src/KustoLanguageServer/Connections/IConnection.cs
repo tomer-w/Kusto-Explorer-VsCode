@@ -1,7 +1,8 @@
-﻿using Kusto.Data;
-using Kusto.Data.Utils;
-using System.Collections.Immutable;
+﻿using System.Collections.Immutable;
 using System.Data;
+using Kusto.Data;
+using Kusto.Data.Utils;
+using Kusto.Language;
 
 namespace Kusto.Lsp;
 
@@ -53,4 +54,5 @@ public record ExecuteResult
 {
     public DataTable? Data { get; init; }
     public ChartVisualizationOptions? ChartOptions { get; init; }
+    public ImmutableList<Diagnostic>? Diagnostics { get; set; }
 }

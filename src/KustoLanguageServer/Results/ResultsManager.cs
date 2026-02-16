@@ -4,13 +4,13 @@ namespace Kusto.Lsp;
 
 public class ResultsManager : IResultsManager
 {
-    private readonly ConditionalWeakTable<ISection, ExecuteResult> _cachedResults
-        = new ConditionalWeakTable<ISection, ExecuteResult>();
+    private readonly ConditionalWeakTable<ISection, ExecuteResult?> _cachedResults
+        = new ConditionalWeakTable<ISection, ExecuteResult?>();
 
     /// <summary>
     /// Caches the results for the query at the position in the document.
     /// </summary>
-    public void SetResults(IDocument document, int position, ExecuteResult result)
+    public void SetResults(IDocument document, int position, ExecuteResult? result)
     {
         var section = document.GetSection(position);
         if (section != null)

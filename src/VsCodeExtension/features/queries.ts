@@ -64,15 +64,14 @@ async function runQuery(client: LanguageClient): Promise<void> {
     }
 
     try {
+        const uri = editor.document.uri.toString();
+        const selection = {
+            start: { line: editor.selection.start.line, character: editor.selection.start.character },
+            end: { line: editor.selection.end.line, character: editor.selection.end.character }
+        };
+
         // run query and get results from the server
-        const results = await server.runQuery(
-            client,
-            editor.document.uri.toString(),
-            {
-                start: { line: editor.selection.start.line, character: editor.selection.start.character },
-                end: { line: editor.selection.end.line, character: editor.selection.end.character }
-            }
-        );
+        const results = await server.runQuery(client, uri, selection);
 
         if (!results) {
             return; // No results or error
@@ -80,22 +79,53 @@ async function runQuery(client: LanguageClient): Promise<void> {
 
         // If query changed cluster/database, update document connection
         if (results.cluster) {
-            await setDocumentConnection(
-                editor.document.uri.toString(),
-                results.cluster,
-                results.database
-            );
+            await setDocumentConnection(uri, results.cluster, results.database);
         }
 
-        // Display results in the results view
-        await displayResults(results.dataHtml, results.rowCount, !!results.chartHtml);
-
-        // Display chart if available
-        displayChart(results.chartHtml);
+        // Fetch and display results and chart
+        const position = selection.start;
+        await displayLastRunQueryResults(client, uri, position);
+        await displayLastRunQueryChart(client, uri, position);
 
     } catch (error) {
         vscode.window.showErrorMessage(`Failed to execute query: ${error}`);
     }
+}
+
+/**
+ * Fetches data HTML from the server and displays it in the results view.
+ * @param client The language client for LSP communication
+ * @param uri The document URI
+ * @param position The position within the document
+ */
+async function displayLastRunQueryResults(
+    client: LanguageClient,
+    uri: string,
+    position: server.Position
+): Promise<void> {
+    const dataResult = await server.getLastRunDataAsHtml(client, uri, position);
+
+    if (dataResult) {
+        await displayResults(dataResult.html, dataResult.rowCount, dataResult.hasChart);
+    } else {
+        await displayResults('<html>no results</html>', undefined, false);
+    }
+}
+
+/**
+ * Fetches chart HTML from the server and displays it in the chart panel.
+ * @param client The language client for LSP communication
+ * @param uri The document URI
+ * @param position The position within the document
+ * @param hasChart Whether the query returned a chart
+ */
+async function displayLastRunQueryChart(
+    client: LanguageClient,
+    uri: string,
+    position: server.Position
+): Promise<void> {
+    var chartHtml = await server.getLastRunChartAsHtml(client, uri, position);
+    displayChart(chartHtml ?? undefined);
 }
 
 /**
@@ -209,7 +239,8 @@ function displayChart(chartHtml: string | undefined): void
         // Update content and reveal
         chartPanel.webview.html = chartHtml;
         chartPanel.reveal(vscode.ViewColumn.Beside, true);
-    } else if (chartPanel)
+    }
+    else if (chartPanel)
     {
         // No chart to show, dispose the panel
         try
