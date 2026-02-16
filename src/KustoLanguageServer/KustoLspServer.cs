@@ -385,7 +385,7 @@ public class KustoLspServer : LspServer, ILogger
             {
                 var position = GetTextPosition(document.Text, @params.Position);
                 var elementRange = document.GetElement(position, cancellationToken);
-                var info = document.GetCompletionItems(position, _completionOptions, cancellationToken);
+                var info = document.GetCompletionItems(position, @params.Context?.TriggerCharacter, _completionOptions, cancellationToken);
 
                 return info.Items.Select(CreateItem).ToArray();
 

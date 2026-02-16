@@ -29,7 +29,7 @@ export async function activate(context: ExtensionContext)
         debug: serverExecutable
     };
 
-    const outputChannel = window.createOutputChannel('Kusto');5
+    const outputChannel = window.createOutputChannel('Kusto');
 
     const clientOptions: LanguageClientOptions = {
         documentSelector: [{ scheme: 'file', language: 'kusto' }],

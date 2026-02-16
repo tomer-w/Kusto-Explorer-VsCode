@@ -156,11 +156,14 @@ public class SectionedDocument : IDocument
         return CodeActionInfo.NoActions;
     }
 
-    public CompletionInfo GetCompletionItems(int position, CompletionOptions? options = null, CancellationToken cancellationToken = default)
+    public CompletionInfo GetCompletionItems(int position, string? trigger, CompletionOptions? options = null, CancellationToken cancellationToken = default)
     {
         var block = _script.GetBlockAtPosition(position);
-        if (block != null)
+        if (block != null 
+            && (string.IsNullOrEmpty(trigger) || block.Service.ShouldAutoComplete(position, trigger[0], cancellationToken)))
+        {
             return block.Service.GetCompletionItems(position, options, cancellationToken);
+        }
         return CompletionInfo.Empty;
     }
 

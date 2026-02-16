@@ -80,7 +80,7 @@ public interface IDocument
     /// <summary>
     /// Gets the completion items for the position within the document.
     /// </summary>
-    public abstract CompletionInfo GetCompletionItems(int position, CompletionOptions? options = null, CancellationToken cancellationToken = default);
+    public abstract CompletionInfo GetCompletionItems(int position, string? trigger, CompletionOptions? options = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets the diagnostics for the document.
