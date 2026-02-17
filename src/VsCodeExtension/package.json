@@ -124,8 +124,8 @@
         "title": "Format Query"
       },
       {
-        "command": "kusto.copyEntity",
-        "title": "Copy Entity",
+        "command": "kusto.copyEntityCreateCommand",
+        "title": "Copy Create Command",
         "icon": "$(copy)"
       },
       {
@@ -193,7 +193,7 @@
           "group": "7_modification"
         },
         {
-          "command": "kusto.copyEntity",
+          "command": "kusto.copyEntityCreateCommand",
           "when": "view == kusto.connections && viewItem =~ /^(table|materializedView|function|entityGroup|graphModel)$/",
           "group": "9_cutcopypaste"
         }

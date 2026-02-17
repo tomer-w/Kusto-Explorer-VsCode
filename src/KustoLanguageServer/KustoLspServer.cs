@@ -22,7 +22,7 @@ public class KustoLspServer : LspServer, ILogger
     private readonly IQueryManager _queryManager;
     private readonly IChartManager _chartManager;
     private readonly IResultsManager _resultsManager;
-    private readonly IEntityManager _definitionManager;
+    private readonly IEntityManager _entityManager;
     private readonly ImmutableList<string> _args;
 
     public KustoLspServer(
@@ -36,7 +36,7 @@ public class KustoLspServer : LspServer, ILogger
         IQueryManager queryManager,
         IChartManager chartManager,
         IResultsManager resultsManager,
-        IEntityManager definitionManager)
+        IEntityManager entityManager)
         : base(input, output)
     {
         _args = args.ToImmutableList();
@@ -47,7 +47,7 @@ public class KustoLspServer : LspServer, ILogger
         _queryManager = queryManager;
         _chartManager = chartManager;
         _resultsManager = resultsManager;
-        _definitionManager = definitionManager;
+        _entityManager = entityManager;
         InitEvents();
     }
 
@@ -65,7 +65,7 @@ public class KustoLspServer : LspServer, ILogger
         _queryManager = new QueryManager(_connectionManager, _documentManager, this);
         _chartManager = new PlotlyChartManager();
         _resultsManager = new ResultsManager();
-        _definitionManager = new EntityManager(_connectionManager);
+        _entityManager = new EntityManager(_connectionManager);
         InitEvents();
     }
 
@@ -1734,10 +1734,10 @@ public class KustoLspServer : LspServer, ILogger
 
     #endregion
 
-    #region Enitity Definition
+    #region Entity Create Command
 
-    [JsonRpcMethod("kusto/getEntityDefinition", UseSingleObjectParameterDeserialization = true)]
-    public async Task<string?> OnGetEntityDefinitionAsync(EntityDefinitionParams @params, CancellationToken cancellationToken)
+    [JsonRpcMethod("kusto/getEntityCreateCommand", UseSingleObjectParameterDeserialization = true)]
+    public async Task<string?> OnGetEntityCreateCommandAsync(GetEntityCreateCommandParams @params, CancellationToken cancellationToken)
     {
         try
         {
@@ -1751,7 +1751,7 @@ public class KustoLspServer : LspServer, ILogger
                     EntityName = @params.EntityName
                 };
 
-                return await _definitionManager.GetCreateCommand(entityId, cancellationToken).ConfigureAwait(false);
+                return await _entityManager.GetCreateCommand(entityId, cancellationToken).ConfigureAwait(false);
             }
         }
         catch (Exception ex)
@@ -1762,7 +1762,8 @@ public class KustoLspServer : LspServer, ILogger
         return null;
     }
 
-    public class EntityDefinitionParams
+    [DataContract]
+    public class GetEntityCreateCommandParams
     {
         [DataMember(Name="cluster")]
         public required string Cluster { get; init; }
@@ -1779,6 +1780,64 @@ public class KustoLspServer : LspServer, ILogger
         [DataMember(Name="entityName")]
         public required string EntityName { get; init; }
     }
+    #endregion
+
+    #region Transform Paste
+
+
+    [JsonRpcMethod("kusto/transformPaste", UseSingleObjectParameterDeserialization = true)]
+    public Task<string?> OnTransformPasteAsync(TransformPasteParams @params, CancellationToken cancellationToken)
+    {
+        var text = @params.Text;
+
+        if (_documentManager.TryGetDocument(@params.TextDocument.Uri, out var document))
+        {
+            switch (@params.Kind)
+            {
+                case "create":
+                    if (document.Globals.Cluster.Name != @params.EntityCluster
+                        || document.Globals.Database.Name != @params.EntityDatabase)
+                    {
+                        var conn = $"cluster({KustoFacts.GetSingleQuotedStringLiteral(@params.EntityCluster)})";
+                        if (@params.EntityDatabase != null)
+                            conn = $"{conn}.database({KustoFacts.GetSingleQuotedStringLiteral(@params.EntityDatabase)})";
+                        text = $"#connect {conn}\n{text}";
+                    }
+                    break;
+            }
+        }
+
+        return Task.FromResult<string?>(text);
+    }
+
+    [DataContract]
+    public class TransformPasteParams
+    {
+        [DataMember(Name = "text")]
+        public required string Text { get; init; }
+
+        [DataMember(Name = "kind")]
+        public required string Kind { get; init; }
+
+        [DataMember(Name = "textDocument")]
+        public required LSP.TextDocumentIdentifier TextDocument { get; init; }
+
+        [DataMember(Name = "position")]
+        public required LSP.Position Position { get; init; }
+
+        [DataMember(Name = "entityCluster")]
+        public string? EntityCluster { get; init; }
+
+        [DataMember(Name = "entityDatabase")]
+        public string? EntityDatabase { get; init; }
+
+        [DataMember(Name = "entityType")]
+        public string? EntityType { get; init; }
+
+        [DataMember(Name = "entityName")]
+        public string? EntityName { get; init; }
+    }
+
     #endregion
 
     #region Document Connections

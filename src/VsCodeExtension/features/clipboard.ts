@@ -1,45 +1,47 @@
 import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
-import { getActiveDocumentConnection } from './connections';
+import * as server from './server';
 
-const MIME_TYPE = 'application/vnd.kusto.entity';
 const PASTE_KIND = vscode.DocumentDropOrPasteEditKind.Text.append('kusto');
 
-/** Stored entity context from the last Copy Entity command. */
-let lastCopiedEntity: EntityClipboardData | undefined;
+/** Stored clipboard context from the last copy operation with context. */
+let lastCopiedContext: ClipboardContext | undefined;
 
-interface EntityClipboardData {
+/** Generic clipboard context that can carry arbitrary metadata. */
+export interface ClipboardContext {
+    /** The text placed on the system clipboard. Used to verify the clipboard hasn't changed. */
     text: string;
-    cluster: string;
-    database: string;
+    /** The kind of content that was copied (e.g. 'entity', 'query'). */
+    kind: string;
+    /** The source cluster name. */
+    entityCluster?: string;
+    /** The source database name. */
+    entityDatabase?: string;
+    /** The type of entity being copied (e.g. 'Table', 'Function'). */
+    entityType?: string;
+    /** The name of the entity being copied. */
+    entityName?: string;
 }
 
 /**
- * Called by the Copy Entity command to store source context alongside the clipboard text.
- * @param text The entity definition text placed on the clipboard
- * @param cluster The source cluster name
- * @param database The source database name
+ * Stores clipboard context alongside the system clipboard text.
+ * Call this when copying content that should carry source connection metadata.
  */
-export function setEntityClipboardContext(text: string, cluster: string, database: string): void {
-    lastCopiedEntity = { text, cluster, database };
+export function setClipboardContext(context: ClipboardContext): void {
+    lastCopiedContext = context;
 }
 
-/**
- * Escapes a string for use inside a Kusto single-quoted string literal.
- * Handles backslashes and single quotes.
- */
-function escapeKustoString(value: string): string {
-    return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-}
+let languageClient: LanguageClient | undefined;
 
 /**
  * Activates clipboard features for Kusto documents.
  * Registers a DocumentPasteEditProvider that intercepts paste operations
- * to add #connect directives when pasting entities from a different context.
+ * and delegates to the server to transform the pasted text based on source/target context.
  * @param context The extension context
  * @param client The language client for LSP communication
  */
 export function activate(context: vscode.ExtensionContext, client: LanguageClient): void {
+    languageClient = client;
 
     context.subscriptions.push(
         vscode.languages.registerDocumentPasteEditProvider(
@@ -52,38 +54,48 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
                     context: vscode.DocumentPasteEditContext,
                     token: vscode.CancellationToken
                 ): Promise<vscode.DocumentPasteEdit[] | undefined> {
-                    if (!lastCopiedEntity) {
+                    if (!lastCopiedContext || !languageClient) {
                         return undefined;
                     }
 
-                    // Check that the clipboard text matches the stored entity definition
+                    // Check that the clipboard text matches the stored context
                     const textItem = dataTransfer.get('text/plain');
                     if (!textItem) {
                         return undefined;
                     }
                     const clipboardText = await textItem.asString();
-                    if (clipboardText !== lastCopiedEntity.text) {
-                        // Clipboard has changed since Copy Entity, let default paste handle it
-                        lastCopiedEntity = undefined;
+                    if (clipboardText !== lastCopiedContext.text) {
+                        // Clipboard has changed since the contextual copy, let default paste handle it
+                        lastCopiedContext = undefined;
                         return undefined;
                     }
 
-                    // Get the target document's connection
-                    const targetConnection = getActiveDocumentConnection();
-                    const sameCluster = targetConnection?.cluster === lastCopiedEntity.cluster;
-                    const sameDatabase = sameCluster && targetConnection?.database === lastCopiedEntity.database;
-
-                    if (sameDatabase) {
-                        // Same context, no #connect needed — let default paste handle it
+                    // Get the insertion position (first range's start)
+                    const insertPosition = ranges[0]?.start;
+                    if (!insertPosition) {
                         return undefined;
                     }
 
-                    // Different context — prepend a #connect directive
-                    const connectDirective = `#connect cluster('${escapeKustoString(lastCopiedEntity.cluster)}').database('${escapeKustoString(lastCopiedEntity.database)}')`;
-                    const insertText = connectDirective + '\n' + lastCopiedEntity.text;
+                    // Ask the server to transform the paste
+                    const result = await server.transformPaste(
+                        languageClient,
+                        lastCopiedContext.text,
+                        lastCopiedContext.kind,
+                        document.uri.toString(),
+                        { line: insertPosition.line, character: insertPosition.character },
+                        lastCopiedContext.entityCluster,
+                        lastCopiedContext.entityDatabase,
+                        lastCopiedContext.entityType,
+                        lastCopiedContext.entityName,
+                    );
+
+                    if (!result || result === lastCopiedContext.text) {
+                        // Server returned no change, let default paste handle it
+                        return undefined;
+                    }
 
                     const edit = new vscode.DocumentPasteEdit(
-                        insertText,
+                        result,
                         'Paste with connection context',
                         PASTE_KIND
                     );

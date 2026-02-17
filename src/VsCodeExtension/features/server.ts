@@ -92,15 +92,15 @@ export function getDatabaseInfo(
 }
 
 /**
- * Gets the definition (source code) for a database entity.
+ * Gets the create command for a database entity.
  * @param client The language client for LSP communication
  * @param cluster The cluster name
  * @param database The database name
  * @param entityType The type of entity (e.g., 'Table', 'ExternalTable', 'Function', etc.)
  * @param entityName The name of the entity
- * @returns The entity definition as a string, or null if not found
+ * @returns The entity create command as a string, or null if not found
  */
-export function getEntityDefinition(
+export function getEntityCreateCommand(
     client: LanguageClient,
     cluster: string,
     database: string,
@@ -108,10 +108,11 @@ export function getEntityDefinition(
     entityName: string
 ): Promise<string | null> {
     return client.sendRequest<string | null>(
-        'kusto/getEntityDefinition',
+        'kusto/getEntityCreateCommand',
         { cluster, database, entityType, entityName }
     );
 }
+
 
 /**
  * Gets the HTML representation of data from the last run query.
@@ -264,4 +265,47 @@ export interface SelectionRange {
     start: Position;
     end: Position;
 }
+
+/**
+ * Asks the server to transform pasted text based on source and target connection context.
+ * Returns the transformed text, or null if no transformation is needed.
+ * @param client The language client for LSP communication
+ * @param text The text being pasted
+ * @param kind The kind of content being pasted (e.g. 'entity', 'query')
+ * @param sourceCluster The cluster where the content was copied from
+ * @param sourceDatabase The database where the content was copied from
+ * @param entityType The type of entity being pasted (e.g. 'Table', 'Function')
+ * @param entityName The name of the entity being pasted
+ * @param targetUri The URI of the document being pasted into
+ * @param targetPosition The position in the document where the paste will occur
+ * @param properties Optional additional properties for the transformation
+ */
+export function transformPaste(
+    client: LanguageClient,
+    text: string,
+    kind: string,
+    targetUri: string,
+    targetPosition: Position,
+    entityCluster?: string | undefined,
+    entityDatabase?: string | undefined,
+    entityType?: string | undefined,
+    entityName?: string | undefined,
+): Promise<string | null> {
+    return client.sendRequest<string | null>(
+        'kusto/transformPaste',
+        {
+            text,
+            kind,
+            textDocument: { uri: targetUri },
+            position: targetPosition,
+            entityCluster,
+            entityDatabase,
+            entityType,
+            entityName
+        }
+    );
+}
+
+
+
 

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 import * as lspServer from './server';
-import { setEntityClipboardContext } from './clipboard';
+import { setClipboardContext } from './clipboard';
 import type { DatabaseInfo, DatabaseTableInfo, DatabaseColumnInfo, DatabaseFunctionInfo, DatabaseEntityGroupInfo, DatabaseGraphModelInfo, DatabaseParameterInfo } from './server';
 
 // Storage keys
@@ -221,7 +221,7 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
             await connectionsProvider!.promptRenameServerGroup(item.groupInfo.name);
         }),
 
-        vscode.commands.registerCommand('kusto.copyEntity', async (item: TableTreeItem | ExternalTableTreeItem | MaterializedViewTreeItem | FunctionTreeItem | EntityGroupTreeItem | GraphModelTreeItem) => {
+        vscode.commands.registerCommand('kusto.copyEntityCreateCommand', async (item: TableTreeItem | ExternalTableTreeItem | MaterializedViewTreeItem | FunctionTreeItem | EntityGroupTreeItem | GraphModelTreeItem) => {
             if (!client) {
                 return;
             }
@@ -258,7 +258,7 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
             }
 
             try {
-                const definition = await lspServer.getEntityDefinition(
+                const definition = await lspServer.getEntityCreateCommand(
                     client,
                     item.clusterName,
                     item.databaseName,
@@ -268,7 +268,14 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
 
                 if (definition) {
                     await vscode.env.clipboard.writeText(definition);
-                    setEntityClipboardContext(definition, item.clusterName, item.databaseName);
+                    setClipboardContext({
+                        text: definition,
+                        kind: 'create',
+                        entityCluster: item.clusterName,
+                        entityDatabase: item.databaseName,
+                        entityType: entityType,
+                        entityName: entityName
+                    });
                 }
             } catch (error) {
                 vscode.window.showErrorMessage(`Failed to copy entity: ${error}`);
