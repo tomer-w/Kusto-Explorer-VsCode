@@ -52,7 +52,7 @@ public interface IKustoConnection : IConnection
 
 public record ExecuteResult
 {
-    public DataTable? Data { get; init; }
+    public ImmutableList<DataTable>? Data { get; init; }
     public ChartVisualizationOptions? ChartOptions { get; init; }
     public ImmutableList<Diagnostic>? Diagnostics { get; set; }
 }

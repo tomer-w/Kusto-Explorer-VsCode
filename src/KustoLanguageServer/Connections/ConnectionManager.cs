@@ -163,7 +163,12 @@ public class ConnectionManager : IConnectionManager
                 : await this.QueryProvider.ExecuteQueryAsync(this.Database, query, properties, cancellationToken).ConfigureAwait(false);
             var dataSet = KustoDataReaderParser.ParseV1(resultReader, null);
             var mainResult = dataSet?.GetMainResultsOrNull();
-            return new ExecuteResult { Data=mainResult?.TableData, ChartOptions=mainResult?.VisualizationOptions };
+            var mainTable = mainResult?.TableData;
+            return new ExecuteResult 
+            { 
+                Data=mainTable != null ? [mainTable] : null,
+                ChartOptions=mainResult?.VisualizationOptions 
+            };
         }
 
         public async Task<IEnumerable<T>> ExecuteAsync<T>(
@@ -174,9 +179,10 @@ public class ConnectionManager : IConnectionManager
             )
         {
             var results = await ExecuteAsync(query, options, parameters, cancellationToken).ConfigureAwait(false);
-            if (results.Data != null)
+            if (results.Data != null
+                && results.Data.Count > 0)
             {
-                var reader = new ObjectReader<T>(results.Data.CreateDataReader());
+                var reader = new ObjectReader<T>(results.Data[0].CreateDataReader());
                 return reader;
             }
             else

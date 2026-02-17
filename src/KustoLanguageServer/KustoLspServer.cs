@@ -1269,12 +1269,17 @@ public class KustoLspServer : LspServer, ILogger
                 var hasChart = cachedResults.ChartOptions != null
                     && cachedResults.ChartOptions.Visualization != Data.Utils.VisualizationKind.None;
 
-                return Task.FromResult<GetLastRunDataResult?>(new GetLastRunDataResult
-                {
-                    Html = GetDataAsHtml(cachedResults.Data),
-                    RowCount = cachedResults.Data.Rows.Count,
-                    HasChart = hasChart
-                });
+                return Task.FromResult<GetLastRunDataResult?>(
+                    new GetLastRunDataResult
+                    {
+                        Tables = cachedResults.Data.Select(t => new HtmlTable
+                        {
+                            Html = GetDataAsHtml(t),
+                            Name = t.TableName,
+                            RowCount = t.Rows.Count
+                        }).ToImmutableList(),
+                        HasChart = hasChart
+                    });
             }
         }
 
@@ -1284,14 +1289,24 @@ public class KustoLspServer : LspServer, ILogger
     [DataContract]
     public class GetLastRunDataResult
     {
+        [DataMember(Name = "tables")]
+        public required ImmutableList<HtmlTable> Tables { get; init; }
+
+        [DataMember(Name = "hasChart")]
+        public bool HasChart { get; init; }
+    }
+
+    [DataContract]
+    public class HtmlTable
+    {
+        [DataMember(Name = "name")]
+        public required string Name { get; init; }
+
         [DataMember(Name = "html")]
         public required string Html { get; init; }
 
         [DataMember(Name = "rowCount")]
         public int RowCount { get; init; }
-
-        [DataMember(Name = "hasChart")]
-        public bool HasChart { get; init; }
     }
 
     private string GetDataAsHtml(DataTable data)
@@ -1319,10 +1334,11 @@ public class KustoLspServer : LspServer, ILogger
             var cachedResults = _resultsManager.GetResults(document, position);
             if (cachedResults != null
                 && cachedResults.Data != null
+                && cachedResults.Data.Count > 0
                 && cachedResults.ChartOptions != null
                 && cachedResults.ChartOptions.Visualization != Data.Utils.VisualizationKind.None)
             {
-                return Task.FromResult<string?>(GetChartAsHtml(cachedResults.Data, cachedResults.ChartOptions, @params.DarkMode));
+                return Task.FromResult<string?>(GetChartAsHtml(cachedResults.Data[0], cachedResults.ChartOptions, @params.DarkMode));
             }
         }
 

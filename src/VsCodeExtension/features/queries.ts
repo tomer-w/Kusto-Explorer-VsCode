@@ -107,8 +107,10 @@ async function displayLastRunQueryResults(
 ): Promise<void> {
     const dataResult = await server.getLastRunDataAsHtml(client, uri, position);
 
-    if (dataResult) {
-        await displayResults(dataResult.html, dataResult.rowCount, dataResult.hasChart);
+    // Display only the first table if available
+    const firstTable = dataResult?.tables[0];
+    if (firstTable) {
+        await displayResults(firstTable.html, firstTable.rowCount, dataResult.hasChart);
     } else {
         await displayResults('<html>no results</html>', undefined, false);
     }

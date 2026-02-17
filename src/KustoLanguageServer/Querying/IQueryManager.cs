@@ -32,9 +32,9 @@ public record RunResult
     public EditString? Query { get; init; }
 
     /// <summary>
-    /// The resulting <see cref="DataTable"/>
+    /// The resulting set of <see cref="DataTable"/>'s.
     /// </summary>
-    public DataTable? Data { get; init; }
+    public ImmutableList<DataTable>? Data { get; init; }
 
     /// <summary>
     /// The chart options if the query results contain a render command.

@@ -217,10 +217,16 @@ export interface RunQueryResult {
     database?: string;
 }
 
-/** Result of getting last run data as HTML. */
-export interface LastRunDataResult {
+/** A single HTML table from the query result. */
+export interface HtmlTable {
+    name: string;
     html: string;
     rowCount: number;
+}
+
+/** Result of getting last run data as HTML. */
+export interface LastRunDataResult {
+    tables: HtmlTable[];
     hasChart: boolean;
 }
 
