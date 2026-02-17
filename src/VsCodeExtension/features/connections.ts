@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 import * as lspServer from './server';
+import { setEntityClipboardContext } from './clipboard';
 import type { DatabaseInfo, DatabaseTableInfo, DatabaseColumnInfo, DatabaseFunctionInfo, DatabaseEntityGroupInfo, DatabaseGraphModelInfo, DatabaseParameterInfo } from './server';
 
 // Storage keys
@@ -267,6 +268,7 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
 
                 if (definition) {
                     await vscode.env.clipboard.writeText(definition);
+                    setEntityClipboardContext(definition, item.clusterName, item.databaseName);
                 }
             } catch (error) {
                 vscode.window.showErrorMessage(`Failed to copy entity: ${error}`);

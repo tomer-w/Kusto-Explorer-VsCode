@@ -7,6 +7,7 @@ import * as decorations from './features/decorations'
 import * as semantics from './features/semantics'
 import * as copilot from './features/copilot'
 import * as codelens from './features/codelens'
+import * as clipboard from './features/clipboard'
 import
     {
         LanguageClient,
@@ -92,6 +93,9 @@ export async function activate(context: ExtensionContext)
 
     // activate codelens for queries
     codelens.activate(context, client);
+
+    // activate clipboard interception
+    clipboard.activate(context, client);
 }
 
 export function deactivate(): Thenable<void> | undefined
