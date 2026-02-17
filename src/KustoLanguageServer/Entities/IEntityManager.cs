@@ -3,9 +3,17 @@ using Kusto.Data.Common;
 
 namespace Kusto.Lsp;
 
-public interface IDefinitionManager
+public interface IEntityManager
 {
-    Task<string?> GetDefinitionAsync(EntityId id, CancellationToken cancellationToken);
+    /// <summary>
+    /// Gets a create command that re-creates the existing entity.
+    /// </summary>
+    Task<string?> GetCreateCommand(EntityId id, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets the text of a KQL expression that references the entity in a query.
+    /// </summary>
+    Task<string?> GetQueryReference(EntityId id, CancellationToken cancellationToken);
 }
 
 public record EntityId : IParsable<EntityId>

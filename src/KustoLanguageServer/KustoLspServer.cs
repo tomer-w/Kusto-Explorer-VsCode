@@ -22,7 +22,7 @@ public class KustoLspServer : LspServer, ILogger
     private readonly IQueryManager _queryManager;
     private readonly IChartManager _chartManager;
     private readonly IResultsManager _resultsManager;
-    private readonly IDefinitionManager _definitionManager;
+    private readonly IEntityManager _definitionManager;
     private readonly ImmutableList<string> _args;
 
     public KustoLspServer(
@@ -36,7 +36,7 @@ public class KustoLspServer : LspServer, ILogger
         IQueryManager queryManager,
         IChartManager chartManager,
         IResultsManager resultsManager,
-        IDefinitionManager definitionManager)
+        IEntityManager definitionManager)
         : base(input, output)
     {
         _args = args.ToImmutableList();
@@ -65,7 +65,7 @@ public class KustoLspServer : LspServer, ILogger
         _queryManager = new QueryManager(_connectionManager, _documentManager, this);
         _chartManager = new PlotlyChartManager();
         _resultsManager = new ResultsManager();
-        _definitionManager = new DefinitionManager(_connectionManager);
+        _definitionManager = new EntityManager(_connectionManager);
         InitEvents();
     }
 
@@ -1751,7 +1751,7 @@ public class KustoLspServer : LspServer, ILogger
                     EntityName = @params.EntityName
                 };
 
-                return await _definitionManager.GetDefinitionAsync(entityId, cancellationToken).ConfigureAwait(false);
+                return await _definitionManager.GetCreateCommand(entityId, cancellationToken).ConfigureAwait(false);
             }
         }
         catch (Exception ex)

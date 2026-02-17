@@ -2,22 +2,24 @@
 using Kusto.Data.Common;
 using Kusto.Language;
 using Kusto.Language.Symbols;
+using Kusto.Toolkit;
 using Newtonsoft.Json.Linq;
 using System.Diagnostics.CodeAnalysis;
+using static Kusto.Cloud.Platform.Instrumentation.DatabasesNamesMapping;
 
 namespace Kusto.Lsp;
 
 
-public class DefinitionManager : IDefinitionManager
+public class EntityManager : IEntityManager
 {
     private readonly IConnectionManager _connectionManager;
 
-    public DefinitionManager(IConnectionManager connectionManager)
+    public EntityManager(IConnectionManager connectionManager)
     {
         _connectionManager = connectionManager;
     }
 
-    public async Task<string?> GetDefinitionAsync(EntityId id, CancellationToken cancellationToken)
+    public async Task<string?> GetCreateCommand(EntityId id, CancellationToken cancellationToken)
     {
         var connection = _connectionManager.GetConnection(id.Cluster, id.Database);
         if (connection != null)
@@ -47,6 +49,34 @@ public class DefinitionManager : IDefinitionManager
         }
 
         return null;
+    }
+
+    public Task<string?> GetQueryReference(EntityId id, CancellationToken cancellationToken)
+    {
+        var result = id.EntityType switch
+        {
+            EntityType.Cluster => GetQueryClusterReference(),
+            EntityType.Database => GetQueryDatabaseReference(),
+            EntityType.Table => $"{GetQueryDatabaseReference()}.{KustoFacts.BracketNameIfNecessary(id.EntityName)}",
+            EntityType.ExternalTable => $"{GetQueryDatabaseReference()}.external_table({KustoFacts.BracketNameIfNecessary(id.EntityName)})",
+            EntityType.MaterializedView => $"{GetQueryDatabaseReference()}.materialized_view({KustoFacts.BracketNameIfNecessary(id.EntityName)})",
+            EntityType.EntityGroup => $"{GetQueryDatabaseReference()}.entity_group({KustoFacts.BracketNameIfNecessary(id.EntityName)})",
+            EntityType.Graph => $"{GetQueryDatabaseReference()}.graph({KustoFacts.BracketNameIfNecessary(id.EntityName)})",
+            EntityType.StoredQueryResult => $"{GetQueryDatabaseReference()}.stored_query_result({KustoFacts.BracketNameIfNecessary(id.EntityName)})",
+            _ => null
+        };
+
+        return Task.FromResult<string?>(result);
+
+        string GetQueryClusterReference()
+        {
+            return $"cluster({KustoFacts.GetSingleQuotedStringLiteral(id.Cluster)})";
+        }
+
+        string GetQueryDatabaseReference()
+        {
+            return $"{GetQueryClusterReference()}.database({KustoFacts.GetSingleQuotedStringLiteral(id.EntityName)})";
+        }
     }
 
     private string? WithEOL(string? text)
