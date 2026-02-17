@@ -221,44 +221,20 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
             await connectionsProvider!.promptRenameServerGroup(item.groupInfo.name);
         }),
 
-        vscode.commands.registerCommand('kusto.copyEntityCreateCommand', async (item: TableTreeItem | ExternalTableTreeItem | MaterializedViewTreeItem | FunctionTreeItem | EntityGroupTreeItem | GraphModelTreeItem) => {
+        vscode.commands.registerCommand('kusto.copyEntityCommand', async (item: EntityTreeItem) => {
             if (!client) {
                 return;
             }
 
-            // Map contextValue to the entity type expected by the server
-            const entityTypeMap: Record<string, string> = {
-                'table': 'Table',
-                'externalTable': 'ExternalTable',
-                'materializedView': 'MaterializedView',
-                'function': 'Function',
-                'entityGroup': 'EntityGroup',
-                'graphModel': 'Graph'
-            };
-
-            const entityType = entityTypeMap[item.contextValue ?? ''];
+            const entityType = getEntityType(item);
             if (!entityType) {
                 return;
             }
 
-            // Get entity name from the appropriate info property
-            let entityName: string;
-            if (item instanceof TableTreeItem || item instanceof ExternalTableTreeItem) {
-                entityName = item.tableInfo.name;
-            } else if (item instanceof MaterializedViewTreeItem) {
-                entityName = item.viewInfo.name;
-            } else if (item instanceof FunctionTreeItem) {
-                entityName = item.functionInfo.name;
-            } else if (item instanceof EntityGroupTreeItem) {
-                entityName = item.groupInfo.name;
-            } else if (item instanceof GraphModelTreeItem) {
-                entityName = item.graphInfo.name;
-            } else {
-                return;
-            }
+            const entityName = getEntityName(item);
 
             try {
-                const definition = await lspServer.getEntityCreateCommand(
+                const definition = await lspServer.getEntityCommand(
                     client,
                     item.clusterName,
                     item.databaseName,
@@ -270,7 +246,7 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
                     await vscode.env.clipboard.writeText(definition);
                     setClipboardContext({
                         text: definition,
-                        kind: 'create',
+                        kind: 'command',
                         entityCluster: item.clusterName,
                         entityDatabase: item.databaseName,
                         entityType: entityType,
@@ -279,6 +255,43 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
                 }
             } catch (error) {
                 vscode.window.showErrorMessage(`Failed to copy entity: ${error}`);
+            }
+        }),
+
+        vscode.commands.registerCommand('kusto.copyEntityExpression', async (item: EntityTreeItem) => {
+            if (!client) {
+                return;
+            }
+
+            const entityType = getEntityType(item);
+            if (!entityType) {
+                return;
+            }
+
+            const entityName = getEntityName(item);
+
+            try {
+                const expression = await lspServer.getEntityExpression(
+                    client,
+                    item.clusterName,
+                    item.databaseName,
+                    entityType,
+                    entityName
+                );
+
+                if (expression) {
+                    await vscode.env.clipboard.writeText(expression);
+                    setClipboardContext({
+                        text: expression,
+                        kind: 'expression',
+                        entityCluster: item.clusterName,
+                        entityDatabase: item.databaseName,
+                        entityType: entityType,
+                        entityName: entityName
+                    });
+                }
+            } catch (error) {
+                vscode.window.showErrorMessage(`Failed to copy expression: ${error}`);
             }
         }),
 
@@ -340,6 +353,53 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
             );
         })
     );
+}
+
+// =============================================================================
+// Entity Helper Functions
+// =============================================================================
+
+/** Entity tree item types that support copy operations */
+type EntityTreeItem = TableTreeItem | ExternalTableTreeItem | MaterializedViewTreeItem | FunctionTreeItem | EntityGroupTreeItem | GraphModelTreeItem;
+
+/** Maps contextValue to the entity type expected by the server */
+const entityTypeMap: Record<string, string> = {
+    'table': 'Table',
+    'externalTable': 'ExternalTable',
+    'materializedView': 'MaterializedView',
+    'function': 'Function',
+    'entityGroup': 'EntityGroup',
+    'graphModel': 'Graph'
+};
+
+/**
+ * Gets the entity type string for a tree item based on its contextValue.
+ * @param item The entity tree item
+ * @returns The entity type string, or undefined if not a recognized entity type
+ */
+function getEntityType(item: EntityTreeItem): string | undefined {
+    return entityTypeMap[item.contextValue ?? ''];
+}
+
+/**
+ * Gets the entity name from a tree item.
+ * @param item The entity tree item
+ * @returns The entity name
+ */
+function getEntityName(item: EntityTreeItem): string {
+    if (item instanceof TableTreeItem || item instanceof ExternalTableTreeItem) {
+        return item.tableInfo.name;
+    } else if (item instanceof MaterializedViewTreeItem) {
+        return item.viewInfo.name;
+    } else if (item instanceof FunctionTreeItem) {
+        return item.functionInfo.name;
+    } else if (item instanceof EntityGroupTreeItem) {
+        return item.groupInfo.name;
+    } else if (item instanceof GraphModelTreeItem) {
+        return item.graphInfo.name;
+    }
+    // This should never happen if EntityTreeItem type is correct
+    throw new Error(`Unknown entity tree item type`);
 }
 
 // =============================================================================

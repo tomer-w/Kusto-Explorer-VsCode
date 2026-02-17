@@ -1734,10 +1734,10 @@ public class KustoLspServer : LspServer, ILogger
 
     #endregion
 
-    #region Entity Create Command
+    #region Entities
 
-    [JsonRpcMethod("kusto/getEntityCreateCommand", UseSingleObjectParameterDeserialization = true)]
-    public async Task<string?> OnGetEntityCreateCommandAsync(GetEntityCreateCommandParams @params, CancellationToken cancellationToken)
+    [JsonRpcMethod("kusto/getEntityCommand", UseSingleObjectParameterDeserialization = true)]
+    public async Task<string?> OnGetEntityCommandAsync(GetEntityCreateCommandParams @params, CancellationToken cancellationToken)
     {
         try
         {
@@ -1780,34 +1780,102 @@ public class KustoLspServer : LspServer, ILogger
         [DataMember(Name="entityName")]
         public required string EntityName { get; init; }
     }
+
+    [JsonRpcMethod("kusto/getEntityExpression", UseSingleObjectParameterDeserialization = true)]
+    public async Task<string?> OnGetEntityExpressionAsync(GetEntityExpressionParams @params, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (Kusto.Data.Common.ExtendedEntityType.FastTryParse(@params.EntityType, out var entityType))
+            {
+                var entityId = new EntityId()
+                {
+                    Cluster = @params.Cluster,
+                    Database = @params.Database,
+                    EntityType = entityType,
+                    EntityName = @params.EntityName
+                };
+
+                return await _entityManager.GetQueryExpression(entityId, null, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex);
+        }
+
+        return null;
+    }
+
+    [DataContract]
+    public class GetEntityExpressionParams
+    {
+        [DataMember(Name="cluster")]
+        public required string Cluster { get; init; }
+
+        [DataMember(Name="database")]
+        public required string Database { get; init; }
+
+        /// <summary>
+        /// Kind of entity: Table, ExternalTable, etc.
+        /// </summary>
+        [DataMember(Name = "entityType")]
+        public required string EntityType { get; init; }
+
+        [DataMember(Name="entityName")]
+        public required string EntityName { get; init; }
+    }
     #endregion
 
     #region Transform Paste
 
 
     [JsonRpcMethod("kusto/transformPaste", UseSingleObjectParameterDeserialization = true)]
-    public Task<string?> OnTransformPasteAsync(TransformPasteParams @params, CancellationToken cancellationToken)
+    public async Task<string?> OnTransformPasteAsync(TransformPasteParams @params, CancellationToken cancellationToken)
     {
         var text = @params.Text;
 
-        if (_documentManager.TryGetDocument(@params.TextDocument.Uri, out var document))
+        try
         {
-            switch (@params.Kind)
+            if (_documentManager.TryGetDocument(@params.TextDocument.Uri, out var document))
             {
-                case "create":
-                    if (document.Globals.Cluster.Name != @params.EntityCluster
-                        || document.Globals.Database.Name != @params.EntityDatabase)
-                    {
-                        var conn = $"cluster({KustoFacts.GetSingleQuotedStringLiteral(@params.EntityCluster)})";
-                        if (@params.EntityDatabase != null)
-                            conn = $"{conn}.database({KustoFacts.GetSingleQuotedStringLiteral(@params.EntityDatabase)})";
-                        text = $"#connect {conn}\n{text}";
-                    }
-                    break;
+                switch (@params.Kind)
+                {
+                    case "command":
+                        if (document.Globals.Cluster.Name != @params.EntityCluster
+                            || document.Globals.Database.Name != @params.EntityDatabase)
+                        {
+                            var conn = $"cluster({KustoFacts.GetSingleQuotedStringLiteral(@params.EntityCluster)})";
+                            if (@params.EntityDatabase != null)
+                                conn = $"{conn}.database({KustoFacts.GetSingleQuotedStringLiteral(@params.EntityDatabase)})";
+                            text = $"#connect {conn}\n{text}";
+                        }
+                        break;
+                    case "expression":
+                        if (@params.EntityName != null
+                            && Kusto.Data.Common.ExtendedEntityType.FastTryParse(@params.EntityType, out var entityType))
+                        {
+                            var entityId = new EntityId()
+                            {
+                                Cluster = @params.EntityCluster,
+                                Database = @params.EntityDatabase,
+                                EntityType = entityType,
+                                EntityName = @params.EntityName
+                            };
+
+                            // recreate expression text based on target document
+                            text = await _entityManager.GetQueryExpression(entityId, document, cancellationToken).ConfigureAwait(false);
+                        }
+                        break;
+                }
             }
         }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex.Message);
+        }
 
-        return Task.FromResult<string?>(text);
+        return text;
     }
 
     [DataContract]

@@ -1,14 +1,9 @@
 ﻿using Kusto.Data;
 using Kusto.Data.Common;
 using Kusto.Language;
-using Kusto.Language.Symbols;
-using Kusto.Toolkit;
 using Newtonsoft.Json.Linq;
-using System.Diagnostics.CodeAnalysis;
-using static Kusto.Cloud.Platform.Instrumentation.DatabasesNamesMapping;
 
 namespace Kusto.Lsp;
-
 
 public class EntityManager : IEntityManager
 {
@@ -21,61 +16,89 @@ public class EntityManager : IEntityManager
 
     public async Task<string?> GetCreateCommand(EntityId id, CancellationToken cancellationToken)
     {
-        var connection = _connectionManager.GetConnection(id.Cluster, id.Database);
-        if (connection != null)
+        if (id.Cluster != null
+            && id.Database != null)
         {
-            switch (id.EntityType)
+            var connection = _connectionManager.GetConnection(id.Cluster, id.Database);
+            if (connection != null)
             {
-                case EntityType.Table:
-                    var tableDef = await GetTableDefinitionAsync(connection, id.Database, id.EntityName, cancellationToken).ConfigureAwait(false);
-                    return WithEOL(tableDef);
-                case EntityType.Function:
-                    var functionDef = await GetFunctionDefinitionAsync(connection, id.Database, id.EntityName, cancellationToken).ConfigureAwait(false);
-                    return WithEOL(functionDef);
-                case EntityType.MaterializedView:
-                    var mvDef = await GetMaterializedViewDefinitionAsync(connection, id.Database, id.EntityName, cancellationToken).ConfigureAwait(false);
-                    return WithEOL(mvDef);
-                case EntityType.EntityGroup:
-                    var egDef = await GetEntityGroupDefinitionAsync(connection, id.Database, id.EntityName, cancellationToken).ConfigureAwait(false);
-                    return WithEOL(egDef);
-                case EntityType.Graph:
-                    var gmDef = await GetGraphModelDefinitionAsync(connection, id.Database, id.EntityName, cancellationToken).ConfigureAwait(false);
-                    return WithEOL(gmDef);
-                case EntityType.ExternalTable:
-                    break; // noway to have a single command that reconstructs external table
-                default:
-                    break;
+                switch (id.EntityType)
+                {
+                    case EntityType.Table:
+                        var tableDef = await GetTableDefinitionAsync(connection, id.Database, id.EntityName, cancellationToken).ConfigureAwait(false);
+                        return WithEOL(tableDef);
+                    case EntityType.Function:
+                        var functionDef = await GetFunctionDefinitionAsync(connection, id.Database, id.EntityName, cancellationToken).ConfigureAwait(false);
+                        return WithEOL(functionDef);
+                    case EntityType.MaterializedView:
+                        var mvDef = await GetMaterializedViewDefinitionAsync(connection, id.Database, id.EntityName, cancellationToken).ConfigureAwait(false);
+                        return WithEOL(mvDef);
+                    case EntityType.EntityGroup:
+                        var egDef = await GetEntityGroupDefinitionAsync(connection, id.Database, id.EntityName, cancellationToken).ConfigureAwait(false);
+                        return WithEOL(egDef);
+                    case EntityType.Graph:
+                        var gmDef = await GetGraphModelDefinitionAsync(connection, id.Database, id.EntityName, cancellationToken).ConfigureAwait(false);
+                        return WithEOL(gmDef);
+                    case EntityType.ExternalTable:
+                        break; // noway to have a single command that reconstructs external table
+                    default:
+                        break;
+                }
             }
         }
 
         return null;
     }
 
-    public Task<string?> GetQueryReference(EntityId id, CancellationToken cancellationToken)
+    public Task<string?> GetQueryExpression(EntityId id, IDocument? document, CancellationToken cancellationToken)
     {
         var result = id.EntityType switch
         {
-            EntityType.Cluster => GetQueryClusterReference(),
-            EntityType.Database => GetQueryDatabaseReference(),
-            EntityType.Table => $"{GetQueryDatabaseReference()}.{KustoFacts.BracketNameIfNecessary(id.EntityName)}",
-            EntityType.ExternalTable => $"{GetQueryDatabaseReference()}.external_table({KustoFacts.BracketNameIfNecessary(id.EntityName)})",
-            EntityType.MaterializedView => $"{GetQueryDatabaseReference()}.materialized_view({KustoFacts.BracketNameIfNecessary(id.EntityName)})",
-            EntityType.EntityGroup => $"{GetQueryDatabaseReference()}.entity_group({KustoFacts.BracketNameIfNecessary(id.EntityName)})",
-            EntityType.Graph => $"{GetQueryDatabaseReference()}.graph({KustoFacts.BracketNameIfNecessary(id.EntityName)})",
-            EntityType.StoredQueryResult => $"{GetQueryDatabaseReference()}.stored_query_result({KustoFacts.BracketNameIfNecessary(id.EntityName)})",
+            EntityType.Cluster => GetClusterExpression(id.EntityName),
+            EntityType.Database => GetDatabaseExpression(id.EntityName),
+            EntityType.Table => $"{GetDatabasePrefix()}{KustoFacts.BracketNameIfNecessary(id.EntityName)}",
+            EntityType.ExternalTable => $"{GetDatabasePrefix()}external_table({KustoFacts.GetSingleQuotedStringLiteral(id.EntityName)})",
+            EntityType.MaterializedView => $"{GetDatabasePrefix()}materialized_view({KustoFacts.GetSingleQuotedStringLiteral(id.EntityName)})",
+            EntityType.Function => $"{GetDatabasePrefix()}{KustoFacts.BracketNameIfNecessary(id.EntityName)}()",
+            EntityType.EntityGroup => $"{GetDatabasePrefix()}entity_group({KustoFacts.GetSingleQuotedStringLiteral(id.EntityName)})",
+            EntityType.Graph => $"{GetDatabasePrefix()}graph({KustoFacts.GetSingleQuotedStringLiteral(id.EntityName)})",
+            EntityType.StoredQueryResult => $"{GetDatabasePrefix()}stored_query_result({KustoFacts.GetSingleQuotedStringLiteral(id.EntityName)})",
             _ => null
         };
 
-        return Task.FromResult<string?>(result);
+        return Task.FromResult(result);
 
-        string GetQueryClusterReference()
+        string GetClusterExpression(string name)
         {
-            return $"cluster({KustoFacts.GetSingleQuotedStringLiteral(id.Cluster)})";
+            return $"cluster({KustoFacts.GetSingleQuotedStringLiteral(name)})";
         }
 
-        string GetQueryDatabaseReference()
+        string GetClusterPrefix()
         {
-            return $"{GetQueryClusterReference()}.database({KustoFacts.GetSingleQuotedStringLiteral(id.EntityName)})";
+            if (id.Cluster != null
+                && document != null 
+                && document.Globals.Cluster.Name != id.Cluster)
+            {
+                return $"{GetClusterExpression(id.Cluster)}.";
+            }
+            return "";
+        }
+
+        string GetDatabaseExpression(string name)
+        {
+            return $"{GetClusterPrefix()}database({KustoFacts.GetSingleQuotedStringLiteral(name)})";
+        }
+
+        string GetDatabasePrefix()
+        {
+            if (id.Cluster != null
+                && id.Database != null 
+                && document != null 
+                && (document.Globals.Cluster.Name != id.Cluster || document.Globals.Database.Name != id.Database))
+            {
+                return $"{GetDatabaseExpression(id.Database)}.";
+            }
+            return "";
         }
     }
 
@@ -210,7 +233,6 @@ public class EntityManager : IEntityManager
         return null;
     }
 
-
     private List<(string name, string literal)> GetProperties(string? folder, string? docstring, JObject? jsonProperties)
     {
         var props = new List<(string name, string literal)>();
@@ -266,16 +288,7 @@ public class EntityManager : IEntityManager
     private async Task<DatabasesEntitiesShowCommandResult?> GetEntityInfoAsync(IConnection connection, string databaseName, string entityType, string entityName, CancellationToken cancellationToken)
     {
         var command = $"{CslCommandGenerator.GenerateDatabaseEntityShowCommand(databaseName, entityName)} | where EntityType == {KustoFacts.GetSingleQuotedStringLiteral(entityType)}";
-        //var command = CslCommandGenerator.GenerateDatabaseEntityShowCommand(databaseName, entityName);
         var results = await connection.ExecuteAsync<DatabasesEntitiesShowCommandResult>(command, cancellationToken: cancellationToken).ConfigureAwait(false);
         return results.FirstOrDefault();
-    }
-
-    /// <summary>
-    /// Get the id for the symbol
-    /// </summary>
-    public EntityId TryGetId(GlobalState globals, Symbol symbol, [NotNullWhen(true)] out EntityId? id)
-    {
-        throw new NotImplementedException();
     }
 }

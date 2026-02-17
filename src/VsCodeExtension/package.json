@@ -124,9 +124,14 @@
         "title": "Format Query"
       },
       {
-        "command": "kusto.copyEntityCreateCommand",
-        "title": "Copy Create Command",
+        "command": "kusto.copyEntityCommand",
+        "title": "Copy as Command",
         "icon": "$(copy)"
+      },
+      {
+        "command": "kusto.copyEntityExpression",
+        "title": "Copy as Expression",
+        "icon": "$(symbol-variable)"
       },
       {
         "command": "kusto.copyChart",
@@ -193,8 +198,13 @@
           "group": "7_modification"
         },
         {
-          "command": "kusto.copyEntityCreateCommand",
+          "command": "kusto.copyEntityCommand",
           "when": "view == kusto.connections && viewItem =~ /^(table|materializedView|function|entityGroup|graphModel)$/",
+          "group": "9_cutcopypaste"
+        },
+        {
+          "command": "kusto.copyEntityExpression",
+          "when": "view == kusto.connections && viewItem =~ /^(table|externalTable|materializedView|function|entityGroup|graphModel)$/",
           "group": "9_cutcopypaste"
         }
       ],

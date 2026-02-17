@@ -100,7 +100,7 @@ export function getDatabaseInfo(
  * @param entityName The name of the entity
  * @returns The entity create command as a string, or null if not found
  */
-export function getEntityCreateCommand(
+export function getEntityCommand(
     client: LanguageClient,
     cluster: string,
     database: string,
@@ -108,7 +108,29 @@ export function getEntityCreateCommand(
     entityName: string
 ): Promise<string | null> {
     return client.sendRequest<string | null>(
-        'kusto/getEntityCreateCommand',
+        'kusto/getEntityCommand',
+        { cluster, database, entityType, entityName }
+    );
+}
+
+/**
+ * Gets a KQL expression that references a database entity in a query.
+ * @param client The language client for LSP communication
+ * @param cluster The cluster name
+ * @param database The database name
+ * @param entityType The type of entity (e.g., 'Table', 'ExternalTable', 'Function', etc.)
+ * @param entityName The name of the entity
+ * @returns The entity expression as a string, or null if not found
+ */
+export function getEntityExpression(
+    client: LanguageClient,
+    cluster: string,
+    database: string,
+    entityType: string,
+    entityName: string
+): Promise<string | null> {
+    return client.sendRequest<string | null>(
+        'kusto/getEntityExpression',
         { cluster, database, entityType, entityName }
     );
 }
