@@ -245,47 +245,7 @@ function displayChart(chartHtml: string | undefined): void
                     vscode.window.showErrorMessage(`Chart copy failed in webview: ${message.error}`);
                 }
                 if (message.command === 'copyChartResult' && message.pngDataUrl) {
-                    try {
-                        const pngBase64 = message.pngDataUrl.split(',')[1];
-
-                        // Extract SVG text if available
-                        let svgText = '';
-                        if (message.svgDataUrl) {
-                            // SVG data URL is: data:image/svg+xml,<svg>...</svg>
-                            const svgPart = message.svgDataUrl.split(',').slice(1).join(',');
-                            svgText = decodeURIComponent(svgPart);
-                        }
-
-                        const { spawn } = require('child_process') as typeof import('child_process');
-
-                        // Write SVG to a temp variable via stdin to avoid command-line escaping issues
-                        const psScript = `
-                            Add-Type -AssemblyName System.Windows.Forms
-                            $pngBytes = [Convert]::FromBase64String('${pngBase64}')
-                            $pngStream = New-Object System.IO.MemoryStream(,$pngBytes)
-                            $data = New-Object System.Windows.Forms.DataObject
-                            $data.SetData('PNG', $false, $pngStream)
-                            $svgText = $input | Out-String
-                            if ($svgText.Trim().Length -gt 0) {
-                                $svgBytes = [System.Text.Encoding]::UTF8.GetBytes($svgText.Trim())
-                                $svgStream = New-Object System.IO.MemoryStream(,$svgBytes)
-                                $data.SetData('image/svg+xml', $false, $svgStream)
-                            }
-                            [System.Windows.Forms.Clipboard]::SetDataObject($data, $true)
-                            $pngStream.Dispose()
-                        `;
-                        const ps = spawn('powershell', ['-sta', '-NoProfile', '-Command', psScript]);
-                        // Pipe SVG text via stdin
-                        ps.stdin.write(svgText);
-                        ps.stdin.end();
-                        ps.on('close', (code: number) => {
-                            if (code !== 0) {
-                                vscode.window.showErrorMessage(`Failed to copy chart to clipboard (exit code ${code})`);
-                            }
-                        });
-                    } catch (error) {
-                        vscode.window.showErrorMessage(`Failed to copy chart: ${error}`);
-                    }
+                    onCopyChartMessage(message.pngDataUrl, message.svgDataUrl);
                 }
             });
 
@@ -328,6 +288,58 @@ async function copyData(): Promise<void> {
 
     // Tell the webview to select all and copy (preserves HTML formatting)
     resultsView.webview.postMessage({ command: 'copyData' });
+}
+
+/**
+ * Handles the chart image data received from the webview and copies it to the clipboard.
+ * Places both PNG and SVG (if available) formats on the clipboard.
+ * @param pngDataUrl The PNG image as a data URL
+ * @param svgDataUrl Optional SVG image as a data URL
+ */
+function onCopyChartMessage(pngDataUrl: string, svgDataUrl?: string): void {
+    try {
+        const pngBase64 = pngDataUrl.split(',')[1];
+
+        // Extract SVG text if available
+        let svgText = '';
+        if (svgDataUrl) {
+            // SVG data URL is: data:image/svg+xml,<svg>...</svg>
+            const svgPart = svgDataUrl.split(',').slice(1).join(',');
+            svgText = decodeURIComponent(svgPart);
+        }
+
+        const { spawn } = require('child_process') as typeof import('child_process');
+
+        // Pass PNG and SVG via stdin as a JSON payload to avoid command-line length limits
+        const psScript = `
+            Add-Type -AssemblyName System.Windows.Forms
+            $json = $input | Out-String
+            $obj = $json | ConvertFrom-Json
+            $pngBytes = [Convert]::FromBase64String($obj.png)
+            $pngStream = New-Object System.IO.MemoryStream(,$pngBytes)
+            $data = New-Object System.Windows.Forms.DataObject
+            $data.SetData('PNG', $false, $pngStream)
+            if ($obj.svg) {
+                $svgBytes = [System.Text.Encoding]::UTF8.GetBytes($obj.svg)
+                $svgStream = New-Object System.IO.MemoryStream(,$svgBytes)
+                $data.SetData('image/svg+xml', $false, $svgStream)
+            }
+            [System.Windows.Forms.Clipboard]::SetDataObject($data, $true)
+            $pngStream.Dispose()
+        `;
+        const ps = spawn('powershell', ['-sta', '-NoProfile', '-Command', psScript]);
+        // Pipe data as JSON via stdin
+        const payload = JSON.stringify({ png: pngBase64, svg: svgText || null });
+        ps.stdin.write(payload);
+        ps.stdin.end();
+        ps.on('close', (code: number) => {
+            if (code !== 0) {
+                vscode.window.showErrorMessage(`Failed to copy chart to clipboard (exit code ${code})`);
+            }
+        });
+    } catch (error) {
+        vscode.window.showErrorMessage(`Failed to copy chart: ${error}`);
+    }
 }
 
 /**
