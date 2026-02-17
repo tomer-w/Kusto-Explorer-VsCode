@@ -244,27 +244,45 @@ function displayChart(chartHtml: string | undefined): void
                 if (message.command === 'copyChartError') {
                     vscode.window.showErrorMessage(`Chart copy failed in webview: ${message.error}`);
                 }
-                if (message.command === 'copyChartResult' && message.dataUrl) {
+                if (message.command === 'copyChartResult' && message.pngDataUrl) {
                     try {
-                        const base64 = message.dataUrl.split(',')[1];
+                        const pngBase64 = message.pngDataUrl.split(',')[1];
 
-                        const { execFile } = require('child_process') as typeof import('child_process');
+                        // Extract SVG text if available
+                        let svgText = '';
+                        if (message.svgDataUrl) {
+                            // SVG data URL is: data:image/svg+xml,<svg>...</svg>
+                            const svgPart = message.svgDataUrl.split(',').slice(1).join(',');
+                            svgText = decodeURIComponent(svgPart);
+                        }
+
+                        const { spawn } = require('child_process') as typeof import('child_process');
+
+                        // Write SVG to a temp variable via stdin to avoid command-line escaping issues
                         const psScript = `
                             Add-Type -AssemblyName System.Windows.Forms
-                            $bytes = [Convert]::FromBase64String('${base64}')
-                            $ms = New-Object System.IO.MemoryStream(,$bytes)
+                            $pngBytes = [Convert]::FromBase64String('${pngBase64}')
+                            $pngStream = New-Object System.IO.MemoryStream(,$pngBytes)
                             $data = New-Object System.Windows.Forms.DataObject
-                            $data.SetData('PNG', $false, $ms)
-                            [System.Windows.Forms.Clipboard]::SetDataObject($data, $true)
-                            $ms.Dispose()
-                        `;
-                        execFile('powershell', ['-sta', '-NoProfile', '-Command', psScript],
-                            (error: Error | null) => {
-                                if (error) {
-                                    vscode.window.showErrorMessage(`Failed to copy chart to clipboard: ${error.message}`);
-                                }
+                            $data.SetData('PNG', $false, $pngStream)
+                            $svgText = $input | Out-String
+                            if ($svgText.Trim().Length -gt 0) {
+                                $svgBytes = [System.Text.Encoding]::UTF8.GetBytes($svgText.Trim())
+                                $svgStream = New-Object System.IO.MemoryStream(,$svgBytes)
+                                $data.SetData('image/svg+xml', $false, $svgStream)
                             }
-                        );
+                            [System.Windows.Forms.Clipboard]::SetDataObject($data, $true)
+                            $pngStream.Dispose()
+                        `;
+                        const ps = spawn('powershell', ['-sta', '-NoProfile', '-Command', psScript]);
+                        // Pipe SVG text via stdin
+                        ps.stdin.write(svgText);
+                        ps.stdin.end();
+                        ps.on('close', (code: number) => {
+                            if (code !== 0) {
+                                vscode.window.showErrorMessage(`Failed to copy chart to clipboard (exit code ${code})`);
+                            }
+                        });
                     } catch (error) {
                         vscode.window.showErrorMessage(`Failed to copy chart: ${error}`);
                     }
@@ -428,14 +446,15 @@ const chartMessageHandlerScript = `
                     // Find the Plotly chart div
                     const plotDiv = document.querySelector('.js-plotly-plot') || document.querySelector('.plotly-graph-div');
                     if (plotDiv && typeof Plotly !== 'undefined') {
-                        const dataUrl = await Plotly.toImage(plotDiv, { format: 'png', width: plotDiv.offsetWidth, height: plotDiv.offsetHeight });
-                        vscodeApi.postMessage({ command: 'copyChartResult', dataUrl: dataUrl });
+                        const pngDataUrl = await Plotly.toImage(plotDiv, { format: 'png', width: plotDiv.offsetWidth, height: plotDiv.offsetHeight });
+                        const svgDataUrl = await Plotly.toImage(plotDiv, { format: 'svg', width: plotDiv.offsetWidth, height: plotDiv.offsetHeight });
+                        vscodeApi.postMessage({ command: 'copyChartResult', pngDataUrl: pngDataUrl, svgDataUrl: svgDataUrl });
                     } else {
                         // Fallback: use canvas if available
                         const canvas = document.querySelector('canvas');
                         if (canvas) {
                             const dataUrl = canvas.toDataURL('image/png');
-                            vscodeApi.postMessage({ command: 'copyChartResult', dataUrl: dataUrl });
+                            vscodeApi.postMessage({ command: 'copyChartResult', pngDataUrl: dataUrl });
                         }
                     }
                 } catch (err) {
