@@ -163,10 +163,12 @@ public class ConnectionManager : IConnectionManager
                 : await this.QueryProvider.ExecuteQueryAsync(this.Database, query, properties, cancellationToken).ConfigureAwait(false);
             var dataSet = KustoDataReaderParser.ParseV1(resultReader, null);
             var mainResult = dataSet?.GetMainResultsOrNull();
-            var mainTable = mainResult?.TableData;
+            var tables = dataSet != null
+                ? dataSet.Tables.Where(t => t.TableKind == WellKnownDataSet.PrimaryResult).Select(t => (DataTable)t.TableData).ToImmutableList()
+                : null;
             return new ExecuteResult 
             { 
-                Data=mainTable != null ? [mainTable] : null,
+                Data=tables,
                 ChartOptions=mainResult?.VisualizationOptions 
             };
         }

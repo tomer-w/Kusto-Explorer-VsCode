@@ -107,10 +107,10 @@ async function displayLastRunQueryResults(
 ): Promise<void> {
     const dataResult = await server.getLastRunDataAsHtml(client, uri, position);
 
-    // Display only the first table if available
-    const firstTable = dataResult?.tables[0];
-    if (firstTable) {
-        await displayResults(firstTable.html, firstTable.rowCount, dataResult.hasChart);
+    if (dataResult && dataResult.tables.length > 0) {
+        const html = buildTabbedHtml(dataResult.tables);
+        const totalRows = dataResult.tables.reduce((sum, t) => sum + t.rowCount, 0);
+        await displayResults(html, totalRows, dataResult.hasChart);
     } else {
         await displayResults('<html>no results</html>', undefined, false);
     }
@@ -140,6 +140,100 @@ function isDarkMode(): boolean {
     // ColorThemeKind: Light = 1, Dark = 2, HighContrast = 3, HighContrastLight = 4
     return colorTheme.kind === vscode.ColorThemeKind.Dark || 
            colorTheme.kind === vscode.ColorThemeKind.HighContrast;
+}
+
+/** CSS styles for the tabbed results view. */
+const tabStyles = `
+<style>
+    .tab-bar {
+        display: flex;
+        border-bottom: 1px solid var(--vscode-panel-border, #444);
+        background: var(--vscode-editor-background, #1e1e1e);
+        padding: 0;
+        margin: 0;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        overflow-x: auto;
+        overflow-y: hidden;
+        scrollbar-width: thin;
+    }
+    .tab-button {
+        padding: 6px 16px;
+        border: none;
+        background: transparent;
+        color: var(--vscode-foreground, #ccc);
+        cursor: pointer;
+        font-size: 12px;
+        font-family: var(--vscode-font-family, sans-serif);
+        border-bottom: 2px solid transparent;
+        opacity: 0.7;
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+    .tab-button:hover {
+        opacity: 1;
+        background: var(--vscode-list-hoverBackground, #2a2d2e);
+    }
+    .tab-button.active {
+        opacity: 1;
+        border-bottom-color: var(--vscode-focusBorder, #007acc);
+        color: var(--vscode-foreground, #fff);
+    }
+    .tab-badge {
+        margin-left: 6px;
+        font-size: 10px;
+        opacity: 0.6;
+    }
+    .tab-content {
+        display: none;
+    }
+    .tab-content.active {
+        display: block;
+    }
+</style>`;
+
+/**
+ * Wraps multiple HTML table strings in a tabbed layout.
+ * If there is only one table, returns it without tabs.
+ */
+function buildTabbedHtml(tables: server.HtmlTable[]): string {
+    if (tables.length === 0) {
+        return '<html><body>no results</body></html>';
+    }
+
+    if (tables.length === 1) {
+        return tables[0]!.html;
+    }
+
+    const tabButtons = tables.map((t, i) =>
+        `<button class="tab-button${i === 0 ? ' active' : ''}" onclick="switchTab(${i})">${escapeHtml(t.name)}<span class="tab-badge">(${t.rowCount})</span></button>`
+    ).join('\n');
+
+    const tabContents = tables.map((t, i) =>
+        `<div class="tab-content${i === 0 ? ' active' : ''}">${t.html}</div>`
+    ).join('\n');
+
+    return `<html>
+<head>${tabStyles}</head>
+<body>
+<div class="tab-bar">
+    ${tabButtons}
+</div>
+${tabContents}
+</body>
+</html>`;
+}
+
+/**
+ * Escapes HTML special characters in a string.
+ */
+function escapeHtml(text: string): string {
+    return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
 }
 
 /**
@@ -521,18 +615,35 @@ function injectChartMessageHandler(html: string): string {
 const webviewMessageHandlerScript = `
 <script>
     const vscode = acquireVsCodeApi();
+
+    // Tab switching
+    function switchTab(index) {
+        document.querySelectorAll('.tab-button').forEach(function(btn, i) {
+            btn.classList.toggle('active', i === index);
+        });
+        document.querySelectorAll('.tab-content').forEach(function(content, i) {
+            content.classList.toggle('active', i === index);
+        });
+    }
+
     // Track the element under the cursor when context menu opens
     let lastContextTarget = null;
     document.addEventListener('contextmenu', event => {
         lastContextTarget = event.target;
     });
+
     window.addEventListener('message', event => {
         const message = event.data;
         if (message.command === 'copyData') {
             const sel = window.getSelection();
             const prevRange = sel.rangeCount > 0 ? sel.getRangeAt(0).cloneRange() : null;
-            // Select all and copy as rich HTML
-            document.execCommand('selectAll');
+            // If tabs exist, copy only the active tab content
+            const activeTab = document.querySelector('.tab-content.active');
+            const target = activeTab || document.body;
+            const range = document.createRange();
+            range.selectNodeContents(target);
+            sel.removeAllRanges();
+            sel.addRange(range);
             document.execCommand('copy');
             // Restore previous selection
             sel.removeAllRanges();
