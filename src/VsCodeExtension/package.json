@@ -116,7 +116,7 @@
       },
       {
         "command": "kusto.copyData",
-        "title": "Copy Data",
+        "title": "Copy Table",
         "icon": "$(copy)"
       },
       {
@@ -132,6 +132,10 @@
         "command": "kusto.copyChart",
         "title": "Copy Chart",
         "icon": "$(file-media)"
+      },
+      {
+        "command": "kusto.copyCell",
+        "title": "Copy Cell"
       }
     ],
     "menus": {
@@ -229,6 +233,10 @@
         }
       ],
       "webview/context": [
+        {
+          "command": "kusto.copyCell",
+          "when": "webviewId == 'kusto.resultsView'"
+        },
         {
           "command": "kusto.copyData",
           "when": "webviewId == 'kusto.resultsView'"

@@ -43,7 +43,8 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
         vscode.commands.registerCommand('kusto.copyData', () => copyData()),
         vscode.commands.registerCommand('kusto.copyQuery', () => copyQuery(client)),
         vscode.commands.registerCommand('kusto.formatQuery', () => formatQuery(client)),
-        vscode.commands.registerCommand('kusto.copyChart', () => copyChart())
+        vscode.commands.registerCommand('kusto.copyChart', () => copyChart()),
+        vscode.commands.registerCommand('kusto.copyCell', () => copyCell())
     );
 }
 
@@ -279,6 +280,17 @@ function displayChart(chartHtml: string | undefined): void
 }
 
 /**
+ * Copies the table cell under the cursor in the results view to the clipboard.
+ */
+async function copyCell(): Promise<void> {
+    if (!resultsView) {
+        return;
+    }
+
+    resultsView.webview.postMessage({ command: 'copyCell' });
+}
+
+/**
  * Copies the results view content (as rich HTML) to the clipboard.
  */
 async function copyData(): Promise<void> {
@@ -507,6 +519,11 @@ function injectChartMessageHandler(html: string): string {
 const webviewMessageHandlerScript = `
 <script>
     const vscode = acquireVsCodeApi();
+    // Track the element under the cursor when context menu opens
+    let lastContextTarget = null;
+    document.addEventListener('contextmenu', event => {
+        lastContextTarget = event.target;
+    });
     window.addEventListener('message', event => {
         const message = event.data;
         if (message.command === 'copyData') {
@@ -518,6 +535,21 @@ const webviewMessageHandlerScript = `
             // Restore previous selection
             sel.removeAllRanges();
             if (prevRange) { sel.addRange(prevRange); }
+        }
+        if (message.command === 'copyCell') {
+            // Find the closest td or th from the right-clicked element
+            const cell = lastContextTarget ? lastContextTarget.closest('td, th') : null;
+            if (cell) {
+                const sel = window.getSelection();
+                const prevRange = sel.rangeCount > 0 ? sel.getRangeAt(0).cloneRange() : null;
+                const range = document.createRange();
+                range.selectNodeContents(cell);
+                sel.removeAllRanges();
+                sel.addRange(range);
+                document.execCommand('copy');
+                sel.removeAllRanges();
+                if (prevRange) { sel.addRange(prevRange); }
+            }
         }
     });
 </script>`;
