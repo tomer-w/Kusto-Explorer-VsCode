@@ -180,6 +180,26 @@ public sealed class PlotlyChartBuilder
     }
 
     /// <summary>
+    /// Disables zoom and pan while keeping hover tooltips.
+    /// Sets fixed range on axes and disables scroll zoom and double-click reset.
+    /// </summary>
+    public PlotlyChartBuilder WithFixedRange()
+    {
+        return new PlotlyChartBuilder(
+            _traces, 
+            _layout with 
+            { 
+                XAxis = (_layout.XAxis ?? new PlotlyAxis()) with { FixedRange = true },
+                YAxis = (_layout.YAxis ?? new PlotlyAxis()) with { FixedRange = true }
+            }, 
+            _config with 
+            { 
+                ScrollZoom = false, 
+                DoubleClick = false 
+            });
+    }
+
+    /// <summary>
     /// Returns the text of an HTML div containing the Plotly chart.
     /// The Plotly.js library must be loaded separately elsewhere in the HTML document.
     /// </summary>
@@ -736,6 +756,13 @@ public sealed record PlotlyAxis
     /// </summary>
     [JsonPropertyName("zerolinecolor")]
     public string? ZeroLineColor { get; init; }
+
+    /// <summary>
+    /// If true, the axis range cannot be changed by user interaction (zoom/pan).
+    /// Hover tooltips still work. Use this instead of staticPlot to keep interactivity.
+    /// </summary>
+    [JsonPropertyName("fixedrange")]
+    public bool? FixedRange { get; init; }
 }
 
 /// <summary>
@@ -1049,6 +1076,19 @@ public sealed record PlotlyConfig
     /// </summary>
     [JsonPropertyName("staticPlot")]
     public bool StaticPlot { get; init; } = false;
+
+    /// <summary>
+    /// Whether scroll wheel zooming is enabled. Default is false.
+    /// </summary>
+    [JsonPropertyName("scrollZoom")]
+    public bool ScrollZoom { get; init; } = false;
+
+    /// <summary>
+    /// Double-click behavior: "reset", "autosize", "reset+autosize", or false to disable.
+    /// Default is false (disabled).
+    /// </summary>
+    [JsonPropertyName("doubleClick")]
+    public object DoubleClick { get; init; } = false;
 
     /// <summary>
     /// Options for the "Download plot as PNG" button. Value should be a JSON-serializable object.

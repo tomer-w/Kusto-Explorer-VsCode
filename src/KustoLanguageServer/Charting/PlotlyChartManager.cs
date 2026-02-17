@@ -47,10 +47,10 @@ public class PlotlyChartManager : IChartManager
                 builder = builder.WithDarkMode();
             }
 
-            // Make 2D charts static (disable mouse interactions) - 3D charts need interaction for rotation
+            // Disable zoom/pan on 2D charts but keep hover tooltips - 3D charts need full interaction for rotation
             if (options.Visualization != VisualizationKind.ThreeDChart)
             {
-                builder = builder.AsStatic();
+                builder = builder.WithFixedRange();
             }
         }
 
