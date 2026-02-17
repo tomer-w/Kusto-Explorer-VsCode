@@ -73,21 +73,20 @@ async function runQuery(client: LanguageClient): Promise<void> {
         };
 
         // run query and get results from the server
-        const results = await server.runQuery(client, uri, selection);
+        const runResult = await server.runQuery(client, uri, selection);
 
-        if (!results) {
+        if (!runResult) {
             return; // No results or error
         }
 
         // If query changed cluster/database, update document connection
-        if (results.cluster) {
-            await setDocumentConnection(uri, results.cluster, results.database);
+        if (runResult.cluster) {
+            await setDocumentConnection(uri, runResult.cluster, runResult.database);
         }
 
-        // Fetch and display results and chart
-        const position = selection.start;
-        await displayLastRunQueryResults(client, uri, position);
-        await displayLastRunQueryChart(client, uri, position);
+        // display associated result tables and chart
+        await displayResultsById(client, runResult?.dataId);
+        await displayChartById(client, runResult?.dataId);
 
     } catch (error) {
         vscode.window.showErrorMessage(`Failed to execute query: ${error}`);
@@ -100,17 +99,16 @@ async function runQuery(client: LanguageClient): Promise<void> {
  * @param uri The document URI
  * @param position The position within the document
  */
-async function displayLastRunQueryResults(
+async function displayResultsById(
     client: LanguageClient,
-    uri: string,
-    position: server.Position
-): Promise<void> {
-    const dataResult = await server.getLastRunDataAsHtml(client, uri, position);
-
-    if (dataResult && dataResult.tables.length > 0) {
-        const html = buildTabbedHtml(dataResult.tables);
-        const totalRows = dataResult.tables.reduce((sum, t) => sum + t.rowCount, 0);
-        await displayResults(html, totalRows, dataResult.hasChart);
+    dataId?: string
+): Promise<void>
+{
+    const data = dataId ? await server.getDataAsHmtlTables(client, dataId) : null;
+    if (data && data.tables.length > 0) {
+        const html = buildTabbedHtml(data.tables);
+        const totalRows = data.tables.reduce((sum, t) => sum + t.rowCount, 0);
+        await displayResults(html, totalRows, data.hasChart);
     } else {
         await displayResults('<html>no results</html>', undefined, false);
     }
@@ -119,17 +117,15 @@ async function displayLastRunQueryResults(
 /**
  * Fetches chart HTML from the server and displays it in the chart panel.
  * @param client The language client for LSP communication
- * @param uri The document URI
- * @param position The position within the document
+ * @param dataId The data ID from running a query
  */
-async function displayLastRunQueryChart(
+async function displayChartById(
     client: LanguageClient,
-    uri: string,
-    position: server.Position
+    dataId?: string
 ): Promise<void> {
     const darkMode = isDarkMode();
-    const chartHtml = await server.getLastRunChartAsHtml(client, uri, position, darkMode);
-    displayChart(chartHtml ?? undefined);
+    const chartResult = dataId ? await server.getDataAsHtmlChart(client, dataId, darkMode) : null;
+    displayChart(chartResult?.html);
 }
 
 /**

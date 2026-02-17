@@ -135,24 +135,20 @@ export function getEntityExpression(
     );
 }
 
-
 /**
  * Gets the HTML representation of data from the last run query.
  * @param client The language client for LSP communication
- * @param uri The document URI
- * @param position The position within the document
- * @returns The data result with HTML and row count, or null if not available
+ * @param dataId The data ID from running a query
+ * @returns The data result with HTML tables and row count, or null if not available
  */
-export function getLastRunDataAsHtml(
+export function getDataAsHmtlTables(
     client: LanguageClient,
-    uri: string,
-    position: Position
-): Promise<LastRunDataResult | null> {
-    return client.sendRequest<LastRunDataResult | null>(
-        'kusto/getLastRunDataAsHtml',
+    dataId: string
+): Promise<DataAsHtmlTables | null> {
+    return client.sendRequest<DataAsHtmlTables | null>(
+        'kusto/getDataAsHtmlTables',
         {
-            textDocument: { uri },
-            position
+            dataId
         }
     );
 }
@@ -160,29 +156,23 @@ export function getLastRunDataAsHtml(
 /**
  * Gets the HTML representation of a chart from the last run query.
  * @param client The language client for LSP communication
- * @param uri The document URI
- * @param position The position within the document
+ * @param dataId The data ID from running a query
  * @param darkMode Whether to render the chart in dark mode
- * @returns The chart as HTML, or null if not available
+ * @returns The chart result with HTML, or null if not available
  */
-export function getLastRunChartAsHtml(
+export function getDataAsHtmlChart(
     client: LanguageClient,
-    uri: string,
-    position: Position,
+    dataId: string,
     darkMode: boolean = false
-): Promise<string | null> {
-    return client.sendRequest<string | null>(
-        'kusto/getLastRunChartAsHtml',
+): Promise<DataAsHtmlChart | null> {
+    return client.sendRequest<DataAsHtmlChart | null>(
+        'kusto/getDataAsHtmlChart',
         {
-            textDocument: { uri },
-            position,
+            dataId,
             darkMode
         }
     );
 }
-
-
-
 
 export interface DatabaseTableInfo {
     name: string;
@@ -232,10 +222,7 @@ export interface DatabaseInfo {
 
 /** Result of running a query. */
 export interface RunQueryResult {
-    title: string;
-    hasData: boolean;
-    hasChart: boolean;
-    hasDiagnostics: boolean;
+    dataId?: string;
     cluster?: string;
     database?: string;
 }
@@ -247,10 +234,15 @@ export interface HtmlTable {
     rowCount: number;
 }
 
-/** Result of getting last run data as HTML. */
-export interface LastRunDataResult {
+/** Result of getting data as html tables. */
+export interface DataAsHtmlTables {
     tables: HtmlTable[];
     hasChart: boolean;
+}
+
+/** Result of getting data as html chart. */
+export interface DataAsHtmlChart {
+    html: string;
 }
 
 /** Position in a document. */

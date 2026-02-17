@@ -1169,58 +1169,51 @@ public class KustoLspServer : LspServer, ILogger
     [JsonRpcMethod("kusto/runQuery", UseSingleObjectParameterDeserialization = true)]
     public async Task<RunQueryResults?> OnRunQueryAsync(RunQueryParams @params, CancellationToken cancellationToken)
     {
-        if (@params.Selection == null)
+        try
         {
-            await this.SendWindowShowMessageAsync("Failed to run: no query selected");
-            return null;
-        }
-
-        var queryOptions = ImmutableDictionary<string, string>.Empty;
-        var queryParameters = ImmutableDictionary<string, string>.Empty;
-
-        if (_documentManager.TryGetDocument(@params.TextDocument.Uri, out var document))
-        {
-            var range = GetTextRange(document.Text, @params.Selection);
-
-            var results = await _queryManager.RunQueryAsync(document, range, queryOptions, queryParameters, cancellationToken).ConfigureAwait(false);
-
-            bool hasData = false;
-            bool hasChart = false;
-
-            if (results != null && results.Data != null)
+            if (@params.Selection == null)
             {
-                // cache results for lookup later
-                _resultsManager.SetResults(document, range.Start, 
-                    new ExecuteResult
-                    {
-                        Data = results.Data,
-                        ChartOptions = results.ChartOptions,
-                        Diagnostics = results.Error != null ? [results.Error] : null
-                    });
+                await this.SendWindowShowMessageAsync("Failed to run: no query selected");
+                return null;
+            }
 
-                hasData = true;
+            var queryOptions = ImmutableDictionary<string, string>.Empty;
+            var queryParameters = ImmutableDictionary<string, string>.Empty;
 
-                if (results.ChartOptions != null
-                    && results.ChartOptions.Visualization != Data.Utils.VisualizationKind.None)
+            if (_documentManager.TryGetDocument(@params.TextDocument.Uri, out var document))
+            {
+                var range = GetTextRange(document.Text, @params.Selection);
+
+                var results = await _queryManager.RunQueryAsync(document, range, queryOptions, queryParameters, cancellationToken).ConfigureAwait(false);
+
+                if (results != null && results.Data != null)
                 {
-                    hasChart = true;
+                    // cache results for lookup later
+                    var resultId = _resultsManager.SetResults(document, range.Start,
+                        new ExecuteResult
+                        {
+                            Data = results.Data,
+                            ChartOptions = results.ChartOptions,
+                            Diagnostics = results.Error != null ? [results.Error] : null
+                        });
+
+                    return new RunQueryResults
+                    {
+                        DataId = resultId,
+                        Cluster = results?.Cluster,
+                        Database = results?.Database
+                    };
+                }
+                else
+                {
+                    // cache results for lookup later
+                    _resultsManager.SetResults(document, range.Start, null);
                 }
             }
-            else
-            {
-                // cache results for lookup later
-                _resultsManager.SetResults(document, range.Start, null);
-            }
-
-            return new RunQueryResults
-            {
-                Title = "Query Results",
-                HasData = hasData,
-                HasChart = hasChart,
-                HasDiagnostics = results?.Error != null,
-                Cluster = results?.Cluster,
-                Database = results?.Database
-            };
+        }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex.Message);
         }
 
         return null;
@@ -1238,17 +1231,8 @@ public class KustoLspServer : LspServer, ILogger
     [DataContract]
     public class RunQueryResults
     {
-        [DataMember(Name = "title")]
-        public required string Title { get; init; }
-
-        [DataMember(Name = "hasData")]
-        public bool HasData { get; init; }
-
-        [DataMember(Name = "hasChart")]
-        public bool HasChart { get; init; }
-
-        [DataMember(Name = "hasDiagnostics")]
-        public bool HasDiagnostics { get; init; }
+        [DataMember(Name = "dataId")]
+        public string? DataId { get; init; }
 
         [DataMember(Name = "cluster")]
         public string? Cluster { get; init; }
@@ -1257,20 +1241,18 @@ public class KustoLspServer : LspServer, ILogger
         public string? Database { get; init; }
     }
 
-    [JsonRpcMethod("kusto/getLastRunDataAsHtml", UseSingleObjectParameterDeserialization = true)]
-    public Task<GetLastRunDataResult?> OnGetLastRunDataAsHtmlAsync(GetResultsParams @params, CancellationToken cancellationToken)
+    [JsonRpcMethod("kusto/getDataAsHtmlTables", UseSingleObjectParameterDeserialization = true)]
+    public Task<GetDataAsHtmlTablesResult?> OnGetDataAsHtmlTablesAsync(GetDataAsHtmlTablesParams @params, CancellationToken cancellationToken)
     {
-        if (_documentManager.TryGetDocument(@params.TextDocument.Uri, out var document))
+        if (_resultsManager.TryGetResults(@params.DataId, out var cachedResults))
         {
-            var position = GetTextPosition(document.Text, @params.Position);
-            var cachedResults = _resultsManager.GetResults(document, position);
             if (cachedResults?.Data != null)
             {
                 var hasChart = cachedResults.ChartOptions != null
                     && cachedResults.ChartOptions.Visualization != Data.Utils.VisualizationKind.None;
 
-                return Task.FromResult<GetLastRunDataResult?>(
-                    new GetLastRunDataResult
+                return Task.FromResult<GetDataAsHtmlTablesResult?>(
+                    new GetDataAsHtmlTablesResult
                     {
                         Tables = cachedResults.Data.Select(t => new HtmlTable
                         {
@@ -1283,11 +1265,18 @@ public class KustoLspServer : LspServer, ILogger
             }
         }
 
-        return Task.FromResult<GetLastRunDataResult?>(null);
+        return Task.FromResult<GetDataAsHtmlTablesResult?>(null);
     }
 
     [DataContract]
-    public class GetLastRunDataResult
+    public class GetDataAsHtmlTablesParams
+    {
+        [DataMember(Name = "dataId")]
+        public required string DataId { get; init; }
+    }
+
+    [DataContract]
+    public class GetDataAsHtmlTablesResult
     {
         [DataMember(Name = "tables")]
         public required ImmutableList<HtmlTable> Tables { get; init; }
@@ -1325,24 +1314,31 @@ public class KustoLspServer : LspServer, ILogger
         return dataBuilder.Text;
     }
 
-    [JsonRpcMethod("kusto/getLastRunChartAsHtml", UseSingleObjectParameterDeserialization = true)]
-    public Task<string?> OnGetLastRunChartAsHtmlAsync(GetChartParams @params, CancellationToken cancellationToken)
+    [JsonRpcMethod("kusto/getDataAsHtmlChart", UseSingleObjectParameterDeserialization = true)]
+    public Task<GetDataAsHtmlChartResult?> OnGetDataAsHtmlChart(GetDataAsHtmlChartParms @params, CancellationToken cancellationToken)
     {
-        if (_documentManager.TryGetDocument(@params.TextDocument.Uri, out var document))
+        try
         {
-            var position = GetTextPosition(document.Text, @params.Position);
-            var cachedResults = _resultsManager.GetResults(document, position);
-            if (cachedResults != null
+            if (_resultsManager.TryGetResults(@params.DataId, out var cachedResults)
                 && cachedResults.Data != null
                 && cachedResults.Data.Count > 0
                 && cachedResults.ChartOptions != null
                 && cachedResults.ChartOptions.Visualization != Data.Utils.VisualizationKind.None)
             {
-                return Task.FromResult<string?>(GetChartAsHtml(cachedResults.Data[0], cachedResults.ChartOptions, @params.DarkMode));
+                var chartHtml = GetChartAsHtml(cachedResults.Data[0], cachedResults.ChartOptions, @params.DarkMode);
+                return Task.FromResult<GetDataAsHtmlChartResult?>(
+                    new GetDataAsHtmlChartResult
+                    {
+                        Html = chartHtml
+                    });
             }
         }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex.Message);
+        }
 
-        return Task.FromResult<string?>(null);
+        return Task.FromResult<GetDataAsHtmlChartResult?>(null);
     }
 
     private string GetChartAsHtml(DataTable data, Data.Utils.ChartVisualizationOptions chartOptions, bool darkMode = false)
@@ -1352,28 +1348,21 @@ public class KustoLspServer : LspServer, ILogger
     }
 
     [DataContract]
-    public class GetResultsParams
+    public class GetDataAsHtmlChartParms
     {
-        [DataMember(Name = "textDocument")]
-        public required LSP.TextDocumentIdentifier TextDocument { get; init; }
-
-        [DataMember(Name = "position")]
-        public required LSP.Position Position { get; init; }
-    }
-
-    [DataContract]
-    public class GetChartParams
-    {
-        [DataMember(Name = "textDocument")]
-        public required LSP.TextDocumentIdentifier TextDocument { get; init; }
-
-        [DataMember(Name = "position")]
-        public required LSP.Position Position { get; init; }
+        [DataMember(Name = "dataId")]
+        public required string DataId { get; init; }
 
         [DataMember(Name = "darkMode")]
         public bool DarkMode { get; init; }
     }
 
+    [DataContract]
+    public class GetDataAsHtmlChartResult
+    {
+        [DataMember(Name = "html")]
+        public required string Html { get; init; }
+    }
     #endregion
 
     #region Query Ranges
