@@ -1,7 +1,4 @@
 import * as vscode from 'vscode';
-import * as os from 'os';
-import * as path from 'path';
-import * as fs from 'fs';
 import { LanguageClient } from 'vscode-languageclient/node';
 import { setDocumentConnection } from './connections';
 import * as server from './server';
@@ -249,27 +246,20 @@ function displayChart(chartHtml: string | undefined): void
                 }
                 if (message.command === 'copyChartResult' && message.dataUrl) {
                     try {
-                        // Extract base64 data from the data URL
                         const base64 = message.dataUrl.split(',')[1];
-                        const buffer = Buffer.from(base64, 'base64');
 
-                        // Write to a temp file
-                        const tmpFile = path.join(os.tmpdir(), `kusto-chart-${Date.now()}.png`);
-                        fs.writeFileSync(tmpFile, buffer);
-
-                        // Use PowerShell to copy image to clipboard
                         const { execFile } = require('child_process') as typeof import('child_process');
                         const psScript = `
-                            Add-Type -AssemblyName System.Drawing
                             Add-Type -AssemblyName System.Windows.Forms
-                            $img = [System.Drawing.Image]::FromFile('${tmpFile.replace(/'/g, "''")}')
-                            [System.Windows.Forms.Clipboard]::SetImage($img)
-                            $img.Dispose()
+                            $bytes = [Convert]::FromBase64String('${base64}')
+                            $ms = New-Object System.IO.MemoryStream(,$bytes)
+                            $data = New-Object System.Windows.Forms.DataObject
+                            $data.SetData('PNG', $false, $ms)
+                            [System.Windows.Forms.Clipboard]::SetDataObject($data, $true)
+                            $ms.Dispose()
                         `;
                         execFile('powershell', ['-sta', '-NoProfile', '-Command', psScript],
                             (error: Error | null) => {
-                                // Clean up temp file after PowerShell is done
-                                try { fs.unlinkSync(tmpFile); } catch { }
                                 if (error) {
                                     vscode.window.showErrorMessage(`Failed to copy chart to clipboard: ${error.message}`);
                                 }
