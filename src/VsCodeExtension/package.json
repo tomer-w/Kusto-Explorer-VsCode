@@ -127,6 +127,11 @@
         "command": "kusto.copyEntity",
         "title": "Copy Entity",
         "icon": "$(copy)"
+      },
+      {
+        "command": "kusto.copyChart",
+        "title": "Copy Chart as Image",
+        "icon": "$(file-media)"
       }
     ],
     "menus": {
@@ -222,6 +227,10 @@
         {
           "command": "kusto.copyData",
           "when": "webviewId == 'kusto.resultsView'"
+        },
+        {
+          "command": "kusto.copyChart",
+          "when": "webviewId == 'kusto'"
         }
       ]
     },

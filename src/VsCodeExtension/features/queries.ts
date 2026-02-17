@@ -1,4 +1,7 @@
 import * as vscode from 'vscode';
+import * as os from 'os';
+import * as path from 'path';
+import * as fs from 'fs';
 import { LanguageClient } from 'vscode-languageclient/node';
 import { setDocumentConnection } from './connections';
 import * as server from './server';
@@ -42,7 +45,8 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
         vscode.commands.registerCommand('kusto.runQuery', () => runQuery(client)),
         vscode.commands.registerCommand('kusto.copyData', () => copyData()),
         vscode.commands.registerCommand('kusto.copyQuery', () => copyQuery(client)),
-        vscode.commands.registerCommand('kusto.formatQuery', () => formatQuery(client))
+        vscode.commands.registerCommand('kusto.formatQuery', () => formatQuery(client)),
+        vscode.commands.registerCommand('kusto.copyChart', () => copyChart())
     );
 }
 
@@ -238,6 +242,45 @@ function displayChart(chartHtml: string | undefined): void
             // Notify that chart panel state changed
             vscode.commands.executeCommand('kusto.chartPanelStateChanged');
 
+            // Listen for messages from the chart webview
+            chartPanel.webview.onDidReceiveMessage(async (message) => {
+                if (message.command === 'copyChartError') {
+                    vscode.window.showErrorMessage(`Chart copy failed in webview: ${message.error}`);
+                }
+                if (message.command === 'copyChartResult' && message.dataUrl) {
+                    try {
+                        // Extract base64 data from the data URL
+                        const base64 = message.dataUrl.split(',')[1];
+                        const buffer = Buffer.from(base64, 'base64');
+
+                        // Write to a temp file
+                        const tmpFile = path.join(os.tmpdir(), `kusto-chart-${Date.now()}.png`);
+                        fs.writeFileSync(tmpFile, buffer);
+
+                        // Use PowerShell to copy image to clipboard
+                        const { execFile } = require('child_process') as typeof import('child_process');
+                        const psScript = `
+                            Add-Type -AssemblyName System.Drawing
+                            Add-Type -AssemblyName System.Windows.Forms
+                            $img = [System.Drawing.Image]::FromFile('${tmpFile.replace(/'/g, "''")}')
+                            [System.Windows.Forms.Clipboard]::SetImage($img)
+                            $img.Dispose()
+                        `;
+                        execFile('powershell', ['-sta', '-NoProfile', '-Command', psScript],
+                            (error: Error | null) => {
+                                // Clean up temp file after PowerShell is done
+                                try { fs.unlinkSync(tmpFile); } catch { }
+                                if (error) {
+                                    vscode.window.showErrorMessage(`Failed to copy chart to clipboard: ${error.message}`);
+                                }
+                            }
+                        );
+                    } catch (error) {
+                        vscode.window.showErrorMessage(`Failed to copy chart: ${error}`);
+                    }
+                }
+            });
+
             // Clear reference when user closes it
             chartPanel.onDidDispose(() =>
             {
@@ -248,7 +291,7 @@ function displayChart(chartHtml: string | undefined): void
         }
 
         // Update content and reveal
-        chartPanel.webview.html = chartHtml;
+        chartPanel.webview.html = injectChartMessageHandler(chartHtml);
         chartPanel.reveal(vscode.ViewColumn.Beside, true);
     }
     else if (chartPanel)
@@ -277,6 +320,17 @@ async function copyData(): Promise<void> {
 
     // Tell the webview to select all and copy (preserves HTML formatting)
     resultsView.webview.postMessage({ command: 'copyData' });
+}
+
+/**
+ * Copies the chart as a PNG image to the clipboard.
+ */
+async function copyChart(): Promise<void> {
+    if (!chartPanel) {
+        return;
+    }
+
+    chartPanel.webview.postMessage({ command: 'copyChart' });
 }
 
 /**
@@ -369,6 +423,50 @@ async function formatQuery(client: LanguageClient): Promise<void> {
     } catch (error) {
         vscode.window.showErrorMessage(`Failed to format query: ${error}`);
     }
+}
+
+/** Script injected into chart webview HTML to handle copy as PNG. */
+const chartMessageHandlerScript = `
+<script>
+    (function() {
+        const vscodeApi = (typeof acquireVsCodeApi === 'function') ? acquireVsCodeApi() : null;
+        if (!vscodeApi) return;
+        window.addEventListener('message', async event => {
+            const message = event.data;
+            if (message.command === 'copyChart') {
+                try {
+                    // Find the Plotly chart div
+                    const plotDiv = document.querySelector('.js-plotly-plot') || document.querySelector('.plotly-graph-div');
+                    if (plotDiv && typeof Plotly !== 'undefined') {
+                        const dataUrl = await Plotly.toImage(plotDiv, { format: 'png', width: plotDiv.offsetWidth, height: plotDiv.offsetHeight });
+                        vscodeApi.postMessage({ command: 'copyChartResult', dataUrl: dataUrl });
+                    } else {
+                        // Fallback: use canvas if available
+                        const canvas = document.querySelector('canvas');
+                        if (canvas) {
+                            const dataUrl = canvas.toDataURL('image/png');
+                            vscodeApi.postMessage({ command: 'copyChartResult', dataUrl: dataUrl });
+                        }
+                    }
+                } catch (err) {
+                    vscodeApi.postMessage({ command: 'copyChartError', error: String(err) });
+                }
+            }
+        });
+    })();
+</script>`;
+
+/**
+ * Injects the chart message handler script into chart HTML content.
+ */
+function injectChartMessageHandler(html: string): string {
+    if (html.includes('</html>')) {
+        return html.replace('</html>', chartMessageHandlerScript + '</html>');
+    }
+    if (html.includes('</body>')) {
+        return html.replace('</body>', chartMessageHandlerScript + '</body>');
+    }
+    return html + chartMessageHandlerScript;
 }
 
 /** Script injected into webview HTML to handle messages from the extension. */

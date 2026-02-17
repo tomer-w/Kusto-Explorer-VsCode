@@ -1027,7 +1027,7 @@ public sealed record PlotlyConfig
     /// Whether to display the mode bar (toolbar with zoom, pan, download buttons). Default is true.
     /// </summary>
     [JsonPropertyName("displayModeBar")]
-    public bool DisplayModeBar { get; init; } = true;
+    public bool DisplayModeBar { get; init; } = false;
 
     /// <summary>
     /// Whether to display the Plotly logo in the mode bar. Default is false.
