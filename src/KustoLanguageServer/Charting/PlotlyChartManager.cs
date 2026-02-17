@@ -39,10 +39,19 @@ public class PlotlyChartManager : IChartManager
             _ => null
         };
 
-        // Apply dark mode styling if requested
-        if (builder != null && darkMode)
+        if (builder != null)
         {
-            builder = builder.WithDarkMode();
+            // Apply dark mode styling if requested
+            if (darkMode)
+            {
+                builder = builder.WithDarkMode();
+            }
+
+            // Make 2D charts static (disable mouse interactions) - 3D charts need interaction for rotation
+            if (options.Visualization != VisualizationKind.ThreeDChart)
+            {
+                builder = builder.AsStatic();
+            }
         }
 
         return builder;

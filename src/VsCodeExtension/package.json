@@ -130,7 +130,7 @@
       },
       {
         "command": "kusto.copyChart",
-        "title": "Copy Chart as Image",
+        "title": "Copy Chart",
         "icon": "$(file-media)"
       }
     ],
@@ -198,6 +198,11 @@
         {
           "command": "kusto.runQuery",
           "when": "editorLangId == kusto",
+          "group": "navigation@1"
+        },
+        {
+          "command": "kusto.copyChart",
+          "when": "activeWebviewPanelId == kusto",
           "group": "navigation@1"
         }
       ],

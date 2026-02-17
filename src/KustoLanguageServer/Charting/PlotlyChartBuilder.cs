@@ -172,6 +172,14 @@ public sealed class PlotlyChartBuilder
     }
 
     /// <summary>
+    /// Makes the chart static by disabling all mouse interactions (zoom, pan, hover).
+    /// </summary>
+    public PlotlyChartBuilder AsStatic()
+    {
+        return new PlotlyChartBuilder(_traces, _layout, _config with { StaticPlot = true });
+    }
+
+    /// <summary>
     /// Returns the text of an HTML div containing the Plotly chart.
     /// The Plotly.js library must be loaded separately elsewhere in the HTML document.
     /// </summary>
@@ -1024,7 +1032,7 @@ public sealed record PlotlyConfig
     public bool Responsive { get; init; } = true;
 
     /// <summary>
-    /// Whether to display the mode bar (toolbar with zoom, pan, download buttons). Default is true.
+    /// Whether to display the mode bar (toolbar with zoom, pan, download buttons). Default is false.
     /// </summary>
     [JsonPropertyName("displayModeBar")]
     public bool DisplayModeBar { get; init; } = false;
@@ -1034,6 +1042,13 @@ public sealed record PlotlyConfig
     /// </summary>
     [JsonPropertyName("displaylogo")]
     public bool DisplayLogo { get; init; } = false;
+
+    /// <summary>
+    /// Whether the chart is static (no mouse interactions like zoom, pan, hover). Default is false.
+    /// When true, disables all interactivity for a read-only chart.
+    /// </summary>
+    [JsonPropertyName("staticPlot")]
+    public bool StaticPlot { get; init; } = false;
 
     /// <summary>
     /// Options for the "Download plot as PNG" button. Value should be a JSON-serializable object.

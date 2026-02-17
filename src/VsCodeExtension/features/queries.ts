@@ -479,15 +479,28 @@ const chartMessageHandlerScript = `
 
 /**
  * Injects the chart message handler script into chart HTML content.
+ * Also adds data-vscode-context to suppress default context menu items.
  */
 function injectChartMessageHandler(html: string): string {
-    if (html.includes('</html>')) {
-        return html.replace('</html>', chartMessageHandlerScript + '</html>');
+    // Add data-vscode-context to suppress default Cut/Copy/Paste context menu items
+    let result = html;
+    const contextAttr = ` data-vscode-context='{"preventDefaultContextMenuItems": true}'`;
+    if (result.includes('<body')) {
+        result = result.replace('<body', '<body' + contextAttr);
+    } else if (result.includes('<html')) {
+        result = result.replace('<html>', '<html><body' + contextAttr + '>');
+        if (result.includes('</html>')) {
+            result = result.replace('</html>', '</body></html>');
+        }
     }
-    if (html.includes('</body>')) {
-        return html.replace('</body>', chartMessageHandlerScript + '</body>');
+
+    if (result.includes('</html>')) {
+        return result.replace('</html>', chartMessageHandlerScript + '</html>');
     }
-    return html + chartMessageHandlerScript;
+    if (result.includes('</body>')) {
+        return result.replace('</body>', chartMessageHandlerScript + '</body>');
+    }
+    return result + chartMessageHandlerScript;
 }
 
 /** Script injected into webview HTML to handle messages from the extension. */
