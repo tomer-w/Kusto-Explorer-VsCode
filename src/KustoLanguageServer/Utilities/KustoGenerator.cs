@@ -93,7 +93,7 @@ public static class KustoGenerator
         {
             if (isNull)
                 return "''";
-            return KustoFacts.GetSingleQuotedStringLiteral(value!.ToString()!);
+            return KustoFacts.GetStringLiteral(value!.ToString()!);
         }
     }
 

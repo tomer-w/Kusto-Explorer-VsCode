@@ -13,16 +13,48 @@
       "match": "#.*"
     },
     {
+      "name": "string.quoted.other.verbatim.kusto",
+      "begin": "[hH]?@\"",
+      "end": "\"(?!\")",
+      "patterns": [
+        {
+          "name": "constant.character.escape.kusto",
+          "match": "\"\""
+        }
+      ]
+    },
+    {
+      "name": "string.quoted.other.verbatim.kusto",
+      "begin": "[hH]?@'",
+      "end": "'(?!')",
+      "patterns": [
+        {
+          "name": "constant.character.escape.kusto",
+          "match": "''"
+        }
+      ]
+    },
+    {
       "name": "string.quoted.double.kusto",
-      "match": "[hH]?\"[^\"]*\""
+      "begin": "[hH]?\"",
+      "end": "\"|$",
+      "patterns": [
+        {
+          "name": "constant.character.escape.kusto",
+          "match": "\\\\(?:[\\\\\"'nrtbafv0]|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|x[0-9a-fA-F]{2})"
+        }
+      ]
     },
     {
       "name": "string.quoted.single.kusto",
-      "match": "[hH]?'[^']*'"
-    },
-    {
-      "name": "string.quoted.other.kusto",
-      "match": "[hH]?@\"[^\"]*\"|[hH]?@'[^']*'"
+      "begin": "[hH]?'",
+      "end": "'|$",
+      "patterns": [
+        {
+          "name": "constant.character.escape.kusto",
+          "match": "\\\\(?:[\\\\\"'nrtbafv0]|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|x[0-9a-fA-F]{2})"
+        }
+      ]
     },
     {
       "name": "string.quoted.multi.backtick.kusto",

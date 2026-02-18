@@ -85,12 +85,8 @@ async function runQuery(client: LanguageClient): Promise<void> {
         // run query and get results from the server
         const runResult = await server.runQuery(client, uri, selection);
 
-        if (!runResult) {
-            return; // No results or error
-        }
-
         // If query changed cluster/database, update document connection
-        if (runResult.cluster) {
+        if (runResult && runResult.cluster) {
             await setDocumentConnection(uri, runResult.cluster, runResult.database);
         }
 

@@ -250,15 +250,18 @@
       "webview/context": [
         {
           "command": "kusto.copyCell",
-          "when": "webviewId == 'kusto.resultsView'"
+          "when": "webviewId == 'kusto.resultsView'",
+          "group": "9_cutcopypaste@1"
         },
         {
           "command": "kusto.copyData",
-          "when": "webviewId == 'kusto.resultsView'"
+          "when": "webviewId == 'kusto.resultsView'",
+          "group": "9_cutcopypaste@2"
         },
         {
           "command": "kusto.copyStatement",
-          "when": "webviewId == 'kusto.resultsView'"
+          "when": "webviewId == 'kusto.resultsView'",
+          "group": "9_cutcopypaste@3"
         },
         {
           "command": "kusto.copyChart",
