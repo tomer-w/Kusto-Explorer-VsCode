@@ -100,7 +100,7 @@ export function getDatabaseInfo(
  * @param entityName The name of the entity
  * @returns The entity create command as a string, or null if not found
  */
-export function getEntityCommand(
+export function getEntityAsCommand(
     client: LanguageClient,
     cluster: string,
     database: string,
@@ -108,7 +108,7 @@ export function getEntityCommand(
     entityName: string
 ): Promise<string | null> {
     return client.sendRequest<string | null>(
-        'kusto/getEntityCommand',
+        'kusto/getEntityAsCommand',
         { cluster, database, entityType, entityName }
     );
 }
@@ -122,7 +122,7 @@ export function getEntityCommand(
  * @param entityName The name of the entity
  * @returns The entity expression as a string, or null if not found
  */
-export function getEntityExpression(
+export function getEntityAsExpression(
     client: LanguageClient,
     cluster: string,
     database: string,
@@ -130,7 +130,7 @@ export function getEntityExpression(
     entityName: string
 ): Promise<string | null> {
     return client.sendRequest<string | null>(
-        'kusto/getEntityExpression',
+        'kusto/getEntityAsExpression',
         { cluster, database, entityType, entityName }
     );
 }
@@ -170,6 +170,27 @@ export function getDataAsHtmlChart(
         {
             dataId,
             darkMode
+        }
+    );
+}
+
+/**
+ * Gets the query result data as a KQL datatable statement.
+ * @param client The language client for LSP communication
+ * @param dataId The data ID from running a query
+ * @param tableName Optional name of a specific table to convert (defaults to first table)
+ * @returns The datatable statement as a string, or null if not available
+ */
+export function getDataAsStatement(
+    client: LanguageClient,
+    dataId: string,
+    tableName?: string
+): Promise<DataAsStatement | null> {
+    return client.sendRequest<DataAsStatement | null>(
+        'kusto/getDataAsStatement',
+        {
+            dataId,
+            tableName
         }
     );
 }
@@ -243,6 +264,11 @@ export interface DataAsHtmlTables {
 /** Result of getting data as html chart. */
 export interface DataAsHtmlChart {
     html: string;
+}
+
+/** Result of getting data as a KQL statement. */
+export interface DataAsStatement {
+    statement: string;
 }
 
 /** Position in a document. */

@@ -168,7 +168,7 @@ public class ConnectionManager : IConnectionManager
                 : null;
             return new ExecuteResult 
             { 
-                Data=tables,
+                Tables=tables,
                 ChartOptions=mainResult?.VisualizationOptions 
             };
         }
@@ -181,10 +181,10 @@ public class ConnectionManager : IConnectionManager
             )
         {
             var results = await ExecuteAsync(query, options, parameters, cancellationToken).ConfigureAwait(false);
-            if (results.Data != null
-                && results.Data.Count > 0)
+            if (results.Tables != null
+                && results.Tables.Count > 0)
             {
-                var reader = new ObjectReader<T>(results.Data[0].CreateDataReader());
+                var reader = new ObjectReader<T>(results.Tables[0].CreateDataReader());
                 return reader;
             }
             else

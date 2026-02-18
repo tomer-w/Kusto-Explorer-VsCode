@@ -234,7 +234,7 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
             const entityName = getEntityName(item);
 
             try {
-                const definition = await lspServer.getEntityCommand(
+                const definition = await lspServer.getEntityAsCommand(
                     client,
                     item.clusterName,
                     item.databaseName,
@@ -271,7 +271,7 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
             const entityName = getEntityName(item);
 
             try {
-                const expression = await lspServer.getEntityExpression(
+                const expression = await lspServer.getEntityAsExpression(
                     client,
                     item.clusterName,
                     item.databaseName,

@@ -1160,210 +1160,9 @@ public class KustoLspServer : LspServer, ILogger
     }
     #endregion
 
-#endregion
+    #endregion
 
     #region Kusto Extensions
-
-    #region Run Query
-
-    [JsonRpcMethod("kusto/runQuery", UseSingleObjectParameterDeserialization = true)]
-    public async Task<RunQueryResults?> OnRunQueryAsync(RunQueryParams @params, CancellationToken cancellationToken)
-    {
-        try
-        {
-            if (@params.Selection == null)
-            {
-                await this.SendWindowShowMessageAsync("Failed to run: no query selected");
-                return null;
-            }
-
-            var queryOptions = ImmutableDictionary<string, string>.Empty;
-            var queryParameters = ImmutableDictionary<string, string>.Empty;
-
-            if (_documentManager.TryGetDocument(@params.TextDocument.Uri, out var document))
-            {
-                var range = GetTextRange(document.Text, @params.Selection);
-
-                var results = await _queryManager.RunQueryAsync(document, range, queryOptions, queryParameters, cancellationToken).ConfigureAwait(false);
-
-                if (results != null && results.Data != null)
-                {
-                    // cache results for lookup later
-                    var resultId = _resultsManager.SetResults(document, range.Start,
-                        new ExecuteResult
-                        {
-                            Data = results.Data,
-                            ChartOptions = results.ChartOptions,
-                            Diagnostics = results.Error != null ? [results.Error] : null
-                        });
-
-                    return new RunQueryResults
-                    {
-                        DataId = resultId,
-                        Cluster = results?.Cluster,
-                        Database = results?.Database
-                    };
-                }
-                else
-                {
-                    // cache results for lookup later
-                    _resultsManager.SetResults(document, range.Start, null);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _ = this.SendWindowLogMessageAsync(ex.Message);
-        }
-
-        return null;
-    }
-
-    public class RunQueryParams
-    {
-        [DataMember(Name = "textDocument")]
-        public required LSP.TextDocumentIdentifier TextDocument { get; init; }
-         
-        [DataMember(Name = "selection")]
-        public required LSP.Range Selection { get; init; }
-    }
-
-    [DataContract]
-    public class RunQueryResults
-    {
-        [DataMember(Name = "dataId")]
-        public string? DataId { get; init; }
-
-        [DataMember(Name = "cluster")]
-        public string? Cluster { get; init; }
-
-        [DataMember(Name = "database")]
-        public string? Database { get; init; }
-    }
-
-    [JsonRpcMethod("kusto/getDataAsHtmlTables", UseSingleObjectParameterDeserialization = true)]
-    public Task<GetDataAsHtmlTablesResult?> OnGetDataAsHtmlTablesAsync(GetDataAsHtmlTablesParams @params, CancellationToken cancellationToken)
-    {
-        if (_resultsManager.TryGetResults(@params.DataId, out var cachedResults))
-        {
-            if (cachedResults?.Data != null)
-            {
-                var hasChart = cachedResults.ChartOptions != null
-                    && cachedResults.ChartOptions.Visualization != Data.Utils.VisualizationKind.None;
-
-                return Task.FromResult<GetDataAsHtmlTablesResult?>(
-                    new GetDataAsHtmlTablesResult
-                    {
-                        Tables = cachedResults.Data.Select(t => new HtmlTable
-                        {
-                            Html = GetDataAsHtml(t),
-                            Name = t.TableName,
-                            RowCount = t.Rows.Count
-                        }).ToImmutableList(),
-                        HasChart = hasChart
-                    });
-            }
-        }
-
-        return Task.FromResult<GetDataAsHtmlTablesResult?>(null);
-    }
-
-    [DataContract]
-    public class GetDataAsHtmlTablesParams
-    {
-        [DataMember(Name = "dataId")]
-        public required string DataId { get; init; }
-    }
-
-    [DataContract]
-    public class GetDataAsHtmlTablesResult
-    {
-        [DataMember(Name = "tables")]
-        public required ImmutableList<HtmlTable> Tables { get; init; }
-
-        [DataMember(Name = "hasChart")]
-        public bool HasChart { get; init; }
-    }
-
-    [DataContract]
-    public class HtmlTable
-    {
-        [DataMember(Name = "name")]
-        public required string Name { get; init; }
-
-        [DataMember(Name = "html")]
-        public required string Html { get; init; }
-
-        [DataMember(Name = "rowCount")]
-        public int RowCount { get; init; }
-    }
-
-    private string GetDataAsHtml(DataTable data)
-    {
-        var dataBuilder = new HtmlBuilder();
-        dataBuilder.WriteHtml(
-            head: () =>
-            {
-            },
-            body: () =>
-            {
-                dataBuilder.WriteTable(data);
-            }
-        );
-
-        return dataBuilder.Text;
-    }
-
-    [JsonRpcMethod("kusto/getDataAsHtmlChart", UseSingleObjectParameterDeserialization = true)]
-    public Task<GetDataAsHtmlChartResult?> OnGetDataAsHtmlChart(GetDataAsHtmlChartParms @params, CancellationToken cancellationToken)
-    {
-        try
-        {
-            if (_resultsManager.TryGetResults(@params.DataId, out var cachedResults)
-                && cachedResults.Data != null
-                && cachedResults.Data.Count > 0
-                && cachedResults.ChartOptions != null
-                && cachedResults.ChartOptions.Visualization != Data.Utils.VisualizationKind.None)
-            {
-                var chartHtml = GetChartAsHtml(cachedResults.Data[0], cachedResults.ChartOptions, @params.DarkMode);
-                return Task.FromResult<GetDataAsHtmlChartResult?>(
-                    new GetDataAsHtmlChartResult
-                    {
-                        Html = chartHtml
-                    });
-            }
-        }
-        catch (Exception ex)
-        {
-            _ = this.SendWindowLogMessageAsync(ex.Message);
-        }
-
-        return Task.FromResult<GetDataAsHtmlChartResult?>(null);
-    }
-
-    private string GetChartAsHtml(DataTable data, Data.Utils.ChartVisualizationOptions chartOptions, bool darkMode = false)
-    {
-        return _chartManager.RenderChartToHtmlDocument(data, chartOptions, darkMode)
-            ?? "<html>chart style not implemented yet</html>";
-    }
-
-    [DataContract]
-    public class GetDataAsHtmlChartParms
-    {
-        [DataMember(Name = "dataId")]
-        public required string DataId { get; init; }
-
-        [DataMember(Name = "darkMode")]
-        public bool DarkMode { get; init; }
-    }
-
-    [DataContract]
-    public class GetDataAsHtmlChartResult
-    {
-        [DataMember(Name = "html")]
-        public required string Html { get; init; }
-    }
-    #endregion
 
     #region Query Ranges
 
@@ -1450,7 +1249,7 @@ public class KustoLspServer : LspServer, ILogger
     public async Task<GetServerInfoResult?> OnGetServerInfoAsync(GetServerInfoParams @params, CancellationToken cancellationToken)
     {
         var clusterName = _connectionManager.GetConnection(@params.Connection).Cluster;
-        
+
         // ensure server databases are loaded
         await _symbolManager.GetOrLoadDatabaseNamesAsync(@params.Connection, cancellationToken).ConfigureAwait(false);
 
@@ -1723,10 +1522,320 @@ public class KustoLspServer : LspServer, ILogger
 
     #endregion
 
+    #region Document Connections
+
+    [JsonRpcMethod("kusto/connectionsUpdated", UseSingleObjectParameterDeserialization = true)]
+    public Task OnConnectionsUpdatedAsync(ConnectionsUpdatedParams @params, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Ensure cluster symbols exist for all configured connections
+            _ = _symbolManager.EnsureClustersAsync(@params.Connections, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    [DataContract]
+    public class ConnectionsUpdatedParams
+    {
+        [DataMember(Name = "connections")]
+        public required string[] Connections { get; set; }
+    }
+
+    [JsonRpcMethod("kusto/documentConnectionChanged", UseSingleObjectParameterDeserialization = true)]
+    public Task OnDocumentConnectionChangedAsync(DocumentConnectionChangedParams @params, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var uri = new Uri(@params.Uri);
+            _documentManager.UpdateConnectionAsync(uri, @params.Cluster, @params.Database, @params.ServerKind);
+        }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    [DataContract]
+    public class DocumentConnectionChangedParams
+    {
+        [DataMember(Name = "uri")]
+        public required string Uri { get; set; }
+
+        [DataMember(Name = "cluster")]
+        public string? Cluster { get; set; }
+
+        [DataMember(Name = "database")]
+        public string? Database { get; set; }
+
+        [DataMember(Name = "serverKind")]
+        public string? ServerKind { get; set; }
+    }
+
+    #endregion
+
+    #region Run Query
+
+    [JsonRpcMethod("kusto/runQuery", UseSingleObjectParameterDeserialization = true)]
+    public async Task<RunQueryResults?> OnRunQueryAsync(RunQueryParams @params, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (@params.Selection == null)
+            {
+                await this.SendWindowShowMessageAsync("Failed to run: no query selected");
+                return null;
+            }
+
+            var queryOptions = ImmutableDictionary<string, string>.Empty;
+            var queryParameters = ImmutableDictionary<string, string>.Empty;
+
+            if (_documentManager.TryGetDocument(@params.TextDocument.Uri, out var document))
+            {
+                var range = GetTextRange(document.Text, @params.Selection);
+
+                var results = await _queryManager.RunQueryAsync(document, range, queryOptions, queryParameters, cancellationToken).ConfigureAwait(false);
+
+                if (results != null && results.Data != null)
+                {
+                    // cache results for lookup later
+                    var resultId = _resultsManager.SetResults(document, range.Start,
+                        new ExecuteResult
+                        {
+                            Tables = results.Data,
+                            ChartOptions = results.ChartOptions,
+                            Diagnostics = results.Error != null ? [results.Error] : null
+                        });
+
+                    return new RunQueryResults
+                    {
+                        DataId = resultId,
+                        Cluster = results?.Cluster,
+                        Database = results?.Database
+                    };
+                }
+                else
+                {
+                    // cache results for lookup later
+                    _resultsManager.SetResults(document, range.Start, null);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex.Message);
+        }
+
+        return null;
+    }
+
+    public class RunQueryParams
+    {
+        [DataMember(Name = "textDocument")]
+        public required LSP.TextDocumentIdentifier TextDocument { get; init; }
+         
+        [DataMember(Name = "selection")]
+        public required LSP.Range Selection { get; init; }
+    }
+
+    [DataContract]
+    public class RunQueryResults
+    {
+        [DataMember(Name = "dataId")]
+        public string? DataId { get; init; }
+
+        [DataMember(Name = "cluster")]
+        public string? Cluster { get; init; }
+
+        [DataMember(Name = "database")]
+        public string? Database { get; init; }
+    }
+
+    #endregion
+
+    #region Data (Tables, Charts, etc)
+
+    [JsonRpcMethod("kusto/getDataAsHtmlTables", UseSingleObjectParameterDeserialization = true)]
+    public Task<GetDataAsHtmlTablesResult?> OnGetDataAsHtmlTablesAsync(GetDataAsHtmlTablesParams @params, CancellationToken cancellationToken)
+    {
+        if (_resultsManager.TryGetResults(@params.DataId, out var cachedResults))
+        {
+            if (cachedResults?.Tables != null)
+            {
+                var hasChart = cachedResults.ChartOptions != null
+                    && cachedResults.ChartOptions.Visualization != Data.Utils.VisualizationKind.None;
+
+                return Task.FromResult<GetDataAsHtmlTablesResult?>(
+                    new GetDataAsHtmlTablesResult
+                    {
+                        Tables = cachedResults.Tables.Select(t => new HtmlTable
+                        {
+                            Html = GetDataAsHtml(t),
+                            Name = t.TableName,
+                            RowCount = t.Rows.Count
+                        }).ToImmutableList(),
+                        HasChart = hasChart
+                    });
+            }
+        }
+
+        return Task.FromResult<GetDataAsHtmlTablesResult?>(null);
+    }
+
+    [DataContract]
+    public class GetDataAsHtmlTablesParams
+    {
+        [DataMember(Name = "dataId")]
+        public required string DataId { get; init; }
+    }
+
+    [DataContract]
+    public class GetDataAsHtmlTablesResult
+    {
+        [DataMember(Name = "tables")]
+        public required ImmutableList<HtmlTable> Tables { get; init; }
+
+        [DataMember(Name = "hasChart")]
+        public bool HasChart { get; init; }
+    }
+
+    [DataContract]
+    public class HtmlTable
+    {
+        [DataMember(Name = "name")]
+        public required string Name { get; init; }
+
+        [DataMember(Name = "html")]
+        public required string Html { get; init; }
+
+        [DataMember(Name = "rowCount")]
+        public int RowCount { get; init; }
+    }
+
+    private string GetDataAsHtml(DataTable data)
+    {
+        var dataBuilder = new HtmlBuilder();
+        dataBuilder.WriteHtml(
+            head: () =>
+            {
+            },
+            body: () =>
+            {
+                dataBuilder.WriteTable(data);
+            }
+        );
+
+        return dataBuilder.Text;
+    }
+
+    [JsonRpcMethod("kusto/getDataAsHtmlChart", UseSingleObjectParameterDeserialization = true)]
+    public Task<GetDataAsHtmlChartResult?> OnGetDataAsHtmlChart(GetDataAsHtmlChartParams @params, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (_resultsManager.TryGetResults(@params.DataId, out var cachedResults)
+                && cachedResults.Tables != null
+                && cachedResults.Tables.Count > 0
+                && cachedResults.ChartOptions != null
+                && cachedResults.ChartOptions.Visualization != Data.Utils.VisualizationKind.None)
+            {
+                var chartHtml = GetChartAsHtml(cachedResults.Tables[0], cachedResults.ChartOptions, @params.DarkMode);
+                return Task.FromResult<GetDataAsHtmlChartResult?>(
+                    new GetDataAsHtmlChartResult
+                    {
+                        Html = chartHtml
+                    });
+            }
+        }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex.Message);
+        }
+
+        return Task.FromResult<GetDataAsHtmlChartResult?>(null);
+    }
+
+    private string GetChartAsHtml(DataTable data, Data.Utils.ChartVisualizationOptions chartOptions, bool darkMode = false)
+    {
+        return _chartManager.RenderChartToHtmlDocument(data, chartOptions, darkMode)
+            ?? "<html>chart style not implemented yet</html>";
+    }
+
+    [DataContract]
+    public class GetDataAsHtmlChartParams
+    {
+        [DataMember(Name = "dataId")]
+        public required string DataId { get; init; }
+
+        [DataMember(Name = "darkMode")]
+        public bool DarkMode { get; init; }
+    }
+
+    [DataContract]
+    public class GetDataAsHtmlChartResult
+    {
+        [DataMember(Name = "html")]
+        public required string Html { get; init; }
+    }
+
+    [JsonRpcMethod("kusto/getDataAsStatement", UseSingleObjectParameterDeserialization = true)]
+    public Task<GetDataAsStatementResult?> OnGetDataAsStatement(GetDataAsStatementParams @params, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (_resultsManager.TryGetResults(@params.DataId, out var results)
+                && results.Tables != null
+                && results.Tables.Count > 0)
+            {
+                var table = @params.TableName != null ? results.Tables.FirstOrDefault(t => t.TableName == @params.TableName) : null;
+                if (table == null)
+                    table = results.Tables[0];
+
+                var statement = KustoGenerator.GenerateTableStatement(table);
+
+                return Task.FromResult<GetDataAsStatementResult?>(
+                    new GetDataAsStatementResult { Statement = statement }
+                    );
+            }
+        }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex.Message);
+        }
+
+        return Task.FromResult<GetDataAsStatementResult?>(null);
+    }
+
+    [DataContract]
+    public class GetDataAsStatementParams
+    {
+        [DataMember(Name = "dataId")]
+        public required string DataId { get; init; }
+
+        [DataMember(Name = "tableName")]
+        public string? TableName { get; init; }
+    }
+
+    [DataContract]
+    public class GetDataAsStatementResult
+    {
+        [DataMember(Name = "statement")]
+        public required string Statement { get; init; }
+    }
+
+    #endregion
+
     #region Entities
 
-    [JsonRpcMethod("kusto/getEntityCommand", UseSingleObjectParameterDeserialization = true)]
-    public async Task<string?> OnGetEntityCommandAsync(GetEntityCreateCommandParams @params, CancellationToken cancellationToken)
+    [JsonRpcMethod("kusto/getEntityAsCommand", UseSingleObjectParameterDeserialization = true)]
+    public async Task<string?> OnGetEntityAsCommandAsync(GetEntityCreateCommandParams @params, CancellationToken cancellationToken)
     {
         try
         {
@@ -1770,8 +1879,8 @@ public class KustoLspServer : LspServer, ILogger
         public required string EntityName { get; init; }
     }
 
-    [JsonRpcMethod("kusto/getEntityExpression", UseSingleObjectParameterDeserialization = true)]
-    public async Task<string?> OnGetEntityExpressionAsync(GetEntityExpressionParams @params, CancellationToken cancellationToken)
+    [JsonRpcMethod("kusto/getEntityAsExpression", UseSingleObjectParameterDeserialization = true)]
+    public async Task<string?> OnGetEntityAsExpressionAsync(GetEntityExpressionParams @params, CancellationToken cancellationToken)
     {
         try
         {
@@ -1897,64 +2006,6 @@ public class KustoLspServer : LspServer, ILogger
 
     #endregion
 
-    #region Document Connections
-
-    [JsonRpcMethod("kusto/connectionsUpdated", UseSingleObjectParameterDeserialization = true)]
-    public Task OnConnectionsUpdatedAsync(ConnectionsUpdatedParams @params, CancellationToken cancellationToken)
-    {
-        try
-        {
-            // Ensure cluster symbols exist for all configured connections
-            _ = _symbolManager.EnsureClustersAsync(@params.Connections, cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            _ = this.SendWindowLogMessageAsync(ex);
-        }
-
-        return Task.CompletedTask;
-    }
-
-    [DataContract]
-    public class ConnectionsUpdatedParams
-    {
-        [DataMember(Name = "connections")]
-        public required string[] Connections { get; set; }
-    }
-
-    [JsonRpcMethod("kusto/documentConnectionChanged", UseSingleObjectParameterDeserialization = true)]
-    public Task OnDocumentConnectionChangedAsync(DocumentConnectionChangedParams @params, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var uri = new Uri(@params.Uri);
-            _documentManager.UpdateConnectionAsync(uri, @params.Cluster, @params.Database, @params.ServerKind);
-        }
-        catch (Exception ex)
-        {
-            _ = this.SendWindowLogMessageAsync(ex);
-        }
-
-        return Task.CompletedTask;
-    }
-
-    [DataContract]
-    public class DocumentConnectionChangedParams
-    {
-        [DataMember(Name = "uri")]
-        public required string Uri { get; set; }
-
-        [DataMember(Name = "cluster")]
-        public string? Cluster { get; set; }
-
-        [DataMember(Name = "database")]
-        public string? Database { get; set; }
-
-        [DataMember(Name = "serverKind")]
-        public string? ServerKind { get; set; }
-    }
-
-    #endregion
 
     #endregion
 

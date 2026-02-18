@@ -173,7 +173,7 @@ public class QueryManager : IQueryManager
             return new RunResult
             {
                 Query = query,
-                Data = results.Data,
+                Data = results.Tables,
                 ChartOptions = results.ChartOptions
             };
         }
