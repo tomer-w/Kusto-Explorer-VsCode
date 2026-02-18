@@ -10,6 +10,7 @@ import * as semantics from './features/semantics'
 import * as copilot from './features/copilot'
 import * as codelens from './features/codelens'
 import * as clipboard from './features/clipboard'
+import * as connectionStatusBar from './features/connectionStatusBar'
 import
     {
         LanguageClient,
@@ -83,6 +84,9 @@ export async function activate(context: ExtensionContext)
 
     // activate connections panel and related features
     await conn.activate(context, client);
+
+    // Create status bar item for connection status
+    connectionStatusBar.activate(context);
 
     // activates semantic coloring
     semantics.activate(context, client);

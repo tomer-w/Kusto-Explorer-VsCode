@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as connections from './connections';
 
 let connectionStatusBarItem: vscode.StatusBarItem | undefined;
 
@@ -16,6 +17,21 @@ export function activate(context: vscode.ExtensionContext): void {
     connectionStatusBarItem.command = "kusto.connectDatabase";
     connectionStatusBarItem.show();
     context.subscriptions.push(connectionStatusBarItem);
+
+    // Update status bar when the active document's connection changes
+    context.subscriptions.push(connections.registerOnDocumentConnectionChanged(async (uri: string) => {
+        if (vscode.window.activeTextEditor?.document.uri.toString() === uri) {
+            updateStatusBar();
+        }
+    }));
+
+    // Update status bar when active editor changes
+    context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(() => {
+        updateStatusBar();
+    }));
+
+    // Initialize status bar for currently active editor
+    updateStatusBar();
 }
 
 /**
@@ -23,7 +39,7 @@ export function activate(context: vscode.ExtensionContext): void {
  * @param cluster The cluster name, or undefined if not connected
  * @param database The database name, or undefined if not selected
  */
-export function update(cluster: string | undefined, database: string | undefined): void {
+function update(cluster: string | undefined, database: string | undefined): void {
     if (!connectionStatusBarItem) return;
 
     if (!cluster) {
@@ -38,13 +54,29 @@ export function update(cluster: string | undefined, database: string | undefined
 /**
  * Shows the status bar item.
  */
-export function show(): void {
+function show(): void {
     connectionStatusBarItem?.show();
 }
 
 /**
  * Hides the status bar item.
  */
-export function hide(): void {
+function hide(): void {
     connectionStatusBarItem?.hide();
+}
+
+/**
+ * Updates the status bar item to reflect the connection for the active document.
+ */
+function updateStatusBar(): void {
+    const editor = vscode.window.activeTextEditor;
+
+    if (!editor || editor.document.languageId !== 'kusto') {
+        hide();
+        return;
+    }
+
+    show();
+    const connection = connections.getDocumentConnection(editor.document.uri.toString());
+    update(connection?.cluster, connection?.database);
 }

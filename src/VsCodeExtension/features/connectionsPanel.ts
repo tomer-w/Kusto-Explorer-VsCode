@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 import * as lspServer from './server';
 import { setClipboardContext } from './clipboard';
-import * as connectionStatusBar from './connectionStatusBar';
 import * as connections from './connections';
 import { getHostName, isServerGroup } from './connections';
 import type { ServerInfo, ServerGroupInfo } from './connections';
@@ -26,7 +25,6 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
     // Register for connection change events
     context.subscriptions.push(connections.registerOnDocumentConnectionChanged(async (uri: string) => {
         if (vscode.window.activeTextEditor?.document.uri.toString() === uri) {
-            updateStatusBar();
             await updateTreeSelectionForActiveDocument();
         }
     }));
@@ -50,9 +48,6 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
     client.sendNotification('kusto/connectionsUpdated', {
         connections: initialConnections
     });
-
-    // Create status bar item for connection status
-    connectionStatusBar.activate(context);
 
     // Load document connections on startup
     await connections.loadDocumentConnections();
@@ -87,10 +82,9 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
         })
     );
 
-    // Update status bar when active editor changes
+    // Update tree selection when active editor changes
     context.subscriptions.push(
         vscode.window.onDidChangeActiveTextEditor(async () => {
-            updateStatusBar();
             await updateTreeSelectionForActiveDocument();
         })
     );
@@ -99,9 +93,6 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
     const initialEditor = vscode.window.activeTextEditor;
     const initialIsKusto = initialEditor && initialEditor.document.languageId === 'kusto';
     await vscode.commands.executeCommand('setContext', 'kusto.hasActiveDocument', initialIsKusto);
-
-    // Initialize status bar for currently active editor
-    updateStatusBar();
 
     // Handle tree selection changes - update document connection when user clicks
     context.subscriptions.push(
@@ -1121,22 +1112,6 @@ let languageClient: LanguageClient | undefined;
 let connectionsProvider: KustoConnectionsProvider | undefined;
 let treeView: vscode.TreeView<KustoTreeItem> | undefined;
 let isProgrammaticSelection = false;
-
-/**
- * Updates the status bar item to reflect the connection for the active document.
- */
-function updateStatusBar(): void {
-    const editor = vscode.window.activeTextEditor;
-    
-    if (!editor || editor.document.languageId !== 'kusto') {
-        connectionStatusBar.hide();
-        return;
-    }
-
-    connectionStatusBar.show();
-    const connection = connections.getDocumentConnection(editor.document.uri.toString());
-    connectionStatusBar.update(connection?.cluster, connection?.database);
-}
 
 /**
  * Finds a tree item matching the cluster/database.
