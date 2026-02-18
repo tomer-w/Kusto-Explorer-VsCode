@@ -154,33 +154,26 @@ public class QueryManager : IQueryManager
             };
         }
 
-        try
+        // handle stored query results
+        if (context.StoredQueryResultName != null)
         {
-            // handle stored query results
-            if (context.StoredQueryResultName != null)
-            {
-                // execute command to execute query and store results on server
-                var command = query.ReplaceAt(0, query.Length, CslCommandGenerator.GenerateStoredQueryResultSetOrReplaceCommand(context.StoredQueryResultName, query, previewCount: 0));
-                var result = await ExecuteQueryAsync(connection, context with { Query = command, StoredQueryResultName = null }, cancellationToken).ConfigureAwait(false);
-                if (result == null || result.Error != null)
-                    return result;
+            // execute command to execute query and store results on server
+            var command = query.ReplaceAt(0, query.Length, CslCommandGenerator.GenerateStoredQueryResultSetOrReplaceCommand(context.StoredQueryResultName, query, previewCount: 0));
+            var commandResult = await ExecuteQueryAsync(connection, context with { Query = command, StoredQueryResultName = null }, cancellationToken).ConfigureAwait(false);
+            if (commandResult == null || commandResult.Error != null)
+                return commandResult;
 
-                // change query to retrieve the stored result
-                query = query.ReplaceAt(0, query.Length, $"stored_query_result({KustoFacts.GetStringLiteral(context.StoredQueryResultName)})");
-            }
-
-            var results = await connection.ExecuteAsync(query, context.Options, context.Parameters, cancellationToken).ConfigureAwait(false);
-            return new RunResult
-            {
-                Query = query,
-                Data = results.Tables,
-                ChartOptions = results.ChartOptions
-            };
+            // change query to retrieve the stored result
+            query = query.ReplaceAt(0, query.Length, $"stored_query_result({KustoFacts.GetStringLiteral(context.StoredQueryResultName)})");
         }
-        catch (Exception e)
+
+        var executeResult = await connection.ExecuteAsync(query, context.Options, context.Parameters, cancellationToken).ConfigureAwait(false);
+        return new RunResult
         {
-            return new RunResult { Query = query, Error = CreateDiagnostic(query, e) };
-        }
+            Query = query,
+            ExecuteResult = executeResult,
+            Error = executeResult.Diagnostics?.FirstOrDefault()
+        };
     }
 
     private static EditString RemoveLeadingTrivia(EditString query)

@@ -77,12 +77,22 @@ async function runQuery(client: LanguageClient): Promise<void> {
         if (runResult && runResult.cluster) {
             await setDocumentConnection(uri, runResult.cluster, runResult.database);
         }
-
-        // display associated result tables and chart
-        await resultsPanel.displayResultsById(client, runResult?.dataId);
-        await chartPanel.displayChartById(client, runResult?.dataId);
-
-    } catch (error) {
+        
+        if (runResult && runResult.error)
+        {
+            // display nothing
+            await resultsPanel.displayError(runResult.error);
+            await chartPanel.displayChartById(client, undefined);
+        }
+        else 
+        {
+            // display associated result tables and chart
+            await resultsPanel.displayResultsById(client, runResult?.dataId);
+            await chartPanel.displayChartById(client, runResult?.dataId);
+        }
+    } 
+    catch (error) 
+    {
         vscode.window.showErrorMessage(`Failed to execute query: ${error}`);
     }
 }

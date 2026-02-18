@@ -29,25 +29,20 @@ public record RunResult
     /// The query text that was ultimately executed.
     /// This is a portion of the document text.
     /// </summary>
-    public EditString? Query { get; init; }
+    public required EditString Query { get; init; }
 
     /// <summary>
-    /// The resulting set of <see cref="DataTable"/>'s.
+    /// The result of executing the query, including any relevant diagnostics.
     /// </summary>
-    public ImmutableList<DataTable>? Data { get; init; }
+    public ExecuteResult? ExecuteResult { get; init; }
 
     /// <summary>
-    /// The chart options if the query results contain a render command.
-    /// </summary>
-    public ChartVisualizationOptions? ChartOptions { get; init; }
-    
-    /// <summary>
-    /// The final query options, if the query is a command that alters the global query options.
+    /// The final query options, if the query alterated the global query options.
     /// </summary>
     public ImmutableDictionary<string, string>? QueryOptions { get; init; }
 
     /// <summary>
-    /// The find query parameters, if the query is a command that alters the global query parameters.
+    /// The final query parameters, if the query altered the global query parameters.
     /// </summary>
     public ImmutableDictionary<string, string>? QueryParameters { get; init; }
 
@@ -62,7 +57,7 @@ public record RunResult
     public string? Database { get; init; }
 
     /// <summary>
-    /// The error if the query failed.
+    /// The error if the run failed.
     /// </summary>
     public Diagnostic? Error { get; init; }
 };

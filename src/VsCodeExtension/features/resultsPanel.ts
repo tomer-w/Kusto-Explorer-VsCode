@@ -75,6 +75,12 @@ export async function displayResultsById(
     }
 }
 
+export async function displayError(message: string): Promise<void> {
+    const errorIcon = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="vertical-align: text-bottom; flex-shrink: 0;"><path fill-rule="evenodd" clip-rule="evenodd" d="M8.6 1c.2.1.3.2.4.4l6.8 12.2c.3.5-.1 1.1-.7 1.1H1c-.6 0-1-.6-.7-1.1L7 1.4c.2-.3.4-.4.6-.4h1zm-.5 2L2 13h12L8.1 3zm.4 8.8V13H7.1v-1.2h1.4zm0-1.3V6.2H7.1v4.3h1.4z"/></svg>`;
+    var htmlMessage = `<html><body><p style="color: var(--vscode-errorForeground, red); display: flex; align-items: center; gap: 6px; font-family: var(--vscode-font-family, sans-serif);">${errorIcon}<span>${escapeHtml(message)}</span></p></body></html>`;
+    await displayResults(htmlMessage, undefined, false, true);
+}
+
 /** CSS styles for the tabbed results view. */
 const tabStyles = `
 <style>
@@ -174,8 +180,9 @@ function escapeHtml(text: string): string {
  * @param dataHtml The HTML content to display
  * @param rowCount Optional row count for badge
  * @param hasChart Whether a chart is being displayed (affects show() behavior)
+ * @param hasError Whether an error occurred (affects badge display)
  */
-async function displayResults(dataHtml: string, rowCount?: number, hasChart?: boolean): Promise<void>
+async function displayResults(dataHtml: string, rowCount?: number, hasChart?: boolean, hasError?: boolean): Promise<void>
 {
     // Ensure the view is visible (this triggers resolveWebviewView if not already called)
     if (!resultsView)
@@ -199,7 +206,15 @@ async function displayResults(dataHtml: string, rowCount?: number, hasChart?: bo
                 tooltip: `${rowCount} rows`,
                 value: rowCount
             };
-        } else
+        } 
+        else if (hasError)
+        {
+            resultsView.badge = {
+                tooltip: 'Error',
+                value: 1
+            };
+        }
+        else
         {
             resultsView.badge = undefined;
         }

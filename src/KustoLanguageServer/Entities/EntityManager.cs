@@ -180,7 +180,7 @@ public class EntityManager : IEntityManager
         var entityInfo = await GetEntityInfoAsync(connection, databaseName, "MaterializedView", entityName, cancellationToken).ConfigureAwait(false);
 
         var mvCommand = CslCommandGenerator.GenerateMaterializedViewShowCommand(entityName);
-        var mvInfo = (await connection.ExecuteAsync<MaterializedViewShowCommandResult>(mvCommand, cancellationToken: cancellationToken).ConfigureAwait(false)).FirstOrDefault();
+        var mvInfo = (await connection.ExecuteAsync<MaterializedViewShowCommandResult>(mvCommand, cancellationToken: cancellationToken).ConfigureAwait(false)).Values?.FirstOrDefault();
 
         if (entityInfo != null && mvInfo != null)
         {
@@ -217,7 +217,7 @@ public class EntityManager : IEntityManager
         var entityInfo = await GetEntityInfoAsync(connection, databaseName, "Graph", entityName, cancellationToken).ConfigureAwait(false);
 
         var gmCommand = CslCommandGenerator.GenerateGraphModelShowCommand(entityName, details: true);
-        var gmInfo = (await connection.ExecuteAsync<GraphModelsShowDetailsCommandResult>(gmCommand, cancellationToken: cancellationToken).ConfigureAwait(false)).FirstOrDefault();
+        var gmInfo = (await connection.ExecuteAsync<GraphModelsShowDetailsCommandResult>(gmCommand, cancellationToken: cancellationToken).ConfigureAwait(false)).Values?.FirstOrDefault();
 
         if (entityInfo != null && gmInfo != null)
         {
@@ -289,6 +289,6 @@ public class EntityManager : IEntityManager
     {
         var command = $"{CslCommandGenerator.GenerateDatabaseEntityShowCommand(databaseName, entityName)} | where EntityType == {KustoFacts.GetSingleQuotedStringLiteral(entityType)}";
         var results = await connection.ExecuteAsync<DatabasesEntitiesShowCommandResult>(command, cancellationToken: cancellationToken).ConfigureAwait(false);
-        return results.FirstOrDefault();
+        return results.Values?.FirstOrDefault();
     }
 }

@@ -246,6 +246,7 @@ export interface RunQueryResult {
     dataId?: string;
     cluster?: string;
     database?: string;
+    error?: string;
 }
 
 /** A single HTML table from the query result. */

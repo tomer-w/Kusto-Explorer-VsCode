@@ -47,7 +47,7 @@ public class ConnectionManager : IConnectionManager
     {
         var connection = this.GetConnection(clusterOrConnection);
         var results = await connection.ExecuteAsync<ShowVersionResult>(".show version").ConfigureAwait(false);
-        var version = results.FirstOrDefault();
+        var version = results.Values?.FirstOrDefault();
         return version != null ? version.ServiceType : "Unknown";
     }
 
@@ -151,45 +151,66 @@ public class ConnectionManager : IConnectionManager
         }
 
         public async Task<ExecuteResult> ExecuteAsync(
-            string query,
+            EditString query,
             ImmutableDictionary<string, string>? options,
             ImmutableDictionary<string, string>? parameters,
             CancellationToken cancellationToken
             )
         {
-            var properties = CreateClientRequestProperties(options ?? ImmutableDictionary<string, string>.Empty, parameters ?? ImmutableDictionary<string, string>.Empty);
-            var resultReader = (Kusto.Language.KustoCode.GetKind(query) == CodeKinds.Command)
-                ? await this.AdminProvider.ExecuteControlCommandAsync(this.Database, query, properties).ConfigureAwait(false)
-                : await this.QueryProvider.ExecuteQueryAsync(this.Database, query, properties, cancellationToken).ConfigureAwait(false);
-            var dataSet = KustoDataReaderParser.ParseV1(resultReader, null);
-            var mainResult = dataSet?.GetMainResultsOrNull();
-            var tables = dataSet != null
-                ? dataSet.Tables.Where(t => t.TableKind == WellKnownDataSet.PrimaryResult).Select(t => (DataTable)t.TableData).ToImmutableList()
-                : null;
-            return new ExecuteResult 
-            { 
-                Tables=tables,
-                ChartOptions=mainResult?.VisualizationOptions 
-            };
+            try
+            {
+                var properties = CreateClientRequestProperties(options ?? ImmutableDictionary<string, string>.Empty, parameters ?? ImmutableDictionary<string, string>.Empty);
+                var resultReader = (Kusto.Language.KustoCode.GetKind(query) == CodeKinds.Command)
+                    ? await this.AdminProvider.ExecuteControlCommandAsync(this.Database, query, properties).ConfigureAwait(false)
+                    : await this.QueryProvider.ExecuteQueryAsync(this.Database, query, properties, cancellationToken).ConfigureAwait(false);
+                var dataSet = KustoDataReaderParser.ParseV1(resultReader, null);
+                var mainResult = dataSet?.GetMainResultsOrNull();
+                var tables = dataSet != null
+                    ? dataSet.Tables.Where(t => t.TableKind == WellKnownDataSet.PrimaryResult).Select(t => (DataTable)t.TableData).ToImmutableList()
+                    : null;
+                return new ExecuteResult
+                {
+                    Tables = tables,
+                    ChartOptions = mainResult?.VisualizationOptions
+                };
+            }
+            catch (Exception ex)
+            {
+                return new ExecuteResult
+                {
+                    Diagnostics = [ErrorDecoder.GetDiagnostic(ex, query)]
+                };
+            }
         }
 
-        public async Task<IEnumerable<T>> ExecuteAsync<T>(
-            string query,
+        public async Task<ExecuteResult<T>> ExecuteAsync<T>(
+            EditString query,
             ImmutableDictionary<string, string>? options,
             ImmutableDictionary<string, string>? parameters,
             CancellationToken cancellationToken
             )
         {
-            var results = await ExecuteAsync(query, options, parameters, cancellationToken).ConfigureAwait(false);
-            if (results.Tables != null
-                && results.Tables.Count > 0)
+            try
             {
-                var reader = new ObjectReader<T>(results.Tables[0].CreateDataReader());
-                return reader;
+                var results = await ExecuteAsync(query, options, parameters, cancellationToken).ConfigureAwait(false);
+                if (results.Tables != null
+                    && results.Tables.Count > 0)
+                {
+                    var reader = new ObjectReader<T>(results.Tables[0].CreateDataReader());
+                    return new ExecuteResult<T> { Values = reader.ToImmutableList() };
+                }
+                else
+                {
+                    return new ExecuteResult<T> { Values = ImmutableList<T>.Empty };
+                }
+
             }
-            else
+            catch (Exception e)
             {
-                return Array.Empty<T>();
+                return new ExecuteResult<T>
+                {
+                    Diagnostics = [ErrorDecoder.GetDiagnostic(e, query)]
+                };
             }
         }
 

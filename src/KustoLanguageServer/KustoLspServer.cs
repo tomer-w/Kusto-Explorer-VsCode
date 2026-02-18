@@ -60,11 +60,11 @@ public class KustoLspServer : LspServer, ILogger
         _args = args.ToImmutableList();
         _connectionManager = new ConnectionManager();
         _symbolManager = new SymbolManager(_connectionManager);
-        _documentManager = new DocumentManager(_symbolManager, this);
-        _diagnosticsManager = new DiagnosticsManager(_documentManager);
+        _documentManager = new DocumentManager(_symbolManager);
+        _resultsManager = new ResultsManager();
+        _diagnosticsManager = new DiagnosticsManager(_documentManager, _resultsManager);
         _queryManager = new QueryManager(_connectionManager, _documentManager, this);
         _chartManager = new PlotlyChartManager();
-        _resultsManager = new ResultsManager();
         _entityManager = new EntityManager(_connectionManager);
         InitEvents();
     }
@@ -1601,30 +1601,26 @@ public class KustoLspServer : LspServer, ILogger
             {
                 var range = GetTextRange(document.Text, @params.Selection);
 
-                var results = await _queryManager.RunQueryAsync(document, range, queryOptions, queryParameters, cancellationToken).ConfigureAwait(false);
+                var runResult = await _queryManager.RunQueryAsync(document, range, queryOptions, queryParameters, cancellationToken).ConfigureAwait(false);
 
-                if (results != null && results.Data != null)
+                if (runResult?.Error != null)
+                {
+                    return new RunQueryResults
+                    {
+                        Error = runResult.Error.Message
+                    };
+                }
+                else if (runResult?.ExecuteResult != null)
                 {
                     // cache results for lookup later
-                    var resultId = _resultsManager.SetResults(document, range.Start,
-                        new ExecuteResult
-                        {
-                            Tables = results.Data,
-                            ChartOptions = results.ChartOptions,
-                            Diagnostics = results.Error != null ? [results.Error] : null
-                        });
+                    var resultId = _resultsManager.CacheResult(document, range.Start, runResult.ExecuteResult);
 
                     return new RunQueryResults
                     {
                         DataId = resultId,
-                        Cluster = results?.Cluster,
-                        Database = results?.Database
+                        Cluster = runResult?.Cluster,
+                        Database = runResult?.Database
                     };
-                }
-                else
-                {
-                    // cache results for lookup later
-                    _resultsManager.SetResults(document, range.Start, null);
                 }
             }
         }
@@ -1656,6 +1652,9 @@ public class KustoLspServer : LspServer, ILogger
 
         [DataMember(Name = "database")]
         public string? Database { get; init; }
+
+        [DataMember(Name = "error")]
+        public string? Error { get; init; }
     }
 
     #endregion
@@ -1665,7 +1664,7 @@ public class KustoLspServer : LspServer, ILogger
     [JsonRpcMethod("kusto/getDataAsHtmlTables", UseSingleObjectParameterDeserialization = true)]
     public Task<GetDataAsHtmlTablesResult?> OnGetDataAsHtmlTablesAsync(GetDataAsHtmlTablesParams @params, CancellationToken cancellationToken)
     {
-        if (_resultsManager.TryGetResults(@params.DataId, out var cachedResults))
+        if (_resultsManager.TryGetCachedResultById(@params.DataId, out var cachedResults))
         {
             if (cachedResults?.Tables != null)
             {
@@ -1740,7 +1739,7 @@ public class KustoLspServer : LspServer, ILogger
     {
         try
         {
-            if (_resultsManager.TryGetResults(@params.DataId, out var cachedResults)
+            if (_resultsManager.TryGetCachedResultById(@params.DataId, out var cachedResults)
                 && cachedResults.Tables != null
                 && cachedResults.Tables.Count > 0
                 && cachedResults.ChartOptions != null
@@ -1790,7 +1789,7 @@ public class KustoLspServer : LspServer, ILogger
     {
         try
         {
-            if (_resultsManager.TryGetResults(@params.DataId, out var results)
+            if (_resultsManager.TryGetCachedResultById(@params.DataId, out var results)
                 && results.Tables != null
                 && results.Tables.Count > 0)
             {

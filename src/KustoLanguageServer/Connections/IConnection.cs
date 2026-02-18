@@ -3,6 +3,7 @@ using System.Data;
 using Kusto.Data;
 using Kusto.Data.Utils;
 using Kusto.Language;
+using Kusto.Language.Editor;
 
 namespace Kusto.Lsp;
 
@@ -22,7 +23,7 @@ public interface IConnection
     /// Executes a query over the connection.
     /// </summary>
     public Task<ExecuteResult> ExecuteAsync(
-        string query,
+        EditString query,
         ImmutableDictionary<string, string>? options = null,
         ImmutableDictionary<string, string>? parameters = null,
         CancellationToken cancellationToken = default
@@ -31,8 +32,8 @@ public interface IConnection
     /// <summary>
     /// Execute a query over the connection, returning the typed results.
     /// </summary>
-    public Task<IEnumerable<T>> ExecuteAsync<T>(
-        string query,
+    public Task<ExecuteResult<T>> ExecuteAsync<T>(
+        EditString query,
         ImmutableDictionary<string, string>? options = null,
         ImmutableDictionary<string, string>? parameters = null,
         CancellationToken cancellationToken = default
@@ -54,5 +55,11 @@ public record ExecuteResult
 {
     public ImmutableList<DataTable>? Tables { get; init; }
     public ChartVisualizationOptions? ChartOptions { get; init; }
-    public ImmutableList<Diagnostic>? Diagnostics { get; set; }
+    public ImmutableList<Diagnostic>? Diagnostics { get; init; }
+}
+
+public record ExecuteResult<T>
+{
+    public ImmutableList<T>? Values { get; init; }
+    public ImmutableList<Diagnostic>? Diagnostics { get; init; }
 }
