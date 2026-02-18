@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 import * as server from './server';
+import { copyToClipboard, ClipboardItem } from './clipboard';
 
 let chartPanel: vscode.WebviewPanel | undefined;
 
@@ -13,7 +14,7 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
 
     // Register chart-related commands
     context.subscriptions.push(
-        vscode.commands.registerCommand('kusto.copyChart', () => copyChart())
+        vscode.commands.registerCommand('kusto.copyChart', () => copyChartCommand())
     );
 }
 
@@ -122,44 +123,21 @@ function displayChart(chartHtml: string | undefined): void
  */
 function onCopyChartMessage(pngDataUrl: string, svgDataUrl?: string): void {
     try {
-        const pngBase64 = pngDataUrl.split(',')[1];
+        const pngBase64 = pngDataUrl.split(',')[1] ?? '';
 
-        // Extract SVG text if available
-        let svgText = '';
+        const items: ClipboardItem[] = [
+            { format: 'PNG', data: pngBase64, encoding: 'base64' }
+        ];
+
         if (svgDataUrl) {
             // SVG data URL is: data:image/svg+xml,<svg>...</svg>
             const svgPart = svgDataUrl.split(',').slice(1).join(',');
-            svgText = decodeURIComponent(svgPart);
+            const svgText = decodeURIComponent(svgPart);
+            items.push({ format: 'image/svg+xml', data: svgText });
         }
 
-        const { spawn } = require('child_process') as typeof import('child_process');
-
-        // Pass PNG and SVG via stdin as a JSON payload to avoid command-line length limits
-        const psScript = `
-            Add-Type -AssemblyName System.Windows.Forms
-            $json = $input | Out-String
-            $obj = $json | ConvertFrom-Json
-            $pngBytes = [Convert]::FromBase64String($obj.png)
-            $pngStream = New-Object System.IO.MemoryStream(,$pngBytes)
-            $data = New-Object System.Windows.Forms.DataObject
-            $data.SetData('PNG', $false, $pngStream)
-            if ($obj.svg) {
-                $svgBytes = [System.Text.Encoding]::UTF8.GetBytes($obj.svg)
-                $svgStream = New-Object System.IO.MemoryStream(,$svgBytes)
-                $data.SetData('image/svg+xml', $false, $svgStream)
-            }
-            [System.Windows.Forms.Clipboard]::SetDataObject($data, $true)
-            $pngStream.Dispose()
-        `;
-        const ps = spawn('powershell', ['-sta', '-NoProfile', '-Command', psScript]);
-        // Pipe data as JSON via stdin
-        const payload = JSON.stringify({ png: pngBase64, svg: svgText || null });
-        ps.stdin.write(payload);
-        ps.stdin.end();
-        ps.on('close', (code: number) => {
-            if (code !== 0) {
-                vscode.window.showErrorMessage(`Failed to copy chart to clipboard (exit code ${code})`);
-            }
+        copyToClipboard(items).catch(error => {
+            vscode.window.showErrorMessage(`Failed to copy chart to clipboard: ${error}`);
         });
     } catch (error) {
         vscode.window.showErrorMessage(`Failed to copy chart: ${error}`);
@@ -167,13 +145,16 @@ function onCopyChartMessage(pngDataUrl: string, svgDataUrl?: string): void {
 }
 
 /**
- * Copies the chart as a PNG image to the clipboard.
+ * Implementation of the 'kusto.copyChart' command.
  */
-async function copyChart(): Promise<void> {
+async function copyChartCommand(): Promise<void> {
     if (!chartPanel) {
         return;
     }
 
+    // request the webview to copy the chart using Plotly commands to generate the image encodings
+    // and sends either a copyChartResult or copyChartError message back that we handle in onDidReceiveMessage
+    // eventually calling onCopyChartMessage to place the data on the clipboard
     chartPanel.webview.postMessage({ command: 'copyChart' });
 }
 

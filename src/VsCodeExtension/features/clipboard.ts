@@ -38,3 +38,69 @@ export function getClipboardContext(): ClipboardContext | undefined {
 export function clearClipboardContext(): void {
     clipboardContext = undefined;
 }
+
+/** Describes a single item to place on the Windows clipboard. */
+export interface ClipboardItem {
+    /** The clipboard format name (e.g. 'PNG', 'image/svg+xml', 'Text'). */
+    format: string;
+    /** The data to place on the clipboard. */
+    data: string;
+    /** How the data string is encoded. 'base64' decodes to raw bytes, 'utf8' encodes as UTF-8 bytes, 'text' sets the string directly. Defaults to 'utf8'. */
+    encoding?: 'base64' | 'utf8' | 'text';
+}
+
+/**
+ * Copies multiple data formats to the Windows clipboard.
+ * Each item specifies a clipboard format name, the data, and how it is encoded.
+ * @param items Array of clipboard items to set
+ * @returns A promise that resolves when the clipboard operation completes
+ */
+export function copyToClipboard(items: ClipboardItem[]): Promise<void> {
+    const { spawn } = require('child_process') as typeof import('child_process');
+
+    // Use PowerShell to set the clipboard data in multiple formats
+    // because vscode does not supply a way to set non-text clipboard data and we want to support both PNG and SVG formats for charts.
+    return new Promise<void>((resolve, reject) => {
+        const psScript = `
+            Add-Type -AssemblyName System.Windows.Forms
+            $json = $input | Out-String
+            $items = ($json | ConvertFrom-Json)
+            $data = New-Object System.Windows.Forms.DataObject
+            $streams = @()
+            foreach ($item in $items) {
+                if ($item.encoding -eq 'text') {
+                    $data.SetData($item.format, $item.data)
+                } else {
+                    if ($item.encoding -eq 'base64') {
+                        $bytes = [Convert]::FromBase64String($item.data)
+                    } else {
+                        $bytes = [System.Text.Encoding]::UTF8.GetBytes($item.data)
+                    }
+                    $stream = New-Object System.IO.MemoryStream(,$bytes)
+                    $streams += $stream
+                    $data.SetData($item.format, $false, $stream)
+                }
+            }
+            [System.Windows.Forms.Clipboard]::SetDataObject($data, $true)
+            foreach ($s in $streams) { $s.Dispose() }
+        `;
+
+        const ps = spawn('powershell', ['-sta', '-NoProfile', '-Command', psScript]);
+
+        const payload = JSON.stringify(items);
+        ps.stdin.write(payload);
+        ps.stdin.end();
+
+        ps.on('close', (code: number) => {
+            if (code === 0) {
+                resolve();
+            } else {
+                reject(new Error(`PowerShell exited with code ${code}`));
+            }
+        });
+
+        ps.on('error', (err: Error) => {
+            reject(err);
+        });
+    });
+}
