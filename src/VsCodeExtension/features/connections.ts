@@ -1,458 +1,76 @@
 import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 import * as lspServer from './server';
-import { setClipboardContext } from './clipboard';
-import type { DatabaseInfo, DatabaseTableInfo, DatabaseColumnInfo, DatabaseFunctionInfo, DatabaseEntityGroupInfo, DatabaseGraphModelInfo, DatabaseParameterInfo } from './server';
-
-// Storage keys
-const SERVERS_STORAGE_KEY = 'kusto.serversAndGroups';
-const DOCUMENT_CONNECTIONS_KEY = 'kusto.documentConnections';
-
+import type { DatabaseInfo } from './server';
 
 // =============================================================================
-// Activation function
+// Storage Keys
 // =============================================================================
 
-/**
- * Initializes the Kusto connections tree panel and sets up all related features.
- * @param context The extension context for accessing global state
- * @param client The language client to use for communication with the LSP server
- */
-export async function activate(context: vscode.ExtensionContext, client: LanguageClient): Promise<void> {
-    // Initialize module-level state
-    extensionContext = context;
-    languageClient = client;
-    connectionsProvider = new KustoConnectionsProvider();
-    
-    // Set the client reference for notifications
-    connectionsProvider.setClient(client);
-    
-    // Create tree view with drag and drop support
-    treeView = vscode.window.createTreeView('kusto.connections', {
-        treeDataProvider: connectionsProvider,
-        showCollapseAll: true,
-        dragAndDropController: new KustoDragAndDropController(connectionsProvider)
-    });
-    context.subscriptions.push(treeView);
-
-    // Initialize servers and groups from global state
-    connectionsProvider.initializeServersAndGroups(context);
-
-    // Send initial connections list to server
-    const initialConnections = connectionsProvider.getConnections();
-    client.sendNotification('kusto/connectionsUpdated', {
-        connections: initialConnections
-    });
-
-    // Create status bar item for connection status
-    connectionStatusBarItem = vscode.window.createStatusBarItem(
-        vscode.StatusBarAlignment.Left,
-        0  // priority (higher = more to the left)
-    );
-    connectionStatusBarItem.text = "$(database) not connected";
-    connectionStatusBarItem.tooltip = "Click to change connection";
-    connectionStatusBarItem.command = "kusto.connectDatabase";
-    connectionStatusBarItem.show();
-
-    // Load document connections on startup
-    await loadDocumentConnections();
-
-    // Initialize connection info for documents that are already open
-    for (const document of vscode.workspace.textDocuments) {
-        if (document.languageId === 'kusto') {
-            const connection = getDocumentConnection(document.uri.toString());
-            const serverKind = connection?.cluster ? (findServerInfo(connection.cluster)?.serverKind ?? null) : null;
-            await client.sendNotification('kusto/documentConnectionChanged', {
-                uri: document.uri.toString(),
-                cluster: connection?.cluster || null,
-                database: connection?.database || null,
-                serverKind: serverKind
-            });
-        }
-    }
-
-    // Handle document open events - notify server of connection
-    context.subscriptions.push(
-        vscode.workspace.onDidOpenTextDocument(async (document) => {
-            if (document.languageId === 'kusto') {
-                const connection = getDocumentConnection(document.uri.toString());
-                const serverKind = connection?.cluster ? (findServerInfo(connection.cluster)?.serverKind ?? null) : null;
-                await client.sendNotification('kusto/documentConnectionChanged', {
-                    uri: document.uri.toString(),
-                    cluster: connection?.cluster || null,
-                    database: connection?.database || null,
-                    serverKind: serverKind
-                });
-            }
-        })
-    );
-
-    // Update status bar when active editor changes
-    context.subscriptions.push(
-        vscode.window.onDidChangeActiveTextEditor(async () => {
-            updateStatusBar();
-            await updateTreeSelectionForActiveDocument();
-        })
-    );
-
-    // Set initial context for view visibility
-    const initialEditor = vscode.window.activeTextEditor;
-    const initialIsKusto = initialEditor && initialEditor.document.languageId === 'kusto';
-    await vscode.commands.executeCommand('setContext', 'kusto.hasActiveDocument', initialIsKusto);
-
-    // Initialize status bar for currently active editor
-    updateStatusBar();
-
-    // Handle tree selection changes - update document connection when user clicks
-    context.subscriptions.push(
-        treeView.onDidChangeSelection(async (event) => {
-            // Ignore if this is a programmatic selection (not user-initiated)
-            if (isProgrammaticSelection) {
-                return;
-            }
-
-            if (event.selection.length === 0) {
-                return;
-            }
-
-            const editor = vscode.window.activeTextEditor;
-            if (!editor || editor.document.languageId !== 'kusto') {
-                return;
-            }
-
-            const selected = event.selection[0];
-            
-            if (selected instanceof NoConnectionTreeItem) {
-                await setDocumentConnection(editor.document.uri.toString(), undefined, undefined);
-            } else if (selected instanceof ServerTreeItem) {
-                await setDocumentConnection(editor.document.uri.toString(), selected.clusterName, undefined);
-            } else if (selected instanceof DatabaseTreeItem) {
-                await setDocumentConnection(editor.document.uri.toString(), selected.clusterName, selected.databaseName);
-            }
-        })
-    );
-
-    // Initialize tree selection for active document (deferred to avoid activation issues)
-    setTimeout(async () => {
-        const editor = vscode.window.activeTextEditor;
-        if (editor && editor.document.languageId === 'kusto') {
-            await updateTreeSelectionForActiveDocument();
-        }
-    }, 100);
-
-    // Handle tree item expansion events
-    context.subscriptions.push(
-        treeView.onDidExpandElement(async (event) => {
-            const element = event.element;
-            
-            if (element instanceof ServerTreeItem) {
-                await connectionsProvider!.onServerExpanded(element.clusterName, client);
-            } else if (element instanceof DatabaseTreeItem) {
-                await connectionsProvider!.onDatabaseExpanded(element.clusterName, element.databaseName, client);
-            }
-        })
-    );
-
-    // Register commands for managing servers and groups
-    context.subscriptions.push(
-        vscode.commands.registerCommand('kusto.selectServer', () => {}),
-        vscode.commands.registerCommand('kusto.selectDatabase', () => {}),
-
-        vscode.commands.registerCommand('kusto.addServer', async () => {
-            await connectionsProvider!.promptAddServer();
-        }),
-
-        vscode.commands.registerCommand('kusto.addServerToGroup', async (item: ServerGroupTreeItem) => {
-            await connectionsProvider!.promptAddServer(item.groupInfo.name);
-        }),
-
-        vscode.commands.registerCommand('kusto.addServerGroup', async () => {
-            await connectionsProvider!.promptAddServerGroup();
-        }),
-
-        vscode.commands.registerCommand('kusto.removeServer', async (item: ServerTreeItem) => {
-            const confirm = await vscode.window.showWarningMessage(
-                `Are you sure you want to remove connection "${item.displayName ?? item.clusterName}"?`,
-                { modal: true },
-                'Remove'
-            );
-            if (confirm === 'Remove') {
-                await connectionsProvider!.removeServer(item.clusterName, item.groupName);
-            }
-        }),
-
-        vscode.commands.registerCommand('kusto.removeServerGroup', async (item: ServerGroupTreeItem) => {
-            const confirm = await vscode.window.showWarningMessage(
-                `Are you sure you want to remove group "${item.groupInfo.name}" and all its connections?`,
-                { modal: true },
-                'Remove'
-            );
-            if (confirm === 'Remove') {
-                await connectionsProvider!.removeServerGroup(item.groupInfo.name);
-            }
-        }),
-
-        vscode.commands.registerCommand('kusto.moveServer', async (item: ServerTreeItem) => {
-            await connectionsProvider!.promptMoveServer(
-                item.clusterName,
-                item.displayName ?? item.clusterName,
-                item.groupName
-            );
-        }),
-
-        vscode.commands.registerCommand('kusto.editServer', async (item: ServerTreeItem) => {
-            await connectionsProvider!.promptEditServer(
-                item.connection,
-                item.clusterName,
-                item.displayName,
-                item.groupName
-            );
-        }),
-
-        vscode.commands.registerCommand('kusto.renameServer', async (item: ServerTreeItem) => {
-            await connectionsProvider!.promptRenameServer(
-                item.clusterName,
-                item.displayName ?? item.clusterName,
-                item.groupName
-            );
-        }),
-
-        vscode.commands.registerCommand('kusto.renameServerGroup', async (item: ServerGroupTreeItem) => {
-            await connectionsProvider!.promptRenameServerGroup(item.groupInfo.name);
-        }),
-
-        vscode.commands.registerCommand('kusto.copyEntityAsCommand', async (item: EntityTreeItem) => {
-            if (!client) {
-                return;
-            }
-
-            const entityType = getEntityType(item);
-            if (!entityType) {
-                return;
-            }
-
-            const entityName = getEntityName(item);
-
-            try {
-                const definition = await lspServer.getEntityAsCommand(
-                    client,
-                    item.clusterName,
-                    item.databaseName,
-                    entityType,
-                    entityName
-                );
-
-                if (definition) {
-                    await vscode.env.clipboard.writeText(definition);
-                    setClipboardContext({
-                        text: definition,
-                        kind: 'command',
-                        entityCluster: item.clusterName,
-                        entityDatabase: item.databaseName,
-                        entityType: entityType,
-                        entityName: entityName
-                    });
-                }
-            } catch (error) {
-                vscode.window.showErrorMessage(`Failed to copy entity: ${error}`);
-            }
-        }),
-
-        vscode.commands.registerCommand('kusto.copyEntityAsExpression', async (item: EntityTreeItem) => {
-            if (!client) {
-                return;
-            }
-
-            const entityType = getEntityType(item);
-            if (!entityType) {
-                return;
-            }
-
-            const entityName = getEntityName(item);
-
-            try {
-                const expression = await lspServer.getEntityAsExpression(
-                    client,
-                    item.clusterName,
-                    item.databaseName,
-                    entityType,
-                    entityName
-                );
-
-                if (expression) {
-                    await vscode.env.clipboard.writeText(expression);
-                    setClipboardContext({
-                        text: expression,
-                        kind: 'expression',
-                        entityCluster: item.clusterName,
-                        entityDatabase: item.databaseName,
-                        entityType: entityType,
-                        entityName: entityName
-                    });
-                }
-            } catch (error) {
-                vscode.window.showErrorMessage(`Failed to copy expression: ${error}`);
-            }
-        }),
-
-        vscode.commands.registerCommand('kusto.connectDatabase', async () => {
-            const editor = vscode.window.activeTextEditor;
-            if (!editor || editor.document.languageId !== 'kusto') {
-                return;
-            }
-
-            const connections = connectionsProvider!.getConnections();
-            
-            if (connections.length === 0) {
-                const addServer = await vscode.window.showInformationMessage(
-                    'No server connections configured.',
-                    'Add Server'
-                );
-                if (addServer) {
-                    await vscode.commands.executeCommand('kusto.addServer');
-                }
-                return;
-            }
-
-            const cluster = await vscode.window.showQuickPick(connections, {
-                placeHolder: 'Select a cluster',
-                title: 'Select Cluster'
-            });
-
-            if (!cluster) {
-                return;
-            }
-
-            const databases = await connectionsProvider!.getDatabases(cluster, client);
-            
-            if (databases.length === 0) {
-                const noDbSelection = await vscode.window.showInformationMessage(
-                    `No databases found for cluster "${cluster}".`,
-                    'Connect without database'
-                );
-                if (noDbSelection) {
-                    await setDocumentConnection(editor.document.uri.toString(), cluster, undefined);
-                }
-                return;
-            }
-
-            const databaseChoices = ['<None>', ...databases];
-            const database = await vscode.window.showQuickPick(databaseChoices, {
-                placeHolder: 'Select a database',
-                title: `Select Database for ${cluster}`
-            });
-
-            if (!database) {
-                return;
-            }
-
-            await setDocumentConnection(
-                editor.document.uri.toString(),
-                cluster,
-                database === '<None>' ? undefined : database
-            );
-        })
-    );
-}
+export const SERVERS_STORAGE_KEY = 'kusto.serversAndGroups';
+export const DOCUMENT_CONNECTIONS_KEY = 'kusto.documentConnections';
 
 // =============================================================================
-// Entity Helper Functions
+// Data Types
 // =============================================================================
 
-/** Entity tree item types that support copy operations */
-type EntityTreeItem = TableTreeItem | ExternalTableTreeItem | MaterializedViewTreeItem | FunctionTreeItem | EntityGroupTreeItem | GraphModelTreeItem;
-
-/** Maps contextValue to the entity type expected by the server */
-const entityTypeMap: Record<string, string> = {
-    'table': 'Table',
-    'externalTable': 'ExternalTable',
-    'materializedView': 'MaterializedView',
-    'function': 'Function',
-    'entityGroup': 'EntityGroup',
-    'graphModel': 'Graph'
-};
-
-/**
- * Gets the entity type string for a tree item based on its contextValue.
- * @param item The entity tree item
- * @returns The entity type string, or undefined if not a recognized entity type
- */
-function getEntityType(item: EntityTreeItem): string | undefined {
-    return entityTypeMap[item.contextValue ?? ''];
-}
-
-/**
- * Gets the entity name from a tree item.
- * @param item The entity tree item
- * @returns The entity name
- */
-function getEntityName(item: EntityTreeItem): string {
-    if (item instanceof TableTreeItem || item instanceof ExternalTableTreeItem) {
-        return item.tableInfo.name;
-    } else if (item instanceof MaterializedViewTreeItem) {
-        return item.viewInfo.name;
-    } else if (item instanceof FunctionTreeItem) {
-        return item.functionInfo.name;
-    } else if (item instanceof EntityGroupTreeItem) {
-        return item.groupInfo.name;
-    } else if (item instanceof GraphModelTreeItem) {
-        return item.graphInfo.name;
-    }
-    // This should never happen if EntityTreeItem type is correct
-    throw new Error(`Unknown entity tree item type`);
-}
-
-// =============================================================================
-// Connection Tree Provider
-// =============================================================================
-
-// Data types for document connections
-interface DocumentConnection {
+/** Connection info for a single document (URI  cluster/database mapping). */
+export interface DocumentConnection {
     uri: string;
     cluster: string | undefined;
     database: string | undefined;
 }
 
-// Data types for servers and server groups
-interface ServerInfo {
+/** Info about a configured server connection. */
+export interface ServerInfo {
     connection: string;
     cluster: string;
     displayName?: string;
     serverKind?: string;
 }
 
-interface ServerGroupInfo {
+/** A named group of server connections. */
+export interface ServerGroupInfo {
     name: string;
     servers: ServerInfo[];
 }
 
-type ServerOrGroup = ServerInfo | ServerGroupInfo;
+/** A server or a group of servers. */
+export type ServerOrGroup = ServerInfo | ServerGroupInfo;
 
-interface ServersAndGroupsData {
+/** Top-level structure for persisted servers and groups. */
+export interface ServersAndGroupsData {
     items: ServerOrGroup[];
 }
 
-// Data types for database entities (from LSP server)
+// =============================================================================
+// Type Guards
+// =============================================================================
+
 /**
- * Type guard to check if an item is a ServerGroupInfo
+ * Type guard to check if an item is a ServerGroupInfo.
  */
-function isServerGroup(item: ServerOrGroup): item is ServerGroupInfo {
+export function isServerGroup(item: ServerOrGroup): item is ServerGroupInfo {
     return 'servers' in item;
 }
 
 /**
- * Type guard to check if an item is a ServerInfo
+ * Type guard to check if an item is a ServerInfo.
  */
-function isServer(item: ServerOrGroup): item is ServerInfo {
+export function isServer(item: ServerOrGroup): item is ServerInfo {
     return 'cluster' in item;
 }
+
+// =============================================================================
+// Utility Functions
+// =============================================================================
 
 /**
  * Extracts the hostname from a connection string.
  * @param connection The connection string (URL or hostname)
  * @returns The cluster hostname
  */
-function getHostName(connection: string): string {
+export function getHostName(connection: string): string {
     let dataSource = connection;
     var connectionParts = connection.split(';');
     if (connectionParts.length > 1) {
@@ -481,1304 +99,479 @@ function getHostName(connection: string): string {
     }
 }
 
-// Define tree item types
-type KustoTreeItem = 
-  NoConnectionTreeItem
-| ServerGroupTreeItem 
-| ServerTreeItem 
-| DatabaseTreeItem 
-| DatabaseFolderTreeItem 
-| TableTreeItem
-| ExternalTableTreeItem
-| MaterializedViewTreeItem
-| ColumnTreeItem
-| FunctionTreeItem
-| EntityGroupTreeItem
-| EntityGroupMemberTreeItem
-| GraphModelTreeItem;
-
-class NoConnectionTreeItem extends vscode.TreeItem {
-    constructor() {
-        super('(No Connection)', vscode.TreeItemCollapsibleState.None);
-        this.id = 'no-connection';
-        this.contextValue = 'noConnection';
-        this.iconPath = new vscode.ThemeIcon('circle-slash');
-    }
-}
-
-class ServerGroupTreeItem extends vscode.TreeItem {
-    constructor(public readonly groupInfo: ServerGroupInfo) {
-        super(groupInfo.name, vscode.TreeItemCollapsibleState.Collapsed);
-        this.id = `group:${groupInfo.name}`;
-        this.contextValue = 'serverGroup';
-        this.iconPath = new vscode.ThemeIcon('folder');
-    }
-}
-
-/**
- * Returns the appropriate ThemeIcon for a server based on its kind.
- * @param serverKind The kind of server (Engine, DataManager, ClusterManager)
- * @returns A ThemeIcon for the server type
- */
-function getServerKindIcon(serverKind?: string): vscode.ThemeIcon {
-    switch (serverKind) {
-        case 'Engine':
-            return new vscode.ThemeIcon('server'); // Server icon for query engine
-        case 'DataManager':
-            return new vscode.ThemeIcon('cloud-upload'); // Cloud upload for data ingestion
-        case 'ClusterManager':
-            return new vscode.ThemeIcon('settings-gear'); // Gear for cluster management
-        default:
-            return new vscode.ThemeIcon('server'); // Default server icon
-    }
-}
-
-class ServerTreeItem extends vscode.TreeItem {
-    constructor(
-        public readonly connection: string,
-        public readonly clusterName: string, 
-        public readonly displayName?: string,
-        public readonly groupName?: string,
-        public readonly serverKind?: string
-    ) {
-        const name = displayName ?? clusterName;
-        
-        super(name, vscode.TreeItemCollapsibleState.Collapsed);
-        this.id = `server:${clusterName}`;
-        this.contextValue = 'server';
-        this.iconPath = getServerKindIcon(serverKind);
-        // Set command to prevent auto-expand on click (selection still fires)
-        this.command = {
-            command: 'kusto.selectServer',
-            title: 'Select Server',
-            arguments: [this]
-        };
-        if (displayName) {
-            this.description = clusterName;
-        }
-    }
-}
-
-class DatabaseTreeItem extends vscode.TreeItem {
-    constructor(public readonly clusterName: string, public readonly databaseName: string) {
-        super(databaseName, vscode.TreeItemCollapsibleState.Collapsed);
-        this.id = `database:${clusterName}:${databaseName}`;
-        this.contextValue = 'database';
-        this.iconPath = new vscode.ThemeIcon('database');
-        // Set command to prevent auto-expand on click (selection still fires)
-        this.command = {
-            command: 'kusto.selectDatabase',
-            title: 'Select Database',
-            arguments: [this]
-        };
-    }
-}
-
-/** Folder types for organizing database entities */
-type DatabaseFolderType = 'tables' | 'externalTables' | 'materializedViews' | 'functions' | 'entityGroups' | 'graphModels';
-
-class DatabaseFolderTreeItem extends vscode.TreeItem {
-    constructor(
-        public readonly clusterName: string,
-        public readonly databaseName: string,
-        public readonly folderType: DatabaseFolderType,
-        label: string,
-        icon: string
-    ) {
-        super(label, vscode.TreeItemCollapsibleState.Collapsed);
-        this.id = `folder:${clusterName}:${databaseName}:${folderType}`;
-        this.contextValue = 'databaseFolder';
-        this.iconPath = new vscode.ThemeIcon(icon);
-    }
-}
-
-class TableTreeItem extends vscode.TreeItem {
-    constructor(
-        public readonly clusterName: string,
-        public readonly databaseName: string,
-        public readonly tableInfo: DatabaseTableInfo
-    ) {
-        // Collapsible if there are columns
-        const hasColumns = tableInfo.columns && tableInfo.columns.length > 0;
-        super(tableInfo.name, hasColumns ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
-        this.id = `table:${clusterName}:${databaseName}:${tableInfo.name}`;
-        this.contextValue = 'table';
-        this.iconPath = new vscode.ThemeIcon('table');
-        if (tableInfo.description) {
-            this.tooltip = tableInfo.description;
-        }
-    }
-}
-
-class ExternalTableTreeItem extends vscode.TreeItem {
-    constructor(
-        public readonly clusterName: string,
-        public readonly databaseName: string,
-        public readonly tableInfo: DatabaseTableInfo
-    ) {
-        // Collapsible if there are columns
-        const hasColumns = tableInfo.columns && tableInfo.columns.length > 0;
-        super(tableInfo.name, hasColumns ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
-        this.id = `externalTable:${clusterName}:${databaseName}:${tableInfo.name}`;
-        this.contextValue = 'externalTable';
-        this.iconPath = new vscode.ThemeIcon('cloud');
-        if (tableInfo.description) {
-            this.tooltip = tableInfo.description;
-        }
-    }
-}
-
-class MaterializedViewTreeItem extends vscode.TreeItem {
-    constructor(
-        public readonly clusterName: string,
-        public readonly databaseName: string,
-        public readonly viewInfo: DatabaseTableInfo
-    ) {
-        // Collapsible if there are columns
-        const hasColumns = viewInfo.columns && viewInfo.columns.length > 0;
-        super(viewInfo.name, hasColumns ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
-        this.id = `materializedView:${clusterName}:${databaseName}:${viewInfo.name}`;
-        this.contextValue = 'materializedView';
-        this.iconPath = new vscode.ThemeIcon('eye');
-        if (viewInfo.description) {
-            this.tooltip = viewInfo.description;
-        }
-    }
-}
-
-/** Entity type for column parent tracking */
-type ColumnParentType = 'table' | 'externalTable' | 'materializedView';
-
-class ColumnTreeItem extends vscode.TreeItem {
-    constructor(
-        public readonly clusterName: string,
-        public readonly databaseName: string,
-        public readonly parentName: string,
-        public readonly parentType: ColumnParentType,
-        public readonly columnInfo: DatabaseColumnInfo
-    ) {
-        super(columnInfo.name, vscode.TreeItemCollapsibleState.None);
-        this.id = `column:${clusterName}:${databaseName}:${parentType}:${parentName}:${columnInfo.name}`;
-        this.contextValue = 'column';
-        this.iconPath = new vscode.ThemeIcon('symbol-field');
-        this.description = columnInfo.type;
-    }
-}
-
-class FunctionTreeItem extends vscode.TreeItem {
-    constructor(
-        public readonly clusterName: string,
-        public readonly databaseName: string,
-        public readonly functionInfo: DatabaseFunctionInfo
-    ) {
-        super(functionInfo.name, vscode.TreeItemCollapsibleState.None);
-        this.id = `function:${clusterName}:${databaseName}:${functionInfo.name}`;
-        this.contextValue = 'function';
-        this.iconPath = new vscode.ThemeIcon('symbol-function');
-        if (functionInfo.parameters) {
-            this.description = functionInfo.parameters;
-        }
-        if (functionInfo.description) {
-            this.tooltip = functionInfo.description;
-        }
-    }
-}
-
-class EntityGroupTreeItem extends vscode.TreeItem {
-    constructor(
-        public readonly clusterName: string,
-        public readonly databaseName: string,
-        public readonly groupInfo: DatabaseEntityGroupInfo
-    ) {
-        // Collapsible if there are entities
-        const hasEntities = groupInfo.entities && groupInfo.entities.length > 0;
-        super(groupInfo.name, hasEntities ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
-        this.id = `entityGroup:${clusterName}:${databaseName}:${groupInfo.name}`;
-        this.contextValue = 'entityGroup';
-        this.iconPath = new vscode.ThemeIcon('symbol-namespace');
-        if (groupInfo.description) {
-            this.tooltip = groupInfo.description;
-        }
-    }
-}
-
-class EntityGroupMemberTreeItem extends vscode.TreeItem {
-    constructor(
-        public readonly clusterName: string,
-        public readonly databaseName: string,
-        public readonly groupName: string,
-        public readonly entityName: string
-    ) {
-        super(entityName, vscode.TreeItemCollapsibleState.None);
-        this.id = `entityGroupMember:${clusterName}:${databaseName}:${groupName}:${entityName}`;
-        this.contextValue = 'entityGroupMember';
-        this.iconPath = new vscode.ThemeIcon('symbol-reference');
-    }
-}
-
-class GraphModelTreeItem extends vscode.TreeItem {
-    constructor(
-        public readonly clusterName: string,
-        public readonly databaseName: string,
-        public readonly graphInfo: DatabaseGraphModelInfo
-    ) {
-        super(graphInfo.name, vscode.TreeItemCollapsibleState.None);
-        this.id = `graphModel:${clusterName}:${databaseName}:${graphInfo.name}`;
-        this.contextValue = 'graphModel';
-        this.iconPath = new vscode.ThemeIcon('type-hierarchy');
-    }
-}
-
-class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem> 
-{
-    private _onDidChangeTreeData = new vscode.EventEmitter<KustoTreeItem | undefined>();
-    readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
-
-    // Extension context for accessing global state
-    private context: vscode.ExtensionContext | undefined;
-
-    // Language client for notifications
-    private client: LanguageClient | undefined;
-
-    // Servers and groups data - loaded from global state
-    private serversAndGroups: ServersAndGroupsData = { items: [] };
-
-    // Connection data - cluster to databases mapping
-    private connections: { cluster: string, connection: string, databases?: DatabaseInfo[] }[] = [];
-
-    /**
-     * Initializes the servers and groups from global state.
-     * @param context The extension context to read global state from
-     */
-    initializeServersAndGroups(context: vscode.ExtensionContext): void {
-        this.context = context;
-        const data = this.loadServersAndGroups();
-        this.setServersAndGroups(data);
-    }
-
-    /**
-     * Loads servers and groups data from global state.
-     * @returns The servers and groups data, or a default empty structure
-     */
-    loadServersAndGroups(): ServersAndGroupsData {
-        if (!this.context) {
-            return { items: [] };
-        }
-        const data = this.context.globalState.get<ServersAndGroupsData>(SERVERS_STORAGE_KEY);
-        return data ?? { items: [] };
-    }
-
-    /**
-     * Saves servers and groups data to global state.
-     * @param data The servers and groups data to save
-     */
-    async saveServersAndGroups(data: ServersAndGroupsData): Promise<void> {
-        if (!this.context) {
-            return;
-        }
-        await this.context.globalState.update(SERVERS_STORAGE_KEY, data);
-        
-        // Notify server about the updated connections
-        if (this.client) {
-            const connections = this.getConnections();
-            await this.client.sendNotification('kusto/connectionsUpdated', {
-                connections: connections
-            });
-        }
-    }
-
-    /**
-     * Sets the language client for notifications.
-     * @param client The language client
-     */
-    setClient(client: LanguageClient): void {
-        this.client = client;
-    }
-
-    refresh(): void {
-        this._onDidChangeTreeData.fire(undefined);
-    }
-
-    setConnections(data: typeof this.connections) {
-        this.connections = data;
-        this.refresh();
-    }
-
-    setServersAndGroups(data: ServersAndGroupsData) {
-        this.serversAndGroups = data;
-        this.refresh();
-    }
-
-    getServersAndGroups(): ServersAndGroupsData {
-        return this.serversAndGroups;
-    }
-
-    /**
-     * Sorts the servers and groups data structure.
-     * Groups are sorted alphabetically, then root-level servers.
-     * Servers within each group are also sorted alphabetically.
-     */
-    private sortServersAndGroups(): void {
-        const getServerSortName = (s: ServerInfo) => (s.displayName ?? s.cluster).toLowerCase();
-        const getGroupSortName = (g: ServerGroupInfo) => g.name.toLowerCase();
-        
-        // Sort servers within each group
-        for (const item of this.serversAndGroups.items) {
-            if (isServerGroup(item)) {
-                item.servers.sort((a, b) => getServerSortName(a).localeCompare(getServerSortName(b)));
-            }
-        }
-        
-        // Separate groups and root-level servers
-        const groups = this.serversAndGroups.items.filter(isServerGroup);
-        const servers = this.serversAndGroups.items.filter(isServer);
-        
-        // Sort each separately
-        groups.sort((a, b) => getGroupSortName(a).localeCompare(getGroupSortName(b)));
-        servers.sort((a, b) => getServerSortName(a).localeCompare(getServerSortName(b)));
-        
-        // Rebuild with servers first, then groups
-        this.serversAndGroups.items = [...servers, ...groups];
-    }
-
-    /**
-     * Adds a new server to the root level or to a specific group.
-     * @param server The server info to add
-     * @param groupName Optional group name to add the server to
-     */
-    async addServer(server: ServerInfo, groupName?: string): Promise<void> {
-        if (groupName) {
-            // Add to existing group
-            const group = this.serversAndGroups.items.find(
-                item => isServerGroup(item) && item.name === groupName
-            ) as ServerGroupInfo | undefined;
-            
-            if (group) {
-                group.servers.push(server);
-            }
-        } else {
-            // Add to root level
-            this.serversAndGroups.items.push(server);
-        }
-        
-        this.sortServersAndGroups();
-        await this.saveServersAndGroups(this.serversAndGroups);
-        this.refresh();
-    }
-
-    /**
-     * Adds a new server group.
-     * @param group The server group info to add
-     */
-    async addServerGroup(group: ServerGroupInfo): Promise<void> {
-        this.serversAndGroups.items.push(group);
-        this.sortServersAndGroups();
-        await this.saveServersAndGroups(this.serversAndGroups);
-        this.refresh();
-    }
-
-    /**
-     * Removes a server from the root level or from a specific group.
-     * @param cluster The cluster name of the server to remove
-     * @param groupName Optional group name to remove the server from
-     */
-    async removeServer(cluster: string, groupName?: string): Promise<void> {
-        if (groupName) {
-            // Remove from specific group
-            const group = this.serversAndGroups.items.find(
-                item => isServerGroup(item) && item.name === groupName
-            ) as ServerGroupInfo | undefined;
-            
-            if (group) {
-                group.servers = group.servers.filter(s => s.cluster !== cluster);
-            }
-        } else {
-            // Remove from root level
-            this.serversAndGroups.items = this.serversAndGroups.items.filter(
-                item => !(isServer(item) && item.cluster === cluster)
-            );
-        }
-        
-        // Also remove from connections cache
-        this.connections = this.connections.filter(c => c.cluster !== cluster);
-        
-        await this.saveServersAndGroups(this.serversAndGroups);
-        this.refresh();
-    }
-
-    /**
-     * Removes a server group and all its servers.
-     * @param groupName The name of the group to remove
-     */
-    async removeServerGroup(groupName: string): Promise<void> {
-        // Find the group to get its servers for cleanup
-        const group = this.serversAndGroups.items.find(
-            item => isServerGroup(item) && item.name === groupName
-        ) as ServerGroupInfo | undefined;
-        
-        // Remove servers from connections cache
-        if (group) {
-            const clusterNames = group.servers.map(s => s.cluster);
-            this.connections = this.connections.filter(c => !clusterNames.includes(c.cluster));
-        }
-        
-        // Remove the group
-        this.serversAndGroups.items = this.serversAndGroups.items.filter(
-            item => !(isServerGroup(item) && item.name === groupName)
-        );
-        
-        await this.saveServersAndGroups(this.serversAndGroups);
-        this.refresh();
-    }
-
-    /**
-     * Moves a server from one location to another.
-     * @param cluster The cluster name of the server to move
-     * @param sourceGroupName The source group name (undefined for root level)
-     * @param targetGroupName The target group name (undefined for root level)
-     */
-    async moveServer(cluster: string, sourceGroupName?: string, targetGroupName?: string): Promise<void> {
-        // Find the server info first
-        let serverInfo: ServerInfo | undefined;
-        
-        if (sourceGroupName) {
-            const sourceGroup = this.serversAndGroups.items.find(
-                item => isServerGroup(item) && item.name === sourceGroupName
-            ) as ServerGroupInfo | undefined;
-            serverInfo = sourceGroup?.servers.find(s => s.cluster === cluster);
-        } else {
-            serverInfo = this.serversAndGroups.items.find(
-                item => isServer(item) && item.cluster === cluster
-            ) as ServerInfo | undefined;
-        }
-        
-        if (!serverInfo) {
-            return;
-        }
-        
-        // Make a copy to avoid reference issues
-        const serverCopy: ServerInfo = { ...serverInfo };
-        
-        // Remove from source
-        if (sourceGroupName) {
-            const sourceGroup = this.serversAndGroups.items.find(
-                item => isServerGroup(item) && item.name === sourceGroupName
-            ) as ServerGroupInfo | undefined;
-            if (sourceGroup) {
-                sourceGroup.servers = sourceGroup.servers.filter(s => s.cluster !== cluster);
-            }
-        } else {
-            this.serversAndGroups.items = this.serversAndGroups.items.filter(
-                item => !(isServer(item) && item.cluster === cluster)
-            );
-        }
-        
-        // Add to target
-        if (targetGroupName) {
-            const targetGroup = this.serversAndGroups.items.find(
-                item => isServerGroup(item) && item.name === targetGroupName
-            ) as ServerGroupInfo | undefined;
-            if (targetGroup) {
-                targetGroup.servers.push(serverCopy);
-            }
-        } else {
-            this.serversAndGroups.items.push(serverCopy);
-        }
-        
-        this.sortServersAndGroups();
-        await this.saveServersAndGroups(this.serversAndGroups);
-        this.refresh();
-    }
-
-    /**
-     * Prompts the user to select a destination and moves the server.
-     * @param cluster The cluster name of the server to move
-     * @param displayName The display name of the server
-     * @param currentGroupName The current group name (undefined for root level)
-     */
-    async promptMoveServer(cluster: string, displayName: string, currentGroupName?: string): Promise<void> {
-        // Build list of available destinations
-        const destinations: vscode.QuickPickItem[] = [];
-        
-        // Add root option if not already at root
-        if (currentGroupName) {
-            destinations.push({
-                label: '$(home) Root',
-                description: 'Move to root level'
-            });
-        }
-        
-        // Add all groups except the current one
-        for (const item of this.serversAndGroups.items) {
-            if (isServerGroup(item) && item.name !== currentGroupName) {
-                destinations.push({
-                    label: `$(folder) ${item.name}`,
-                    description: `Move to group "${item.name}"`
-                });
-            }
-        }
-        
-        if (destinations.length === 0) {
-            vscode.window.showInformationMessage('No other destinations available. Create a group first.');
-            return;
-        }
-        
-        const selection = await vscode.window.showQuickPick(destinations, {
-            placeHolder: `Select destination for "${displayName}"`
-        });
-        
-        if (!selection) {
-            return;
-        }
-        
-        // Determine target group name
-        let targetGroupName: string | undefined;
-        if (!selection.label.startsWith('$(home)')) {
-            // Extract group name from label (remove the icon prefix)
-            targetGroupName = selection.label.replace('$(folder) ', '');
-        }
-        
-        await this.moveServer(cluster, currentGroupName, targetGroupName);
-    }
-
-    /**
-     * Edits a server's connection string and/or display name.
-     * @param oldCluster The current cluster name of the server
-     * @param newConnection The new connection string
-     * @param newDisplayName The new display name (undefined to remove)
-     * @param groupName The group name the server belongs to (undefined for root level)
-     */
-    async editServer(oldCluster: string, newConnection: string, newDisplayName?: string, groupName?: string): Promise<void> {
-        let serverInfo: ServerInfo | undefined;
-        
-        if (groupName) {
-            const group = this.serversAndGroups.items.find(
-                item => isServerGroup(item) && item.name === groupName
-            ) as ServerGroupInfo | undefined;
-            serverInfo = group?.servers.find(s => s.cluster === oldCluster);
-        } else {
-            serverInfo = this.serversAndGroups.items.find(
-                item => isServer(item) && item.cluster === oldCluster
-            ) as ServerInfo | undefined;
-        }
-        
-        if (!serverInfo) {
-            return;
-        }
-        
-        // Extract the new cluster hostname from the connection string
-        const newCluster = getHostName(newConnection);
-        
-        // Update server info
-        serverInfo.connection = newConnection;
-        serverInfo.cluster = newCluster;
-        if (newDisplayName && newDisplayName !== newCluster) {
-            serverInfo.displayName = newDisplayName;
-        } else {
-            delete serverInfo.displayName;
-        }
-
-        // refetch server kind
-        if (this.client) {
-            try {
-                const result = await lspServer.getServerKind(this.client, newConnection);
-                if (result?.serverKind) {
-                    serverInfo.serverKind = result.serverKind;
-                }
-            } catch (error) {
-                console.error(`Failed to get server kind for ${newConnection}:`, error);
-                // Continue without updating server kind - it's optional
-            }
-        }
-        
-        // Update connections cache if cluster name changed
-        if (oldCluster !== newCluster) {
-            const connectionInfo = this.connections.find(c => c.cluster === oldCluster);
-            if (connectionInfo) {
-                connectionInfo.cluster = newCluster;
-                connectionInfo.connection = newConnection;
-            }
-        }
-        
-        await this.saveServersAndGroups(this.serversAndGroups);
-        this.refresh();
-    }
-
-    /**
-     * Prompts the user to edit a server's connection string.
-     * The display name is preserved unless the cluster hostname changes.
-     * @param connection The current connection string
-     * @param cluster The current cluster name
-     * @param displayName The current display name
-     * @param groupName The group name the server belongs to (undefined for root level)
-     */
-    async promptEditServer(connection: string, cluster: string, displayName?: string, groupName?: string): Promise<void> {
-        const newConnectionString = await vscode.window.showInputBox({
-            prompt: 'Edit the connection URL or connection string',
-            value: connection,
-            placeHolder: 'e.g., myserver.kusto.windows.net'
-        });
-
-        if (!newConnectionString) {
-            return; // User cancelled
-        }
-
-        // Extract hostname from new connection string
-        const newCluster = getHostName(newConnectionString);
-        
-        // Keep existing display name if cluster hasn't changed, otherwise generate new one
-        let newDisplayName: string | undefined;
-        if (newCluster === cluster) {
-            // Cluster unchanged, keep existing display name
-            newDisplayName = displayName;
-        } else {
-            // Cluster changed, generate new display name from new cluster
-            if (newCluster.endsWith('.kusto.windows.net')) {
-                newDisplayName = newCluster.substring(0, newCluster.indexOf('.kusto.windows.net'));
-            } else {
-                newDisplayName = newCluster;
-            }
-        }
-
-        await this.editServer(cluster, newConnectionString, newDisplayName, groupName);
-    }
-
-    /**
-     * Prompts the user to add a new server.
-     * @param groupName Optional group name to add the server to
-     */
-    async promptAddServer(groupName?: string): Promise<void> {
-        const connectionString = await vscode.window.showInputBox({
-            prompt: 'Enter the connection URL or connection string',
-            placeHolder: 'e.g., myserver.kusto.windows.net'
-        });
-
-        if (!connectionString) {
-            return;
-        }
-
-        // Extract cluster hostname from connection string
-        const cluster = getHostName(connectionString);
-
-        // Extract short name for display name
-        var displayName = cluster;
-        if (cluster.endsWith('.kusto.windows.net')) {
-            displayName = cluster.substring(0, cluster.indexOf('.kusto.windows.net'));
-        }
-
-        const server: ServerInfo = { 
-            connection: connectionString,
-            cluster: cluster
-        };
-        if (displayName && displayName !== cluster) {
-            server.displayName = displayName;
-        }
-
-        // Fetch server kind from the language server
-        if (this.client) {
-            try {
-                const result = await lspServer.getServerKind(this.client, connectionString);
-                if (result?.serverKind) {
-                    server.serverKind = result.serverKind;
-                }
-            } catch (error) {
-                console.error(`Failed to get server kind for ${connectionString}:`, error);
-                // Continue without server kind - it's optional
-            }
-        }
-
-        await this.addServer(server, groupName);
-    }
-
-    /**
-     * Prompts the user to add a new server group.
-     */
-    async promptAddServerGroup(): Promise<void> {
-        const name = await vscode.window.showInputBox({
-            prompt: 'Enter the group name',
-            placeHolder: 'e.g., Production Clusters'
-        });
-
-        if (!name) {
-            return;
-        }
-
-        const group: ServerGroupInfo = {
-            name,
-            servers: []
-        };
-
-        await this.addServerGroup(group);
-    }
-
-    /**
-     * Prompts the user to rename a server's display name.
-     * @param cluster The cluster name of the server
-     * @param currentDisplayName The current display name
-     * @param groupName The group name the server belongs to (undefined for root level)
-     */
-    async promptRenameServer(cluster: string, currentDisplayName: string, groupName?: string): Promise<void> {
-        const newDisplayName = await vscode.window.showInputBox({
-            prompt: 'Enter a new display name',
-            value: currentDisplayName
-        });
-
-        if (newDisplayName === undefined || newDisplayName === currentDisplayName) {
-            return; // User cancelled or no change
-        }
-
-        // Find the server and update its display name
-        let serverInfo: ServerInfo | undefined;
-        
-        if (groupName) {
-            const group = this.serversAndGroups.items.find(
-                item => isServerGroup(item) && item.name === groupName
-            ) as ServerGroupInfo | undefined;
-            serverInfo = group?.servers.find(s => s.cluster === cluster);
-        } else {
-            serverInfo = this.serversAndGroups.items.find(
-                item => isServer(item) && item.cluster === cluster
-            ) as ServerInfo | undefined;
-        }
-        
-        if (!serverInfo) {
-            return;
-        }
-        
-        if (newDisplayName && newDisplayName !== serverInfo.cluster) {
-            serverInfo.displayName = newDisplayName;
-        } else {
-            delete serverInfo.displayName;
-        }
-        
-        await this.saveServersAndGroups(this.serversAndGroups);
-        this.refresh();
-    }
-
-    /**
-     * Prompts the user to rename a server group.
-     * @param currentName The current name of the group
-     */
-    async promptRenameServerGroup(currentName: string): Promise<void> {
-        const newName = await vscode.window.showInputBox({
-            prompt: 'Enter a new group name',
-            value: currentName
-        });
-
-        if (!newName || newName === currentName) {
-            return; // User cancelled or no change
-        }
-
-        const group = this.serversAndGroups.items.find(
-            item => isServerGroup(item) && item.name === currentName
-        ) as ServerGroupInfo | undefined;
-        
-        if (!group) {
-            return;
-        }
-        
-        group.name = newName;
-        
-        await this.saveServersAndGroups(this.serversAndGroups);
-        this.refresh();
-    }
-
-    /**
-     * Ensures a connection entry exists for the given cluster.
-     * If not found in connections, creates a new entry based on serversAndGroups data.
-     * @param cluster The cluster name to find or create
-     * @returns The connection info for the cluster
-     */
-    private ensureConnection(cluster: string): { cluster: string, connection: string, databases?: DatabaseInfo[] } {
-        let connectionInfo = this.connections.find(c => c.cluster === cluster);
-        if (!connectionInfo) {
-            // Look for the server in serversAndGroups
-            let serverInfo: ServerInfo | undefined;
-            for (const item of this.serversAndGroups.items) {
-                if (isServerGroup(item)) {
-                    serverInfo = item.servers.find(s => s.cluster === cluster);
-                    if (serverInfo) break;
-                } else if (item.cluster === cluster) {
-                    serverInfo = item;
-                    break;
-                }
-            }
-
-            // Create a new connection entry
-            connectionInfo = {
-                cluster,
-                connection: serverInfo?.connection ?? cluster,
-                databases: []
-            };
-            this.connections.push(connectionInfo);
-        }
-        return connectionInfo;
-    }
-
-    setClusterDatabases(cluster: string, databases: DatabaseInfo[]) {
-        const connectionInfo = this.ensureConnection(cluster);
-        connectionInfo.databases = databases;
-        this.refresh();
-    }
-
-    setDatabaseInfo(cluster: string, databaseInfo: DatabaseInfo) {
-        const connectionInfo = this.ensureConnection(cluster);
-        if (!connectionInfo.databases) {
-            connectionInfo.databases = [];
-        }
-        // Update or add the database info
-        const existingIndex = connectionInfo.databases.findIndex(d => d.name === databaseInfo.name);
-        if (existingIndex >= 0) {
-            connectionInfo.databases[existingIndex] = databaseInfo;
-        } else {
-            connectionInfo.databases.push(databaseInfo);
-        }
-        this.refresh();
-    }
-
-    getDatabaseInfo(cluster: string, database: string): DatabaseInfo | undefined {
-        const connectionInfo = this.connections.find(c => c.cluster === cluster);
-        return connectionInfo?.databases?.find(d => d.name === database);
-    }
-
-    /**
-     * Gets all available server connections from the connections panel.
-     * @returns Array of server connection strings (cluster names)
-     */
-    getConnections(): string[] {
-        const servers: string[] = [];
-        
-        for (const item of this.serversAndGroups.items) {
-            if (isServerGroup(item)) {
-                // Add all servers from the group
-                for (const server of item.servers) {
-                    servers.push(server.cluster);
-                }
-            } else {
-                // Add individual server
-                servers.push(item.cluster);
-            }
-        }
-        
-        return servers;
-    }
-
-    /**
-     * Gets databases for a specific cluster.
-     * @param clusterName The cluster name
-     * @param client The language client to request database info from
-     * @returns Promise resolving to array of database names
-     */
-    async getDatabases(clusterName: string, client: LanguageClient): Promise<string[]> {
-        try {
-            // Find server kind for this cluster
-            let serverKind: string | null = null;
-            for (const item of this.serversAndGroups.items) {
-                if (isServerGroup(item)) {
-                    const server = item.servers.find(s => s.cluster === clusterName);
-                    if (server) {
-                        serverKind = server.serverKind ?? null;
-                        break;
-                    }
-                } else if (item.cluster === clusterName) {
-                    serverKind = item.serverKind ?? null;
-                    break;
-                }
-            }
-
-            const result = await lspServer.getServerInfo(client, clusterName, serverKind);
-
-            if (result && result.databases) {
-                return result.databases.map(db => db.name);
-            }
-            
-            return [];
-        } catch (error) {
-            console.error(`Failed to get databases for ${clusterName}:`, error);
-            return [];
-        }
-    }
-
-    getTreeItem(element: KustoTreeItem): vscode.TreeItem {
-        return element;
-    }
-
-    getChildren(element?: KustoTreeItem): KustoTreeItem[] | Thenable<KustoTreeItem[]> {
-        if (!element) {
-            // Root level - show "No Connection" first, then sorted groups, then sorted root-level servers
-            const items: KustoTreeItem[] = [];
-            
-            // Add "No Connection" indicator at top
-            items.push(new NoConnectionTreeItem());
-            
-            // Separate groups and servers
-            const groups: ServerGroupTreeItem[] = [];
-            const servers: ServerTreeItem[] = [];
-            
-            for (const item of this.serversAndGroups.items) {
-                if (isServerGroup(item)) {
-                    groups.push(new ServerGroupTreeItem(item));
-                } else {
-                    servers.push(new ServerTreeItem(item.connection, item.cluster, item.displayName, undefined, item.serverKind));
-                }
-            }
-            
-            // Sort groups by name
-            groups.sort((a, b) => 
-                a.groupInfo.name.localeCompare(b.groupInfo.name, undefined, { sensitivity: 'base' })
-            );
-            
-            // Sort servers by display name or cluster name
-            servers.sort((a, b) => {
-                const aName = a.displayName ?? a.clusterName;
-                const bName = b.displayName ?? b.clusterName;
-                return aName.localeCompare(bName, undefined, { sensitivity: 'base' });
-            });
-            
-            // Add servers first, then groups
-            items.push(...servers);
-            items.push(...groups);
-            
-            return items;
-        }
-
-        if (element instanceof ServerGroupTreeItem) {
-            // Show servers within this group, sorted by display name
-            const servers = element.groupInfo.servers.map(s => 
-                new ServerTreeItem(s.connection, s.cluster, s.displayName, element.groupInfo.name, s.serverKind)
-            );
-            
-            servers.sort((a, b) => {
-                const aName = a.displayName ?? a.clusterName;
-                const bName = b.displayName ?? b.clusterName;
-                return aName.localeCompare(bName, undefined, { sensitivity: 'base' });
-            });
-            
-            return servers;
-        }
-        
-        if (element instanceof ServerTreeItem) {
-            // Show databases for this cluster, sorted by name
-            const cluster = this.connections.find(c => c.cluster === element.clusterName);
-            const databases = cluster?.databases?.map(db => new DatabaseTreeItem(element.clusterName, db.name)) ?? [];
-            
-            databases.sort((a, b) => 
-                a.databaseName.localeCompare(b.databaseName, undefined, { sensitivity: 'base' })
-            );
-            
-            return databases;
-        }
-        
-        if (element instanceof DatabaseTreeItem) {
-            // Show folders for different entity types under the database
-            const folders: DatabaseFolderTreeItem[] = [];
-            const dbInfo = this.getDatabaseInfo(element.clusterName, element.databaseName);
-            
-            // Only show folders for entity types that have items
-            if (dbInfo?.tables && dbInfo.tables.length > 0) {
-                folders.push(new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'tables', 'Tables', 'table'));
-            }
-            if (dbInfo?.externalTables && dbInfo.externalTables.length > 0) {
-                folders.push(new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'externalTables', 'External Tables', 'cloud'));
-            }
-            if (dbInfo?.materializedViews && dbInfo.materializedViews.length > 0) {
-                folders.push(new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'materializedViews', 'Materialized Views', 'eye'));
-            }
-            if (dbInfo?.functions && dbInfo.functions.length > 0) {
-                folders.push(new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'functions', 'Functions', 'symbol-function'));
-            }
-            if (dbInfo?.entityGroups && dbInfo.entityGroups.length > 0) {
-                folders.push(new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'entityGroups', 'Entity Groups', 'symbol-namespace'));
-            }
-            if (dbInfo?.graphModels && dbInfo.graphModels.length > 0) {
-                folders.push(new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'graphModels', 'Graph Models', 'type-hierarchy'));
-            }
-            
-            return folders;
-        }
-
-        if (element instanceof DatabaseFolderTreeItem) {
-            // Show entities within the folder
-            const dbInfo = this.getDatabaseInfo(element.clusterName, element.databaseName);
-            if (!dbInfo) return [];
-
-            switch (element.folderType) {
-                case 'tables':
-                    return (dbInfo.tables ?? [])
-                        .map(t => new TableTreeItem(element.clusterName, element.databaseName, t))
-                        .sort((a, b) => a.tableInfo.name.localeCompare(b.tableInfo.name, undefined, { sensitivity: 'base' }));
-                case 'externalTables':
-                    return (dbInfo.externalTables ?? [])
-                        .map(t => new ExternalTableTreeItem(element.clusterName, element.databaseName, t))
-                        .sort((a, b) => a.tableInfo.name.localeCompare(b.tableInfo.name, undefined, { sensitivity: 'base' }));
-                case 'materializedViews':
-                    return (dbInfo.materializedViews ?? [])
-                        .map(v => new MaterializedViewTreeItem(element.clusterName, element.databaseName, v))
-                        .sort((a, b) => a.viewInfo.name.localeCompare(b.viewInfo.name, undefined, { sensitivity: 'base' }));
-                case 'functions':
-                    return (dbInfo.functions ?? [])
-                        .map(f => new FunctionTreeItem(element.clusterName, element.databaseName, f))
-                        .sort((a, b) => a.functionInfo.name.localeCompare(b.functionInfo.name, undefined, { sensitivity: 'base' }));
-                case 'entityGroups':
-                    return (dbInfo.entityGroups ?? [])
-                        .map(g => new EntityGroupTreeItem(element.clusterName, element.databaseName, g))
-                        .sort((a, b) => a.groupInfo.name.localeCompare(b.groupInfo.name, undefined, { sensitivity: 'base' }));
-                case 'graphModels':
-                    return (dbInfo.graphModels ?? [])
-                        .map(g => new GraphModelTreeItem(element.clusterName, element.databaseName, g))
-                        .sort((a, b) => a.graphInfo.name.localeCompare(b.graphInfo.name, undefined, { sensitivity: 'base' }));
-            }
-        }
-
-        // Handle table/view expansion to show columns
-        if (element instanceof TableTreeItem) {
-            return (element.tableInfo.columns ?? [])
-                .map(c => new ColumnTreeItem(element.clusterName, element.databaseName, element.tableInfo.name, 'table', c));
-        }
-
-        if (element instanceof ExternalTableTreeItem) {
-            return (element.tableInfo.columns ?? [])
-                .map(c => new ColumnTreeItem(element.clusterName, element.databaseName, element.tableInfo.name, 'externalTable', c));
-        }
-
-        if (element instanceof MaterializedViewTreeItem) {
-            return (element.viewInfo.columns ?? [])
-                .map(c => new ColumnTreeItem(element.clusterName, element.databaseName, element.viewInfo.name, 'materializedView', c));
-        }
-
-        // Handle entity group expansion to show member entities
-        if (element instanceof EntityGroupTreeItem) {
-            return (element.groupInfo.entities ?? [])
-                .map(e => new EntityGroupMemberTreeItem(element.clusterName, element.databaseName, element.groupInfo.name, e));
-        }
-
-        return [];
-    }
-
-    getParent(element: KustoTreeItem): KustoTreeItem | undefined
-    {
-        // Entity items -> parent is the folder
-        if (element instanceof TableTreeItem)
-        {
-            return new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'tables', 'Tables', 'table');
-        }
-        if (element instanceof ExternalTableTreeItem)
-        {
-            return new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'externalTables', 'External Tables', 'cloud');
-        }
-        if (element instanceof MaterializedViewTreeItem)
-        {
-            return new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'materializedViews', 'Materialized Views', 'eye');
-        }
-        if (element instanceof FunctionTreeItem)
-        {
-            return new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'functions', 'Functions', 'symbol-function');
-        }
-        if (element instanceof EntityGroupTreeItem)
-        {
-            return new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'entityGroups', 'Entity Groups', 'symbol-namespace');
-        }
-        if (element instanceof EntityGroupMemberTreeItem)
-        {
-            // Parent is the entity group - need to find it
-            const dbInfo = this.getDatabaseInfo(element.clusterName, element.databaseName);
-            const groupInfo = dbInfo?.entityGroups?.find(g => g.name === element.groupName);
-            if (groupInfo) {
-                return new EntityGroupTreeItem(element.clusterName, element.databaseName, groupInfo);
-            }
-            return undefined;
-        }
-        if (element instanceof GraphModelTreeItem)
-        {
-            return new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'graphModels', 'Graph Models', 'type-hierarchy');
-        }
-
-        // Folder -> parent is the database
-        if (element instanceof DatabaseFolderTreeItem)
-        {
-            return new DatabaseTreeItem(element.clusterName, element.databaseName);
-        }
-
-        if (element instanceof DatabaseTreeItem)
-        {
-            // Parent is the server - find it in the tree
-            for (const item of this.serversAndGroups.items)
-            {
-                if (isServerGroup(item))
-                {
-                    const server = item.servers.find(s => s.cluster === element.clusterName);
-                    if (server)
-                    {
-                        return new ServerTreeItem(server.connection, server.cluster, server.displayName, item.name, server.serverKind);
-                    }
-                } else if (item.cluster === element.clusterName)
-                {
-                    return new ServerTreeItem(item.connection, item.cluster, item.displayName, undefined, item.serverKind);
-                }
-            }
-            return undefined;
-        }
-
-        if (element instanceof ServerTreeItem)
-        {
-            // If server is in a group, parent is the group
-            if (element.groupName)
-            {
-                const group = this.serversAndGroups.items.find(
-                    item => isServerGroup(item) && item.name === element.groupName
-                ) as ServerGroupInfo | undefined;
-                if (group)
-                {
-                    return new ServerGroupTreeItem(group);
-                }
-            }
-            // Otherwise, server is at root level (no parent)
-            return undefined;
-        }
-
-        // ServerGroupTreeItem and NoConnectionTreeItem are at root level (no parent)
-        return undefined;
-    }
-
-    /**
-     * Called when a server tree item is expanded.
-     * Fetches database list from the language server.
-     * @param clusterName The cluster name of the expanded server
-     * @returns A promise that resolves when the server contents have been loaded
-     */
-    async onServerExpanded(clusterName: string, client?: LanguageClient): Promise<void> {
-        if (!client) {
-            console.log(`Server expanded: ${clusterName} (no client available)`);
-            return;
-        }
-
-        try {
-            // Find server kind for this cluster
-            let serverKind: string | null = null;
-            for (const item of this.serversAndGroups.items) {
-                if (isServerGroup(item)) {
-                    const server = item.servers.find(s => s.cluster === clusterName);
-                    if (server) {
-                        serverKind = server.serverKind ?? null;
-                        break;
-                    }
-                } else if (item.cluster === clusterName) {
-                    serverKind = item.serverKind ?? null;
-                    break;
-                }
-            }
-
-            const result = await lspServer.getServerInfo(client, clusterName, serverKind);
-
-            if (result && result.databases) {
-                const databases = result.databases.map(db => ({ name: db.name }));
-                this.setClusterDatabases(clusterName, databases);
-            }
-        } catch (error) {
-            console.error(`Failed to get server info for ${clusterName}:`, error);
-            vscode.window.showErrorMessage(`Failed to load databases for ${clusterName}`);
-        }
-    }
-
-    /**
-     * Called when a database tree item is expanded.
-     * Fetches full database info from the language server.
-     * @param clusterName The cluster name
-     * @param databaseName The database name of the expanded database
-     * @returns A promise that resolves when the database contents have been loaded
-     */
-    async onDatabaseExpanded(clusterName: string, databaseName: string, client?: LanguageClient): Promise<void> {
-        if (!client) {
-            console.log(`Database expanded: ${clusterName}/${databaseName} (no client available)`);
-            return;
-        }
-
-        try {
-            const result = await lspServer.getDatabaseInfo(client, clusterName, databaseName);
-
-            if (result) {
-                this.setDatabaseInfo(clusterName, result);
-            }
-        } catch (error) {
-            console.error(`Failed to get database info for ${clusterName}/${databaseName}:`, error);
-            vscode.window.showErrorMessage(`Failed to load database info for ${clusterName}/${databaseName}`);
-        }
-    }
-}
-
-/**
- * Drag and drop controller for moving servers between groups.
- */
-class KustoDragAndDropController implements vscode.TreeDragAndDropController<KustoTreeItem> {
-    readonly dropMimeTypes = ['application/vnd.code.tree.kusto.connections'];
-    readonly dragMimeTypes = ['application/vnd.code.tree.kusto.connections'];
-
-    constructor(private readonly provider: KustoConnectionsProvider) {}
-
-    handleDrag(source: readonly KustoTreeItem[], dataTransfer: vscode.DataTransfer, token: vscode.CancellationToken): void {
-        // Only allow dragging ServerTreeItem
-        const servers = source.filter((item): item is ServerTreeItem => item instanceof ServerTreeItem);
-        if (servers.length > 0) {
-            const dragData = servers.map(s => ({
-                cluster: s.clusterName,
-                groupName: s.groupName
-            }));
-            dataTransfer.set('application/vnd.code.tree.kusto.connections', new vscode.DataTransferItem(dragData));
-        }
-    }
-
-    async handleDrop(target: KustoTreeItem | undefined, dataTransfer: vscode.DataTransfer, token: vscode.CancellationToken): Promise<void> {
-        const transferItem = dataTransfer.get('application/vnd.code.tree.kusto.connections');
-        if (!transferItem) {
-            return;
-        }
-
-        const dragData = transferItem.value as { cluster: string; groupName?: string }[];
-        if (!dragData || dragData.length === 0) {
-            return;
-        }
-
-        // Determine target group
-        let targetGroupName: string | undefined;
-        if (target instanceof ServerGroupTreeItem) {
-            targetGroupName = target.groupInfo.name;
-        } else if (target instanceof ServerTreeItem && target.groupName) {
-            // Dropped on a server within a group - move to same group
-            targetGroupName = target.groupName;
-        }
-        // If target is undefined or NoConnectionTreeItem, move to root level (targetGroupName stays undefined)
-
-        // Move each dragged server
-        for (const item of dragData) {
-            // Skip if source and target are the same
-            if (item.groupName === targetGroupName) {
-                continue;
-            }
-            await this.provider.moveServer(item.cluster, item.groupName, targetGroupName);
-        }
-    }
-}
-
 // =============================================================================
-// Module-level state (initialized by activate)
+// Module-level State
 // =============================================================================
 
 let extensionContext: vscode.ExtensionContext | undefined;
 let languageClient: LanguageClient | undefined;
-let connectionsProvider: KustoConnectionsProvider | undefined;
-let treeView: vscode.TreeView<KustoTreeItem> | undefined;
-let connectionStatusBarItem: vscode.StatusBarItem | undefined;
-let isProgrammaticSelection = false;
+const documentConnectionChangedListeners: ((uri: string) => Promise<void>)[] = [];
+const serversAndGroupsChangedListeners: (() => void)[] = [];
+
+/** Document connections (URI  connection mapping). */
 const documentConnections = new Map<string, DocumentConnection>();
 
+/** Servers and groups data - loaded from global state. */
+let serversAndGroups: ServersAndGroupsData = { items: [] };
+
+/** Connection data cache - cluster to databases mapping. */
+let clusterConnections: { cluster: string, connection: string, databases?: DatabaseInfo[] }[] = [];
+
 // =============================================================================
-// Module-level functions for document connection management
+// Activation
+// =============================================================================
+
+/**
+ * Activates the connections module with the extension context and language client.
+ * Must be called before any other functions.
+ */
+export function activate(context: vscode.ExtensionContext, client: LanguageClient): void {
+    extensionContext = context;
+    languageClient = client;
+}
+
+/**
+ * Registers a listener that is called after a document connection changes.
+ * Multiple listeners can be registered.
+ */
+export function registerOnDocumentConnectionChanged(callback: (uri: string) => Promise<void>): vscode.Disposable {
+    documentConnectionChangedListeners.push(callback);
+    return new vscode.Disposable(() => {
+        const index = documentConnectionChangedListeners.indexOf(callback);
+        if (index >= 0) documentConnectionChangedListeners.splice(index, 1);
+    });
+}
+
+/**
+ * Registers a listener that is called when servers and groups data changes.
+ * Multiple listeners can be registered.
+ */
+export function registerOnServersAndGroupsChanged(callback: () => void): vscode.Disposable {
+    serversAndGroupsChangedListeners.push(callback);
+    return new vscode.Disposable(() => {
+        const index = serversAndGroupsChangedListeners.indexOf(callback);
+        if (index >= 0) serversAndGroupsChangedListeners.splice(index, 1);
+    });
+}
+
+/** Raises the document connection changed event for all registered listeners. */
+async function raiseDocumentConnectionChanged(uri: string): Promise<void> {
+    for (const listener of documentConnectionChangedListeners) {
+        await listener(uri);
+    }
+}
+
+/** Raises the servers and groups changed event for all registered listeners. */
+function raiseServersAndGroupsChanged(): void {
+    for (const listener of serversAndGroupsChangedListeners) listener();
+}
+
+// =============================================================================
+// Servers and Groups Management
+// =============================================================================
+
+/**
+ * Loads servers and groups data from global state.
+ */
+export function loadServersAndGroups(): void {
+    if (!extensionContext) return;
+    const data = extensionContext.globalState.get<ServersAndGroupsData>(SERVERS_STORAGE_KEY);
+    serversAndGroups = data ?? { items: [] };
+}
+
+/**
+ * Saves servers and groups data to global state and notifies the language server.
+ */
+async function saveServersAndGroups(): Promise<void> {
+    if (!extensionContext) return;
+    await extensionContext.globalState.update(SERVERS_STORAGE_KEY, serversAndGroups);
+
+    // Notify server about the updated connections
+    if (languageClient) {
+        const connectionsList = getConfiguredConnections();
+        await languageClient.sendNotification('kusto/connectionsUpdated', {
+            connections: connectionsList
+        });
+    }
+}
+
+/**
+ * Gets the servers and groups data structure.
+ */
+export function getServersAndGroups(): ServersAndGroupsData {
+    return serversAndGroups;
+}
+
+/**
+ * Sorts the servers and groups data structure.
+ * Groups are sorted alphabetically, then root-level servers.
+ * Servers within each group are also sorted alphabetically.
+ */
+function sortServersAndGroups(): void {
+    const getServerSortName = (s: ServerInfo) => (s.displayName ?? s.cluster).toLowerCase();
+    const getGroupSortName = (g: ServerGroupInfo) => g.name.toLowerCase();
+
+    // Sort servers within each group
+    for (const item of serversAndGroups.items) {
+        if (isServerGroup(item)) {
+            item.servers.sort((a, b) => getServerSortName(a).localeCompare(getServerSortName(b)));
+        }
+    }
+
+    // Separate groups and root-level servers
+    const groups = serversAndGroups.items.filter(isServerGroup);
+    const servers = serversAndGroups.items.filter(isServer);
+
+    // Sort each separately
+    groups.sort((a, b) => getGroupSortName(a).localeCompare(getGroupSortName(b)));
+    servers.sort((a, b) => getServerSortName(a).localeCompare(getServerSortName(b)));
+
+    // Rebuild with servers first, then groups
+    serversAndGroups.items = [...servers, ...groups];
+}
+
+/**
+ * Adds a new server to the root level or to a specific group.
+ */
+export async function addServer(server: ServerInfo, groupName?: string): Promise<void> {
+    if (groupName) {
+        const group = serversAndGroups.items.find(
+            item => isServerGroup(item) && item.name === groupName
+        ) as ServerGroupInfo | undefined;
+        if (group) {
+            group.servers.push(server);
+        }
+    } else {
+        serversAndGroups.items.push(server);
+    }
+
+    sortServersAndGroups();
+    await saveServersAndGroups();
+    raiseServersAndGroupsChanged();
+}
+
+/**
+ * Adds a new server group.
+ */
+export async function addServerGroup(group: ServerGroupInfo): Promise<void> {
+    serversAndGroups.items.push(group);
+    sortServersAndGroups();
+    await saveServersAndGroups();
+    raiseServersAndGroupsChanged();
+}
+
+/**
+ * Removes a server from the root level or from a specific group.
+ */
+export async function removeServer(cluster: string, groupName?: string): Promise<void> {
+    if (groupName) {
+        const group = serversAndGroups.items.find(
+            item => isServerGroup(item) && item.name === groupName
+        ) as ServerGroupInfo | undefined;
+        if (group) {
+            group.servers = group.servers.filter(s => s.cluster !== cluster);
+        }
+    } else {
+        serversAndGroups.items = serversAndGroups.items.filter(
+            item => !(isServer(item) && item.cluster === cluster)
+        );
+    }
+
+    // Also remove from connections cache
+    clusterConnections = clusterConnections.filter(c => c.cluster !== cluster);
+
+    await saveServersAndGroups();
+    raiseServersAndGroupsChanged();
+}
+
+/**
+ * Removes a server group and all its servers.
+ */
+export async function removeServerGroup(groupName: string): Promise<void> {
+    const group = serversAndGroups.items.find(
+        item => isServerGroup(item) && item.name === groupName
+    ) as ServerGroupInfo | undefined;
+
+    // Remove servers from connections cache
+    if (group) {
+        const clusterNames = group.servers.map(s => s.cluster);
+        clusterConnections = clusterConnections.filter(c => !clusterNames.includes(c.cluster));
+    }
+
+    serversAndGroups.items = serversAndGroups.items.filter(
+        item => !(isServerGroup(item) && item.name === groupName)
+    );
+
+    await saveServersAndGroups();
+    raiseServersAndGroupsChanged();
+}
+
+/**
+ * Moves a server from one location to another.
+ */
+export async function moveServer(cluster: string, sourceGroupName?: string, targetGroupName?: string): Promise<void> {
+    let serverInfo: ServerInfo | undefined;
+
+    if (sourceGroupName) {
+        const sourceGroup = serversAndGroups.items.find(
+            item => isServerGroup(item) && item.name === sourceGroupName
+        ) as ServerGroupInfo | undefined;
+        serverInfo = sourceGroup?.servers.find(s => s.cluster === cluster);
+    } else {
+        serverInfo = serversAndGroups.items.find(
+            item => isServer(item) && item.cluster === cluster
+        ) as ServerInfo | undefined;
+    }
+
+    if (!serverInfo) return;
+
+    const serverCopy: ServerInfo = { ...serverInfo };
+
+    // Remove from source
+    if (sourceGroupName) {
+        const sourceGroup = serversAndGroups.items.find(
+            item => isServerGroup(item) && item.name === sourceGroupName
+        ) as ServerGroupInfo | undefined;
+        if (sourceGroup) {
+            sourceGroup.servers = sourceGroup.servers.filter(s => s.cluster !== cluster);
+        }
+    } else {
+        serversAndGroups.items = serversAndGroups.items.filter(
+            item => !(isServer(item) && item.cluster === cluster)
+        );
+    }
+
+    // Add to target
+    if (targetGroupName) {
+        const targetGroup = serversAndGroups.items.find(
+            item => isServerGroup(item) && item.name === targetGroupName
+        ) as ServerGroupInfo | undefined;
+        if (targetGroup) {
+            targetGroup.servers.push(serverCopy);
+        }
+    } else {
+        serversAndGroups.items.push(serverCopy);
+    }
+
+    sortServersAndGroups();
+    await saveServersAndGroups();
+    raiseServersAndGroupsChanged();
+}
+
+/**
+ * Edits a server's connection string, cluster, display name, and/or server kind.
+ */
+export async function editServer(oldCluster: string, newConnection: string, newDisplayName?: string, newServerKind?: string, groupName?: string): Promise<void> {
+    let serverInfo: ServerInfo | undefined;
+
+    if (groupName) {
+        const group = serversAndGroups.items.find(
+            item => isServerGroup(item) && item.name === groupName
+        ) as ServerGroupInfo | undefined;
+        serverInfo = group?.servers.find(s => s.cluster === oldCluster);
+    } else {
+        serverInfo = serversAndGroups.items.find(
+            item => isServer(item) && item.cluster === oldCluster
+        ) as ServerInfo | undefined;
+    }
+
+    if (!serverInfo) return;
+
+    const newCluster = getHostName(newConnection);
+
+    serverInfo.connection = newConnection;
+    serverInfo.cluster = newCluster;
+    if (newDisplayName && newDisplayName !== newCluster) {
+        serverInfo.displayName = newDisplayName;
+    } else {
+        delete serverInfo.displayName;
+    }
+    if (newServerKind) {
+        serverInfo.serverKind = newServerKind;
+    }
+
+    // Update connections cache if cluster name changed
+    if (oldCluster !== newCluster) {
+        const connectionInfo = clusterConnections.find(c => c.cluster === oldCluster);
+        if (connectionInfo) {
+            connectionInfo.cluster = newCluster;
+            connectionInfo.connection = newConnection;
+        }
+    }
+
+    await saveServersAndGroups();
+    raiseServersAndGroupsChanged();
+}
+
+/**
+ * Renames a server's display name.
+ */
+export async function renameServer(cluster: string, newDisplayName: string, groupName?: string): Promise<void> {
+    let serverInfo: ServerInfo | undefined;
+
+    if (groupName) {
+        const group = serversAndGroups.items.find(
+            item => isServerGroup(item) && item.name === groupName
+        ) as ServerGroupInfo | undefined;
+        serverInfo = group?.servers.find(s => s.cluster === cluster);
+    } else {
+        serverInfo = serversAndGroups.items.find(
+            item => isServer(item) && item.cluster === cluster
+        ) as ServerInfo | undefined;
+    }
+
+    if (!serverInfo) return;
+
+    if (newDisplayName && newDisplayName !== serverInfo.cluster) {
+        serverInfo.displayName = newDisplayName;
+    } else {
+        delete serverInfo.displayName;
+    }
+
+    await saveServersAndGroups();
+    raiseServersAndGroupsChanged();
+}
+
+/**
+ * Renames a server group.
+ */
+export async function renameServerGroup(currentName: string, newName: string): Promise<void> {
+    const group = serversAndGroups.items.find(
+        item => isServerGroup(item) && item.name === currentName
+    ) as ServerGroupInfo | undefined;
+
+    if (!group) return;
+
+    group.name = newName;
+
+    await saveServersAndGroups();
+    raiseServersAndGroupsChanged();
+}
+
+// =============================================================================
+// Database Cache Management
+// =============================================================================
+
+/**
+ * Ensures a connection cache entry exists for the given cluster.
+ */
+function ensureClusterConnection(cluster: string): { cluster: string, connection: string, databases?: DatabaseInfo[] } {
+    let connectionInfo = clusterConnections.find(c => c.cluster === cluster);
+    if (!connectionInfo) {
+        let serverInfo: ServerInfo | undefined;
+        for (const item of serversAndGroups.items) {
+            if (isServerGroup(item)) {
+                serverInfo = item.servers.find(s => s.cluster === cluster);
+                if (serverInfo) break;
+            } else if (item.cluster === cluster) {
+                serverInfo = item;
+                break;
+            }
+        }
+
+        connectionInfo = {
+            cluster,
+            connection: serverInfo?.connection ?? cluster,
+            databases: []
+        };
+        clusterConnections.push(connectionInfo);
+    }
+    return connectionInfo;
+}
+
+/**
+ * Sets the list of databases for a cluster.
+ */
+export function setClusterDatabases(cluster: string, databases: DatabaseInfo[]): void {
+    const connectionInfo = ensureClusterConnection(cluster);
+    connectionInfo.databases = databases;
+    raiseServersAndGroupsChanged();
+}
+
+/**
+ * Gets the cached database info list for a cluster.
+ */
+export function getClusterDatabases(cluster: string): DatabaseInfo[] | undefined {
+    return clusterConnections.find(c => c.cluster === cluster)?.databases;
+}
+
+/**
+ * Sets (or updates) cached database info for a cluster/database.
+ */
+export function setDatabaseInfo(cluster: string, databaseInfo: DatabaseInfo): void {
+    const connectionInfo = ensureClusterConnection(cluster);
+    if (!connectionInfo.databases) {
+        connectionInfo.databases = [];
+    }
+    const existingIndex = connectionInfo.databases.findIndex(d => d.name === databaseInfo.name);
+    if (existingIndex >= 0) {
+        connectionInfo.databases[existingIndex] = databaseInfo;
+    } else {
+        connectionInfo.databases.push(databaseInfo);
+    }
+    raiseServersAndGroupsChanged();
+}
+
+/**
+ * Gets cached database info for a specific cluster/database.
+ */
+export function getDatabaseInfo(cluster: string, database: string): DatabaseInfo | undefined {
+    const connectionInfo = clusterConnections.find(c => c.cluster === cluster);
+    return connectionInfo?.databases?.find(d => d.name === database);
+}
+
+// =============================================================================
+// Server Expansion / Database Fetching
+// =============================================================================
+
+/**
+ * Fetches databases for a cluster from the language server and caches them.
+ * Called when a server tree item is expanded.
+ */
+export async function fetchDatabasesForCluster(clusterName: string): Promise<void> {
+    if (!languageClient) return;
+
+    try {
+        const serverInfo = findServerInfo(clusterName);
+        const serverKind = serverInfo?.serverKind ?? null;
+        const result = await lspServer.getServerInfo(languageClient, clusterName, serverKind);
+
+        if (result && result.databases) {
+            const databases = result.databases.map(db => ({ name: db.name }));
+            setClusterDatabases(clusterName, databases);
+        }
+    } catch (error) {
+        console.error(`Failed to get server info for ${clusterName}:`, error);
+        vscode.window.showErrorMessage(`Failed to load databases for ${clusterName}`);
+    }
+}
+
+/**
+ * Fetches full database info from the language server and caches it.
+ * Called when a database tree item is expanded.
+ */
+export async function fetchDatabaseInfo(clusterName: string, databaseName: string): Promise<void> {
+    if (!languageClient) return;
+
+    try {
+        const result = await lspServer.getDatabaseInfo(languageClient, clusterName, databaseName);
+        if (result) {
+            setDatabaseInfo(clusterName, result);
+        }
+    } catch (error) {
+        console.error(`Failed to get database info for ${clusterName}/${databaseName}:`, error);
+        vscode.window.showErrorMessage(`Failed to load database info for ${clusterName}/${databaseName}`);
+    }
+}
+
+// =============================================================================
+// Document Connection Management
 // =============================================================================
 
 /**
  * Loads document connections from workspace state.
  */
-async function loadDocumentConnections(): Promise<void> {
+export async function loadDocumentConnections(): Promise<void> {
     if (!extensionContext) return;
     const stored = extensionContext.workspaceState.get<DocumentConnection[]>(DOCUMENT_CONNECTIONS_KEY);
     if (stored) {
@@ -1794,63 +587,20 @@ async function loadDocumentConnections(): Promise<void> {
  */
 async function saveDocumentConnections(): Promise<void> {
     if (!extensionContext) return;
-    const connections = Array.from(documentConnections.values());
-    await extensionContext.workspaceState.update(DOCUMENT_CONNECTIONS_KEY, connections);
+    const values = Array.from(documentConnections.values());
+    await extensionContext.workspaceState.update(DOCUMENT_CONNECTIONS_KEY, values);
 }
 
 /**
  * Gets the connection for a document.
  */
-function getDocumentConnection(uri: string): DocumentConnection | undefined {
+export function getDocumentConnection(uri: string): DocumentConnection | undefined {
     return documentConnections.get(uri);
 }
 
 /**
- * Helper function to find ServerInfo for a given cluster name.
- */
-function findServerInfo(cluster: string): ServerInfo | undefined {
-    if (!connectionsProvider) return undefined;
-    for (const item of connectionsProvider.getServersAndGroups().items) {
-        if (isServerGroup(item)) {
-            const server = item.servers.find(s => s.cluster === cluster);
-            if (server) {
-                return server;
-            }
-        } else if (isServer(item) && item.cluster === cluster) {
-            return item;
-        }
-    }
-    return undefined;
-}
-
-/**
- * Updates the status bar item to reflect the connection for the active document.
- */
-function updateStatusBar(): void {
-    if (!connectionStatusBarItem) return;
-    
-    const editor = vscode.window.activeTextEditor;
-    
-    if (!editor || editor.document.languageId !== 'kusto') {
-        connectionStatusBarItem.hide();
-        return;
-    }
-
-    connectionStatusBarItem.show();
-    const connection = getDocumentConnection(editor.document.uri.toString());
-    
-    if (!connection?.cluster) {
-        connectionStatusBarItem.text = `$(database) not connected`;
-    } else if (!connection.database) {
-        connectionStatusBarItem.text = `$(database) cluster('${connection.cluster}')`;
-    } else {
-        connectionStatusBarItem.text = `$(database) cluster('${connection.cluster}').database('${connection.database}')`;
-    }
-}
-
-/**
- * Sets the connection for a document, updates status bar, and notifies the server.
- * This function is exported for use by other modules.
+ * Sets the connection for a document, saves it, and notifies the server.
+ * Also calls the registered documentConnectionChanged callback for UI updates.
  */
 export async function setDocumentConnection(uri: string, cluster: string | undefined, database: string | undefined): Promise<void> {
     if (!languageClient) {
@@ -1866,17 +616,14 @@ export async function setDocumentConnection(uri: string, cluster: string | undef
     documentConnections.set(uri, connection);
     await saveDocumentConnections();
 
-    // Update status bar and tree selection if this is the active document
-    if (vscode.window.activeTextEditor?.document.uri.toString() === uri) {
-        updateStatusBar();
-        await updateTreeSelectionForActiveDocument();
-    }
+    // Notify listeners (status bar + tree selection)
+    await raiseDocumentConnectionChanged(uri);
 
     // Get server kind from serversAndGroups if cluster is specified
     let serverKind: string | null = null;
     if (cluster) {
-        const serverInfo = findServerInfo(cluster);
-        serverKind = serverInfo?.serverKind ?? null;
+        const info = findServerInfo(cluster);
+        serverKind = info?.serverKind ?? null;
     }
 
     // Notify server of the connection change
@@ -1888,139 +635,43 @@ export async function setDocumentConnection(uri: string, cluster: string | undef
     });
 }
 
+// =============================================================================
+// Server Info Helpers
+// =============================================================================
+
 /**
- * Finds a tree item matching the cluster/database.
- * Returns the actual tree item instance from getChildren().
- * If looking for a database, ensures the server is expanded first.
+ * Finds a ServerInfo for a given cluster name by searching the servers and groups.
  */
-async function findTreeItem(cluster: string, database: string | undefined): Promise<ServerTreeItem | DatabaseTreeItem | undefined> {
-    if (!connectionsProvider || !languageClient) return undefined;
-    
-    // Get root items
-    const rootItems = await connectionsProvider.getChildren();
-    
-    // First pass: find the server item
-    let serverItem: ServerTreeItem | undefined;
-    
-    for (const item of rootItems) {
-        if (item instanceof ServerGroupTreeItem) {
-            // Check servers within group
-            const groupItems = await connectionsProvider.getChildren(item);
-            for (const sItem of groupItems) {
-                if (sItem instanceof ServerTreeItem && sItem.clusterName === cluster) {
-                    serverItem = sItem;
-                    break;
-                }
+export function findServerInfo(cluster: string): ServerInfo | undefined {
+    for (const item of serversAndGroups.items) {
+        if (isServerGroup(item)) {
+            const server = item.servers.find(s => s.cluster === cluster);
+            if (server) {
+                return server;
             }
-        } else if (item instanceof ServerTreeItem && item.clusterName === cluster) {
-            serverItem = item;
-        }
-        
-        if (serverItem) {
-            break;
+        } else if (isServer(item) && item.cluster === cluster) {
+            return item;
         }
     }
-    
-    if (!serverItem) {
-        return undefined; // Server not found
-    }
-    
-    // If we're not looking for a database, return the server
-    if (!database) {
-        return serverItem;
-    }
-    
-    // We need a database - ensure the server is expanded first
-    // This triggers loading of databases if not already loaded
-    await connectionsProvider.onServerExpanded(cluster, languageClient);
-    
-    // Small delay to let the tree update
-    await new Promise(resolve => setTimeout(resolve, 50));
-    
-    // Now try to find the database
-    const dbItems = await connectionsProvider.getChildren(serverItem);
-    for (const dbItem of dbItems) {
-        if (dbItem instanceof DatabaseTreeItem && dbItem.databaseName === database) {
-            return dbItem;
-        }
-    }
-    
-    // Database not found in tree (might not exist or not loaded yet)
-    // Fall back to selecting the server
-    return serverItem;
+    return undefined;
 }
 
 /**
- * Selects the "No Connection" tree item to indicate no specific connection.
+ * Gets the server kind for a connection string from the language server.
  */
-async function selectNeutralTreeItem(): Promise<void> {
-    if (!connectionsProvider || !treeView) return;
-    
-    isProgrammaticSelection = true;
+export async function fetchServerKind(connectionString: string): Promise<string | undefined> {
+    if (!languageClient) return undefined;
     try {
-        const rootItems = await connectionsProvider.getChildren();
-        const noConnectionItem = rootItems.find(item => item instanceof NoConnectionTreeItem);
-        
-        if (noConnectionItem) {
-            try {
-                await treeView.reveal(noConnectionItem, { select: true, focus: false, expand: false });
-            } catch {
-                // Silently ignore reveal errors
-            }
-        }
-    } catch {
-        // Silently fail
-    } finally {
-        setTimeout(() => {
-            isProgrammaticSelection = false;
-        }, 50);
-    }
-}
-
-/**
- * Updates the tree selection to match the active document's connection.
- */
-async function updateTreeSelectionForActiveDocument(): Promise<void> {
-    if (!treeView) return;
-    
-    const editor = vscode.window.activeTextEditor;
-    if (!editor || editor.document.languageId !== 'kusto') {
-        await selectNeutralTreeItem();
-        return;
-    }
-    
-    const connection = getDocumentConnection(editor.document.uri.toString());
-    
-    if (!connection?.cluster) {
-        await selectNeutralTreeItem();
-        return;
-    }
-
-    isProgrammaticSelection = true;
-    try {
-        const itemToSelect = await findTreeItem(connection.cluster, connection.database);
-        
-        if (itemToSelect) {
-            try {
-                const currentEditor = vscode.window.activeTextEditor;
-                if (currentEditor && currentEditor.document.languageId === 'kusto') {
-                    await treeView.reveal(itemToSelect, { select: true, focus: false, expand: false });
-                }
-            } catch {
-                // Silently ignore reveal errors
-            }
-        }
-    } catch {
-        // Silently fail - tree might not be fully loaded yet
-    } finally {
-        setTimeout(() => {
-            isProgrammaticSelection = false;
-        }, 50);
+        const result = await lspServer.getServerKind(languageClient, connectionString);
+        return result?.serverKind;
+    } catch (error) {
+        console.error(`Failed to get server kind for ${connectionString}:`, error);
+        return undefined;
     }
 }
 
 // =============================================================================
-// Exported functions for use by other modules (e.g., Copilot integration)
+// Exported Query Functions
 // =============================================================================
 
 /**
@@ -2028,19 +679,43 @@ async function updateTreeSelectionForActiveDocument(): Promise<void> {
  * @returns Array of cluster names
  */
 export function getConfiguredConnections(): string[] {
-    return connectionsProvider?.getConnections() ?? [];
+    const servers: string[] = [];
+    for (const item of serversAndGroups.items) {
+        if (isServerGroup(item)) {
+            for (const server of item.servers) {
+                servers.push(server.cluster);
+            }
+        } else {
+            servers.push(item.cluster);
+        }
+    }
+    return servers;
 }
 
 /**
- * Gets the list of databases for a cluster.
+ * Gets the list of databases for a cluster from the language server.
  * @param cluster The cluster name
  * @returns Promise resolving to array of database names
  */
 export async function getDatabasesForCluster(cluster: string): Promise<string[]> {
-    if (!connectionsProvider || !languageClient) {
+    if (!languageClient) {
         return [];
     }
-    return connectionsProvider.getDatabases(cluster, languageClient);
+
+    try {
+        const serverInfo = findServerInfo(cluster);
+        const serverKind = serverInfo?.serverKind ?? null;
+        const result = await lspServer.getServerInfo(languageClient, cluster, serverKind);
+
+        if (result && result.databases) {
+            return result.databases.map(db => db.name);
+        }
+
+        return [];
+    } catch (error) {
+        console.error(`Failed to get databases for ${cluster}:`, error);
+        return [];
+    }
 }
 
 /**
@@ -2051,28 +726,28 @@ export async function getDatabasesForCluster(cluster: string): Promise<string[]>
  * @returns Promise resolving to database info or undefined
  */
 export async function getDatabaseSchema(cluster: string, database: string): Promise<DatabaseInfo | undefined> {
-    if (!connectionsProvider || !languageClient) {
+    if (!languageClient) {
         return undefined;
     }
-    
+
     // Check if we already have the info cached
-    let dbInfo = connectionsProvider.getDatabaseInfo(cluster, database);
+    let dbInfo = getDatabaseInfo(cluster, database);
     if (dbInfo && dbInfo.tables) {
         return dbInfo;
     }
-    
+
     // Fetch from server
     try {
         const result = await lspServer.getDatabaseInfo(languageClient, cluster, database);
-        
+
         if (result) {
-            connectionsProvider.setDatabaseInfo(cluster, result);
+            setDatabaseInfo(cluster, result);
             return result;
         }
     } catch (error) {
         console.error(`Failed to get database info for ${cluster}/${database}:`, error);
     }
-    
+
     return undefined;
 }
 
@@ -2085,12 +760,12 @@ export function getActiveDocumentConnection(): { cluster: string; database: stri
     if (!editor || editor.document.languageId !== 'kusto') {
         return undefined;
     }
-    
+
     const connection = getDocumentConnection(editor.document.uri.toString());
     if (!connection?.cluster) {
         return undefined;
     }
-    
+
     return {
         cluster: connection.cluster,
         database: connection.database

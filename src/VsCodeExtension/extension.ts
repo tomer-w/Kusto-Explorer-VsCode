@@ -1,7 +1,8 @@
 ﻿import * as path from 'path';
 import * as vscode from 'vscode';
 import { workspace, ExtensionContext, window } from 'vscode';
-import * as conn from './features/connections'
+import * as conn from './features/connectionsPanel'
+import * as connections from './features/connections'
 import * as queries from './features/queries'
 import * as chartPanel from './features/chartPanel'
 import * as decorations from './features/decorations'
@@ -76,6 +77,9 @@ export async function activate(context: ExtensionContext)
         vscode.workspace.onDidCloseTextDocument(() => updateKustoContext()),
         vscode.window.onDidChangeActiveTextEditor(() => updateKustoContext())
     );
+
+    // activate connections data layer
+    connections.activate(context, client);
 
     // activate connections panel and related features
     await conn.activate(context, client);
