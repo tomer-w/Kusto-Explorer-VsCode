@@ -3,13 +3,9 @@ import * as vscode from 'vscode';
 import { workspace, ExtensionContext, window } from 'vscode';
 import * as conn from './features/connectionsPanel'
 import * as connections from './features/connections'
-import * as queries from './features/queries'
+import * as documentPanels from './features/documentPanels'
 import * as chartPanel from './features/chartPanel'
-import * as decorations from './features/decorations'
-import * as semantics from './features/semantics'
 import * as copilot from './features/copilot'
-import * as codelens from './features/codelens'
-import * as clipboard from './features/clipboard'
 import * as connectionStatusBar from './features/connectionStatusBar'
 import
     {
@@ -88,23 +84,11 @@ export async function activate(context: ExtensionContext)
     // Create status bar item for connection status
     connectionStatusBar.activate(context);
 
-    // activates semantic coloring
-    semantics.activate(context, client);
-
-    // activate editor decorations
-    decorations.activate(context, client);
-
     // activate query execution features
-    queries.activate(context, client);
+    documentPanels.activate(context, client);
 
     // activate copilot hooks
     copilot.activate(context, client);
-
-    // activate codelens for queries
-    codelens.activate(context, client);
-
-    // activate clipboard interception
-    clipboard.activate(context, client);
 }
 
 export function deactivate(): Thenable<void> | undefined

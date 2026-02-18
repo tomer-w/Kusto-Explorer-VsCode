@@ -1,0 +1,490 @@
+import * as vscode from 'vscode';
+import { LanguageClient } from 'vscode-languageclient/node';
+import { setDocumentConnection } from './connections';
+import * as server from './server';
+import * as resultsPanel from './resultsPanel';
+import * as chartPanel from './chartPanel';
+import { getClipboardContext, clearClipboardContext } from './clipboard';
+
+const PASTE_KIND = vscode.DocumentDropOrPasteEditKind.Text.append('kusto');
+
+/**
+ * Activates query execution features.
+ * @param context The extension context
+ * @param client The language client for LSP communication
+ */
+export function activate(context: vscode.ExtensionContext, client: LanguageClient): void {
+
+    // Activate results panel and chart panel
+    resultsPanel.activate(context, client);
+    chartPanel.activate(context, client);
+
+    // Register query-related commands
+    context.subscriptions.push(
+        vscode.commands.registerCommand('kusto.runQuery', () => runQuery(client)),
+        vscode.commands.registerCommand('kusto.copyQuery', () => copyQuery(client)),
+        vscode.commands.registerCommand('kusto.formatQuery', () => formatQuery(client))
+    );
+
+    // Register CodeLens provider for queries
+    context.subscriptions.push(
+        vscode.languages.registerCodeLensProvider(
+            { language: 'kusto' },
+            new KustoCodeLensProvider(client)
+        )
+    );
+
+    // Register paste provider for clipboard context
+    context.subscriptions.push(
+        vscode.languages.registerDocumentPasteEditProvider(
+            { language: 'kusto' },
+            new KustoPasteEditProvider(client),
+            {
+                providedPasteEditKinds: [PASTE_KIND],
+                pasteMimeTypes: ['text/plain']
+            }
+        )
+    );
+
+    // Set up query separator decorations
+    activateQuerySeparators(context, client);
+
+    // Set up semantic token coloring
+    activateSemanticColoring(context, client);
+}
+
+/**
+ * Runs the query at the current cursor position or selection.
+ * @param client The language client for LSP communication
+ */
+async function runQuery(client: LanguageClient): Promise<void> {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || editor.document.languageId !== 'kusto') {
+        return;
+    }
+
+    try {
+        const uri = editor.document.uri.toString();
+        const selection = {
+            start: { line: editor.selection.start.line, character: editor.selection.start.character },
+            end: { line: editor.selection.end.line, character: editor.selection.end.character }
+        };
+
+        // run query and get results from the server
+        const runResult = await server.runQuery(client, uri, selection);
+
+        // If query changed cluster/database, update document connection
+        if (runResult && runResult.cluster) {
+            await setDocumentConnection(uri, runResult.cluster, runResult.database);
+        }
+
+        // display associated result tables and chart
+        await resultsPanel.displayResultsById(client, runResult?.dataId);
+        await chartPanel.displayChartById(client, runResult?.dataId);
+
+    } catch (error) {
+        vscode.window.showErrorMessage(`Failed to execute query: ${error}`);
+    }
+}
+
+/**
+ * Copies the query at the current cursor position with syntax highlighting.
+ * @param client The language client for LSP communication
+ */
+async function copyQuery(client: LanguageClient): Promise<void> {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || editor.document.languageId !== 'kusto') {
+        return;
+    }
+
+    try {
+        // Get the query range containing the cursor position from the server
+        const cursorPos = editor.selection.active;
+        const queryRange = await server.getQueryRange(
+            client,
+            editor.document.uri.toString(),
+            { line: cursorPos.line, character: cursorPos.character }
+        );
+
+        if (!queryRange) {
+            return;
+        }
+
+        // Save the current selection
+        const previousSelection = editor.selection;
+
+        // Select the query range
+        const range = new vscode.Range(
+            queryRange.start.line, queryRange.start.character,
+            queryRange.end.line, queryRange.end.character
+        );
+        editor.selection = new vscode.Selection(range.start, range.end);
+
+        // Copy with syntax highlighting
+        await vscode.commands.executeCommand('editor.action.clipboardCopyWithSyntaxHighlightingAction');
+
+        // Restore the previous selection
+        editor.selection = previousSelection;
+
+    } catch (error) {
+        vscode.window.showErrorMessage(`Failed to copy query: ${error}`);
+    }
+}
+
+/**
+ * Formats the query at the current cursor position using the LSP range formatting.
+ * @param client The language client for LSP communication
+ */
+async function formatQuery(client: LanguageClient): Promise<void> {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || editor.document.languageId !== 'kusto') {
+        return;
+    }
+
+    try {
+        // Get the query range containing the cursor position
+        const cursorPos = editor.selection.active;
+        const queryRange = await server.getQueryRange(
+            client,
+            editor.document.uri.toString(),
+            { line: cursorPos.line, character: cursorPos.character }
+        );
+
+        if (!queryRange) {
+            return;
+        }
+
+        const range = new vscode.Range(
+            queryRange.start.line, queryRange.start.character,
+            queryRange.end.line, queryRange.end.character
+        );
+
+        // Invoke the LSP document range formatting
+        const edits = await vscode.commands.executeCommand<vscode.TextEdit[]>(
+            'vscode.executeFormatRangeProvider',
+            editor.document.uri,
+            range,
+            editor.options
+        );
+
+        if (edits && edits.length > 0) {
+            await editor.edit(editBuilder => {
+                for (const edit of edits) {
+                    editBuilder.replace(edit.range, edit.newText);
+                }
+            });
+        }
+    } catch (error) {
+        vscode.window.showErrorMessage(`Failed to format query: ${error}`);
+    }
+}
+
+// =============================================================================
+// CodeLens Provider
+// =============================================================================
+
+class KustoCodeLensProvider implements vscode.CodeLensProvider {
+    private client: LanguageClient;
+
+    constructor(client: LanguageClient) {
+        this.client = client;
+    }
+
+    async provideCodeLenses(document: vscode.TextDocument): Promise<vscode.CodeLens[]> {
+        const result = await server.getQueryRanges(this.client, document.uri.toString());
+        if (!result || !result.ranges.length) {
+            return [];
+        }
+
+        const lenses: vscode.CodeLens[] = [];
+
+        for (const range of result.ranges) {
+            const vsRange = new vscode.Range(
+                range.start.line, range.start.character,
+                range.end.line, range.end.character
+            );
+
+            // Skip empty or whitespace-only query ranges
+            if (document.getText(vsRange).trim().length === 0) {
+                continue;
+            }
+
+            lenses.push(new vscode.CodeLens(vsRange, {
+                title: '▶ Run',
+                command: 'kusto.runQuery',
+                tooltip: 'Run this query'
+            }));
+
+            lenses.push(new vscode.CodeLens(vsRange, {
+                title: '📋 Copy',
+                command: 'kusto.copyQuery',
+                tooltip: 'Copy this query with syntax highlighting'
+            }));
+
+            lenses.push(new vscode.CodeLens(vsRange, {
+                title: '✎ Format',
+                command: 'kusto.formatQuery',
+                tooltip: 'Format this query'
+            }));
+        }
+
+        return lenses;
+    }
+}
+
+// =============================================================================
+// Paste Edit Provider
+// =============================================================================
+
+class KustoPasteEditProvider implements vscode.DocumentPasteEditProvider {
+    private client: LanguageClient;
+
+    constructor(client: LanguageClient) {
+        this.client = client;
+    }
+
+    async provideDocumentPasteEdits(
+        document: vscode.TextDocument,
+        ranges: readonly vscode.Range[],
+        dataTransfer: vscode.DataTransfer,
+        context: vscode.DocumentPasteEditContext,
+        token: vscode.CancellationToken
+    ): Promise<vscode.DocumentPasteEdit[] | undefined> {
+        const clipboardContext = getClipboardContext();
+        if (!clipboardContext) {
+            return undefined;
+        }
+
+        // Check that the clipboard text matches the stored context
+        const textItem = dataTransfer.get('text/plain');
+        if (!textItem) {
+            return undefined;
+        }
+        const clipboardText = await textItem.asString();
+        if (clipboardText !== clipboardContext.text) {
+            // Clipboard has changed since the contextual copy, let default paste handle it
+            clearClipboardContext();
+            return undefined;
+        }
+
+        // Get the insertion position (first range's start)
+        const insertPosition = ranges[0]?.start;
+        if (!insertPosition) {
+            return undefined;
+        }
+
+        // Ask the server to transform the paste
+        const result = await server.transformPaste(
+            this.client,
+            clipboardContext.text,
+            clipboardContext.kind,
+            document.uri.toString(),
+            { line: insertPosition.line, character: insertPosition.character },
+            clipboardContext.entityCluster,
+            clipboardContext.entityDatabase,
+            clipboardContext.entityType,
+            clipboardContext.entityName,
+        );
+
+        if (!result || result === clipboardContext.text) {
+            // Server returned no change, let default paste handle it
+            return undefined;
+        }
+
+        const edit = new vscode.DocumentPasteEdit(
+            result,
+            'Paste with connection context',
+            PASTE_KIND
+        );
+
+        return [edit];
+    }
+}
+
+// =============================================================================
+// Query Separator Decorations
+// =============================================================================
+
+/**
+ * Activates editor decoration features like query separators.
+ */
+function activateQuerySeparators(context: vscode.ExtensionContext, client: LanguageClient): void {
+
+    // Decoration for separator line between queries
+    const querySeparatorDecoration = vscode.window.createTextEditorDecorationType({
+        isWholeLine: true,
+        borderWidth: '0 0 3px 0',
+        borderStyle: 'solid',
+        borderColor: 'rgba(128, 128, 128, 0.25)',
+    });
+
+    // Map to track debounce timers per document URI
+    const debounceTimers = new Map<string, NodeJS.Timeout>();
+
+    /**
+     * Requests query boundaries from the server and updates decorations.
+     */
+    async function updateQuerySeparators(uri: string): Promise<void> {
+        try {
+            const result = await server.getQueryRanges(client, uri);
+
+            if (!result) {
+                return;
+            }
+
+            // Apply to all visible editors for this document (handles split views)
+            const editors = vscode.window.visibleTextEditors.filter(
+                e => e.document.uri.toString() === result.uri
+            );
+
+            const config = vscode.workspace.getConfiguration('kusto');
+            const enableSeparators = config.get<boolean>('editor.showQuerySeparators', true);
+
+            const firstEditor = editors[0];
+            if (!firstEditor) {
+                return;
+            }
+
+            const doc = firstEditor.document;
+
+            // Create separator lines between queries (skip the first range)
+            // Find the last non-empty line for each query
+            const ranges = result.ranges
+                // skip the first query range since there should be no separator before it
+                .slice(1, result.ranges.length)
+                // filter out query blocks that are just one empty lines
+                .filter(r => doc.getText(new vscode.Range(r.start.line, 0, r.end.line, 0)).trim().length > 0)
+                // filter out any block with a start line that is out of range
+                .filter(r => r.start.line > 0 && r.start.line < doc.lineCount)
+                // put decoration on line before start of the range
+                .map(r => new vscode.Range(r.start.line - 1, 0, r.start.line - 1, 0));
+
+            // Clear and set decorations on all editors showing this document
+            for (const editor of editors) {
+                editor.setDecorations(querySeparatorDecoration, []);  // clear first
+                if (enableSeparators) {
+                    editor.setDecorations(querySeparatorDecoration, ranges);
+                }
+            }
+        } catch (error) {
+            console.error(`Failed to get query ranges for ${uri}:`, error);
+        }
+    }
+
+    // Update decorations when document opens
+    context.subscriptions.push(
+        vscode.workspace.onDidOpenTextDocument(async (document) => {
+            if (document.languageId === 'kusto') {
+                await updateQuerySeparators(document.uri.toString());
+            }
+        })
+    );
+
+    // Update decorations when document changes (debounced to avoid race conditions and improve performance)
+    context.subscriptions.push(
+        vscode.workspace.onDidChangeTextDocument((event) => {
+            if (event.document.languageId === 'kusto') {
+                const uri = event.document.uri.toString();
+                
+                // Clear existing timer for this document
+                const existingTimer = debounceTimers.get(uri);
+                if (existingTimer) {
+                    clearTimeout(existingTimer);
+                }
+                
+                // Set new timer - waits for typing to stop before requesting boundaries
+                // This ensures didChange notifications are sent to the server first
+                const timer = setTimeout(() => {
+                    updateQuerySeparators(uri);
+                    debounceTimers.delete(uri);
+                }, 300); // 300ms after last change
+                
+                debounceTimers.set(uri, timer);
+            }
+        })
+    );
+
+    // Update decorations for already open documents
+    for (const document of vscode.workspace.textDocuments) {
+        if (document.languageId === 'kusto') {
+            updateQuerySeparators(document.uri.toString());
+        }
+    }
+}
+
+// =============================================================================
+// Semantic Token Coloring
+// =============================================================================
+
+/**
+ * Activates semantic token coloring features.
+ */
+function activateSemanticColoring(context: vscode.ExtensionContext, client: LanguageClient): void {
+    // Handle workspace/semanticTokens/refresh notification from server
+    // VS Code does not automatically redraw with new semantic tokens when this notification is received,
+    // so we need to force it manually
+    client.onNotification('workspace/semanticTokens/refresh', forceRefreshSemanticTokens);
+
+    // Force establishing semantic token provider for documents already open
+    const serverCapabilities = client.initializeResult?.capabilities;
+    if (serverCapabilities?.semanticTokensProvider) {
+        // Small delay to ensure server is fully ready
+        setTimeout(() => {
+            vscode.workspace.textDocuments.forEach(doc => {
+                if (doc.languageId === 'kusto') {
+                    // Find visible editor for this document and trigger refresh
+                    const editor = vscode.window.visibleTextEditors.find(e => e.document === doc);
+                    if (editor) {
+                        // Trigger semantic token refresh
+                        vscode.commands.executeCommand('vscode.executeDocumentSemanticTokensProvider', doc.uri);
+                    }
+                }
+            });
+        }, 100);
+    }
+
+    // Also establish semantic token provider for new documents as they are opened
+    context.subscriptions.push(
+        vscode.workspace.onDidOpenTextDocument(doc => {
+            if (doc.languageId === 'kusto') {
+                // Small delay to ensure document is fully loaded
+                setTimeout(() => {
+                    vscode.commands.executeCommand('vscode.executeDocumentSemanticTokensProvider', doc.uri);
+                }, 100);
+            }
+        })
+    );
+}
+
+/**
+ * Forces VS Code to invalidate semantic token cache by making a real edit on all visible Kusto editors.
+ */
+async function forceRefreshSemanticTokens(): Promise<void> {
+    for (const editor of vscode.window.visibleTextEditors) {
+        if (editor.document.languageId === 'kusto') {
+            try {
+                // Get position at end of document
+                const lastLine = Math.max(0, editor.document.lineCount - 1);
+                const charOffset = editor.document.lineAt(lastLine).text.length;
+                const endPos = new vscode.Position(lastLine, charOffset);
+
+                // Insert a space at end (this changes document version)
+                await editor.edit((editBuilder) => {
+                    editBuilder.insert(endPos, ' ');
+                }, {
+                    undoStopBefore: false,
+                    undoStopAfter: false
+                });
+
+                // Immediately delete it (restores original content)
+                await editor.edit((editBuilder) => {
+                    editBuilder.delete(new vscode.Range(endPos, endPos.translate(0, 1)));
+                }, {
+                    undoStopBefore: false,
+                    undoStopAfter: false
+                });
+            } catch (e) {
+            }
+        }
+    }
+}
