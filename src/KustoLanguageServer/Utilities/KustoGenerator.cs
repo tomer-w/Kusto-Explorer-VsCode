@@ -6,13 +6,7 @@ namespace Kusto.Lsp;
 
 public static class KustoGenerator
 {
-    public static string GenerateTableStatement(DataTable table)
-    {
-        var tableExpression = GenerateTableExpression(table);
-        return $"let {KustoFacts.BracketNameIfNecessary(table.TableName)} = {tableExpression};\n";
-    }
-
-    public static string GenerateTableExpression(DataTable table)
+    public static string GenerateDataTableExpression(DataTable table)
     {
         var schema = GenerateTableSchema(table);
         var rows = GenerateTableRows(table);
@@ -70,11 +64,17 @@ public static class KustoGenerator
         }
         else if (symbol == ScalarTypes.DateTime)
         {
-            return $"datatime({(isNull ? "null" : value!.ToString())})";
+            if (isNull)
+                return "datetime(null)";
+            var dt = Convert.ToDateTime(value).ToUniversalTime();
+            return $"datetime({dt:o})";
         }
         else if (symbol == ScalarTypes.TimeSpan)
         {
-            return $"timespan({(isNull ? "null" : value!.ToString())})";
+            if (isNull)
+                return "timespan(null)";
+            var ts = (TimeSpan)value!;
+            return $"timespan({ts:c})"; 
         }
         else if (symbol == ScalarTypes.Guid)
         {
@@ -99,9 +99,34 @@ public static class KustoGenerator
 
     private static ScalarSymbol GetKustoSymbol(Type type)
     {
-        if (type.IsAssignableTo(typeof(Newtonsoft.Json.Linq.JToken)))
-            return ScalarTypes.Dynamic;
-        return ScalarTypes.GetSymbol(type.Name.ToLower()) is { } symbol ? symbol : ScalarTypes.Dynamic;
+        // ignore through Nullable<T>
+        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>))
+            type = type.GetGenericArguments()[0];
+
+        // handle types expected from kusto query results
+        return Type.GetTypeCode(type) switch
+        {
+            TypeCode.Boolean => ScalarTypes.Bool,
+            TypeCode.SByte => ScalarTypes.Bool,
+            TypeCode.Byte => ScalarTypes.Bool,
+            TypeCode.Int16 => ScalarTypes.Int,
+            TypeCode.UInt16 => ScalarTypes.Int,
+            TypeCode.Int32 => ScalarTypes.Int,
+            TypeCode.UInt32 => ScalarTypes.Long,
+            TypeCode.Int64 => ScalarTypes.Long,
+            TypeCode.UInt64 => ScalarTypes.Decimal,
+            TypeCode.Single => ScalarTypes.Real,
+            TypeCode.Double => ScalarTypes.Real,
+            TypeCode.Decimal => ScalarTypes.Decimal,
+            TypeCode.String => ScalarTypes.String,
+            TypeCode.DateTime => ScalarTypes.DateTime,
+            _ =>
+                type == typeof(TimeSpan) ? ScalarTypes.TimeSpan
+                : type == typeof(Guid) ? ScalarTypes.Guid
+                : type == typeof(System.Data.SqlTypes.SqlDecimal) ? ScalarTypes.Decimal
+                : type == typeof(object) ? ScalarTypes.Dynamic
+                : ScalarTypes.String // catch all
+        }; 
     }
 
     private static string GetKustoType(Type type)

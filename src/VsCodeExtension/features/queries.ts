@@ -54,7 +54,7 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
         vscode.commands.registerCommand('kusto.formatQuery', () => formatQuery(client)),
         vscode.commands.registerCommand('kusto.copyChart', () => copyChart()),
         vscode.commands.registerCommand('kusto.copyCell', () => copyCell()),
-        vscode.commands.registerCommand('kusto.copyStatement', () => copyStatement(client))
+        vscode.commands.registerCommand('kusto.copyTableAsExpression', () => copyTableAsExpression(client))
     );
 }
 
@@ -392,22 +392,22 @@ async function copyCell(): Promise<void> {
 }
 
 /**
- * Copies the active result table as a KQL datatable statement to the clipboard.
+ * Copies the active result table as a KQL datatable expression to the clipboard.
  * @param client The language client for LSP communication
  */
-async function copyStatement(client: LanguageClient): Promise<void> {
+async function copyTableAsExpression(client: LanguageClient): Promise<void> {
     if (!lastDataId) {
         return;
     }
 
     try {
         const tableName = lastTableNames[activeTabIndex];
-        const result = await server.getDataAsStatement(client, lastDataId, tableName);
-        if (result?.statement) {
-            await vscode.env.clipboard.writeText(result.statement);
+        const result = await server.getDataAsExpression(client, lastDataId, tableName);
+        if (result?.expression) {
+            await vscode.env.clipboard.writeText(result.expression);
         }
     } catch (error) {
-        vscode.window.showErrorMessage(`Failed to copy as statement: ${error}`);
+        vscode.window.showErrorMessage(`Failed to copy as expression: ${error}`);
     }
 }
 

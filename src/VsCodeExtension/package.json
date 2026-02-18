@@ -124,12 +124,12 @@
         "title": "Format Query"
       },
       {
-        "command": "kusto.copyEntityCommand",
+        "command": "kusto.copyEntityAsCommand",
         "title": "Copy as Command",
         "icon": "$(copy)"
       },
       {
-        "command": "kusto.copyEntityExpression",
+        "command": "kusto.copyEntityAsExpression",
         "title": "Copy as Expression",
         "icon": "$(symbol-variable)"
       },
@@ -143,8 +143,8 @@
         "title": "Copy Cell"
       },
       {
-        "command": "kusto.copyStatement",
-        "title": "Copy as Statement",
+        "command": "kusto.copyTableAsExpression",
+        "title": "Copy as Expression",
         "icon": "$(symbol-snippet)"
       }
     ],
@@ -203,12 +203,12 @@
           "group": "7_modification"
         },
         {
-          "command": "kusto.copyEntityCommand",
+          "command": "kusto.copyEntityAsCommand",
           "when": "view == kusto.connections && viewItem =~ /^(table|materializedView|function|entityGroup|graphModel)$/",
           "group": "9_cutcopypaste"
         },
         {
-          "command": "kusto.copyEntityExpression",
+          "command": "kusto.copyEntityAsExpression",
           "when": "view == kusto.connections && viewItem =~ /^(table|externalTable|materializedView|function|entityGroup|graphModel)$/",
           "group": "9_cutcopypaste"
         }
@@ -259,7 +259,7 @@
           "group": "9_cutcopypaste@2"
         },
         {
-          "command": "kusto.copyStatement",
+          "command": "kusto.copyTableAsExpression",
           "when": "webviewId == 'kusto.resultsView'",
           "group": "9_cutcopypaste@3"
         },

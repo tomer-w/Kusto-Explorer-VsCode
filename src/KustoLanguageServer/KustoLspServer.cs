@@ -1785,8 +1785,8 @@ public class KustoLspServer : LspServer, ILogger
         public required string Html { get; init; }
     }
 
-    [JsonRpcMethod("kusto/getDataAsStatement", UseSingleObjectParameterDeserialization = true)]
-    public Task<GetDataAsStatementResult?> OnGetDataAsStatement(GetDataAsStatementParams @params, CancellationToken cancellationToken)
+    [JsonRpcMethod("kusto/getDataAsExpression", UseSingleObjectParameterDeserialization = true)]
+    public Task<GetDataAsExpressionResult?> OnGetDataAsExpression(GetDataAsExpressionParams @params, CancellationToken cancellationToken)
     {
         try
         {
@@ -1798,10 +1798,10 @@ public class KustoLspServer : LspServer, ILogger
                 if (table == null)
                     table = results.Tables[0];
 
-                var statement = KustoGenerator.GenerateTableStatement(table);
+                var statement = KustoGenerator.GenerateDataTableExpression(table);
 
-                return Task.FromResult<GetDataAsStatementResult?>(
-                    new GetDataAsStatementResult { Statement = statement }
+                return Task.FromResult<GetDataAsExpressionResult?>(
+                    new GetDataAsExpressionResult { Expression = statement }
                     );
             }
         }
@@ -1810,11 +1810,11 @@ public class KustoLspServer : LspServer, ILogger
             _ = this.SendWindowLogMessageAsync(ex.Message);
         }
 
-        return Task.FromResult<GetDataAsStatementResult?>(null);
+        return Task.FromResult<GetDataAsExpressionResult?>(null);
     }
 
     [DataContract]
-    public class GetDataAsStatementParams
+    public class GetDataAsExpressionParams
     {
         [DataMember(Name = "dataId")]
         public required string DataId { get; init; }
@@ -1824,10 +1824,10 @@ public class KustoLspServer : LspServer, ILogger
     }
 
     [DataContract]
-    public class GetDataAsStatementResult
+    public class GetDataAsExpressionResult
     {
-        [DataMember(Name = "statement")]
-        public required string Statement { get; init; }
+        [DataMember(Name = "expression")]
+        public required string Expression { get; init; }
     }
 
     #endregion

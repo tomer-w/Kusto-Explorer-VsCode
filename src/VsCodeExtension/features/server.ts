@@ -175,19 +175,19 @@ export function getDataAsHtmlChart(
 }
 
 /**
- * Gets the query result data as a KQL datatable statement.
+ * Gets the query result data as a KQL datatable expression.
  * @param client The language client for LSP communication
  * @param dataId The data ID from running a query
  * @param tableName Optional name of a specific table to convert (defaults to first table)
- * @returns The datatable statement as a string, or null if not available
+ * @returns The datatable expression as a string, or null if not available
  */
-export function getDataAsStatement(
+export function getDataAsExpression(
     client: LanguageClient,
     dataId: string,
     tableName?: string
-): Promise<DataAsStatement | null> {
-    return client.sendRequest<DataAsStatement | null>(
-        'kusto/getDataAsStatement',
+): Promise<DataAsExpression | null> {
+    return client.sendRequest<DataAsExpression | null>(
+        'kusto/getDataAsExpression',
         {
             dataId,
             tableName
@@ -266,9 +266,9 @@ export interface DataAsHtmlChart {
     html: string;
 }
 
-/** Result of getting data as a KQL statement. */
-export interface DataAsStatement {
-    statement: string;
+/** Result of getting data as a KQL expression. */
+export interface DataAsExpression {
+    expression: string;
 }
 
 /** Position in a document. */

@@ -221,7 +221,7 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
             await connectionsProvider!.promptRenameServerGroup(item.groupInfo.name);
         }),
 
-        vscode.commands.registerCommand('kusto.copyEntityCommand', async (item: EntityTreeItem) => {
+        vscode.commands.registerCommand('kusto.copyEntityAsCommand', async (item: EntityTreeItem) => {
             if (!client) {
                 return;
             }
@@ -258,7 +258,7 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
             }
         }),
 
-        vscode.commands.registerCommand('kusto.copyEntityExpression', async (item: EntityTreeItem) => {
+        vscode.commands.registerCommand('kusto.copyEntityAsExpression', async (item: EntityTreeItem) => {
             if (!client) {
                 return;
             }
