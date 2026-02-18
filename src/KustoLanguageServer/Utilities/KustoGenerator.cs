@@ -18,21 +18,25 @@ public static class KustoGenerator
         var rows = GenerateTableRows(table);
         return
             $$"""
-            datatable {{schema}} 
-            [
-            {{rows}}
-            ]           
+            datatable {{schema}} {{rows}}
             """;           
     }
 
     public static string GenerateTableSchema(DataTable table)
     {
-        return $"({table.Columns.OfType<DataColumn>().Select(c => $"{KustoFacts.BracketNameIfNecessary(c.ColumnName)}: {GetKustoType(c.DataType)}")})";
+        var columnDecls = string.Join(", ", table.Columns.OfType<DataColumn>().Select(c => $"{KustoFacts.BracketNameIfNecessary(c.ColumnName)}: {GetKustoType(c.DataType)}"));
+        return $"({columnDecls})";
     }
 
     public static string GenerateTableRows(DataTable table)
     {
-        return string.Join("\n", table.Rows.OfType<DataRow>().Select(r => $"    {GenerateTableRow(r)}"));
+        var rows = string.Join(",\n", table.Rows.OfType<DataRow>().Select(r => $"    {GenerateTableRow(r)}"));
+        return
+            $$"""
+            [
+            {{rows}}
+            ]
+            """;
     }
 
     public static string GenerateTableRow(DataRow row)
@@ -62,23 +66,28 @@ public static class KustoGenerator
         }
         else if (symbol == ScalarTypes.Int)
         {
-            return $"int({(isNull ? "null" : symbol!.ToString())})";
+            return $"int({(isNull ? "null" : value!.ToString())})";
         }
         else if (symbol == ScalarTypes.DateTime)
         {
-            return $"datatime({(isNull ? "null" : symbol!.ToString())})";
+            return $"datatime({(isNull ? "null" : value!.ToString())})";
         }
         else if (symbol == ScalarTypes.TimeSpan)
         {
-            return $"timespan({(isNull ? "null" : symbol!.ToString())})";
+            return $"timespan({(isNull ? "null" : value!.ToString())})";
         }
         else if (symbol == ScalarTypes.Guid)
         {
-            return $"guid({(isNull ? "null" : symbol!.ToString())})";
+            return $"guid({(isNull ? "null" : value!.ToString())})";
         }
         else if (symbol is DynamicSymbol)
         {
-            return $"dynamic({(isNull ? "null" : symbol!.ToString())})";
+            if (isNull)
+                return "dynamic(null)";
+            var text = value is Newtonsoft.Json.Linq.JToken token
+                ? token.ToString(Newtonsoft.Json.Formatting.None)
+                : value?.ToString();
+            return $"dynamic({text})";
         }
         else
         {
@@ -90,7 +99,9 @@ public static class KustoGenerator
 
     private static ScalarSymbol GetKustoSymbol(Type type)
     {
-        return ScalarTypes.GetSymbol(type.Name) is { } symbol ? symbol : ScalarTypes.Dynamic;
+        if (type.IsAssignableTo(typeof(Newtonsoft.Json.Linq.JToken)))
+            return ScalarTypes.Dynamic;
+        return ScalarTypes.GetSymbol(type.Name.ToLower()) is { } symbol ? symbol : ScalarTypes.Dynamic;
     }
 
     private static string GetKustoType(Type type)

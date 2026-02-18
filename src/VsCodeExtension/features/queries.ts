@@ -5,6 +5,9 @@ import * as server from './server';
 
 let resultsView: vscode.WebviewView | undefined;
 let chartPanel: vscode.WebviewPanel | undefined;
+let lastDataId: string | undefined;
+let lastTableNames: string[] = [];
+let activeTabIndex = 0;
 
 /**
  * Activates query execution features including results view and chart panel.
@@ -26,6 +29,12 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
             webviewView.onDidDispose(() => {
                 resultsView = undefined;
             });
+            // Listen for messages from the results webview
+            webviewView.webview.onDidReceiveMessage((message) => {
+                if (message.command === 'tabChanged' && typeof message.index === 'number') {
+                    activeTabIndex = message.index;
+                }
+            });
             webviewView.webview.html = '<html>no results</html>';
         }
     }, {
@@ -44,7 +53,8 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
         vscode.commands.registerCommand('kusto.copyQuery', () => copyQuery(client)),
         vscode.commands.registerCommand('kusto.formatQuery', () => formatQuery(client)),
         vscode.commands.registerCommand('kusto.copyChart', () => copyChart()),
-        vscode.commands.registerCommand('kusto.copyCell', () => copyCell())
+        vscode.commands.registerCommand('kusto.copyCell', () => copyCell()),
+        vscode.commands.registerCommand('kusto.copyStatement', () => copyStatement(client))
     );
 }
 
@@ -106,6 +116,9 @@ async function displayResultsById(
 {
     const data = dataId ? await server.getDataAsHmtlTables(client, dataId) : null;
     if (data && data.tables.length > 0) {
+        lastDataId = dataId;
+        lastTableNames = data.tables.map(t => t.name);
+        activeTabIndex = 0;
         const html = buildTabbedHtml(data.tables);
         const totalRows = data.tables.reduce((sum, t) => sum + t.rowCount, 0);
         await displayResults(html, totalRows, data.hasChart);
@@ -383,6 +396,26 @@ async function copyCell(): Promise<void> {
 }
 
 /**
+ * Copies the active result table as a KQL datatable statement to the clipboard.
+ * @param client The language client for LSP communication
+ */
+async function copyStatement(client: LanguageClient): Promise<void> {
+    if (!lastDataId) {
+        return;
+    }
+
+    try {
+        const tableName = lastTableNames[activeTabIndex];
+        const result = await server.getDataAsStatement(client, lastDataId, tableName);
+        if (result?.statement) {
+            await vscode.env.clipboard.writeText(result.statement);
+        }
+    } catch (error) {
+        vscode.window.showErrorMessage(`Failed to copy as statement: ${error}`);
+    }
+}
+
+/**
  * Copies the results view content (as rich HTML) to the clipboard.
  */
 async function copyData(): Promise<void> {
@@ -620,6 +653,7 @@ const webviewMessageHandlerScript = `
         document.querySelectorAll('.tab-content').forEach(function(content, i) {
             content.classList.toggle('active', i === index);
         });
+        vscode.postMessage({ command: 'tabChanged', index: index });
     }
 
     // Track the element under the cursor when context menu opens
