@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import { workspace, ExtensionContext, window } from 'vscode';
 import * as conn from './features/connections'
 import * as queries from './features/queries'
+import * as chartPanel from './features/chartPanel'
 import * as decorations from './features/decorations'
 import * as semantics from './features/semantics'
 import * as copilot from './features/copilot'
@@ -55,7 +56,7 @@ export async function activate(context: ExtensionContext)
     const updateKustoContext = () => {
         // Check if any Kusto documents are open OR if chart panel exists
         const hasKustoDocument = vscode.workspace.textDocuments.some(doc => doc.languageId === 'kusto');
-        const isKustoActive = hasKustoDocument || queries.hasChartPanel();
+        const isKustoActive = hasKustoDocument || chartPanel.hasChartPanel();
         vscode.commands.executeCommand('setContext', 'kusto.hasActiveDocument', isKustoActive);
     };
 
