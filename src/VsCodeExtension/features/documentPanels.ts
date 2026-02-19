@@ -8,6 +8,15 @@ import { getClipboardContext, clearClipboardContext } from './clipboard';
 
 const PASTE_KIND = vscode.DocumentDropOrPasteEditKind.Text.append('kusto');
 
+const errorRangeDecoration = vscode.window.createTextEditorDecorationType({
+    before: {
+        contentText: '\u274C',
+        margin: '0 4px 0 0'
+    }
+});
+
+let codeLensProvider: KustoCodeLensProvider;
+
 /**
  * Activates query execution features.
  * @param context The extension context
@@ -23,14 +32,16 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
     context.subscriptions.push(
         vscode.commands.registerCommand('kusto.runQuery', () => runQuery(client)),
         vscode.commands.registerCommand('kusto.copyQuery', () => copyQuery(client)),
-        vscode.commands.registerCommand('kusto.formatQuery', () => formatQuery(client))
+        vscode.commands.registerCommand('kusto.formatQuery', () => formatQuery(client)),
+        vscode.commands.registerCommand('kusto.showResults', (uri: string, line: number, character: number) => showResults(client, uri, line, character))
     );
 
     // Register CodeLens provider for queries
+    codeLensProvider = new KustoCodeLensProvider(client);
     context.subscriptions.push(
         vscode.languages.registerCodeLensProvider(
             { language: 'kusto' },
-            new KustoCodeLensProvider(client)
+            codeLensProvider
         )
     );
 
@@ -78,11 +89,20 @@ async function runQuery(client: LanguageClient): Promise<void> {
             await setDocumentConnection(uri, runResult.cluster, runResult.database);
         }
         
+        // Clear any previous error decoration
+        editor.setDecorations(errorRangeDecoration, []);
+
         if (runResult && runResult.error)
         {
-            // display nothing
+            // display error and highlight error range
             await resultsPanel.displayError(runResult.error);
             await chartPanel.displayChartById(client, undefined);
+
+            if (runResult.error.range) {
+                const r = runResult.error.range;
+                const range = new vscode.Range(r.start.line, r.start.character, r.end.line, r.end.character);
+                editor.setDecorations(errorRangeDecoration, [range]);
+            }
         }
         else 
         {
@@ -90,10 +110,32 @@ async function runQuery(client: LanguageClient): Promise<void> {
             await resultsPanel.displayResultsById(client, runResult?.dataId);
             await chartPanel.displayChartById(client, runResult?.dataId);
         }
+
+        // Refresh CodeLens to show/hide Results lens
+        codeLensProvider.refresh();
     } 
     catch (error) 
     {
         vscode.window.showErrorMessage(`Failed to execute query: ${error}`);
+    }
+}
+
+/**
+ * Shows cached results for a query at the given position.
+ * @param client The language client for LSP communication
+ * @param uri The document URI
+ * @param line The line of the query position
+ * @param character The character of the query position
+ */
+async function showResults(client: LanguageClient, uri: string, line: number, character: number): Promise<void> {
+    try {
+        const dataId = await server.getDataId(client, uri, { line, character });
+        if (dataId) {
+            await resultsPanel.displayResultsById(client, dataId);
+            await chartPanel.displayChartById(client, dataId);
+        }
+    } catch (error) {
+        vscode.window.showErrorMessage(`Failed to show results: ${error}`);
     }
 }
 
@@ -195,9 +237,15 @@ async function formatQuery(client: LanguageClient): Promise<void> {
 
 class KustoCodeLensProvider implements vscode.CodeLensProvider {
     private client: LanguageClient;
+    private _onDidChangeCodeLenses = new vscode.EventEmitter<void>();
+    readonly onDidChangeCodeLenses = this._onDidChangeCodeLenses.event;
 
     constructor(client: LanguageClient) {
         this.client = client;
+    }
+
+    refresh(): void {
+        this._onDidChangeCodeLenses.fire();
     }
 
     async provideCodeLenses(document: vscode.TextDocument): Promise<vscode.CodeLens[]> {
@@ -236,6 +284,17 @@ class KustoCodeLensProvider implements vscode.CodeLensProvider {
                 command: 'kusto.formatQuery',
                 tooltip: 'Format this query'
             }));
+
+            // Only show Results lens if there is cached data for this query
+            const dataId = await server.getDataId(this.client, document.uri.toString(), range.start);
+            if (dataId) {
+                lenses.push(new vscode.CodeLens(vsRange, {
+                    title: '📊 Results',
+                    command: 'kusto.showResults',
+                    tooltip: 'Show cached results for this query',
+                    arguments: [document.uri.toString(), range.start.line, range.start.character]
+                }));
+            }
         }
 
         return lenses;
@@ -394,6 +453,14 @@ function activateQuerySeparators(context: vscode.ExtensionContext, client: Langu
     context.subscriptions.push(
         vscode.workspace.onDidChangeTextDocument((event) => {
             if (event.document.languageId === 'kusto') {
+                // Clear error range decoration on any edit
+                const errorEditor = vscode.window.visibleTextEditors.find(
+                    e => e.document.uri.toString() === event.document.uri.toString()
+                );
+                if (errorEditor) {
+                    errorEditor.setDecorations(errorRangeDecoration, []);
+                }
+
                 const uri = event.document.uri.toString();
                 
                 // Clear existing timer for this document

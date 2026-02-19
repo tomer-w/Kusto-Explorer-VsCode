@@ -10,14 +10,11 @@ public record DiagnosticInfo(Uri Id, string Text, ImmutableList<Diagnostic> Diag
 public class DiagnosticsManager : IDiagnosticsManager
 {
     private readonly IDocumentManager _documentManager;
-    private readonly IResultsManager _resultsManager;
 
     public DiagnosticsManager(
-        IDocumentManager scriptManager,
-        IResultsManager resultsManager)
+        IDocumentManager scriptManager)
     {
         _documentManager = scriptManager;
-        _resultsManager = resultsManager;
 
         _documentManager.DocumentAdded += (s, id) =>
         {
@@ -28,12 +25,6 @@ public class DiagnosticsManager : IDiagnosticsManager
         {
             // TODO: find a way to delay this if the document is not currently visible in the editor
             RecomputeDiagnostics(id);
-        };
-
-        _resultsManager.ResultsChanged += (s, document) =>
-        {
-            // results for this document changed, could be new diagnostics.
-            RecomputeDiagnostics(document.Id);
         };
     }
 
@@ -99,18 +90,6 @@ public class DiagnosticsManager : IDiagnosticsManager
                 if (adx.Count > 0)
                 {
                     diagnostics.AddRange(adx.Where(d => d.Severity != DiagnosticSeverity.Hidden));
-                }
-
-                // add any diagnostics from the last query results
-                foreach (var range in document.GetSectionRanges())
-                {
-                    if (_resultsManager.TryGetLastResultId(document, range.Start, out var resultId)
-                        && _resultsManager.TryGetCachedResultById(resultId, out var result)
-                        && result.Diagnostics != null
-                        && result.Diagnostics.Count > 0)
-                    {
-                        diagnostics.AddRange(result.Diagnostics);
-                    }
                 }
 
                 useThisCancellationToken.ThrowIfCancellationRequested();

@@ -26,7 +26,7 @@ public class ErrorDecoder
 
         if (details.LineOffset is { } lineOffset
             && details.CharacterOffset is { } charOffset
-            && query.OriginalText.TryGetTextPosition(lineOffset, charOffset, out var position))
+            && query.OriginalText.TryGetTextPosition(lineOffset - 1, charOffset - 1, out var position))
         {
             var len = details.Token != null ? details.Token.Length : 1;
             dx = dx.WithLocation(position, len);
@@ -85,7 +85,7 @@ public class ErrorDecoder
             // Note: some line offsets for queries after commands may have gotten incorrectly encoded as an offset to the token start
             // or some approximation of it (due to removal of whitespace and/or bad math).
             // This is a work around (temporary) to improve visual error reporting
-            if (!(Kusto.Language.Parsing.TextFacts.TryGetPosition(query.CurrentText, details.LineOffset.Value, details.CharacterOffset.Value + 1, out var offsetInCurrentText)
+            if (!(Kusto.Language.Parsing.TextFacts.TryGetPosition(query.CurrentText, details.LineOffset.Value, details.CharacterOffset.Value, out var offsetInCurrentText)
                   && offsetInCurrentText < query.CurrentText.Length)
                 && !string.IsNullOrEmpty(details.Token)
                 && details.LineOffset.Value < query.CurrentText.Length)
@@ -96,13 +96,13 @@ public class ErrorDecoder
                 if (tokenStart > 0
                     && Kusto.Language.Parsing.TextFacts.TryGetLineAndOffset(query.CurrentText, tokenStart, out var trueLine, out var trueLinePosition))
                 {
-                    details = details.WithLinePosition(trueLine, trueLinePosition - 1);
+                    details = details.WithLinePosition(trueLine, trueLinePosition);
                 }
             }
 
             if (details.LineOffset is { } lineOffset
                 && details.CharacterOffset is { } characterOffset
-                && Kusto.Language.Parsing.TextFacts.TryGetPosition(query.CurrentText, lineOffset, characterOffset + 1, out offsetInCurrentText)
+                && Kusto.Language.Parsing.TextFacts.TryGetPosition(query.CurrentText, lineOffset, characterOffset, out offsetInCurrentText)
                 && offsetInCurrentText < query.CurrentText.Length)
             {
                 // convert text offset back to position in the unmodified original text

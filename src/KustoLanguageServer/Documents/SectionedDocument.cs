@@ -40,9 +40,9 @@ public class SectionedDocument : IDocument
         return new SectionedDocument(_id, _script.WithGlobals(globals)); 
     }
 
-
-    private static readonly ConditionalWeakTable<CodeBlock, ISection> _blockSections =
-        new ConditionalWeakTable<CodeBlock, ISection>();
+    // use codeservice as key, since it does not change across edits of other blocks.
+    private static readonly ConditionalWeakTable<CodeService, ISection> _blockSections =
+        new ConditionalWeakTable<CodeService, ISection>();
 
     private record BlockSection(CodeService Service) : ISection
     {
@@ -54,9 +54,9 @@ public class SectionedDocument : IDocument
         var block = _script.GetBlockAtPosition(position);
         if (block != null)
         {
-            if (!_blockSections.TryGetValue(block, out var section))
+            if (!_blockSections.TryGetValue(block.Service, out var section))
             {
-                section = _blockSections.GetOrAdd(block, _block => new BlockSection(_block.Service));
+                section = _blockSections.GetOrAdd(block.Service, _service => new BlockSection(_service));
             }
             return section;
         }
@@ -77,6 +77,16 @@ public class SectionedDocument : IDocument
     public IReadOnlyList<TextRange> GetSectionRanges()
     {
         return _script.Blocks.Select(b => new TextRange(b.Start, b.Length)).ToImmutableList();
+    }
+
+    public string? GetMinimalText(int position, MinimalTextKind kind)
+    {
+        var block = _script.GetBlockAtPosition(position);
+        if (block != null)
+        {
+            return block.Service.GetMinimalText(kind);
+        }
+        return null;
     }
 
     public CodeActionResult ApplyCodeAction(ApplyAction action, int caretPosition, CodeActionOptions? options = null, CancellationToken cancellationToken = default)

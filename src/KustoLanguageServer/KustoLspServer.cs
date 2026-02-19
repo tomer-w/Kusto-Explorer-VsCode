@@ -61,8 +61,8 @@ public class KustoLspServer : LspServer, ILogger
         _connectionManager = new ConnectionManager();
         _symbolManager = new SymbolManager(_connectionManager);
         _documentManager = new DocumentManager(_symbolManager);
-        _resultsManager = new ResultsManager();
-        _diagnosticsManager = new DiagnosticsManager(_documentManager, _resultsManager);
+        _resultsManager = new ResultsManager(_documentManager);
+        _diagnosticsManager = new DiagnosticsManager(_documentManager);
         _queryManager = new QueryManager(_connectionManager, _documentManager, this);
         _chartManager = new PlotlyChartManager();
         _entityManager = new EntityManager(_connectionManager);
@@ -1686,6 +1686,31 @@ public class KustoLspServer : LspServer, ILogger
     #endregion
 
     #region Data (Tables, Charts, etc)
+
+    [JsonRpcMethod("kusto/getDataId", UseSingleObjectParameterDeserialization = true)]
+    public Task<string?> OnGetDataIdAsync(GetDataIdParams @params, CancellationToken cancellationToken)
+    {
+        if (_documentManager.TryGetDocument(@params.TextDocument.Uri, out var document))
+        {
+            var pos = GetTextPosition(document.Text, @params.Position);
+            if (_resultsManager.TryGetLastResultId(document, pos, out var id))
+            {
+                return Task.FromResult<string?>(id);
+            }
+        }
+
+        return Task.FromResult<string?>(null);
+    }
+
+    [DataContract]
+    public class GetDataIdParams
+    {
+        [DataMember(Name = "textDocument")]
+        public required LSP.TextDocumentIdentifier TextDocument { get; init; }
+
+        [DataMember(Name = "position")]
+        public required LSP.Position Position { get; init; }
+    }
 
     [JsonRpcMethod("kusto/getDataAsHtmlTables", UseSingleObjectParameterDeserialization = true)]
     public Task<GetDataAsHtmlTablesResult?> OnGetDataAsHtmlTablesAsync(GetDataAsHtmlTablesParams @params, CancellationToken cancellationToken)

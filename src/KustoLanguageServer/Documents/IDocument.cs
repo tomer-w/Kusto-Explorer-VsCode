@@ -1,8 +1,6 @@
 using Kusto.Language;
 using Kusto.Language.Editor;
-using Kusto.Language.Symbols;
 using System.Collections.Immutable;
-using System.Text;
 
 namespace Kusto.Lsp;
 
@@ -14,103 +12,109 @@ public interface IDocument
     /// <summary>
     /// The id of the document.
     /// </summary>
-    public abstract Uri Id { get; }
+    Uri Id { get; }
 
     /// <summary>
     /// The text of the query.
     /// </summary>
-    public abstract string Text { get; }
+    string Text { get; }
 
     /// <summary>
     /// The current <see cref="GlobalState"/> used for understanding semantics of the queries in the document.
     /// </summary>
-    public abstract GlobalState Globals { get; }
+    GlobalState Globals { get; }
 
     /// <summary>
     /// Returns a new document with the text modified.
     /// </summary>
-    public abstract IDocument WithText(string text);
+    IDocument WithText(string text);
 
     /// <summary>
     /// Returns a new document with the globals modified.
     /// </summary>
-    public abstract IDocument WithGlobals(GlobalState globals);
+    IDocument WithGlobals(GlobalState globals);
 
     /// <summary>
     /// Gets the section of the document at the current position.
     /// This item maintains identity across edits of other sections.
     /// </summary>
-    public abstract ISection? GetSection(int position);
+    ISection? GetSection(int position);
 
     /// <summary>
     /// Gets the text range of the section that overlaps the position.
     /// </summary>
-    public abstract TextRange? GetSectionRange(int position);
+    TextRange? GetSectionRange(int position);
 
     /// <summary>
     /// Gets the text ranges for all the document sections.
     /// </summary>
-    public abstract IReadOnlyList<TextRange> GetSectionRanges();
+    IReadOnlyList<TextRange> GetSectionRanges();
+
+    /// <summary>
+    /// Gets the minimal text of the section associated with the document position.
+    /// </summary>
+    /// <returns></returns>
+    string? GetMinimalText(int position, MinimalTextKind kind);
 
     /// <summary>
     /// Applies the code action to the document and returns the resulting text and new caret position.
     /// </summary>
-    public abstract CodeActionResult ApplyCodeAction(ApplyAction action, int caretPosition, CodeActionOptions? options = null, CancellationToken cancellationToken = default);
+    CodeActionResult ApplyCodeAction(ApplyAction action, int caretPosition, CodeActionOptions? options = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets the analyzer diagnostics for the document.
     /// </summary>
-    public abstract IReadOnlyList<Diagnostic> GetAnalyzerDiagnostics(bool waitForAnalysis = true, CancellationToken cancellationToken = default);
+    IReadOnlyList<Diagnostic> GetAnalyzerDiagnostics(bool waitForAnalysis = true, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets the classifications for the range within the document.
     /// </summary>
-    public abstract ClassificationInfo GetClassifications(int start, int length, bool clipToRange = true, bool waitForAnalysis = true, CancellationToken cancellationToken = default);
+    ClassificationInfo GetClassifications(int start, int length, bool clipToRange = true, bool waitForAnalysis = true, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Get the client parameters for the query at the position.
     /// </summary>
-    public abstract IReadOnlyList<ClientParameter> GetQueryClientParameters(int position);
+    IReadOnlyList<ClientParameter> GetQueryClientParameters(int position);
 
     /// <summary>
     /// Gets the code actions for the position and selection within the document.
     /// </summary>
-    public abstract CodeActionInfo GetCodeActions(int position, int selectionStart, int selectionLength, CodeActionOptions? options = null, bool waitForAnalysis = true, CancellationToken cancellationToken = default);
+    CodeActionInfo GetCodeActions(int position, int selectionStart, int selectionLength, CodeActionOptions? options = null, bool waitForAnalysis = true, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets the completion items for the position within the document.
     /// </summary>
-    public abstract CompletionInfo GetCompletionItems(int position, string? trigger, CompletionOptions? options = null, CancellationToken cancellationToken = default);
+    CompletionInfo GetCompletionItems(int position, string? trigger, CompletionOptions? options = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets the diagnostics for the document.
     /// </summary>
-    public abstract IReadOnlyList<Diagnostic> GetDiagnostics(bool waitForAnalysis = true, CancellationToken cancellationToken = default);
+    IReadOnlyList<Diagnostic> GetDiagnostics(bool waitForAnalysis = true, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Get the text range for the syntax element at the position within the document.
     /// </summary>
-    public abstract TextRange GetElement(int position, CancellationToken cancellationToken = default);
+    TextRange GetElement(int position, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Get the formatted text of the document.
     /// </summary>
-    public abstract DocumentEdits GetFormattedText(TextRange range, FormattingOptions? options = null, CancellationToken cancellationToken = default);
+    DocumentEdits GetFormattedText(TextRange range, FormattingOptions? options = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets the outlines for the document.
     /// </summary>
-    public abstract OutlineInfo GetOutlines(OutliningOptions options, CancellationToken cancellationToken = default);
+    OutlineInfo GetOutlines(OutliningOptions options, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets the quick info for the position within the document.
     /// </summary>
-    public abstract QuickInfo GetQuickInfo(int position, QuickInfoOptions? options = null, CancellationToken cancellationToken = default);
+    QuickInfo GetQuickInfo(int position, QuickInfoOptions? options = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets the locations of the items related to the item at the position in the document.
     /// </summary>
-    public abstract RelatedInfo GetRelatedElements(int position, FindRelatedOptions options = FindRelatedOptions.None, CancellationToken cancellationToken = default);
+    RelatedInfo GetRelatedElements(int position, FindRelatedOptions options = FindRelatedOptions.None, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -121,7 +125,7 @@ public interface ISection
     /// <summary>
     /// The text of the document in this section
     /// </summary>
-    public string Text { get; }
+    string Text { get; }
 }
 
 /// <summary>

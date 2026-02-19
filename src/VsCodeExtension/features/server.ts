@@ -51,6 +51,27 @@ export function getQueryRange(
 }
 
 /**
+ * Gets the data ID for the last query result at the given position.
+ * @param client The language client for LSP communication
+ * @param uri The document URI
+ * @param position The position within the document
+ * @returns The data ID if results exist at this position, or null
+ */
+export function getDataId(
+    client: LanguageClient,
+    uri: string,
+    position: Position
+): Promise<string | null> {
+    return client.sendRequest<string | null>(
+        'kusto/getDataId',
+        {
+            textDocument: { uri },
+            position
+        }
+    );
+}
+
+/**
  * Gets the server kind for a connection string.
  */
 export function getServerKind(
