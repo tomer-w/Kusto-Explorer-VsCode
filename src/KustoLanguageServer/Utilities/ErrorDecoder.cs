@@ -16,16 +16,12 @@ public class ErrorDecoder
     {
         var details = GetErrorDetails(exception, query);
 
-        var message = details.Message;
-        if (details.RecoveryAction != null)
-            message = $"{message}. {details.RecoveryAction}";
-
         var dx = new Diagnostic(
             code: details.ErrorCode,
             category: DiagnosticCategory.Correctness,
             severity: DiagnosticSeverity.Error,
-            description: "Server Error",
-            message: message 
+            description: details.RecoveryAction,
+            message: details.Message 
             );
 
         if (details.LineOffset is { } lineOffset
@@ -37,8 +33,8 @@ public class ErrorDecoder
         }
         else
         {
-            var originalStartPosition = query.GetOriginalPosition(0);
-            var originalEndPosition = query.GetOriginalPosition(query.CurrentText.Length);
+            var originalStartPosition = query.GetOriginalPosition(0, PositionBias.Right);
+            var originalEndPosition = query.GetOriginalPosition(query.CurrentText.Length, PositionBias.Left);
             dx = dx.WithLocation(originalStartPosition, originalEndPosition - originalStartPosition);
         }
 

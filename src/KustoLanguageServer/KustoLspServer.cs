@@ -1603,18 +1603,31 @@ public class KustoLspServer : LspServer, ILogger
 
                 var runResult = await _queryManager.RunQueryAsync(document, range, queryOptions, queryParameters, cancellationToken).ConfigureAwait(false);
 
+                string? resultId = null;
+                if (runResult?.ExecuteResult != null)
+                {
+                    // cache results for lookup later
+                    resultId = _resultsManager.CacheResult(document, range.Start, runResult.ExecuteResult);
+                }
+
                 if (runResult?.Error != null)
                 {
+                    var errorRange = runResult.Error.HasLocation
+                        ? GetLspRange(document.Text, new TextRange(runResult.Error.Start, runResult.Error.Length))
+                        : null;
+
                     return new RunQueryResults
                     {
-                        Error = runResult.Error.Message
+                        Error = new RunQueryDiagnostic
+                        {
+                            Message = runResult.Error.Message,
+                            Details = runResult.Error.Description,
+                            Range = errorRange
+                        }
                     };
                 }
                 else if (runResult?.ExecuteResult != null)
                 {
-                    // cache results for lookup later
-                    var resultId = _resultsManager.CacheResult(document, range.Start, runResult.ExecuteResult);
-
                     return new RunQueryResults
                     {
                         DataId = resultId,
@@ -1654,7 +1667,20 @@ public class KustoLspServer : LspServer, ILogger
         public string? Database { get; init; }
 
         [DataMember(Name = "error")]
-        public string? Error { get; init; }
+        public RunQueryDiagnostic? Error { get; init; }
+    }
+
+    [DataContract]
+    public class RunQueryDiagnostic
+    {
+        [DataMember(Name = "message")]
+        public required string Message { get; init; }
+
+        [DataMember(Name = "details")]
+        public string? Details { get; init; }
+
+        [DataMember(Name = "range")]
+        public LSP.Range? Range { get; init; }
     }
 
     #endregion
@@ -2004,7 +2030,6 @@ public class KustoLspServer : LspServer, ILogger
     }
 
     #endregion
-
 
     #endregion
 

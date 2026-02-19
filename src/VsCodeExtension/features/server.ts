@@ -246,7 +246,14 @@ export interface RunQueryResult {
     dataId?: string;
     cluster?: string;
     database?: string;
-    error?: string;
+    error?: QueryDiagnostic;
+}
+
+/** Error from running a query. */
+export interface QueryDiagnostic {
+    message: string,
+    details?: string,
+    range?: Range
 }
 
 /** A single HTML table from the query result. */

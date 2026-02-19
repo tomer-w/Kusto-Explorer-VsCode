@@ -75,9 +75,9 @@ export async function displayResultsById(
     }
 }
 
-export async function displayError(message: string): Promise<void> {
-    const errorIcon = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="vertical-align: text-bottom; flex-shrink: 0;"><path fill-rule="evenodd" clip-rule="evenodd" d="M8.6 1c.2.1.3.2.4.4l6.8 12.2c.3.5-.1 1.1-.7 1.1H1c-.6 0-1-.6-.7-1.1L7 1.4c.2-.3.4-.4.6-.4h1zm-.5 2L2 13h12L8.1 3zm.4 8.8V13H7.1v-1.2h1.4zm0-1.3V6.2H7.1v4.3h1.4z"/></svg>`;
-    var htmlMessage = `<html><body><p style="color: var(--vscode-errorForeground, red); display: flex; align-items: center; gap: 6px; font-family: var(--vscode-font-family, sans-serif);">${errorIcon}<span>${escapeHtml(message)}</span></p></body></html>`;
+export async function displayError(error: server.QueryDiagnostic): Promise<void> {
+    //var htmlMessage = `<html><body><p style="color: var(--vscode-errorForeground, red); display: flex; align-items: center; gap: 6px; font-family: var(--vscode-font-family, sans-serif);">\u274C<span>${escapeHtml(message)}</span></p></body></html>`;
+    var htmlMessage = `<html><body><table><tr><td>\u274C</td><td><pre>${escapeHtml(error.message)}</pre></td></tr></tr><td></td><td><pre>${escapeHtml(error.details || '')}</pre></td></tr></table></body></html>`;
     await displayResults(htmlMessage, undefined, false, true);
 }
 
