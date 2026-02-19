@@ -139,6 +139,11 @@
         "icon": "$(file-media)"
       },
       {
+        "command": "kusto.copyChartTransparent",
+        "title": "Copy Chart (Transparent)",
+        "icon": "$(file-media)"
+      },
+      {
         "command": "kusto.copyCell",
         "title": "Copy Cell"
       },
@@ -265,6 +270,10 @@
         },
         {
           "command": "kusto.copyChart",
+          "when": "webviewId == 'kusto'"
+        },
+        {
+          "command": "kusto.copyChartTransparent",
           "when": "webviewId == 'kusto'"
         }
       ]

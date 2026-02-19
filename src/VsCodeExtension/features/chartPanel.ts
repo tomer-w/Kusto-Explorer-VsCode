@@ -14,7 +14,8 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
 
     // Register chart-related commands
     context.subscriptions.push(
-        vscode.commands.registerCommand('kusto.copyChart', () => copyChartCommand())
+        vscode.commands.registerCommand('kusto.copyChart', () => copyChartCommand()),
+        vscode.commands.registerCommand('kusto.copyChartTransparent', () => copyChartTransparentCommand())
     );
 }
 
@@ -158,21 +159,70 @@ async function copyChartCommand(): Promise<void> {
     chartPanel.webview.postMessage({ command: 'copyChart' });
 }
 
-/** Script injected into chart webview HTML to handle copy as PNG. */
+/**
+ * Implementation of the 'kusto.copyChartTransparent' command.
+ * Copies the chart with a transparent background and light-mode colors,
+ * suitable for pasting into documents with white backgrounds.
+ */
+async function copyChartTransparentCommand(): Promise<void> {
+    if (!chartPanel) {
+        return;
+    }
+
+    chartPanel.webview.postMessage({ command: 'copyChartTransparent' });
+}
+
+/** Script injected into chart webview HTML to handle copy commands. */
 const chartMessageHandlerScript = `
 <script>
     (function() {
         const vscodeApi = (typeof acquireVsCodeApi === 'function') ? acquireVsCodeApi() : null;
         if (!vscodeApi) return;
+
+        // Layout overrides for transparent copy
+        const transparentLayout = {
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            font: { color: '#333333' },
+            xaxis: { color: '#333333', gridcolor: '#e0e0e0' },
+            yaxis: { color: '#333333', gridcolor: '#e0e0e0' },
+            legend: { font: { color: '#333333' } }
+        };
+
         window.addEventListener('message', async event => {
             const message = event.data;
-            if (message.command === 'copyChart') {
+            if (message.command === 'copyChart' || message.command === 'copyChartTransparent') {
                 try {
+                    const transparent = message.command === 'copyChartTransparent';
                     // Find the Plotly chart div
                     const plotDiv = document.querySelector('.js-plotly-plot') || document.querySelector('.plotly-graph-div');
                     if (plotDiv && typeof Plotly !== 'undefined') {
-                        const pngDataUrl = await Plotly.toImage(plotDiv, { format: 'png', width: plotDiv.offsetWidth, height: plotDiv.offsetHeight });
-                        const svgDataUrl = await Plotly.toImage(plotDiv, { format: 'svg', width: plotDiv.offsetWidth, height: plotDiv.offsetHeight });
+                        const width = plotDiv.offsetWidth;
+                        const height = plotDiv.offsetHeight;
+
+                        // Save original layout properties before any changes
+                        let savedLayout = null;
+                        if (transparent) {
+                            const layout = plotDiv.layout || {};
+                            savedLayout = {
+                                paper_bgcolor: layout.paper_bgcolor,
+                                plot_bgcolor: layout.plot_bgcolor,
+                                font: layout.font ? JSON.parse(JSON.stringify(layout.font)) : undefined,
+                                xaxis: layout.xaxis ? JSON.parse(JSON.stringify(layout.xaxis)) : undefined,
+                                yaxis: layout.yaxis ? JSON.parse(JSON.stringify(layout.yaxis)) : undefined,
+                                legend: layout.legend ? JSON.parse(JSON.stringify(layout.legend)) : undefined
+                            };
+                            await Plotly.relayout(plotDiv, transparentLayout);
+                        }
+
+                        const pngDataUrl = await Plotly.toImage(plotDiv, { format: 'png', width: width, height: height });
+                        const svgDataUrl = await Plotly.toImage(plotDiv, { format: 'svg', width: width, height: height });
+
+                        // Restore original layout if we changed it
+                        if (transparent && savedLayout) {
+                            await Plotly.relayout(plotDiv, savedLayout);
+                        }
+
                         vscodeApi.postMessage({ command: 'copyChartResult', pngDataUrl: pngDataUrl, svgDataUrl: svgDataUrl });
                     } else {
                         // Fallback: use canvas if available
