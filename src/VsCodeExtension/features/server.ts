@@ -219,17 +219,20 @@ export function getDataAsExpression(
 export interface DatabaseTableInfo {
     name: string;
     description?: string;
+    folder?: string;
     columns?: DatabaseColumnInfo[];
 }
 
 export interface DatabaseColumnInfo {
     name: string;
     type: string;
+    description?: string;
 }
 
 export interface DatabaseFunctionInfo {
     name: string;
     description?: string;
+    folder?: string;
     parameters?: string;
     body?: string;
 }
@@ -242,6 +245,7 @@ export interface DatabaseParameterInfo {
 export interface DatabaseEntityGroupInfo {
     name: string;
     description?: string;
+    folder?: string;
     entities?: string[];
 }
 

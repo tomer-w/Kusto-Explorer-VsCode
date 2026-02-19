@@ -2,6 +2,7 @@
 using Kusto.Language;
 using Kusto.Language.Editor;
 using Kusto.Language.Symbols;
+using Kusto.Symbols;
 using Lsp.Common;
 using StreamJsonRpc;
 
@@ -1384,6 +1385,7 @@ public class KustoLspServer : LspServer, ILogger
             {
                 Name = table.Name,
                 Description = table.Description,
+                Folder = table.Folder,
                 Columns = table.Columns.Select(c => new DatabaseColumnInfo
                 {
                     Name = c.Name,
@@ -1396,6 +1398,7 @@ public class KustoLspServer : LspServer, ILogger
             {
                 Name = func.Name,
                 Description = func.Description,
+                Folder = func.Folder,
                 Parameters = func.Signatures.FirstOrDefault()?.Parameters is { } prms
                     ? Parameter.GetParameterListDeclaration(prms)
                     : "()",
@@ -1407,6 +1410,7 @@ public class KustoLspServer : LspServer, ILogger
             {
                 Name = group.Name,
                 Description = group.Description,
+                Folder = group.Folder,
                 Entities = group.Members.Select(m => m.Name).ToArray()
             };
 
@@ -1424,113 +1428,115 @@ public class KustoLspServer : LspServer, ILogger
     public class GetDatabaseInfoParams
     {
         [DataMember(Name = "cluster")]
-        public required string Cluster { get; set; }
+        public required string Cluster { get; init; }
 
         [DataMember(Name = "database")]
-        public required string Database { get; set; }
+        public required string Database { get; init; }
     }
 
     [DataContract]
     public class GetDatabaseInfoResult
     {
         [DataMember(Name = "name")]
-        public required string Name { get; set; }
+        public required string Name { get; init; }
 
         [DataMember(Name = "tables")]
-        public DatabaseTableInfo[]? Tables { get; set; }
+        public DatabaseTableInfo[]? Tables { get; init; }
 
         [DataMember(Name = "externalTables")]
-        public DatabaseTableInfo[]? ExternalTables { get; set; }
+        public DatabaseTableInfo[]? ExternalTables { get; init; }
 
         [DataMember(Name = "materializedViews")]
-        public DatabaseTableInfo[]? MaterializedViews { get; set; }
+        public DatabaseTableInfo[]? MaterializedViews { get; init; }
 
         [DataMember(Name = "functions")]
-        public DatabaseFunctionInfo[]? Functions { get; set; }
+        public DatabaseFunctionInfo[]? Functions { get; init; }
 
         [DataMember(Name = "entityGroups")]
-        public DatabaseEntityGroupInfo[]? EntityGroups { get; set; }
+        public DatabaseEntityGroupInfo[]? EntityGroups { get; init; }
 
         [DataMember(Name = "graphModels")]
-        public DatabaseGraphModelInfo[]? GraphModels { get; set; }
+        public DatabaseGraphModelInfo[]? GraphModels { get; init; }
     }
 
     [DataContract]
     public class DatabaseTableInfo
     {
         [DataMember(Name = "name")]
-        public required string Name { get; set; }
+        public required string Name { get; init; }
 
         [DataMember(Name = "description")]
-        public string? Description { get; set; }
+        public string? Description { get; init; }
+
+        [DataMember(Name = "folder")]
+        public string? Folder { get; init; }
 
         [DataMember(Name = "columns")]
-        public DatabaseColumnInfo[]? Columns { get; set; }
+        public DatabaseColumnInfo[]? Columns { get; init; }
     }
 
     [DataContract]
     public class DatabaseColumnInfo
     {
         [DataMember(Name = "name")]
-        public required string Name { get; set; }
+        public required string Name { get; init; }
 
         [DataMember(Name = "type")]
-        public required string Type { get; set; }
+        public required string Type { get; init; }
+
+        [DataMember(Name = "description")]
+        public string? Description { get; init; }
     }
 
     [DataContract]
     public class DatabaseFunctionInfo
     {
         [DataMember(Name = "name")]
-        public required string Name { get; set; }
+        public required string Name { get; init; }
 
         [DataMember(Name = "description")]
-        public string? Description { get; set; }
+        public string? Description { get; init; }
+
+        [DataMember(Name = "folder")]
+        public string? Folder { get; init; }
 
         [DataMember(Name = "parameters")]
-        public string? Parameters { get; set; }
+        public string? Parameters { get; init; }
 
         [DataMember(Name = "body")]
-        public string? Body { get; set; }
-    }
-
-    [DataContract]
-    public class DatabaseParameterInfo
-    {
-        [DataMember(Name = "name")]
-        public required string Name { get; set; }
-
-        [DataMember(Name = "type")]
-        public required string Type { get; set; }
+        public string? Body { get; init; }
     }
 
     [DataContract]
     public class DatabaseEntityGroupInfo
     {
         [DataMember(Name = "name")]
-        public required string Name { get; set; }
+        public required string Name { get; init; }
 
         [DataMember(Name = "description")]
-        public string? Description { get; set; }
+        public string? Description { get; init; }
+
+        [DataMember(Name = "folder")]
+        public string? Folder { get; init; }
 
         [DataMember(Name = "entities")]
-        public string[]? Entities { get; set; }
+        public string[]? Entities { get; init; }
     }
 
     [DataContract]
     public class DatabaseGraphModelInfo
     {
         [DataMember(Name = "name")]
-        public required string Name { get; set; }
+        public required string Name { get; init; }
 
         [DataMember(Name = "edges")]
-        public string[]? Edges { get; set; }
+        public string[]? Edges { get; init; }
 
         [DataMember(Name = "nodes")]
-        public string[]? Nodes { get; set; }
+        public string[]? Nodes { get; init; }
 
         [DataMember(Name = "snapshots")]
-        public string[]? Snapshots { get; set; }
+        public string[]? Snapshots { get; init; }
     }
 
     #endregion
