@@ -206,7 +206,7 @@ public class ServerSymbolLoader : SymbolLoader
     private static TableSymbol CreateTableSymbol(LoadTablesResult tableSchema)
     {
         var symbol = new TableSymbol(tableSchema.TableName, "(" + tableSchema.Schema + ")", tableSchema.DocString);
-        SymbolFolderExtensions.SetFolder(symbol, tableSchema.Folder ?? "");
+        SymbolFolderExtensions.SetFolder(symbol, tableSchema.Folder);
         return symbol;
     }
 
@@ -245,7 +245,7 @@ public class ServerSymbolLoader : SymbolLoader
     private static ExternalTableSymbol CreateExternalTableSymbol(LoadExternalTablesResult1 et, LoadExternalTablesResult2 et2)
     {
         var symbol = new ExternalTableSymbol(et.TableName, "(" + et2.Schema + ")", et.DocString);
-        SymbolFolderExtensions.SetFolder(symbol, et.Folder ?? "");
+        SymbolFolderExtensions.SetFolder(symbol, et.Folder);
         return symbol;
     }
 
@@ -287,7 +287,7 @@ public class ServerSymbolLoader : SymbolLoader
     private static MaterializedViewSymbol CreateMaterializedViewSymbol(LoadMaterializedViewsResult1 mv, LoadMaterializedViewsResult2 mv2)
     {
         var symbol = new MaterializedViewSymbol(mv.Name, "(" + mv2.Schema + ")", mv.Query, mv.DocString);
-        SymbolFolderExtensions.SetFolder(symbol, mv.Folder ?? "");
+        SymbolFolderExtensions.SetFolder(symbol, mv.Folder);
         return symbol;
     }
 
@@ -307,7 +307,7 @@ public class ServerSymbolLoader : SymbolLoader
     private static FunctionSymbol CreateFunctionSymbol(LoadFunctionsResult fun)
     {
         var fs = new FunctionSymbol(fun.Name, fun.Parameters, fun.Body, fun.DocString);
-        SymbolFolderExtensions.SetFolder(fs, fun.Folder ?? "");
+        SymbolFolderExtensions.SetFolder(fs, fun.Folder);
         return fs;
     }
 

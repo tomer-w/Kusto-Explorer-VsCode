@@ -9,9 +9,16 @@ public static class SymbolFolderExtensions
     private static readonly ConditionalWeakTable<Symbol, string> _symbolFolderMap = 
         new ConditionalWeakTable<Symbol, string>();
 
-    internal static void SetFolder(Symbol symbol, string folder)
+    internal static void SetFolder(Symbol symbol, string? folder)
     {
-        _symbolFolderMap.AddOrUpdate(symbol, folder);
+        if (folder != null)
+        {
+            _symbolFolderMap.AddOrUpdate(symbol, folder);
+        }
+        else
+        {
+            _symbolFolderMap.Remove(symbol);
+        }
     }
 
     internal static string? GetFolder(this Symbol symbol)

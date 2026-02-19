@@ -404,6 +404,7 @@ type KustoTreeItem =
 | ServerTreeItem 
 | DatabaseTreeItem 
 | DatabaseFolderTreeItem 
+| EntityFolderTreeItem
 | TableTreeItem
 | ExternalTableTreeItem
 | MaterializedViewTreeItem
@@ -505,6 +506,23 @@ class DatabaseFolderTreeItem extends vscode.TreeItem {
         this.id = `folder:${clusterName}:${databaseName}:${folderType}`;
         this.contextValue = 'databaseFolder';
         this.iconPath = new vscode.ThemeIcon(icon);
+    }
+}
+
+class EntityFolderTreeItem extends vscode.TreeItem {
+    constructor(
+        public readonly clusterName: string,
+        public readonly databaseName: string,
+        public readonly folderType: DatabaseFolderType,
+        public readonly folderPath: string  // Full path like "Logs/HTTP"
+    ) {
+        // Display name is the last segment of the path
+        const segments = folderPath.split('/');
+        const folderName = segments[segments.length - 1] ?? folderPath;
+        super(folderName, vscode.TreeItemCollapsibleState.Collapsed);
+        this.id = `entityFolder:${clusterName}:${databaseName}:${folderType}:${folderPath}`;
+        this.contextValue = 'entityFolder';
+        this.iconPath = new vscode.ThemeIcon('folder');
     }
 }
 
@@ -643,6 +661,89 @@ class GraphModelTreeItem extends vscode.TreeItem {
         this.contextValue = 'graphModel';
         this.iconPath = new vscode.ThemeIcon('type-hierarchy');
     }
+}
+
+// =============================================================================
+// Entity Folder Grouping Helper
+// =============================================================================
+
+/**
+ * Groups entities by their folder paths, returning entities that belong directly
+ * at the current level and subfolders that contain deeper entities.
+ * @param entities List of entities that may have a folder property
+ * @param currentPath The current folder path ('' for root level of entity type folder)
+ * @returns Direct entities at this level and subfolder paths to create
+ */
+function getEntitiesAndSubfolders<T extends { folder?: string }>(
+    entities: T[],
+    currentPath: string
+): { directEntities: T[]; subfolderPaths: string[] } {
+    const directEntities: T[] = [];
+    const subfolderPathSet = new Set<string>();
+
+    for (const entity of entities) {
+        const folder = entity.folder;
+
+        if (!folder) {
+            // No folder: show at root level only
+            if (currentPath === '') {
+                directEntities.push(entity);
+            }
+            continue;
+        }
+
+        if (currentPath === '') {
+            // Root level: entities with folders go into subfolders
+            const firstSlash = folder.indexOf('/');
+            const topFolder = firstSlash === -1 ? folder : folder.substring(0, firstSlash);
+            subfolderPathSet.add(topFolder);
+        } else if (folder === currentPath) {
+            // Entity's folder matches this folder exactly
+            directEntities.push(entity);
+        } else if (folder.startsWith(currentPath + '/')) {
+            // Entity is in a deeper subfolder
+            const remaining = folder.substring(currentPath.length + 1);
+            const nextSlash = remaining.indexOf('/');
+            const nextSegment = nextSlash === -1 ? remaining : remaining.substring(0, nextSlash);
+            subfolderPathSet.add(currentPath + '/' + nextSegment);
+        }
+    }
+
+    return {
+        directEntities,
+        subfolderPaths: Array.from(subfolderPathSet).sort((a, b) =>
+            a.localeCompare(b, undefined, { sensitivity: 'base' })
+        )
+    };
+}
+
+/**
+ * Builds tree items for a given entity type folder at a specific folder path level.
+ * Returns entity folder items (sorted) followed by entity items (sorted).
+ */
+function buildEntityFolderChildren<TEntity extends { folder?: string; name: string }, TTreeItem extends KustoTreeItem>(
+    entities: TEntity[],
+    currentPath: string,
+    clusterName: string,
+    databaseName: string,
+    folderType: DatabaseFolderType,
+    createTreeItem: (entity: TEntity) => TTreeItem
+): KustoTreeItem[] {
+    const { directEntities, subfolderPaths } = getEntitiesAndSubfolders(entities, currentPath);
+
+    const folderItems: EntityFolderTreeItem[] = subfolderPaths.map(
+        p => new EntityFolderTreeItem(clusterName, databaseName, folderType, p)
+    );
+
+    const entityItems: TTreeItem[] = directEntities
+        .map(e => createTreeItem(e))
+        .sort((a, b) => {
+            const aLabel = typeof a.label === 'string' ? a.label : a.label?.label ?? '';
+            const bLabel = typeof b.label === 'string' ? b.label : b.label?.label ?? '';
+            return aLabel.localeCompare(bLabel, undefined, { sensitivity: 'base' });
+        });
+
+    return [...folderItems, ...entityItems];
 }
 
 class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
@@ -925,29 +1026,69 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
 
             switch (element.folderType) {
                 case 'tables':
-                    return (dbInfo.tables ?? [])
-                        .map(t => new TableTreeItem(element.clusterName, element.databaseName, t))
-                        .sort((a, b) => a.tableInfo.name.localeCompare(b.tableInfo.name, undefined, { sensitivity: 'base' }));
+                    return buildEntityFolderChildren(
+                        dbInfo.tables ?? [], '', element.clusterName, element.databaseName, 'tables',
+                        t => new TableTreeItem(element.clusterName, element.databaseName, t)
+                    );
                 case 'externalTables':
-                    return (dbInfo.externalTables ?? [])
-                        .map(t => new ExternalTableTreeItem(element.clusterName, element.databaseName, t))
-                        .sort((a, b) => a.tableInfo.name.localeCompare(b.tableInfo.name, undefined, { sensitivity: 'base' }));
+                    return buildEntityFolderChildren(
+                        dbInfo.externalTables ?? [], '', element.clusterName, element.databaseName, 'externalTables',
+                        t => new ExternalTableTreeItem(element.clusterName, element.databaseName, t)
+                    );
                 case 'materializedViews':
-                    return (dbInfo.materializedViews ?? [])
-                        .map(v => new MaterializedViewTreeItem(element.clusterName, element.databaseName, v))
-                        .sort((a, b) => a.viewInfo.name.localeCompare(b.viewInfo.name, undefined, { sensitivity: 'base' }));
+                    return buildEntityFolderChildren(
+                        dbInfo.materializedViews ?? [], '', element.clusterName, element.databaseName, 'materializedViews',
+                        v => new MaterializedViewTreeItem(element.clusterName, element.databaseName, v)
+                    );
                 case 'functions':
-                    return (dbInfo.functions ?? [])
-                        .map(f => new FunctionTreeItem(element.clusterName, element.databaseName, f))
-                        .sort((a, b) => a.functionInfo.name.localeCompare(b.functionInfo.name, undefined, { sensitivity: 'base' }));
+                    return buildEntityFolderChildren(
+                        dbInfo.functions ?? [], '', element.clusterName, element.databaseName, 'functions',
+                        f => new FunctionTreeItem(element.clusterName, element.databaseName, f)
+                    );
                 case 'entityGroups':
-                    return (dbInfo.entityGroups ?? [])
-                        .map(g => new EntityGroupTreeItem(element.clusterName, element.databaseName, g))
-                        .sort((a, b) => a.groupInfo.name.localeCompare(b.groupInfo.name, undefined, { sensitivity: 'base' }));
+                    return buildEntityFolderChildren(
+                        dbInfo.entityGroups ?? [], '', element.clusterName, element.databaseName, 'entityGroups',
+                        g => new EntityGroupTreeItem(element.clusterName, element.databaseName, g)
+                    );
                 case 'graphModels':
                     return (dbInfo.graphModels ?? [])
                         .map(g => new GraphModelTreeItem(element.clusterName, element.databaseName, g))
                         .sort((a, b) => a.graphInfo.name.localeCompare(b.graphInfo.name, undefined, { sensitivity: 'base' }));
+            }
+        }
+
+        if (element instanceof EntityFolderTreeItem) {
+            const dbInfo = connections.getDatabaseInfo(element.clusterName, element.databaseName);
+            if (!dbInfo) return [];
+
+            switch (element.folderType) {
+                case 'tables':
+                    return buildEntityFolderChildren(
+                        dbInfo.tables ?? [], element.folderPath, element.clusterName, element.databaseName, 'tables',
+                        t => new TableTreeItem(element.clusterName, element.databaseName, t)
+                    );
+                case 'externalTables':
+                    return buildEntityFolderChildren(
+                        dbInfo.externalTables ?? [], element.folderPath, element.clusterName, element.databaseName, 'externalTables',
+                        t => new ExternalTableTreeItem(element.clusterName, element.databaseName, t)
+                    );
+                case 'materializedViews':
+                    return buildEntityFolderChildren(
+                        dbInfo.materializedViews ?? [], element.folderPath, element.clusterName, element.databaseName, 'materializedViews',
+                        v => new MaterializedViewTreeItem(element.clusterName, element.databaseName, v)
+                    );
+                case 'functions':
+                    return buildEntityFolderChildren(
+                        dbInfo.functions ?? [], element.folderPath, element.clusterName, element.databaseName, 'functions',
+                        f => new FunctionTreeItem(element.clusterName, element.databaseName, f)
+                    );
+                case 'entityGroups':
+                    return buildEntityFolderChildren(
+                        dbInfo.entityGroups ?? [], element.folderPath, element.clusterName, element.databaseName, 'entityGroups',
+                        g => new EntityGroupTreeItem(element.clusterName, element.databaseName, g)
+                    );
+                default:
+                    return [];
             }
         }
 
@@ -978,22 +1119,42 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
     {
         if (element instanceof TableTreeItem)
         {
+            const folder = element.tableInfo.folder;
+            if (folder) {
+                return new EntityFolderTreeItem(element.clusterName, element.databaseName, 'tables', folder);
+            }
             return new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'tables', 'Tables', 'table');
         }
         if (element instanceof ExternalTableTreeItem)
         {
+            const folder = element.tableInfo.folder;
+            if (folder) {
+                return new EntityFolderTreeItem(element.clusterName, element.databaseName, 'externalTables', folder);
+            }
             return new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'externalTables', 'External Tables', 'cloud');
         }
         if (element instanceof MaterializedViewTreeItem)
         {
+            const folder = element.viewInfo.folder;
+            if (folder) {
+                return new EntityFolderTreeItem(element.clusterName, element.databaseName, 'materializedViews', folder);
+            }
             return new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'materializedViews', 'Materialized Views', 'eye');
         }
         if (element instanceof FunctionTreeItem)
         {
+            const folder = element.functionInfo.folder;
+            if (folder) {
+                return new EntityFolderTreeItem(element.clusterName, element.databaseName, 'functions', folder);
+            }
             return new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'functions', 'Functions', 'symbol-function');
         }
         if (element instanceof EntityGroupTreeItem)
         {
+            const folder = element.groupInfo.folder;
+            if (folder) {
+                return new EntityFolderTreeItem(element.clusterName, element.databaseName, 'entityGroups', folder);
+            }
             return new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'entityGroups', 'Entity Groups', 'symbol-namespace');
         }
         if (element instanceof EntityGroupMemberTreeItem)
@@ -1008,6 +1169,26 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
         if (element instanceof GraphModelTreeItem)
         {
             return new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'graphModels', 'Graph Models', 'type-hierarchy');
+        }
+        if (element instanceof EntityFolderTreeItem)
+        {
+            // If the folder path has a parent (contains '/'), return the parent EntityFolderTreeItem
+            const lastSlash = element.folderPath.lastIndexOf('/');
+            if (lastSlash !== -1) {
+                const parentPath = element.folderPath.substring(0, lastSlash);
+                return new EntityFolderTreeItem(element.clusterName, element.databaseName, element.folderType, parentPath);
+            }
+            // Otherwise, parent is the DatabaseFolderTreeItem
+            const folderLabels: Record<DatabaseFolderType, [string, string]> = {
+                'tables': ['Tables', 'table'],
+                'externalTables': ['External Tables', 'cloud'],
+                'materializedViews': ['Materialized Views', 'eye'],
+                'functions': ['Functions', 'symbol-function'],
+                'entityGroups': ['Entity Groups', 'symbol-namespace'],
+                'graphModels': ['Graph Models', 'type-hierarchy']
+            };
+            const [label, icon] = folderLabels[element.folderType];
+            return new DatabaseFolderTreeItem(element.clusterName, element.databaseName, element.folderType, label, icon);
         }
 
         if (element instanceof DatabaseFolderTreeItem)
