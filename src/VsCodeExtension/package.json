@@ -237,29 +237,24 @@
       ],
       "editor/context": [
         {
-          "command": "kusto.runQuery",
-          "when": "editorLangId == kusto",
-          "group": "navigation@1"
-        },
-        {
           "command": "kusto.copyQuery",
           "when": "editorLangId == kusto",
-          "group": "9_cutcopypaste@1"
+          "group": "0_kusto@1"
         },
         {
           "command": "kusto.copyQueryTransparent",
           "when": "editorLangId == kusto",
-          "group": "9_cutcopypaste@2"
-        },
-        {
-          "command": "kusto.connectDatabase",
-          "when": "editorLangId == kusto",
-          "group": "navigation@2"
+          "group": "0_kusto@2"
         },
         {
           "command": "kusto.formatQuery",
           "when": "editorLangId == kusto",
-          "group": "1_modification"
+          "group": "0_kusto@3"
+        },
+        {
+          "command": "kusto.runQuery",
+          "when": "editorLangId == kusto",
+          "group": "0_kusto@4"
         }
       ],
       "webview/context": [
