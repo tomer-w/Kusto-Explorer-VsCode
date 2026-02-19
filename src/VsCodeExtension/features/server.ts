@@ -196,6 +196,30 @@ export function getDataAsHtmlChart(
 }
 
 /**
+ * Gets the HTML representation of a query from the document.
+ * @param client The language client for LSP communication
+ * @param uri The document URI
+ * @param selection The selection range of the query
+ * @param darkMode Whether to render in dark mode
+ * @returns The query as HTML, or null if not available
+ */
+export function getQueryAsHtml(
+    client: LanguageClient,
+    uri: string,
+    selection: SelectionRange,
+    darkMode?: boolean
+): Promise<QueryAsHtmlResult | null> {
+    return client.sendRequest<QueryAsHtmlResult | null>(
+        'kusto/getQueryAsHtml',
+        {
+            textDocument: { uri },
+            selection,
+            darkMode
+        }
+    );
+}
+
+/**
  * Gets the query result data as a KQL datatable expression.
  * @param client The language client for LSP communication
  * @param dataId The data ID from running a query
@@ -296,6 +320,11 @@ export interface DataAsHtmlTables {
 
 /** Result of getting data as html chart. */
 export interface DataAsHtmlChart {
+    html: string;
+}
+
+/** Result of getting query as HTML. */
+export interface QueryAsHtmlResult {
     html: string;
 }
 

@@ -1165,85 +1165,6 @@ public class KustoLspServer : LspServer, ILogger
 
     #region Kusto Extensions
 
-    #region Query Ranges
-
-    [JsonRpcMethod("kusto/getQueryRanges", UseSingleObjectParameterDeserialization = true)]
-    public Task<QueryRangesResult?> OnGetQueryRangesAsync(QueryRangesParams @params, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var uri = new Uri(@params.Uri);
-            if (_documentManager.TryGetDocument(uri, out var document))
-            {
-                var ranges = document.GetSectionRanges().Select(r => GetLspRange(document.Text, r)).ToArray();
-                return Task.FromResult<QueryRangesResult?>(new QueryRangesResult
-                {
-                    Uri = @params.Uri,
-                    Ranges = ranges
-                });
-            }
-        }
-        catch (Exception ex)
-        {
-            _ = this.SendWindowLogMessageAsync(ex);
-        }
-
-        return Task.FromResult<QueryRangesResult?>(null);
-    }
-
-    [DataContract]
-    public class QueryRangesParams
-    {
-        [DataMember(Name = "uri")]
-        public required string Uri { get; init; }
-    }
-
-    [DataContract]
-    public class QueryRangesResult
-    {
-        [DataMember(Name = "uri")]
-        public required string Uri { get; init; }
-
-        [DataMember(Name = "ranges")]
-        public required LSP.Range[] Ranges { get; init; }
-    }
-
-    [JsonRpcMethod("kusto/getQueryRange", UseSingleObjectParameterDeserialization = true)]
-    public Task<LSP.Range?> OnGetQueryRangeAsync(QueryRangeParams @params, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var uri = new Uri(@params.Uri);
-            if (_documentManager.TryGetDocument(uri, out var document))
-            {
-                var position = GetTextPosition(document.Text, @params.Position);
-                if (document.GetSectionRange(position) is { } textRange)
-                {
-                    var lspRange = GetLspRange(document.Text, textRange);
-                    return Task.FromResult<LSP.Range?>(lspRange);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _ = this.SendWindowLogMessageAsync(ex);
-        }
-
-        return Task.FromResult<LSP.Range?>(null);
-    }
-
-    [DataContract]
-    public class QueryRangeParams
-    {
-        [DataMember(Name = "uri")]
-        public required string Uri { get; init; }
-
-        [DataMember(Name = "position")]
-        public required LSP.Position Position { get; init; }
-    }
-
-    #endregion
-
     #region Connection Info
 
     [JsonRpcMethod("kusto/getServerInfo", UseSingleObjectParameterDeserialization = true)]
@@ -1600,7 +1521,88 @@ public class KustoLspServer : LspServer, ILogger
 
     #endregion
 
-    #region Run Query
+    #region Query
+
+    #region Ranges
+
+    [JsonRpcMethod("kusto/getQueryRanges", UseSingleObjectParameterDeserialization = true)]
+    public Task<QueryRangesResult?> OnGetQueryRangesAsync(QueryRangesParams @params, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var uri = new Uri(@params.Uri);
+            if (_documentManager.TryGetDocument(uri, out var document))
+            {
+                var ranges = document.GetSectionRanges().Select(r => GetLspRange(document.Text, r)).ToArray();
+                return Task.FromResult<QueryRangesResult?>(new QueryRangesResult
+                {
+                    Uri = @params.Uri,
+                    Ranges = ranges
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex);
+        }
+
+        return Task.FromResult<QueryRangesResult?>(null);
+    }
+
+    [DataContract]
+    public class QueryRangesParams
+    {
+        [DataMember(Name = "uri")]
+        public required string Uri { get; init; }
+    }
+
+    [DataContract]
+    public class QueryRangesResult
+    {
+        [DataMember(Name = "uri")]
+        public required string Uri { get; init; }
+
+        [DataMember(Name = "ranges")]
+        public required LSP.Range[] Ranges { get; init; }
+    }
+
+    [JsonRpcMethod("kusto/getQueryRange", UseSingleObjectParameterDeserialization = true)]
+    public Task<LSP.Range?> OnGetQueryRangeAsync(QueryRangeParams @params, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var uri = new Uri(@params.Uri);
+            if (_documentManager.TryGetDocument(uri, out var document))
+            {
+                var position = GetTextPosition(document.Text, @params.Position);
+                if (document.GetSectionRange(position) is { } textRange)
+                {
+                    var lspRange = GetLspRange(document.Text, textRange);
+                    return Task.FromResult<LSP.Range?>(lspRange);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex);
+        }
+
+        return Task.FromResult<LSP.Range?>(null);
+    }
+
+    [DataContract]
+    public class QueryRangeParams
+    {
+        [DataMember(Name = "uri")]
+        public required string Uri { get; init; }
+
+        [DataMember(Name = "position")]
+        public required LSP.Position Position { get; init; }
+    }
+
+    #endregion
+
+    #region Run
 
     [JsonRpcMethod("kusto/runQuery", UseSingleObjectParameterDeserialization = true)]
     public async Task<RunQueryResults?> OnRunQueryAsync(RunQueryParams @params, CancellationToken cancellationToken)
@@ -1701,11 +1703,60 @@ public class KustoLspServer : LspServer, ILogger
         [DataMember(Name = "range")]
         public LSP.Range? Range { get; init; }
     }
+    #endregion
+
+    #region Html Query
+
+    [JsonRpcMethod("kusto/getQueryAsHtml", UseSingleObjectParameterDeserialization = true)]
+    public Task<GetQueryAsHtmlResult?> OnGetQueryAsHtmlAsync(GetQueryAsHtmlParams @params, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (_documentManager.TryGetDocument(@params.TextDocument.Uri, out var document))
+            {
+                var range = GetTextRange(document.Text, @params.Selection);
+                var queryFragment = document.ToHmtlFragment(range.Start, range.Length, @params.DarkMode == true);
+                return Task.FromResult<GetQueryAsHtmlResult?>(
+                    new GetQueryAsHtmlResult
+                    {
+                        Html = $"<html><body>{queryFragment}</body></html>"
+                    });
+            }
+        }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex.Message);
+        }
+
+        return Task.FromResult<GetQueryAsHtmlResult?>(null);
+    }
+
+    [DataContract]
+    public class GetQueryAsHtmlParams
+    {
+        [DataMember(Name = "textDocument")]
+        public required LSP.TextDocumentIdentifier TextDocument { get; init; }
+
+        [DataMember(Name = "selection")]
+        public required LSP.Range Selection { get; init; }
+
+        [DataMember(Name = "darkMode")]
+        public bool? DarkMode { get; init; }
+    }
+
+    [DataContract]
+    public class GetQueryAsHtmlResult
+    {
+        [DataMember(Name = "tables")]
+        public required string Html { get; init; }
+    }
+    #endregion
 
     #endregion
 
     #region Data (Tables, Charts, etc)
 
+    #region Data ID
     [JsonRpcMethod("kusto/getDataId", UseSingleObjectParameterDeserialization = true)]
     public Task<string?> OnGetDataIdAsync(GetDataIdParams @params, CancellationToken cancellationToken)
     {
@@ -1730,7 +1781,9 @@ public class KustoLspServer : LspServer, ILogger
         [DataMember(Name = "position")]
         public required LSP.Position Position { get; init; }
     }
+    #endregion
 
+    #region Html Tables
     [JsonRpcMethod("kusto/getDataAsHtmlTables", UseSingleObjectParameterDeserialization = true)]
     public Task<GetDataAsHtmlTablesResult?> OnGetDataAsHtmlTablesAsync(GetDataAsHtmlTablesParams @params, CancellationToken cancellationToken)
     {
@@ -1803,7 +1856,9 @@ public class KustoLspServer : LspServer, ILogger
 
         return dataBuilder.Text;
     }
+    #endregion
 
+    #region Html Chart
     [JsonRpcMethod("kusto/getDataAsHtmlChart", UseSingleObjectParameterDeserialization = true)]
     public Task<GetDataAsHtmlChartResult?> OnGetDataAsHtmlChart(GetDataAsHtmlChartParams @params, CancellationToken cancellationToken)
     {
@@ -1854,6 +1909,10 @@ public class KustoLspServer : LspServer, ILogger
         public required string Html { get; init; }
     }
 
+    #endregion
+
+    #region Kusto Expression
+
     [JsonRpcMethod("kusto/getDataAsExpression", UseSingleObjectParameterDeserialization = true)]
     public Task<GetDataAsExpressionResult?> OnGetDataAsExpression(GetDataAsExpressionParams @params, CancellationToken cancellationToken)
     {
@@ -1898,6 +1957,7 @@ public class KustoLspServer : LspServer, ILogger
         [DataMember(Name = "expression")]
         public required string Expression { get; init; }
     }
+    #endregion
 
     #endregion
 
