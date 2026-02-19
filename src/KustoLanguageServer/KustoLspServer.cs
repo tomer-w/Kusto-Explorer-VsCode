@@ -1248,25 +1248,32 @@ public class KustoLspServer : LspServer, ILogger
     [JsonRpcMethod("kusto/getServerInfo", UseSingleObjectParameterDeserialization = true)]
     public async Task<GetServerInfoResult?> OnGetServerInfoAsync(GetServerInfoParams @params, CancellationToken cancellationToken)
     {
-        var clusterName = _connectionManager.GetConnection(@params.Connection).Cluster;
-
-        // ensure server databases are loaded
-        await _symbolManager.GetOrLoadDatabaseNamesAsync(@params.Connection, cancellationToken).ConfigureAwait(false);
-
-        var globals = _symbolManager.Globals;
-        var clusterSymbol = globals.GetCluster(clusterName);
-        if (clusterSymbol != null)
+        try
         {
-            var dbs = clusterSymbol.Databases.Select(db => new ServerDatabase
+            var clusterName = _connectionManager.GetConnection(@params.Connection).Cluster;
+
+            // ensure server databases are loaded
+            await _symbolManager.GetOrLoadDatabaseNamesAsync(@params.Connection, cancellationToken).ConfigureAwait(false);
+
+            var globals = _symbolManager.Globals;
+            var clusterSymbol = globals.GetCluster(clusterName);
+            if (clusterSymbol != null)
             {
-                Name = db.Name,
-                AlternateName = db.AlternateName ?? ""
-            }).ToArray();
-            return new GetServerInfoResult
-            {
-                Cluster = clusterName,
-                Databases = dbs
-            };
+                var dbs = clusterSymbol.Databases.Select(db => new ServerDatabase
+                {
+                    Name = db.Name,
+                    AlternateName = db.AlternateName ?? ""
+                }).ToArray();
+                return new GetServerInfoResult
+                {
+                    Cluster = clusterName,
+                    Databases = dbs
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex);
         }
 
         return null;
@@ -1337,30 +1344,37 @@ public class KustoLspServer : LspServer, ILogger
     [JsonRpcMethod("kusto/getDatabaseInfo", UseSingleObjectParameterDeserialization = true)]
     public async Task<GetDatabaseInfoResult?> OnGetDatabaseInfo(GetDatabaseInfoParams @params, CancellationToken cancellationToken)
     {
-        var clusterName = @params.Cluster;
-        var databaseName = @params.Database;
-
-        // ensure database symbols are loaded
-        await _symbolManager.LoadSymbolsAsync(clusterName, databaseName, cancellationToken).ConfigureAwait(false);
-
-        var globals = _symbolManager.Globals;
-        var clusterSymbol = globals.GetCluster(clusterName);
-        if (clusterSymbol != null)
+        try
         {
-            var databaseSymbol = clusterSymbol.GetDatabase(databaseName);
-            if (databaseSymbol != null)
+            var clusterName = @params.Cluster;
+            var databaseName = @params.Database;
+
+            // ensure database symbols are loaded
+            await _symbolManager.LoadSymbolsAsync(clusterName, databaseName, cancellationToken).ConfigureAwait(false);
+
+            var globals = _symbolManager.Globals;
+            var clusterSymbol = globals.GetCluster(clusterName);
+            if (clusterSymbol != null)
             {
-                return new GetDatabaseInfoResult
+                var databaseSymbol = clusterSymbol.GetDatabase(databaseName);
+                if (databaseSymbol != null)
                 {
-                    Name = databaseName,
-                    Tables = databaseSymbol.Tables.Select(ToTableInfo).ToArray(),
-                    ExternalTables = databaseSymbol.ExternalTables.Select(ToTableInfo).ToArray(),
-                    MaterializedViews = databaseSymbol.MaterializedViews.Select(ToTableInfo).ToArray(),
-                    Functions = databaseSymbol.Functions.Select(ToFunctionInfo).ToArray(),
-                    EntityGroups = databaseSymbol.EntityGroups.Select(ToEntityGroupInfo).ToArray(),
-                    GraphModels = databaseSymbol.GraphModels.Select(g => ToGraphModelInfo(g)).ToArray()
-                };
+                    return new GetDatabaseInfoResult
+                    {
+                        Name = databaseName,
+                        Tables = databaseSymbol.Tables.Select(ToTableInfo).ToArray(),
+                        ExternalTables = databaseSymbol.ExternalTables.Select(ToTableInfo).ToArray(),
+                        MaterializedViews = databaseSymbol.MaterializedViews.Select(ToTableInfo).ToArray(),
+                        Functions = databaseSymbol.Functions.Select(ToFunctionInfo).ToArray(),
+                        EntityGroups = databaseSymbol.EntityGroups.Select(ToEntityGroupInfo).ToArray(),
+                        GraphModels = databaseSymbol.GraphModels.Select(g => ToGraphModelInfo(g)).ToArray()
+                    };
+                }
             }
+        }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex);
         }
 
         return null;
@@ -1405,7 +1419,6 @@ public class KustoLspServer : LspServer, ILogger
                 Snapshots = graph.Snapshots.Select(s => s.Name).ToArray()
             };
     }
-
 
     [DataContract]
     public class GetDatabaseInfoParams

@@ -2,7 +2,7 @@
 
 namespace Kusto.Lsp;
 
-public interface ISymbolLoader
+public interface ISymbolSource
 {
     /// <summary>
     /// Adds a cluster with empty (open) database symbols if cluster is not already part of globals.
@@ -20,7 +20,7 @@ public interface ISymbolLoader
     Task<GlobalState> AddReferencedSymbols(GlobalState globals, IDocument document, CancellationToken cancellationToken);
 }
 
-public interface ISymbolLoaderFactory
+public interface ISymbolSourceFactory
 {
-    public ISymbolLoader CreateLoader(IConnection connection);
+    public ISymbolSource CreateSource(IConnection connection);
 }

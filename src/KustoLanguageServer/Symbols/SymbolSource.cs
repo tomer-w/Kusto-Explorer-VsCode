@@ -1,26 +1,27 @@
 ﻿using Kusto.Language;
+using Kusto.Symbols;
 
 namespace Kusto.Lsp;
 
-public class SymbolLoader : ISymbolLoader
+public class SymbolSource : ISymbolSource
 {
-    private Kusto.Toolkit.SymbolLoader _loader;
-    private Kusto.Toolkit.SymbolResolver _resolver;
+    private SymbolLoader _loader;
+    private SymbolResolver _resolver;
 
-    public SymbolLoader(IKustoConnection connection)
+    public SymbolSource(IKustoConnection connection)
     {
         var builder = connection.GetBuilder();
-        _loader = new Kusto.Toolkit.ServerSymbolLoader(builder);
-        _resolver = new Kusto.Toolkit.SymbolResolver(_loader);
+        _loader = new ServerSymbolLoader(builder);
+        _resolver = new SymbolResolver(_loader);
     }
 
-    public static ISymbolLoaderFactory Factory { get; } = new FactoryImpl();
+    public static ISymbolSourceFactory Factory { get; } = new FactoryImpl();
 
-    private class FactoryImpl : ISymbolLoaderFactory
+    private class FactoryImpl : ISymbolSourceFactory
     {
-        public ISymbolLoader CreateLoader(IConnection connection)
+        public ISymbolSource CreateSource(IConnection connection)
         {
-            return new SymbolLoader((IKustoConnection)connection);
+            return new SymbolSource((IKustoConnection)connection);
         }
     }
 

@@ -9,7 +9,7 @@ namespace Kusto.Lsp;
 public class SymbolManager : ISymbolManager
 {
     private readonly IConnectionManager _connectionManager;
-    private readonly ISymbolLoaderFactory _symbolLoaderFactory;
+    private readonly ISymbolSourceFactory _symbolLoaderFactory;
     private readonly Action<string>? _logger;
 
     /// <summary>
@@ -20,11 +20,11 @@ public class SymbolManager : ISymbolManager
 
     public SymbolManager(
         IConnectionManager connectionManager, 
-        ISymbolLoaderFactory? symbolLoaderFactory = null,
+        ISymbolSourceFactory? symbolLoaderFactory = null,
         Action<string>? logger = null)
     {
         _connectionManager = connectionManager;
-        _symbolLoaderFactory = symbolLoaderFactory ?? SymbolLoader.Factory;
+        _symbolLoaderFactory = symbolLoaderFactory ?? SymbolSource.Factory;
         _logger = logger;
     }
 
@@ -56,17 +56,17 @@ public class SymbolManager : ISymbolManager
 
     private class SymbolInfo
     {
-        public required ISymbolLoader SymbolLoader { get; set; }
+        public required ISymbolSource SymbolLoader { get; set; }
     }
 
-    private ConditionalWeakTable<IConnection, ISymbolLoader> _connectionToLoaderMap =
-        new ConditionalWeakTable<IConnection, ISymbolLoader>();
+    private ConditionalWeakTable<IConnection, ISymbolSource> _connectionToLoaderMap =
+        new ConditionalWeakTable<IConnection, ISymbolSource>();
 
-    private ISymbolLoader GetSymbolLoader(IConnection connection)
+    private ISymbolSource GetSymbolLoader(IConnection connection)
     {
         if (!_connectionToLoaderMap.TryGetValue(connection, out var loader))
         {
-            loader = _connectionToLoaderMap.GetOrAdd(connection, _conn => _symbolLoaderFactory.CreateLoader(_conn));
+            loader = _connectionToLoaderMap.GetOrAdd(connection, _conn => _symbolLoaderFactory.CreateSource(_conn));
         }
         return loader;
     }
