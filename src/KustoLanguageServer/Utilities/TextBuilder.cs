@@ -20,6 +20,7 @@ public abstract class TextBuilder
     /// </summary>
     public void Write(string text)
     {
+#if false
         if (text.Contains('\n'))
         {
             var lines = text.ReplaceLineEndings("\n").Split('\n');
@@ -32,6 +33,7 @@ public abstract class TextBuilder
             }
         }
         else
+#endif
         {
             if (_isLineStart)
             {

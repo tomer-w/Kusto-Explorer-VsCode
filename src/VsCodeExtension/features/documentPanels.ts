@@ -4,7 +4,7 @@ import { setDocumentConnection } from './connections';
 import * as server from './server';
 import * as resultsPanel from './resultsPanel';
 import * as chartPanel from './chartPanel';
-import { getClipboardContext, clearClipboardContext } from './clipboard';
+import { getClipboardContext, clearClipboardContext, copyToClipboard } from './clipboard';
 
 const PASTE_KIND = vscode.DocumentDropOrPasteEditKind.Text.append('kusto');
 
@@ -32,6 +32,7 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
     context.subscriptions.push(
         vscode.commands.registerCommand('kusto.runQuery', () => runQuery(client)),
         vscode.commands.registerCommand('kusto.copyQuery', () => copyQuery(client)),
+        vscode.commands.registerCommand('kusto.copyQueryTransparent', () => copyQueryTransparent(client)),
         vscode.commands.registerCommand('kusto.formatQuery', () => formatQuery(client)),
         vscode.commands.registerCommand('kusto.showResults', (uri: string, line: number, character: number) => showResults(client, uri, line, character))
     );
@@ -181,6 +182,96 @@ async function copyQuery(client: LanguageClient): Promise<void> {
     } catch (error) {
         vscode.window.showErrorMessage(`Failed to copy query: ${error}`);
     }
+}
+
+/**
+ * Copies the query at the current cursor position with light-mode syntax highlighting
+ * and a transparent background, suitable for pasting into documents.
+ * Uses the server to generate HTML rather than the editor's current theme.
+ * @param client The language client for LSP communication
+ */
+async function copyQueryTransparent(client: LanguageClient): Promise<void> {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || editor.document.languageId !== 'kusto') {
+        return;
+    }
+
+    try {
+        const uri = editor.document.uri.toString();
+        const cursorPos = editor.selection.active;
+
+        // Get the query range containing the cursor position from the server
+        const queryRange = await server.getQueryRange(
+            client, uri,
+            { line: cursorPos.line, character: cursorPos.character }
+        );
+
+        if (!queryRange) {
+            return;
+        }
+
+        const selection = {
+            start: { line: queryRange.start.line, character: queryRange.start.character },
+            end: { line: queryRange.end.line, character: queryRange.end.character }
+        };
+
+        // Request light-mode HTML from the server (darkMode = false)
+        const result = await server.getQueryAsHtml(client, uri, selection, false);
+        if (!result?.html) {
+            return;
+        }
+
+        // Get plain text of the query for the text format
+        const range = new vscode.Range(
+            queryRange.start.line, queryRange.start.character,
+            queryRange.end.line, queryRange.end.character
+        );
+        const plainText = editor.document.getText(range);
+
+        // Place both HTML and plain text on the clipboard
+        const items: import('./clipboard').ClipboardItem[] = [
+            { format: 'HTML Format', data: wrapHtmlForClipboard(result.html) },
+            { format: 'Text', data: plainText, encoding: 'text' }
+        ];
+
+        await copyToClipboard(items);
+    } catch (error) {
+        vscode.window.showErrorMessage(`Failed to copy query: ${error}`);
+    }
+}
+
+/**
+ * Wraps HTML content in the CF_HTML clipboard format header required by Windows.
+ */
+function wrapHtmlForClipboard(html: string): string {
+    // CF_HTML format requires specific headers with byte offsets
+    const header = 'Version:0.9\r\nStartHTML:SSSSSSSSSS\r\nEndHTML:EEEEEEEEEE\r\nStartFragment:FFFFFFFFFF\r\nEndFragment:GGGGGGGGGG\r\n';
+    const startFragment = '<!--StartFragment-->';
+    const endFragment = '<!--EndFragment-->';
+    const body = `<!DOCTYPE html><html><body>${startFragment}${html}${endFragment}</body></html>`;
+    const full = header + body;
+
+    // Calculate byte offsets (CF_HTML uses byte positions)
+    const encoder = new TextEncoder();
+    const headerBytes = encoder.encode(header).length;
+    const startFragOffset = headerBytes + encoder.encode(`<!DOCTYPE html><html><body>${startFragment}`).length - encoder.encode(startFragment).length + encoder.encode(startFragment).length;
+    const fullBytes = encoder.encode(full).length;
+
+    // Simpler: compute offsets by measuring
+    const beforeFragment = header + `<!DOCTYPE html><html><body>`;
+    const afterStartFragment = beforeFragment + startFragment;
+    const beforeEndFragment = afterStartFragment + html;
+    
+    const startHtml = encoder.encode(header).length;
+    const endHtml = encoder.encode(full).length;
+    const startFrag = encoder.encode(afterStartFragment).length;
+    const endFrag = encoder.encode(beforeEndFragment).length;
+
+    return full
+        .replace('SSSSSSSSSS', startHtml.toString().padStart(10, '0'))
+        .replace('EEEEEEEEEE', endHtml.toString().padStart(10, '0'))
+        .replace('FFFFFFFFFF', startFrag.toString().padStart(10, '0'))
+        .replace('GGGGGGGGGG', endFrag.toString().padStart(10, '0'));
 }
 
 /**

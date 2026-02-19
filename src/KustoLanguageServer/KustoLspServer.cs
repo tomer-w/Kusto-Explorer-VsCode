@@ -1747,7 +1747,7 @@ public class KustoLspServer : LspServer, ILogger
     [DataContract]
     public class GetQueryAsHtmlResult
     {
-        [DataMember(Name = "tables")]
+        [DataMember(Name = "html")]
         public required string Html { get; init; }
     }
     #endregion

@@ -12,6 +12,9 @@ public class HtmlBuilder : TextBuilder
         this.Options = options ?? HtmlOptions.Default;
     }
 
+    /// <summary>
+    /// Writes a tag on a new line, with the content nested inside it and indented.
+    /// </summary>
     public void WriteTagNested(string tag, string attributes, Action content)
     {
         this.WriteOnNewLine();
@@ -20,11 +23,18 @@ public class HtmlBuilder : TextBuilder
         this.WriteNested(content);
         this.WriteOnNewLine();
         this.WriteEndTag(tag);
+        this.WriteLine();
     }
 
+    /// <summary>
+    /// Writes a tag on a new line, with the content nested inside it and indented.
+    /// </summary>
     public void WriteTagNested(string tag, string attributes, string content) =>
         WriteTagNested(tag, attributes, () => Write(content));
 
+    /// <summary>
+    /// Writes a tag with the content on the same line, without adding new lines or indentation.
+    /// </summary>
     public void WriteTagInline(string tag, string attributes, Action content)
     {
         this.WriteStartTag(tag, attributes);
@@ -32,9 +42,15 @@ public class HtmlBuilder : TextBuilder
         this.WriteEndTag(tag);
     }
 
+    /// <summary>
+    /// Writes a tag with the content on the same line, without adding new lines or indentation.
+    /// </summary>
     public void WriteTagInline(string tag, string attributes, string content) =>
         WriteTagInline(tag, attributes, () => Write(content));
 
+    /// <summary>
+    /// Writes the start tag with the given attributes. Does not add new lines or indentation.
+    /// </summary>
     public void WriteStartTag(string tag, string attributes)
     {
         if (string.IsNullOrWhiteSpace(attributes))
@@ -47,16 +63,25 @@ public class HtmlBuilder : TextBuilder
         }
     }
 
+    /// <summary>
+    /// Writes the end tag. Does not add new lines or indentation.
+    /// </summary>
     public void WriteEndTag(string tag)
     {
-        this.WriteLine($"</{tag}>");
+        this.Write($"</{tag}>");
     }
 
+    /// <summary>
+    /// Writes the HTML document tag with nested contents.
+    /// </summary>
     public void WriteHtml(Action content)
     {
         this.WriteTagNested("html", this.Options.HtmlAttributes, content);
     }
 
+    /// <summary>
+    /// Writes the HTML document tag with nested contents.
+    /// </summary>
     public void WriteHtml(Action? head, Action? body)
     {
         this.WriteHtml(() =>

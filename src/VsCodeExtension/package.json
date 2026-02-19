@@ -115,6 +115,11 @@
         "icon": "$(copy)"
       },
       {
+        "command": "kusto.copyQueryTransparent",
+        "title": "Copy Query (Transparent)",
+        "icon": "$(copy)"
+      },
+      {
         "command": "kusto.copyData",
         "title": "Copy Table",
         "icon": "$(copy)"
@@ -239,7 +244,12 @@
         {
           "command": "kusto.copyQuery",
           "when": "editorLangId == kusto",
-          "group": "9_cutcopypaste"
+          "group": "9_cutcopypaste@1"
+        },
+        {
+          "command": "kusto.copyQueryTransparent",
+          "when": "editorLangId == kusto",
+          "group": "9_cutcopypaste@2"
         },
         {
           "command": "kusto.connectDatabase",

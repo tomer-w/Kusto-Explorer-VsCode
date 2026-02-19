@@ -47,7 +47,7 @@ public static class KustoHtmlExtensions
         defaultStyle ??= LightThemeStyle;
         classificationStyles ??= LightThemeColors;
 
-        builder.WriteTagNested("pre", $"style='{defaultStyle}'", () =>
+        builder.WriteTagInline("pre", $"style='{defaultStyle}'", () =>
         {
             var classificationResult = document.GetClassifications(start, length);
             var end = start + length;
@@ -90,8 +90,8 @@ public static class KustoHtmlExtensions
         });
     }
 
-    public static readonly string LightThemeStyle = "font: 10pt consolas; background: #252526; color: white;";
-    public static readonly string DarkThemeStyle = "font: 10pt consolas";
+    public static readonly string DarkThemeStyle = "font: 10pt consolas; background: #252526; color: white;";
+    public static readonly string LightThemeStyle = "font: 10pt consolas";
 
     public static readonly ImmutableDictionary<ClassificationKind, string> LightThemeColors =
         new Dictionary<ClassificationKind, string>()
