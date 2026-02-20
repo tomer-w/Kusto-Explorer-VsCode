@@ -1,0 +1,252 @@
+﻿using Kusto.Language;
+
+namespace Tests
+{
+    [TestClass]
+    public class SymbolLoaderTests : SymbolLoaderTestBase
+    {
+        [TestMethod]
+        public async Task TestAddOrUpdateDatabaseAsync()
+        {
+            var globals = GlobalState.Default;
+            var loader = new TestSymbolLoader(OneTestCluster);
+
+            var newGlobals = await loader.AddOrUpdateDatabaseAsync(globals, "db1");
+
+            // a new cluster is added with the loaded Samples database
+            Assert.HasCount(1, newGlobals.Clusters);
+            var cluster1 = newGlobals.Clusters[0];
+            Assert.AreEqual("cluster1.kusto.windows.net", cluster1.Name);
+            Assert.HasCount(1, cluster1.Databases);
+            var db1 = cluster1.Databases[0];
+            Assert.AreEqual("db1", db1.Name);
+            Assert.AreNotEqual(0, db1.Members.Count);
+
+            // default cluster and database are not set
+            Assert.AreNotSame(newGlobals.Cluster, cluster1);
+            Assert.AreNotSame(newGlobals.Database, db1);
+        }
+
+        [TestMethod]
+        public async Task TestAddOrUpdateDefaultDatabaseAsync()
+        {
+            var globals = GlobalState.Default;
+            var loader = new TestSymbolLoader(OneTestCluster);
+
+            var newGlobals = await loader.AddOrUpdateDefaultDatabaseAsync(globals, "db1");
+
+            // a new cluster is added with the loaded Samples database
+            Assert.HasCount(1, newGlobals.Clusters);
+            var cluster1 = newGlobals.Clusters[0];
+            Assert.AreEqual("cluster1.kusto.windows.net", cluster1.Name);
+            Assert.HasCount(1, cluster1.Databases);
+            var db1 = cluster1.Databases[0];
+            Assert.AreEqual("db1", db1.Name);
+            Assert.AreNotEqual(0, db1.Members.Count);
+
+            // default cluster and database are set
+            Assert.AreSame(newGlobals.Cluster, cluster1);
+            Assert.AreSame(newGlobals.Database, db1);
+        }
+
+        [TestMethod]
+        public async Task TestAddDatabaseAsync()
+        {
+            var globals = GlobalState.Default;
+            var loader = new TestSymbolLoader(OneTestCluster);
+
+            var newGlobals = await loader.AddDatabaseAsync(globals, "db1");
+
+            // a new cluster is added with the loaded Samples database
+            Assert.HasCount(1, newGlobals.Clusters);
+            var cluster1 = newGlobals.Clusters[0];
+            Assert.AreEqual("cluster1.kusto.windows.net", cluster1.Name);
+            Assert.HasCount(1, cluster1.Databases);
+            var db1 = cluster1.Databases[0];
+            Assert.AreEqual("db1", db1.Name);
+            Assert.AreNotEqual(0, db1.Members.Count);
+
+            // default cluster and database are not set
+            Assert.AreNotSame(newGlobals.Cluster, cluster1);
+            Assert.AreNotSame(newGlobals.Database, db1);
+
+            // called again does nothing since it is already defined
+            var newGlobals2 = await loader.AddDatabaseAsync(newGlobals, "db1");
+            Assert.AreSame(newGlobals2, newGlobals2);
+        }
+
+        [TestMethod]
+        public async Task TestAddDefaultDatabaseAsync()
+        {
+            var globals = GlobalState.Default;
+            var loader = new TestSymbolLoader(OneTestCluster);
+
+            var newGlobals = await loader.AddDefaultDatabaseAsync(globals, "db1");
+
+            // a new cluster is added with the loaded Samples database
+            Assert.HasCount(1, newGlobals.Clusters);
+            var cluster1 = newGlobals.Clusters[0];
+            Assert.AreEqual("cluster1.kusto.windows.net", cluster1.Name);
+            Assert.HasCount(1, cluster1.Databases);
+            var db1 = cluster1.Databases[0];
+            Assert.AreEqual("db1", db1.Name);
+            Assert.AreNotEqual(0, db1.Members.Count);
+
+            // default cluster and database are set
+            Assert.AreSame(newGlobals.Cluster, cluster1);
+            Assert.AreSame(newGlobals.Database, db1);
+
+            // called again does nothing since it is already defined
+            var newGlobals2 = await loader.AddDefaultDatabaseAsync(newGlobals, "db1");
+            Assert.AreSame(newGlobals, newGlobals2);
+        }
+
+        [TestMethod]
+        public async Task TestAddDefaultDatabaseAsync_definedButNotDefault()
+        {
+            var globals = GlobalState.Default;
+            var loader = new TestSymbolLoader(OneTestCluster);
+
+            var newGlobals = await loader.AddDatabaseAsync(globals, "db1");
+
+            // a new cluster is added with the loaded Samples database
+            Assert.HasCount(1, newGlobals.Clusters);
+            var cluster1 = newGlobals.Clusters[0];
+            Assert.AreEqual("cluster1.kusto.windows.net", cluster1.Name);
+            Assert.HasCount(1, cluster1.Databases);
+            var db1 = cluster1.Databases[0];
+            Assert.AreEqual("db1", db1.Name);
+            Assert.AreNotEqual(0, db1.Members.Count);
+
+            // default cluster and database are not set
+            Assert.AreNotSame(newGlobals.Cluster, cluster1);
+            Assert.AreNotSame(newGlobals.Database, db1);
+
+            // called again does not reload, but does assign default
+            var newGlobals2 = await loader.AddDefaultDatabaseAsync(newGlobals, "db1");
+            Assert.AreNotSame(newGlobals, newGlobals2);
+
+            // default cluster and database are now set
+            Assert.AreSame(newGlobals2.Cluster, cluster1);
+            Assert.AreSame(newGlobals2.Database, db1);
+        }
+
+        [TestMethod]
+        public async Task TestAddOrUpdateClusterAsync()
+        {
+            var loader = new TestSymbolLoader(OneTestCluster);
+
+            // no clusters, but default cluster and database are set with no names.
+            var globals = GlobalState.Default;
+
+            var newGlobals = await loader.AddOrUpdateClusterAsync(globals);
+            Assert.AreNotSame(globals, newGlobals);
+            Assert.AreNotEqual(0, newGlobals.Clusters.Count);
+            var cluster1 = newGlobals.GetCluster("cluster1");
+            Assert.IsNotNull(cluster1);
+            Assert.HasCount(2, cluster1.Databases);
+            Assert.IsTrue(cluster1.Databases[0].IsOpen);
+            Assert.IsTrue(cluster1.Databases[1].IsOpen);
+
+            // was not made default
+            Assert.AreNotSame(newGlobals.Cluster, cluster1);
+        }
+
+        [TestMethod]
+        public async Task TestAddOrUpdateDefaultClusterAsync()
+        {
+            var loader = new TestSymbolLoader(OneTestCluster, "cluster1");
+
+            // no clusters, but default cluster and database are set with no names.
+            var globals = GlobalState.Default;
+
+            var newGlobals = await loader.AddOrUpdateDefaultClusterAsync(globals);
+            Assert.AreNotSame(globals, newGlobals);
+            Assert.AreNotEqual(0, newGlobals.Clusters.Count);
+            var cluster1 = newGlobals.GetCluster("cluster1");
+            Assert.IsNotNull(cluster1);
+            Assert.HasCount(2, cluster1.Databases);
+            Assert.IsTrue(cluster1.Databases[0].IsOpen);
+            Assert.IsTrue(cluster1.Databases[1].IsOpen);
+
+            // was made default
+            Assert.AreSame(newGlobals.Cluster, cluster1);
+        }
+
+        [TestMethod]
+        public async Task TestAddClusterAsync()
+        {
+            var loader = new TestSymbolLoader(OneTestCluster);
+
+            // no clusters, but default cluster and database are set with no names.
+            var globals = GlobalState.Default;
+
+            var newGlobals = await loader.AddClusterAsync(globals);
+            Assert.AreNotSame(globals, newGlobals);
+            Assert.AreNotEqual(0, newGlobals.Clusters.Count);
+            var cluster1 = newGlobals.GetCluster("cluster1");
+            Assert.IsNotNull(cluster1);
+            Assert.HasCount(2, cluster1.Databases);
+            Assert.IsTrue(cluster1.Databases[0].IsOpen);
+            Assert.IsTrue(cluster1.Databases[1].IsOpen);
+
+            // was not made default
+            Assert.AreNotSame(newGlobals.Cluster, cluster1);
+
+            // is not loaded again
+            var newGlobals2 = await loader.AddClusterAsync(newGlobals);
+            Assert.AreSame(newGlobals, newGlobals2);
+        }
+
+        [TestMethod]
+        public async Task TestAddDefaultClusterAsync()
+        {
+            var loader = new TestSymbolLoader(OneTestCluster, "cluster1");
+
+            // no clusters, but default cluster and database are set with no names.
+            var globals = GlobalState.Default;
+
+            var newGlobals = await loader.AddDefaultClusterAsync(globals);
+            Assert.AreNotSame(globals, newGlobals);
+            Assert.AreNotEqual(0, newGlobals.Clusters.Count);
+            var cluster1 = newGlobals.GetCluster("cluster1");
+            Assert.IsNotNull(cluster1);
+            Assert.HasCount(2, cluster1.Databases);
+            Assert.IsTrue(cluster1.Databases[0].IsOpen);
+            Assert.IsTrue(cluster1.Databases[1].IsOpen);
+
+            // was made default
+            Assert.AreSame(newGlobals.Cluster, cluster1);
+
+            // is not loaded again
+            var newGlobals2 = await loader.AddClusterAsync(newGlobals);
+            Assert.AreSame(newGlobals, newGlobals2);
+        }
+
+        [TestMethod]
+        public async Task TestAddDefaultClusterAsync_definedButNotDefault()
+        {
+            var loader = new TestSymbolLoader(OneTestCluster);
+
+            // no clusters, but default cluster and database are set with no names.
+            var globals = GlobalState.Default;
+
+            var newGlobals = await loader.AddClusterAsync(globals);
+            Assert.AreNotSame(globals, newGlobals);
+            Assert.AreNotEqual(0, newGlobals.Clusters.Count);
+            var cluster1 = newGlobals.GetCluster("cluster1");
+            Assert.IsNotNull(cluster1);
+            Assert.HasCount(2, cluster1.Databases);
+            Assert.IsTrue(cluster1.Databases[0].IsOpen);
+            Assert.IsTrue(cluster1.Databases[1].IsOpen);
+
+            // was not made default
+            Assert.AreNotSame(newGlobals.Cluster, cluster1);
+
+            // is not reloaded but is made default
+            var newGlobals2 = await loader.AddDefaultClusterAsync(newGlobals);
+            Assert.AreNotSame(newGlobals, newGlobals2);
+            Assert.AreSame(newGlobals2.Cluster, cluster1);
+        }
+    }
+}

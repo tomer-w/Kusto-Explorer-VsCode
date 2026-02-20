@@ -1,5 +1,4 @@
 ﻿using Kusto.Language;
-using Kusto.Language.Editor;
 using Kusto.Language.Symbols;
 using Kusto.Lsp;
 using System.Collections.Immutable;
