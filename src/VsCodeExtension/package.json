@@ -116,7 +116,7 @@
       },
       {
         "command": "kusto.copyQueryTransparent",
-        "title": "Copy Query (Transparent)",
+        "title": "Copy Query",
         "icon": "$(copy)"
       },
       {
@@ -237,24 +237,19 @@
       ],
       "editor/context": [
         {
-          "command": "kusto.copyQuery",
+          "command": "kusto.copyQueryTransparent",
           "when": "editorLangId == kusto",
           "group": "0_kusto@1"
         },
         {
-          "command": "kusto.copyQueryTransparent",
+          "command": "kusto.formatQuery",
           "when": "editorLangId == kusto",
           "group": "0_kusto@2"
         },
         {
-          "command": "kusto.formatQuery",
-          "when": "editorLangId == kusto",
-          "group": "0_kusto@3"
-        },
-        {
           "command": "kusto.runQuery",
           "when": "editorLangId == kusto",
-          "group": "0_kusto@4"
+          "group": "0_kusto@3"
         }
       ],
       "webview/context": [

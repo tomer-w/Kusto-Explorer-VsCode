@@ -34,6 +34,7 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
         vscode.commands.registerCommand('kusto.copyQuery', () => copyQuery(client)),
         vscode.commands.registerCommand('kusto.copyQueryTransparent', () => copyQueryTransparent(client)),
         vscode.commands.registerCommand('kusto.formatQuery', () => formatQuery(client)),
+        vscode.commands.registerCommand('kusto.selectQuery', (startLine: number, startChar: number, endLine: number, endChar: number) => selectQuery(startLine, startChar, endLine, endChar)),
         vscode.commands.registerCommand('kusto.showResults', (uri: string, line: number, character: number) => showResults(client, uri, line, character))
     );
 
@@ -138,6 +139,32 @@ async function showResults(client: LanguageClient, uri: string, line: number, ch
     } catch (error) {
         vscode.window.showErrorMessage(`Failed to show results: ${error}`);
     }
+}
+
+/**
+ * Selects the entire query range in the editor.
+ * @param startLine The start line of the query range
+ * @param startChar The start character of the query range
+ * @param endLine The end line of the query range
+ * @param endChar The end character of the query range
+ */
+function selectQuery(startLine: number, startChar: number, endLine: number, endChar: number): void {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || editor.document.languageId !== 'kusto') {
+        return;
+    }
+
+    const start = new vscode.Position(startLine, startChar);
+    let end = new vscode.Position(endLine, endChar);
+
+    // If the end is at column 0, the selection visually wraps to that line;
+    // move it back to the end of the previous line instead.
+    if (endLine > startLine && endChar === 0) {
+        end = editor.document.lineAt(endLine - 1).range.end;
+    }
+
+    editor.selection = new vscode.Selection(start, end);
+    editor.revealRange(new vscode.Range(start, end));
 }
 
 /**
@@ -359,6 +386,13 @@ class KustoCodeLensProvider implements vscode.CodeLensProvider {
             }
 
             lenses.push(new vscode.CodeLens(vsRange, {
+                title: '⬚ Select',
+                command: 'kusto.selectQuery',
+                tooltip: 'Select this query',
+                arguments: [range.start.line, range.start.character, range.end.line, range.end.character]
+            }));
+
+            lenses.push(new vscode.CodeLens(vsRange, {
                 title: '▶ Run',
                 command: 'kusto.runQuery',
                 tooltip: 'Run this query'
@@ -366,7 +400,7 @@ class KustoCodeLensProvider implements vscode.CodeLensProvider {
 
             lenses.push(new vscode.CodeLens(vsRange, {
                 title: '📋 Copy',
-                command: 'kusto.copyQuery',
+                command: 'kusto.copyQueryTransparent',
                 tooltip: 'Copy this query with syntax highlighting'
             }));
 

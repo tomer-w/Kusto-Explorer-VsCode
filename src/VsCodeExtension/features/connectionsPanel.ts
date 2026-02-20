@@ -682,7 +682,7 @@ function getEntitiesAndSubfolders<T extends { folder?: string }>(
     const subfolderPathSet = new Set<string>();
 
     for (const entity of entities) {
-        const folder = entity.folder;
+        const folder = entity.folder?.replace(/\\/g, '/');
 
         if (!folder) {
             // No folder: show at root level only
