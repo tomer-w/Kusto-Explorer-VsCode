@@ -14,8 +14,9 @@ using LSP=Microsoft.VisualStudio.LanguageServer.Protocol;
 
 namespace Kusto.Lsp;
 
-public class KustoLspServer : LspServer, ILogger
+public class KustoLspServer : LspServer, ILogger, ISettingSource
 {
+    private readonly IOptionsManager _optionsManager;
     private readonly IConnectionManager _connectionManager;
     private readonly ISymbolManager _symbolManager;
     private readonly IDocumentManager _documentManager;
@@ -29,7 +30,8 @@ public class KustoLspServer : LspServer, ILogger
     public KustoLspServer(
         Stream input, 
         Stream output, 
-        string[] args, 
+        string[] args,
+        IOptionsManager optionsManager,
         IConnectionManager connectionManager,
         ISymbolManager symbolManager,
         IDocumentManager documentManager,
@@ -41,6 +43,7 @@ public class KustoLspServer : LspServer, ILogger
         : base(input, output)
     {
         _args = args.ToImmutableList();
+        _optionsManager = optionsManager;
         _connectionManager = connectionManager;
         _symbolManager = symbolManager;
         _documentManager = documentManager;
@@ -59,6 +62,7 @@ public class KustoLspServer : LspServer, ILogger
         : base(input, output)
     {
         _args = args.ToImmutableList();
+        _optionsManager = new OptionsManager(this);
         _connectionManager = new ConnectionManager();
         _symbolManager = new SymbolManager(_connectionManager);
         _documentManager = new DocumentManager(_symbolManager);
@@ -321,14 +325,40 @@ public class KustoLspServer : LspServer, ILogger
 
     #region Workspace Configuration
 
-    public async Task<Dictionary<string, object>> GetWorkspaceSettingsAsync(IReadOnlyList<Setting> settings, CancellationToken cancellationToken)
+    public async Task<ImmutableDictionary<string, object>> GetWorkspaceSettingsAsync(IReadOnlyList<Setting> settings, CancellationToken cancellationToken)
     {
         var sendParams = new LSP.ConfigurationParams();
         sendParams.Items = settings.Select(s => new LSP.ConfigurationItem { Section = s.Name }).ToArray();
         var results = await this.SendWorkspaceConfigurationAsync(sendParams, cancellationToken).ConfigureAwait(false);
         return results
             .Select((r, i) => (s: settings[i], value: r))
-            .ToDictionary(t => t.s.Name, t => t.value!);
+            .ToImmutableDictionary(t => t.s.Name, t => t.value!);
+    }
+
+    public override Task OnWorkspaceDidChangeConfigurationAsync(LSP.DidChangeConfigurationParams @params)
+    {
+        // pass on to ISettingSource listeners
+        this.SettingsChanged?.Invoke(this, EventArgs.Empty);
+        return Task.CompletedTask;
+    }
+
+    public event EventHandler? SettingsChanged;
+
+    public async Task<ImmutableDictionary<string, object?>> GetSettingsAsync(IReadOnlyList<Setting> settings, CancellationToken cancellationToken)
+    {
+        var sendParams = new LSP.ConfigurationParams();
+        sendParams.Items = settings.Select(s => new LSP.ConfigurationItem { Section = s.Name }).ToArray();
+        var values = await this.SendWorkspaceConfigurationAsync(sendParams, cancellationToken).ConfigureAwait(false);
+        return values
+            .Select((r, i) => (s: settings[i], value: r))
+            .ToImmutableDictionary(t => t.s.Name, t => t.value)
+            ?? ImmutableDictionary<string, object?>.Empty;
+    }
+
+    public async Task<T> GetSettingAsync<T>(Setting<T> setting, CancellationToken cancellationToken)
+    {
+        var map = await GetSettingsAsync([setting], cancellationToken).ConfigureAwait(false);
+        return setting.GetValue(map);
     }
 
     #endregion
@@ -767,14 +797,7 @@ public class KustoLspServer : LspServer, ILogger
                     ? GetTextRange(document.Text, lspRange)
                     : new TextRange(0, document.Text.Length);
 
-                if (lspOptions.OtherOptions == null)
-                {
-                    // vs code does not send all formatting options, so request them from workspace settings
-                    var workspaceFormattingOptions = await GetWorkspaceSettingsAsync(FormatSettings.All, cancellationToken).ConfigureAwait(false);
-                    lspOptions.OtherOptions = workspaceFormattingOptions;
-                }
-
-                var formattingOptions = GetFormattingOptions(lspOptions);
+                var formattingOptions = await _optionsManager.GetFormattingOptionsAsync(cancellationToken);
                 var formatted = document.GetFormattedText(textRange, formattingOptions, cancellationToken);
                 var edits = formatted.Edits.Select(e => GetLspTextEdit(document.Text, e)).ToArray();
                 return edits;
@@ -787,48 +810,6 @@ public class KustoLspServer : LspServer, ILogger
 
         return null;
     }
-
-    private static readonly FormattingOptions _defaultFormattingOption =
-        FormattingOptions.Default;
-
-    private static FormattingOptions GetFormattingOptions(LSP.FormattingOptions lspOptions)
-    {
-        var options = FormattingOptions.Default
-            .WithIndentationSize(lspOptions.TabSize);
-
-        var otherOptions = lspOptions.OtherOptions;
-        if (otherOptions != null)
-        {
-            options = WithFormattingOptionsFromSettings(options, otherOptions);
-        }
-
-        return options;
-    }
-
-    private static FormattingOptions WithFormattingOptionsFromSettings(FormattingOptions options, Dictionary<string, object> settings)
-    {
-        options ??= FormattingOptions.Default;
-
-        return options
-            .WithInsertMissingTokens(FormatSettings.InsertMissingTokens.GetValue(settings))
-            .WithBrackettingStyle(FormatSettings.DefaultBrackettingStyle.GetValue(settings))
-            .WithSchemaStyle(FormatSettings.SchemaBrackettingStyle.GetValue(settings))
-            .WithDataTableValueStyle(FormatSettings.DataTableBrackettingStyle.GetValue(settings))
-            .WithFunctionBodyStyle(FormatSettings.FunctionBodyBrackettingStyle.GetValue(settings))
-            .WithFunctionParameterStyle(FormatSettings.FunctionParameterBrackettingStyle.GetValue(settings))
-            .WithFunctionArgumentStyle(FormatSettings.FunctionArgumentBrackettingStyle.GetValue(settings))
-            .WithPipeOperatorStyle(FormatSettings.PipeOperatorPlacementStyle.GetValue(settings))
-            .WithExpressionStyle(FormatSettings.ExpressionPlacementStyle.GetValue(settings))
-            .WithStatementStyle(FormatSettings.StatementPlacementStyle.GetValue(settings))
-            .WithSemicolonStyle(FormatSettings.SemicolonPlacementStyle.GetValue(settings));
-    }
-
-    public async Task<FormattingOptions> GetFormattingOptionsAsync(CancellationToken cancellationToken)
-    {
-        var settings = await GetWorkspaceSettingsAsync(FormatSettings.All, cancellationToken).ConfigureAwait(false);
-        return WithFormattingOptionsFromSettings(_defaultFormattingOption, settings);
-    }
-
 
     #endregion
 
@@ -1119,7 +1100,7 @@ public class KustoLspServer : LspServer, ILogger
                         && _scriptActions.TryGetValue(document, out var scriptActions)
                         && scriptActions.Actions.TryGetValue(actionId, out var action))
                     {
-                        var formatOptions = await GetFormattingOptionsAsync(cancellationToken).ConfigureAwait(false);
+                        var formatOptions = await _optionsManager.GetFormattingOptionsAsync(cancellationToken).ConfigureAwait(false);
                         var applyOptions = _codeActionOptions.WithFormattingOptions(formatOptions);
 
                         var result = document.ApplyCodeAction(action, position, applyOptions, cancellationToken);

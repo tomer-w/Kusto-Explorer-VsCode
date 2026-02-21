@@ -1,5 +1,4 @@
-﻿using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
+﻿using Newtonsoft.Json.Linq;
 using System.Collections.Immutable;
 
 namespace Kusto.Lsp;
@@ -23,39 +22,57 @@ public class Setting<T> : Setting
         this.DefaultValue = defaultValue;
     }
 
-    public virtual T GetValue(IReadOnlyDictionary<string, object> settings)
+    public virtual T GetValue(ImmutableDictionary<string, object?> settings)
     {
-        if (settings.TryGetValue(this.Name, out var value)
-            && value is T tvalue)
+        if (settings.TryGetValue(this.Name, out var value))
         {
-            return tvalue;           
+            if (value is T tvalue)
+            {
+                return tvalue;
+            }
+            else if (value == null && typeof(T).CanBeNull)
+            {
+                return (T)value!;
+            }
+            else
+            {
+                try
+                {
+                    return (T)Convert.ChangeType(value, typeof(T))!;
+                }
+                catch
+                {
+                    return this.DefaultValue;
+                }
+            }
         }
 
         return this.DefaultValue;
     }
+
+    public virtual ImmutableDictionary<string, object?> WithValue(ImmutableDictionary<string, object?> settings, T value)
+    {
+        return settings.SetItem(this.Name, value!);
+    }
 }
 
-public class ArraySetting<T> : Setting<T[]>
+public class ArraySetting<T> : Setting<ImmutableList<T>>
 {
-    public ArraySetting(string name, T[] defaultValue) : base(name, defaultValue)
+    public ArraySetting(string name, ImmutableList<T> defaultValue) : base(name, defaultValue)
     {
     }
 
-    public override T[] GetValue(IReadOnlyDictionary<string, object> settings)
+    public override ImmutableList<T> GetValue(ImmutableDictionary<string, object?> settings)
     {
         if (settings.TryGetValue(this.Name, out var value))
         {
             if (value is JArray jarray)
             {
-                return jarray.ToObject<T[]>() ?? this.DefaultValue;
-            }
-            else if (value is T[] tarray)
-            {
-                return tarray;
+                return jarray.ToObject<ImmutableList<T>>() ?? this.DefaultValue;
             }
             else if (value is IEnumerable<T> enumerable)
             {
-                return enumerable.ToArray();
+                return enumerable.ToImmutableList();
             }
         }
 
@@ -64,24 +81,36 @@ public class ArraySetting<T> : Setting<T[]>
 }
 
 public class StringMappedSetting<T> : Setting<T>
-{ 
-    public ImmutableDictionary<string, T> ValueMapping { get; }
+    where T : notnull
+{
+    private readonly ImmutableDictionary<string, T> _map;
+    private readonly ImmutableDictionary<T, string> _reverseMap;
 
     public StringMappedSetting(string name, T defaultValue, ImmutableDictionary<string, T> valueMapping)
         : base(name, defaultValue)
     {
-        this.ValueMapping = valueMapping;
+        _map = valueMapping;
+        _reverseMap = valueMapping.ToImmutableDictionary(kv => kv.Value, kv => kv.Key);
     }
 
-    public override T GetValue(IReadOnlyDictionary<string, object> settings)
+    public override T GetValue(ImmutableDictionary<string, object?> settings)
     {
         if (settings.TryGetValue(this.Name, out var value)
             && value is string strValue
-            && this.ValueMapping.TryGetValue(strValue, out var mappedValue))
+            && _map.TryGetValue(strValue, out var mappedValue))
         {
             return mappedValue;
         }
 
         return this.DefaultValue;
+    }
+
+    public override ImmutableDictionary<string, object?> WithValue(ImmutableDictionary<string, object?> settings, T value)
+    {
+        if (_reverseMap.TryGetValue(value, out var strValue))
+        {
+            return settings.SetItem(this.Name, strValue);
+        }
+        return settings;
     }
 }

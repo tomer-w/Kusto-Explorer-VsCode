@@ -5,6 +5,9 @@ namespace Kusto.Lsp;
 
 public static class FormatSettings
 {
+    public static readonly Setting<int> TabSize =
+        new Setting<int>("editor.tabSize", 4);
+
     public static readonly Setting<bool> InsertMissingTokens = 
         new Setting<bool>("kusto.format.insertMissingTokens", false);
 
@@ -68,6 +71,7 @@ public static class FormatSettings
 
     public static readonly ImmutableList<Setting> All =
         [
+            TabSize,
             InsertMissingTokens,
             DefaultBrackettingStyle,
             SchemaBrackettingStyle,
