@@ -336,6 +336,54 @@ public static class PlotlyChartExtensions
             Opacity = opacity
         };
 
+
+        return builder.AddTrace(trace);
+    }
+
+    #endregion
+
+    #region TreeMap Charts
+
+    /// <summary>
+    /// Adds a treemap trace to the builder for hierarchical data visualization.
+    /// </summary>
+    /// <typeparam name="TLabel">Type of label values.</typeparam>
+    /// <typeparam name="TParent">Type of parent values.</typeparam>
+    /// <typeparam name="TValue">Type of value data (must be numeric for proper rendering).</typeparam>
+    /// <param name="builder">The chart builder instance.</param>
+    /// <param name="labels">Labels for each sector of the treemap.</param>
+    /// <param name="parents">Parent labels for each sector. Use empty string for root-level items.</param>
+    /// <param name="values">Values determining the size of each sector.</param>
+    /// <param name="name">Name of the trace to appear in the legend. If null, no name is shown.</param>
+    /// <param name="ids">Unique identifiers for each sector. Useful when labels are not unique.</param>
+    /// <param name="textInfo">Controls text display: "label", "value", "percent", or combinations like "label+value".</param>
+    /// <param name="branchValues">How branch values are calculated: "total" or "remainder".</param>
+    /// <param name="maxDepth">Maximum depth to display. If null, shows all levels.</param>
+    /// <returns>A new immutable PlotlyChartBuilder with the treemap trace added.</returns>
+    public static PlotlyChartBuilder AddTreeMapTrace<TLabel, TParent, TValue>(
+        this PlotlyChartBuilder builder,
+        IEnumerable<TLabel> labels,
+        IEnumerable<TParent> parents,
+        IEnumerable<TValue>? values = null,
+        string? name = null,
+        IEnumerable<string>? ids = null,
+        string? textInfo = null,
+        string? branchValues = null,
+        int? maxDepth = null)
+    {
+        var trace = new TreeMapTrace
+        {
+            Labels = labels.Cast<object>().ToArray(),
+            Parents = parents.Cast<object>().ToArray(),
+            Values = values?.Cast<object>().ToArray(),
+            Name = name,
+            Ids = ids?.Cast<object>().ToArray(),
+            TextInfo = textInfo,
+            BranchValues = branchValues,
+            MaxDepth = maxDepth,
+            Pathbar = new PlotlyPathbar { Visible = true }
+        };
+
         return builder.AddTrace(trace);
     }
 

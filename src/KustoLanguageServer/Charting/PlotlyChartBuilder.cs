@@ -232,6 +232,7 @@ public sealed class PlotlyChartBuilder
 [JsonDerivedType(typeof(ViolinTrace), typeDiscriminator: "violin")]
 [JsonDerivedType(typeof(SurfaceTrace), typeDiscriminator: "surface")]
 [JsonDerivedType(typeof(IndicatorTrace), typeDiscriminator: "indicator")]
+[JsonDerivedType(typeof(TreeMapTrace), typeDiscriminator: "treemap")]
 public abstract record PlotlyTrace
 {
     /// <summary>
@@ -636,6 +637,145 @@ public sealed record IndicatorTrace : PlotlyTrace
     /// </summary>
     [JsonPropertyName("domain")]
     public object? Domain { get; init; }
+}
+
+/// <summary>
+/// TreeMap trace for hierarchical data visualization.
+/// </summary>
+public sealed record TreeMapTrace : PlotlyTrace
+{
+    /// <summary>
+    /// Labels for each sector of the treemap.
+    /// </summary>
+    [JsonPropertyName("labels")]
+    public required object[] Labels { get; init; } = Array.Empty<object>();
+
+    /// <summary>
+    /// Parent labels for each sector, defining the hierarchy.
+    /// Use empty string "" for root-level items.
+    /// </summary>
+    [JsonPropertyName("parents")]
+    public required object[] Parents { get; init; } = Array.Empty<object>();
+
+    /// <summary>
+    /// Values determining the size of each sector. Must be numeric.
+    /// </summary>
+    [JsonPropertyName("values")]
+    public object[]? Values { get; init; }
+
+    /// <summary>
+    /// Unique identifiers for each sector. Useful when labels are not unique.
+    /// </summary>
+    [JsonPropertyName("ids")]
+    public object[]? Ids { get; init; }
+
+    /// <summary>
+    /// Text to display on each sector.
+    /// </summary>
+    [JsonPropertyName("text")]
+    public object[]? Text { get; init; }
+
+    /// <summary>
+    /// Text template for customizing displayed text.
+    /// </summary>
+    [JsonPropertyName("texttemplate")]
+    public string? TextTemplate { get; init; }
+
+    /// <summary>
+    /// Controls text display: "text", "value", "percent", "label", or combinations like "label+value".
+    /// </summary>
+    [JsonPropertyName("textinfo")]
+    public string? TextInfo { get; init; }
+
+    /// <summary>
+    /// Hover text template.
+    /// </summary>
+    [JsonPropertyName("hovertemplate")]
+    public string? HoverTemplate { get; init; }
+
+    /// <summary>
+    /// Marker styling for the treemap sectors.
+    /// </summary>
+    [JsonPropertyName("marker")]
+    public PlotlyTreeMapMarker? Marker { get; init; }
+
+    /// <summary>
+    /// How much of the entry to show when drilling down. 0 shows all, higher values show less context.
+    /// </summary>
+    [JsonPropertyName("maxdepth")]
+    public int? MaxDepth { get; init; }
+
+    /// <summary>
+    /// Sets the level from which to render the treemap. Use "" for root.
+    /// </summary>
+    [JsonPropertyName("level")]
+    public string? Level { get; init; }
+
+    /// <summary>
+    /// Determines how the items are grouped in branches.
+    /// </summary>
+    [JsonPropertyName("branchvalues")]
+    public string? BranchValues { get; init; }
+
+    /// <summary>
+    /// Pathbar configuration for showing the current navigation path.
+    /// </summary>
+    [JsonPropertyName("pathbar")]
+    public PlotlyPathbar? Pathbar { get; init; }
+}
+
+/// <summary>
+/// Marker configuration for TreeMap traces.
+/// </summary>
+public sealed record PlotlyTreeMapMarker
+{
+    /// <summary>
+    /// Color values for each sector. Can be array of colors or numeric values for colorscale.
+    /// </summary>
+    [JsonPropertyName("colors")]
+    public object[]? Colors { get; init; }
+
+    /// <summary>
+    /// Colorscale for numeric color values.
+    /// </summary>
+    [JsonPropertyName("colorscale")]
+    public string? ColorScale { get; init; }
+
+    /// <summary>
+    /// Whether to show the colorbar.
+    /// </summary>
+    [JsonPropertyName("showscale")]
+    public bool? ShowScale { get; init; }
+
+    /// <summary>
+    /// Line styling for sector borders.
+    /// </summary>
+    [JsonPropertyName("line")]
+    public PlotlyLine? Line { get; init; }
+}
+
+/// <summary>
+/// Pathbar configuration for hierarchical charts (TreeMap, Sunburst).
+/// </summary>
+public sealed record PlotlyPathbar
+{
+    /// <summary>
+    /// Whether the pathbar is visible.
+    /// </summary>
+    [JsonPropertyName("visible")]
+    public bool? Visible { get; init; }
+
+    /// <summary>
+    /// Position of the pathbar: "top" or "bottom".
+    /// </summary>
+    [JsonPropertyName("side")]
+    public string? Side { get; init; }
+
+    /// <summary>
+    /// Font for the pathbar text.
+    /// </summary>
+    [JsonPropertyName("textfont")]
+    public PlotlyFont? TextFont { get; init; }
 }
 
 /// <summary>

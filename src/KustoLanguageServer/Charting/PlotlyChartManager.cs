@@ -1,7 +1,6 @@
 using System.Data;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Kusto.Data.Data;
 using Kusto.Data.Utils;
 
 namespace Kusto.Lsp;
@@ -159,6 +158,7 @@ public class PlotlyChartManager : IChartManager
             VisualizationKind.StackedAreaChart => BuildStackedAreaChart(data, options),
             VisualizationKind.Card => BuildCardChart(data, options),
             VisualizationKind.ThreeDChart => BuildThreeDChart(data, options),
+            VisualizationKind.TreeMap => BuildTreeMapChart(data, options),
             // Plotly is handled specially in RenderChartToHtmlDiv before reaching here
             // The following visualization types are not yet supported
             VisualizationKind.Graph => null,
@@ -168,7 +168,6 @@ public class PlotlyChartManager : IChartManager
             VisualizationKind.TimeLineChart => null,
             VisualizationKind.TimeLineWithAnomalyChart => null,
             VisualizationKind.TimePivot => null,
-            VisualizationKind.TreeMap => null,
             _ => null
         };
 
@@ -528,6 +527,141 @@ public class PlotlyChartManager : IChartManager
         {
             builder = builder.WithScene(scene);
         }
+
+        if (options.Legend != LegendVisualizationMode.Visible)
+            builder = builder.HideLegend();
+
+        return builder;
+    }
+
+    private PlotlyChartBuilder? BuildTreeMapChart(DataTable data, ChartVisualizationOptions options)
+    {
+        var builder = new PlotlyChartBuilder();
+
+        // TreeMap expects hierarchical data with at least 2 columns:
+        // - One or more hierarchy columns (categories)
+        // - One value column (numeric, for sizing)
+        if (data.Columns.Count < 2 || data.Rows.Count == 0)
+            return null;
+
+        // Find the value column (last numeric column)
+        DataColumn? valueColumn = null;
+        var hierarchyColumns = new List<DataColumn>();
+
+        foreach (DataColumn col in data.Columns)
+        {
+            if (IsNumeric(col.DataType))
+            {
+                valueColumn = col;
+            }
+            else
+            {
+                hierarchyColumns.Add(col);
+            }
+        }
+
+        // If no non-numeric columns found, use all but the last column as hierarchy
+        if (hierarchyColumns.Count == 0)
+        {
+            for (int i = 0; i < data.Columns.Count - 1; i++)
+            {
+                hierarchyColumns.Add(data.Columns[i]);
+            }
+            valueColumn = data.Columns[data.Columns.Count - 1];
+        }
+
+        if (valueColumn == null || hierarchyColumns.Count == 0)
+            return null;
+
+        // Build the treemap data: labels, parents, values, and ids
+        var labels = new List<string>();
+        var parents = new List<string>();
+        var values = new List<double>();
+        var ids = new List<string>();
+
+        // Track branch nodes and their indices for later value calculation
+        var branchIndices = new Dictionary<string, int>();
+        
+        // Track unique nodes at each level to avoid duplicates
+        var addedNodes = new HashSet<string>();
+
+        // Process each row to build the hierarchy
+        foreach (DataRow row in data.Rows)
+        {
+            var cellValue = row[valueColumn];
+            if (cellValue == null || cellValue == DBNull.Value)
+                continue;
+
+            double value = SanitizeDoubleValue(Convert.ToDouble(cellValue));
+            
+            // Build the path for this row
+            string parentId = "";
+            
+            for (int level = 0; level < hierarchyColumns.Count; level++)
+            {
+                var col = hierarchyColumns[level];
+                var nodeValue = row[col];
+                
+                if (nodeValue == null || nodeValue == DBNull.Value)
+                    continue;
+
+                string nodeLabel = nodeValue.ToString() ?? "";
+                
+                // Create a unique ID for this node based on its path
+                string nodeId = parentId == "" ? nodeLabel : $"{parentId}/{nodeLabel}";
+                
+                // Add intermediate nodes (branches) if not already added
+                if (level < hierarchyColumns.Count - 1)
+                {
+                    if (!addedNodes.Contains(nodeId))
+                    {
+                        int branchIndex = labels.Count;
+                        labels.Add(nodeLabel);
+                        parents.Add(parentId);
+                        values.Add(0); // Will be calculated later
+                        ids.Add(nodeId);
+                        addedNodes.Add(nodeId);
+                        branchIndices[nodeId] = branchIndex;
+                    }
+                    
+                    // Accumulate value to this branch
+                    if (branchIndices.TryGetValue(nodeId, out int idx))
+                    {
+                        values[idx] += value;
+                    }
+                }
+                else
+                {
+                    // Leaf node - add with actual value
+                    // For leaf nodes, we might have duplicate labels, so always use unique ID
+                    string leafId = nodeId + "_" + data.Rows.IndexOf(row);
+                    labels.Add(nodeLabel);
+                    parents.Add(parentId);
+                    values.Add(value);
+                    ids.Add(leafId);
+                }
+                
+                parentId = nodeId;
+            }
+        }
+
+        if (labels.Count == 0)
+            return null;
+
+        // Configure title
+        if (options.Title != null)
+            builder = builder.WithTitle(options.Title);
+
+        // Add the treemap trace
+        builder = builder.AddTreeMapTrace(
+            labels: labels,
+            parents: parents,
+            values: values,
+            ids: ids,
+            name: valueColumn.ColumnName,
+            textInfo: "label+value",
+            branchValues: "total"
+        );
 
         if (options.Legend != LegendVisualizationMode.Visible)
             builder = builder.HideLegend();
