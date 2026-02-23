@@ -168,14 +168,84 @@ public class SectionedDocument : IDocument
 
     public CompletionInfo GetCompletionItems(int position, string? trigger, CompletionOptions? options = null, CancellationToken cancellationToken = default)
     {
+        // don't trigger on space if the caret is on a non-whitespace character
+
+        if (trigger == " " && !CanTriggerOnSpace(this.Text, position))
+            return CompletionInfo.Empty;
+
+        if (trigger == "=" && !CanTriggerOnEquals(this.Text, position))
+            return CompletionInfo.Empty;
+
         var block = _script.GetBlockAtPosition(position);
         if (block != null 
             && (string.IsNullOrEmpty(trigger) || block.Service.ShouldAutoComplete(position, trigger[0], cancellationToken)))
         {
             return block.Service.GetCompletionItems(position, options, cancellationToken);
         }
+
         return CompletionInfo.Empty;
     }
+
+    private static bool CanTriggerOnEquals(string text, int position)
+    {
+        if (position > 1 && position < text.Length)
+        {
+            // if the equals is added immediately after a possible identifier
+            var prev = text[position - 2]; // @-1 is the triggering =
+            var next = GetNextNonWhitespaceCharacterOnSameLine(text, position);
+            if (char.IsLetterOrDigit(prev)
+                && _canTriggerWithSpaceBefore.Contains(next))  // re-use space triggerins rules
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool CanTriggerOnSpace(string text, int position)
+    {
+        // space can trigger at end of document
+        if (position >= text.Length)
+            return true;
+
+        // space can trigger at end of line
+        var nextLineBreakStart = Kusto.Language.Parsing.TextFacts.GetNextLineBreakStart(text, position);
+        if (nextLineBreakStart == position)
+            return true;
+
+        // space can trigger if the rest of the line is whitespace
+        if (Kusto.Language.Parsing.TextFacts.IsWhitespaceOnly(text, position, nextLineBreakStart - position))
+            return true;
+
+        if (position > 1 && position < text.Length)
+        {
+            // if the space is added immediately after a punctuation that expects to have a value after it
+            // and the current non-whitespace character is not already the start of a value
+            var prev = text[position - 2];  // @-1 is the triggering space
+            var next = GetNextNonWhitespaceCharacterOnSameLine(text, position);
+            if (_canTriggerWithSpaceAfter.Contains(prev)
+                && _canTriggerWithSpaceBefore.Contains(next))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static char GetNextNonWhitespaceCharacterOnSameLine(string text, int position)
+    {
+        var nextLineBreakStart = Kusto.Language.Parsing.TextFacts.GetNextLineBreakStart(text, position);
+        if (nextLineBreakStart < 0)
+            nextLineBreakStart = text.Length;
+        for (int i = position; i < nextLineBreakStart; i++)
+        {
+            if (char.IsWhiteSpace(text[i]))
+                continue;
+            return text[i];
+        }
+        return '\0';
+    }
+
+    private static ImmutableList<char> _canTriggerWithSpaceAfter = ['=', ',', ':', '|'];
+    private static ImmutableList<char> _canTriggerWithSpaceBefore = [')', ']', ',', '}', ':', '|', '\0'];
 
     private ImmutableList<Diagnostic>? _diagnostics;
     public IReadOnlyList<Diagnostic> GetDiagnostics(bool waitForAnalysis = true, CancellationToken cancellationToken = default)

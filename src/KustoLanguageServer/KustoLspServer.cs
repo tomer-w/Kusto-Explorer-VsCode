@@ -145,8 +145,9 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
         var completionOptions = new LSP.CompletionOptions
         {
             ResolveProvider = false,
-            TriggerCharacters = ["(", "[", ".", " "],
-            AllCommitCharacters = ["\t", " ", "(", ")", "{", "}", "[", "]", ".", ",", ";"]
+            TriggerCharacters = ["(", "[", ".", " ", "="],
+            // will always commit when these are typed, even if no other typing has narrowed the selection
+            AllCommitCharacters = ["\t", " ", ".", ","] 
         };
 
         this.ServerSettings = new LSP.InitializeResult
@@ -409,7 +410,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
     private static readonly CompletionOptions _completionOptions = CompletionOptions.Default
         .WithIncludePunctuationOnlySyntax(false)
         .WithAutoAppendWhitespace(false)
-        .WithIncludeExtendedSyntax(true)
+        .WithIncludeExtendedSyntax(false)
         .WithIncludeFunctions(true)
         .WithIncludeSymbols(true)
         .WithIncludeSyntax(true);
