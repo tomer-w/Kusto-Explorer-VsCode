@@ -140,12 +140,12 @@
       },
       {
         "command": "kusto.copyChart",
-        "title": "Copy Chart",
+        "title": "Copy Chart (As Is)",
         "icon": "$(file-media)"
       },
       {
         "command": "kusto.copyChartTransparent",
-        "title": "Copy Chart (Transparent)",
+        "title": "Copy Chart (Light/Transparent)",
         "icon": "$(file-media)"
       },
       {
@@ -230,7 +230,7 @@
           "group": "navigation@1"
         },
         {
-          "command": "kusto.copyChart",
+          "command": "kusto.copyChartTransparent",
           "when": "activeWebviewPanelId == kusto",
           "group": "navigation@1"
         }
