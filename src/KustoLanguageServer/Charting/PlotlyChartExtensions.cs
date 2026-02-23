@@ -389,6 +389,124 @@ public static class PlotlyChartExtensions
 
     #endregion
 
+    #region Sankey Charts
+
+    // Default colors for Sankey nodes - using medium saturation colors visible in both light and dark modes
+    private static readonly string[] SankeyDefaultNodeColors =
+    [
+        "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+        "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"
+    ];
+
+    /// <summary>
+    /// Adds a Sankey diagram trace to the builder for visualizing flows between nodes.
+    /// </summary>
+    /// <param name="builder">The chart builder instance.</param>
+    /// <param name="nodeLabels">Labels for each node in the diagram.</param>
+    /// <param name="linkSources">Source node indices for each link.</param>
+    /// <param name="linkTargets">Target node indices for each link.</param>
+    /// <param name="linkValues">Flow values for each link.</param>
+    /// <param name="name">Name of the trace to appear in the legend. If null, no name is shown.</param>
+    /// <param name="nodeColors">Colors for each node. If null, uses default colors.</param>
+    /// <param name="linkColors">Colors for each link. If null, derives semi-transparent colors from source nodes.</param>
+    /// <param name="orientation">Orientation: "h" for horizontal (default), "v" for vertical.</param>
+    /// <param name="arrangement">Node arrangement: "snap", "perpendicular", "freeform", or "fixed".</param>
+    /// <returns>A new immutable PlotlyChartBuilder with the Sankey trace added.</returns>
+    public static PlotlyChartBuilder AddSankeyTrace(
+        this PlotlyChartBuilder builder,
+        IEnumerable<string> nodeLabels,
+        IEnumerable<int> linkSources,
+        IEnumerable<int> linkTargets,
+        IEnumerable<double> linkValues,
+        string? name = null,
+        IEnumerable<string>? nodeColors = null,
+        IEnumerable<string>? linkColors = null,
+        string? orientation = null,
+        string? arrangement = null)
+    {
+        var nodeLabelsArray = nodeLabels.ToArray();
+        var linkSourcesArray = linkSources.ToArray();
+        var linkTargetsArray = linkTargets.ToArray();
+        var linkValuesArray = linkValues.ToArray();
+
+        // Generate default node colors if not provided
+        var nodeColorsArray = nodeColors?.ToArray();
+        if (nodeColorsArray == null || nodeColorsArray.Length == 0)
+        {
+            nodeColorsArray = new string[nodeLabelsArray.Length];
+            for (int i = 0; i < nodeLabelsArray.Length; i++)
+            {
+                nodeColorsArray[i] = SankeyDefaultNodeColors[i % SankeyDefaultNodeColors.Length];
+            }
+        }
+
+        // Generate link colors based on source node colors with transparency if not provided
+        var linkColorsArray = linkColors?.ToArray();
+        if (linkColorsArray == null || linkColorsArray.Length == 0)
+        {
+            linkColorsArray = new string[linkSourcesArray.Length];
+            for (int i = 0; i < linkSourcesArray.Length; i++)
+            {
+                int sourceIndex = linkSourcesArray[i];
+                string sourceColor = nodeColorsArray[sourceIndex % nodeColorsArray.Length];
+                // Convert hex color to rgba with 0.4 opacity for links
+                linkColorsArray[i] = HexToRgba(sourceColor, 0.4);
+            }
+        }
+
+        var trace = new SankeyTrace
+        {
+            Name = name,
+            Orientation = orientation ?? "h",
+            Arrangement = arrangement ?? "snap",
+            Node = new SankeyNode
+            {
+                Label = nodeLabelsArray,
+                Color = nodeColorsArray,
+                Pad = 15,
+                Thickness = 20,
+                Line = new PlotlyLine { Color = "#444444", Width = 0.5 }
+            },
+            Link = new SankeyLink
+            {
+                Source = linkSourcesArray,
+                Target = linkTargetsArray,
+                Value = linkValuesArray,
+                Color = linkColorsArray
+            }
+        };
+
+        return builder.AddTrace(trace);
+    }
+
+    /// <summary>
+    /// Converts a hex color string to rgba format with specified opacity.
+    /// </summary>
+    private static string HexToRgba(string hex, double opacity)
+    {
+        // Remove # if present
+        hex = hex.TrimStart('#');
+
+        // Handle shorthand hex (e.g., "fff" -> "ffffff")
+        if (hex.Length == 3)
+        {
+            hex = string.Concat(hex[0], hex[0], hex[1], hex[1], hex[2], hex[2]);
+        }
+
+        if (hex.Length != 6)
+        {
+            return $"rgba(128, 128, 128, {opacity})"; // Fallback gray
+        }
+
+        int r = Convert.ToInt32(hex.Substring(0, 2), 16);
+        int g = Convert.ToInt32(hex.Substring(2, 2), 16);
+        int b = Convert.ToInt32(hex.Substring(4, 2), 16);
+
+        return $"rgba({r}, {g}, {b}, {opacity})";
+    }
+
+    #endregion
+
     #region Layout Configuration
 
 

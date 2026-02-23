@@ -159,11 +159,11 @@ public class PlotlyChartManager : IChartManager
             VisualizationKind.Card => BuildCardChart(data, options),
             VisualizationKind.ThreeDChart => BuildThreeDChart(data, options),
             VisualizationKind.TreeMap => BuildTreeMapChart(data, options),
+            VisualizationKind.Sankey => BuildSankeyChart(data, options),
             // Plotly is handled specially in RenderChartToHtmlDiv before reaching here
             // The following visualization types are not yet supported
             VisualizationKind.Graph => null,
             VisualizationKind.PivotChart => null,
-            VisualizationKind.Sankey => null,
             VisualizationKind.TimeLadderChart => null,
             VisualizationKind.TimeLineChart => null,
             VisualizationKind.TimeLineWithAnomalyChart => null,
@@ -661,6 +661,124 @@ public class PlotlyChartManager : IChartManager
             name: valueColumn.ColumnName,
             textInfo: "label+value",
             branchValues: "total"
+        );
+
+        if (options.Legend != LegendVisualizationMode.Visible)
+            builder = builder.HideLegend();
+
+        return builder;
+    }
+
+    private PlotlyChartBuilder? BuildSankeyChart(DataTable data, ChartVisualizationOptions options)
+    {
+        var builder = new PlotlyChartBuilder();
+
+        // Sankey expects flow data with at least 3 columns:
+        // - Source node column (string)
+        // - Target node column (string)
+        // - Value column (numeric, for flow size)
+        if (data.Columns.Count < 3 || data.Rows.Count == 0)
+            return null;
+
+        // Find the columns: first two non-numeric are source/target, first numeric is value
+        DataColumn? sourceColumn = null;
+        DataColumn? targetColumn = null;
+        DataColumn? valueColumn = null;
+
+        foreach (DataColumn col in data.Columns)
+        {
+            if (IsNumeric(col.DataType))
+            {
+                valueColumn ??= col;
+            }
+            else
+            {
+                if (sourceColumn == null)
+                    sourceColumn = col;
+                else if (targetColumn == null)
+                    targetColumn = col;
+            }
+        }
+
+        // If we don't have enough categorical columns, use first two columns as source/target
+        if (sourceColumn == null || targetColumn == null)
+        {
+            if (data.Columns.Count >= 3)
+            {
+                sourceColumn = data.Columns[0];
+                targetColumn = data.Columns[1];
+                valueColumn = data.Columns[2];
+            }
+            else
+            {
+                return null;
+            }
+        }
+
+        if (sourceColumn == null || targetColumn == null || valueColumn == null)
+            return null;
+
+        // Build unique node list and create index mapping
+        var nodeLabels = new List<string>();
+        var nodeIndexMap = new Dictionary<string, int>();
+
+        void EnsureNode(string label)
+        {
+            if (!nodeIndexMap.ContainsKey(label))
+            {
+                nodeIndexMap[label] = nodeLabels.Count;
+                nodeLabels.Add(label);
+            }
+        }
+
+        // Collect links
+        var linkSources = new List<int>();
+        var linkTargets = new List<int>();
+        var linkValues = new List<double>();
+
+        foreach (DataRow row in data.Rows)
+        {
+            var sourceValue = row[sourceColumn];
+            var targetValue = row[targetColumn];
+            var flowValue = row[valueColumn];
+
+            if (sourceValue == null || sourceValue == DBNull.Value ||
+                targetValue == null || targetValue == DBNull.Value ||
+                flowValue == null || flowValue == DBNull.Value)
+                continue;
+
+            string sourceLabel = sourceValue.ToString() ?? "";
+            string targetLabel = targetValue.ToString() ?? "";
+            double value = SanitizeDoubleValue(Convert.ToDouble(flowValue));
+
+            // Skip zero or negative flows
+            if (value <= 0)
+                continue;
+
+            // Ensure both nodes exist
+            EnsureNode(sourceLabel);
+            EnsureNode(targetLabel);
+
+            // Add the link
+            linkSources.Add(nodeIndexMap[sourceLabel]);
+            linkTargets.Add(nodeIndexMap[targetLabel]);
+            linkValues.Add(value);
+        }
+
+        if (nodeLabels.Count == 0 || linkSources.Count == 0)
+            return null;
+
+        // Configure title
+        if (options.Title != null)
+            builder = builder.WithTitle(options.Title);
+
+        // Add the Sankey trace
+        builder = builder.AddSankeyTrace(
+            nodeLabels: nodeLabels,
+            linkSources: linkSources,
+            linkTargets: linkTargets,
+            linkValues: linkValues,
+            name: valueColumn.ColumnName
         );
 
         if (options.Legend != LegendVisualizationMode.Visible)

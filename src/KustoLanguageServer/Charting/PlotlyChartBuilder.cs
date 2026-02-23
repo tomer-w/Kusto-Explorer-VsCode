@@ -233,6 +233,7 @@ public sealed class PlotlyChartBuilder
 [JsonDerivedType(typeof(SurfaceTrace), typeDiscriminator: "surface")]
 [JsonDerivedType(typeof(IndicatorTrace), typeDiscriminator: "indicator")]
 [JsonDerivedType(typeof(TreeMapTrace), typeDiscriminator: "treemap")]
+[JsonDerivedType(typeof(SankeyTrace), typeDiscriminator: "sankey")]
 public abstract record PlotlyTrace
 {
     /// <summary>
@@ -776,6 +777,132 @@ public sealed record PlotlyPathbar
     /// </summary>
     [JsonPropertyName("textfont")]
     public PlotlyFont? TextFont { get; init; }
+}
+
+/// <summary>
+/// Sankey diagram trace for visualizing flows between nodes.
+/// </summary>
+public sealed record SankeyTrace : PlotlyTrace
+{
+    /// <summary>
+    /// Node configuration for the Sankey diagram.
+    /// </summary>
+    [JsonPropertyName("node")]
+    public required SankeyNode Node { get; init; }
+
+    /// <summary>
+    /// Link configuration for the Sankey diagram.
+    /// </summary>
+    [JsonPropertyName("link")]
+    public required SankeyLink Link { get; init; }
+
+    /// <summary>
+    /// Orientation of the Sankey diagram: "h" for horizontal, "v" for vertical.
+    /// </summary>
+    [JsonPropertyName("orientation")]
+    public string? Orientation { get; init; }
+
+    /// <summary>
+    /// Value format string for display.
+    /// </summary>
+    [JsonPropertyName("valueformat")]
+    public string? ValueFormat { get; init; }
+
+    /// <summary>
+    /// Value suffix for display (e.g., " units").
+    /// </summary>
+    [JsonPropertyName("valuesuffix")]
+    public string? ValueSuffix { get; init; }
+
+    /// <summary>
+    /// The arrangement of nodes: "snap", "perpendicular", "freeform", or "fixed".
+    /// </summary>
+    [JsonPropertyName("arrangement")]
+    public string? Arrangement { get; init; }
+}
+
+/// <summary>
+/// Node configuration for Sankey diagrams.
+/// </summary>
+public sealed record SankeyNode
+{
+    /// <summary>
+    /// Labels for each node.
+    /// </summary>
+    [JsonPropertyName("label")]
+    public required string[] Label { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Colors for each node. Can be array of colors or a single color.
+    /// </summary>
+    [JsonPropertyName("color")]
+    public object? Color { get; init; }
+
+    /// <summary>
+    /// Padding between nodes in pixels.
+    /// </summary>
+    [JsonPropertyName("pad")]
+    public int? Pad { get; init; }
+
+    /// <summary>
+    /// Thickness of nodes in pixels.
+    /// </summary>
+    [JsonPropertyName("thickness")]
+    public int? Thickness { get; init; }
+
+    /// <summary>
+    /// Line styling for node borders.
+    /// </summary>
+    [JsonPropertyName("line")]
+    public PlotlyLine? Line { get; init; }
+
+    /// <summary>
+    /// Hover template for nodes.
+    /// </summary>
+    [JsonPropertyName("hovertemplate")]
+    public string? HoverTemplate { get; init; }
+}
+
+/// <summary>
+/// Link configuration for Sankey diagrams.
+/// </summary>
+public sealed record SankeyLink
+{
+    /// <summary>
+    /// Source node indices for each link.
+    /// </summary>
+    [JsonPropertyName("source")]
+    public required int[] Source { get; init; } = Array.Empty<int>();
+
+    /// <summary>
+    /// Target node indices for each link.
+    /// </summary>
+    [JsonPropertyName("target")]
+    public required int[] Target { get; init; } = Array.Empty<int>();
+
+    /// <summary>
+    /// Flow values for each link.
+    /// </summary>
+    [JsonPropertyName("value")]
+    public required double[] Value { get; init; } = Array.Empty<double>();
+
+    /// <summary>
+    /// Colors for each link. Can be array of colors or a single color.
+    /// </summary>
+    [JsonPropertyName("color")]
+    public object? Color { get; init; }
+
+    /// <summary>
+    /// Labels for each link (shown on hover).
+    /// </summary>
+    [JsonPropertyName("label")]
+    public string[]? Label { get; init; }
+
+    /// <summary>
+    /// Hover template for links.
+    /// </summary>
+    [JsonPropertyName("hovertemplate")]
+    public string? HoverTemplate { get; init; }
 }
 
 /// <summary>
