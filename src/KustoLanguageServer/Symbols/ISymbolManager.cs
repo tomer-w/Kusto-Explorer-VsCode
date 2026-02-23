@@ -1,6 +1,5 @@
-﻿using System.Collections.Immutable;
-using Kusto.Language;
-using Kusto.Language.Editor;
+﻿using Kusto.Language;
+using System.Collections.Immutable;
 
 namespace Kusto.Lsp;
 
@@ -18,22 +17,17 @@ public interface ISymbolManager
     event EventHandler<GlobalState>? GlobalsChanged;
 
     /// <summary>
-    /// Gets the list of databases for the specified cluster or connection.
+    /// Ensures that symbols for the specified cluster existing in <see cref="Globals"/>
     /// </summary>
-    Task<ImmutableList<string>> GetOrLoadDatabaseNamesAsync(string clusterOrConnection, CancellationToken cancellationToken);
+    Task EnsureClustersAsync(ImmutableList<string> clusterNames, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Loads symbols for the specified cluster/connection and database, and updates the global state.
+    /// Ensures that the symbols for the cluster and database exist in <see cref="Globals"/>
     /// </summary>
-    Task LoadSymbolsAsync(string clusterOrConnection, string? database, CancellationToken cancellationToken);
+    Task EnsureSymbolsAsync(string clusterName, string? database, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Ensures that the specified clusters or connections are represented in the global state.
+    /// Adds missing cluster and database symbols referenced in the document.
     /// </summary>
-    Task EnsureClustersAsync(string[] clusterOrConnections, CancellationToken cancellationToken);
-
-    /// <summary>
-    /// Resolve references to unloaded clusters and databases in the specified document.
-    /// </summary>
-    Task ResolveSymbolsAsync(IDocument document, CancellationToken cancellationToken);
+    Task AddReferencedSymbolsAsync(IDocument document, CancellationToken cancellationToken);
 }

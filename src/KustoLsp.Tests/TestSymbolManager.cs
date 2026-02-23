@@ -8,6 +8,6 @@ public class TestSymbolManager
     {
         var connectionManager = new Kusto.Lsp.ConnectionManager();
         var symbolManager = new Kusto.Lsp.SymbolManager(connectionManager);
-        await symbolManager.LoadSymbolsAsync("help.kusto.windows.net", "Samples", CancellationToken.None);
+        await symbolManager.EnsureSymbolsAsync("help.kusto.windows.net", "Samples", CancellationToken.None);
     }
 }

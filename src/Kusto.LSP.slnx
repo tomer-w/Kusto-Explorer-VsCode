@@ -2,8 +2,6 @@
   <Project Path="KustoLanguageServer/KustoLsp.csproj" />
   <Project Path="KustoLsp.Tests/KustoLspTests.csproj" />
   <Project Path="KustoLspServer/KustoLspServer.csproj" Id="304c6e02-ffce-40a0-8f94-481149430417" />
-  <Project Path="KustoSymbols.Tests/KustoSymbols.Tests.csproj" Id="6a00fc86-05d8-40bf-ae8c-a769477456c7" />
-  <Project Path="KustoSymbols/KustoSymbols.csproj" Id="9d8b0065-7fd5-455f-aa4a-60f87845f432" />
   <Project Path="LspCommon/LspCommon.csproj" Id="c0f6b939-7a44-403f-8127-40dc69862562" />
   <Project Path="VsCodeExtension/VsCodeExtension.esproj">
     <Build />

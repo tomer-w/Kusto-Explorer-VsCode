@@ -107,7 +107,7 @@ public abstract class LspServer
     /// A notifcation from the client when it is ready to recieve notifications and requests from server.
     /// </summary>
     [JsonRpcMethod(Methods.InitializedName, UseSingleObjectParameterDeserialization = true)]
-    public virtual Task OnInitializedAsync(InitializedParams @params)
+    public virtual Task OnInitializedAsync(InitializedParams @params, CancellationToken cancellationToken)
     {
         return Task.CompletedTask;
     }

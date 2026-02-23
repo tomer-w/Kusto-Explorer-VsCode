@@ -20,6 +20,27 @@ public interface IConnection
     string? Database { get; }
 
     /// <summary>
+    /// Gets the equivalent connection, but referring to the specified cluster.
+    /// </summary>
+    IConnection WithCluster(string clusterName);
+
+    /// <summary>
+    /// Gets the equivalent connection, but referring the specified database.
+    /// </summary>
+    IConnection WithDatabase(string databaseName);
+
+    /// <summary>
+    ///Gets the equivalent connection, but referring to the specified cluster and database
+    /// </summary>
+    IConnection WithClusterAndDatabase(string clusterName, string? databaseName)
+    {
+        var result = WithCluster(clusterName);
+        if (databaseName != null)
+            result = result.WithDatabase(databaseName);
+        return result;
+    }
+
+    /// <summary>
     /// Executes a query over the connection.
     /// </summary>
     public Task<ExecuteResult> ExecuteAsync(
@@ -38,6 +59,11 @@ public interface IConnection
         ImmutableDictionary<string, string>? parameters = null,
         CancellationToken cancellationToken = default
         );
+
+    /// <summary>
+    /// Gets the kind of server this connection is connected to.
+    /// </summary>
+    public Task<string> GetServerKindAsync(CancellationToken cancellationToken);
 }
 
 /// <summary>

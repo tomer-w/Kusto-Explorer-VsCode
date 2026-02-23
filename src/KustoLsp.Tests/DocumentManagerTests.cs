@@ -62,18 +62,18 @@ public sealed class DocumentManagerTests
             return Task.CompletedTask;
         }
 
-        public Task<ImmutableList<string>> GetOrLoadDatabaseNamesAsync(string clusterOrConnection, CancellationToken cancellationToken)
+        public Task<ImmutableList<string>> GetDatabaseNamesAsync(string clusterOrConnection, CancellationToken cancellationToken)
         {
             var list = this.Globals.GetCluster(clusterOrConnection).Databases.Select(db => db.Name).ToImmutableList();
             return Task.FromResult(list);
         }
 
-        public Task LoadSymbolsAsync(string clusterOrConnection, string? database, CancellationToken cancellationToken)
+        public Task EnsureSymbolsAsync(string clusterOrConnection, string? database, CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
         }
 
-        public Task ResolveSymbolsAsync(IDocument document, CancellationToken cancellationToken)
+        public Task AddReferencedSymbolsAsync(IDocument document, CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
         }

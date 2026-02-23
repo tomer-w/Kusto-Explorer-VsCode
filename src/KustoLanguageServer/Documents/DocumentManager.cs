@@ -102,6 +102,8 @@ public class DocumentManager : IDocumentManager
 
     public void AddDocument(Uri id, string text)
     {
+        _logger?.Log($"DocumentManager: Adding document {id}");
+
         var info = GetOrCreateDocumentInfo(id);
         
         // Update script with actual text
@@ -118,6 +120,8 @@ public class DocumentManager : IDocumentManager
 
     public void RemoveDocument(Uri id)
     {
+        _logger?.Log($"DocumentManager: Removing document {id}");
+
         ImmutableInterlocked.TryRemove(ref _idToScriptInfoMap, id, out _);
         RaiseDocumentRemoved(id);
     }
@@ -125,17 +129,19 @@ public class DocumentManager : IDocumentManager
     /// <summary>
     /// Changes the cluster and database for the script.
     /// </summary>
-    public Task UpdateConnectionAsync(Uri id, string? cluster, string? database, string? serverKind)
+    public Task UpdateConnectionAsync(Uri id, string? clusterName, string? databaseName, string? serverKind)
     {
+        _logger?.Log($"DocumentManager: Updating document connection: {id} cluster: {clusterName ?? "<no-cluster>"} database: {databaseName ?? "<no-database>"}");
+
         var info = GetOrCreateDocumentInfo(id);
         
         // Update connection info
-        info.Cluster = cluster;
-        info.Database = database;
+        info.Cluster = clusterName;
+        info.Database = databaseName;
         info.ServerKind = serverKind;
 
         // Load symbols if we have a cluster
-        if (cluster != null)
+        if (clusterName != null)
         {
             // note: already calls UpdateScriptGlobals after loading symbols
             return LoadSymbolsAsync(info);
@@ -164,16 +170,16 @@ public class DocumentManager : IDocumentManager
 
     private Task LoadSymbolsAsync(DocumentInfo info)
     {
+        _logger?.Log($"DocumentManager: Ensuring symbols for (cluster: {info.Cluster}, database: {info.Database})");
+
         // ensure symbols are loaded for this cluster and database
         return info.LoadSymbolsQueue.Run(async (useThisCancellationToken) =>
         {
             if (info.Cluster != null)
             {
-                _logger?.Log($"Loading symbols (cluster: {info.Cluster}, database: {info.Database})");
-
                 // instruct symbol manager to load symbols for this cluster and database
                 // this will trigger a globals changed event when done, which will update all the script globals
-                await _symbolManager.LoadSymbolsAsync(info.Cluster, info.Database, useThisCancellationToken);
+                await _symbolManager.EnsureSymbolsAsync(info.Cluster, info.Database, useThisCancellationToken);
             }
 
             // force additional update since globals may not have changed.
@@ -209,7 +215,7 @@ public class DocumentManager : IDocumentManager
         // resolve symbols for this script using latest request queue.
         return info.ResolveSymbolsQueue.Run(async (useThisCancellationToken) =>
         {
-            await _symbolManager.ResolveSymbolsAsync(info.Document, useThisCancellationToken).ConfigureAwait(false);
+            await _symbolManager.AddReferencedSymbolsAsync(info.Document, useThisCancellationToken).ConfigureAwait(false);
         });
     }
 

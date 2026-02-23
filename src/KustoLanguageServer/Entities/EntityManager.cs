@@ -2,16 +2,17 @@
 using Kusto.Data.Common;
 using Kusto.Language;
 using Newtonsoft.Json.Linq;
+using System.Collections.Immutable;
 
 namespace Kusto.Lsp;
 
 public class EntityManager : IEntityManager
 {
-    private readonly IConnectionManager _connectionManager;
+    private readonly ISchemaSource _schemaSource;
 
-    public EntityManager(IConnectionManager connectionManager)
+    public EntityManager(ISchemaSource schemaSource)
     {
-        _connectionManager = connectionManager;
+        _schemaSource = schemaSource;
     }
 
     public async Task<string?> GetCreateCommand(EntityId id, CancellationToken cancellationToken)
@@ -19,31 +20,27 @@ public class EntityManager : IEntityManager
         if (id.Cluster != null
             && id.Database != null)
         {
-            var connection = _connectionManager.GetConnection(id.Cluster, id.Database);
-            if (connection != null)
+            switch (id.EntityType)
             {
-                switch (id.EntityType)
-                {
-                    case EntityType.Table:
-                        var tableDef = await GetTableDefinitionAsync(connection, id.Database, id.EntityName, cancellationToken).ConfigureAwait(false);
-                        return WithEOL(tableDef);
-                    case EntityType.Function:
-                        var functionDef = await GetFunctionDefinitionAsync(connection, id.Database, id.EntityName, cancellationToken).ConfigureAwait(false);
-                        return WithEOL(functionDef);
-                    case EntityType.MaterializedView:
-                        var mvDef = await GetMaterializedViewDefinitionAsync(connection, id.Database, id.EntityName, cancellationToken).ConfigureAwait(false);
-                        return WithEOL(mvDef);
-                    case EntityType.EntityGroup:
-                        var egDef = await GetEntityGroupDefinitionAsync(connection, id.Database, id.EntityName, cancellationToken).ConfigureAwait(false);
-                        return WithEOL(egDef);
-                    case EntityType.Graph:
-                        var gmDef = await GetGraphModelDefinitionAsync(connection, id.Database, id.EntityName, cancellationToken).ConfigureAwait(false);
-                        return WithEOL(gmDef);
-                    case EntityType.ExternalTable:
-                        break; // noway to have a single command that reconstructs external table
-                    default:
-                        break;
-                }
+                case EntityType.Table:
+                    var tableDef = await GetTableDefinitionAsync(id.Cluster, id.Database, id.EntityName, cancellationToken).ConfigureAwait(false);
+                    return WithEOL(tableDef);
+                case EntityType.Function:
+                    var functionDef = await GetFunctionDefinitionAsync(id.Cluster, id.Database, id.EntityName, cancellationToken).ConfigureAwait(false);
+                    return WithEOL(functionDef);
+                case EntityType.MaterializedView:
+                    var mvDef = await GetMaterializedViewDefinitionAsync(id.Cluster, id.Database, id.EntityName, cancellationToken).ConfigureAwait(false);
+                    return WithEOL(mvDef);
+                case EntityType.EntityGroup:
+                    var egDef = await GetEntityGroupDefinitionAsync(id.Cluster, id.Database, id.EntityName, cancellationToken).ConfigureAwait(false);
+                    return WithEOL(egDef);
+                case EntityType.Graph:
+                    var gmDef = await GetGraphModelDefinitionAsync(id.Cluster, id.Database, id.EntityName, cancellationToken).ConfigureAwait(false);
+                    return WithEOL(gmDef);
+                case EntityType.ExternalTable:
+                    break; // noway to have a single command that reconstructs external table
+                default:
+                    break;
             }
         }
 
@@ -112,14 +109,14 @@ public class EntityManager : IEntityManager
         return text;
     }
 
-    private async Task<string?> GetTableDefinitionAsync(IConnection connection, string databaseName, string tableName, CancellationToken cancellationToken)
+    private async Task<string?> GetTableDefinitionAsync(string cluster, string databaseName, string tableName, CancellationToken cancellationToken)
     {
-        var entityInfo = await GetEntityInfoAsync(connection, databaseName, "Table", tableName, cancellationToken).ConfigureAwait(false);
+        var entityInfo = (await _schemaSource.GetTableInfosAsync(cluster, databaseName, tableName, cancellationToken).ConfigureAwait(false)).FirstOrDefault();
         if (entityInfo != null)
         {
-            var table = KustoFacts.BracketNameIfNecessary(entityInfo.EntityName, KustoDialect.EngineCommand);
-            var columnSchema = entityInfo.CslOutputSchema;
-            var props = GetProperties(entityInfo.Folder, entityInfo.DocString, entityInfo.Properties);
+            var table = KustoFacts.BracketNameIfNecessary(entityInfo.Name, KustoDialect.EngineCommand);
+            var columnSchema = GetColumnSchema(entityInfo.Columns);
+            var props = GetProperties(entityInfo.Folder, entityInfo.Description, null);
             var propsClause = GetWithPropertiesClause(props);
 
             if (propsClause != null)
@@ -143,13 +140,18 @@ public class EntityManager : IEntityManager
         return null;
     }
 
-    private async Task<string?> GetFunctionDefinitionAsync(IConnection connection, string databaseName, string entityName, CancellationToken cancellationToken)
+    private static string GetColumnSchema(ImmutableList<ColumnInfo> columns)
     {
-        var entityInfo = await GetEntityInfoAsync(connection, databaseName, "Function", entityName, cancellationToken).ConfigureAwait(false);
+        return string.Join(", ", columns.Select(c => $"{KustoFacts.BracketNameIfNecessary(c.Name, KustoDialect.EngineCommand)}: {c.Type}"));
+    }
+
+    private async Task<string?> GetFunctionDefinitionAsync(string cluster, string databaseName, string entityName, CancellationToken cancellationToken)
+    {
+        var entityInfo = (await _schemaSource.GetFunctionInfosAsync(cluster, databaseName, entityName, cancellationToken).ConfigureAwait(false)).FirstOrDefault();
         if (entityInfo != null)
         {
-            var function = KustoFacts.BracketNameIfNecessary(entityInfo.EntityName, KustoDialect.EngineCommand);
-            var props = GetProperties(entityInfo.Folder, entityInfo.DocString, entityInfo.Properties);
+            var function = KustoFacts.BracketNameIfNecessary(entityInfo.Name, KustoDialect.EngineCommand);
+            var props = GetProperties(entityInfo.Folder, entityInfo.Description, null);
             var propClause = GetWithPropertiesClause(props);
 
             if (propClause != null)
@@ -158,16 +160,16 @@ public class EntityManager : IEntityManager
                     $$"""
                     .create-or-alter function
                         {{propClause}}
-                    {{function}} {{entityInfo.CslInputSchema}}
-                    {{entityInfo.Content}}
+                    {{function}} {{entityInfo.Parameters}}
+                    {{entityInfo.Body}}
                     """;
             }
             else
             {
                 return
                     $$"""
-                    .create-or-alter function {{function}} {{entityInfo.CslInputSchema}}
-                    {{entityInfo.Content}}
+                    .create-or-alter function {{function}} {{entityInfo.Parameters}}
+                    {{entityInfo.Body}}
                     """;
             }
 
@@ -175,61 +177,53 @@ public class EntityManager : IEntityManager
         return null;
     }
 
-    private async Task<string?> GetMaterializedViewDefinitionAsync(IConnection connection, string databaseName, string entityName, CancellationToken cancellationToken)
+    private async Task<string?> GetMaterializedViewDefinitionAsync(string cluster, string databaseName, string entityName, CancellationToken cancellationToken)
     {
-        var entityInfo = await GetEntityInfoAsync(connection, databaseName, "MaterializedView", entityName, cancellationToken).ConfigureAwait(false);
-
-        var mvCommand = CslCommandGenerator.GenerateMaterializedViewShowCommand(entityName);
-        var mvInfo = (await connection.ExecuteAsync<MaterializedViewShowCommandResult>(mvCommand, cancellationToken: cancellationToken).ConfigureAwait(false)).Values?.FirstOrDefault();
-
-        if (entityInfo != null && mvInfo != null)
-        {
-            var view = KustoFacts.BracketNameIfNecessary(entityInfo.EntityName, KustoDialect.EngineCommand);
-            var table = KustoFacts.BracketNameIfNecessary(mvInfo.SourceTable, KustoDialect.EngineCommand);
+        var entityInfo = (await _schemaSource.GetMaterializedViewInfosAsync(cluster, databaseName, entityName, cancellationToken).ConfigureAwait(false)).FirstOrDefault();
+        if (entityInfo != null)
+        { 
+            var view = KustoFacts.BracketNameIfNecessary(entityInfo.Name, KustoDialect.EngineCommand);
+            var table = KustoFacts.BracketNameIfNecessary(entityInfo.Source, KustoDialect.EngineCommand);
             return
                 $$"""
                 .create-or-alter materialized-view {{view}} on table {{table}} { 
-                {{mvInfo.Query}} 
+                {{entityInfo.Query}} 
                 }
                 """;
         }
         return null;
     }
 
-    private async Task<string?> GetEntityGroupDefinitionAsync(IConnection connection, string databaseName, string entityName, CancellationToken cancellationToken)
+    private async Task<string?> GetEntityGroupDefinitionAsync(string cluster, string databaseName, string entityName, CancellationToken cancellationToken)
     {
-        var entityInfo = await GetEntityInfoAsync(connection, databaseName, "EntityGroup", entityName, cancellationToken).ConfigureAwait(false);
-
+        var entityInfo = (await _schemaSource.GetEntityGroupInfosAsync(cluster, databaseName, entityName, cancellationToken).ConfigureAwait(false)).FirstOrDefault();
         if (entityInfo != null)
         {
-            var name = KustoFacts.BracketNameIfNecessary(entityInfo.EntityName, KustoDialect.EngineCommand);
-           
+            var name = KustoFacts.BracketNameIfNecessary(entityInfo.Name, KustoDialect.EngineCommand);
+            var entityList = string.Join(", ", entityInfo.Entities);
             return
                 $$"""
-                .create-or-alter entity_group {{name}} ({{entityInfo.Content}})
+                .create-or-alter entity_group {{name}} ({{entityList}})
                 """;
         }
         return null;
     }
 
-    private async Task<string?> GetGraphModelDefinitionAsync(IConnection connection, string databaseName, string entityName, CancellationToken cancellationToken)
+    private async Task<string?> GetGraphModelDefinitionAsync(string cluster, string databaseName, string entityName, CancellationToken cancellationToken)
     {
-        var entityInfo = await GetEntityInfoAsync(connection, databaseName, "Graph", entityName, cancellationToken).ConfigureAwait(false);
-
-        var gmCommand = CslCommandGenerator.GenerateGraphModelShowCommand(entityName, details: true);
-        var gmInfo = (await connection.ExecuteAsync<GraphModelsShowDetailsCommandResult>(gmCommand, cancellationToken: cancellationToken).ConfigureAwait(false)).Values?.FirstOrDefault();
-
-        if (entityInfo != null && gmInfo != null)
+        var entityInfo = (await _schemaSource.GetGraphModelInfosAsync(cluster, databaseName, entityName, cancellationToken).ConfigureAwait(false)).FirstOrDefault();
+        if (entityInfo != null)
         {
-            var name = KustoFacts.BracketNameIfNecessary(entityInfo.EntityName, KustoDialect.EngineCommand);
+            var name = KustoFacts.BracketNameIfNecessary(entityInfo.Name, KustoDialect.EngineCommand);
             return
                 $$"""
                 .create-or-alter graph_model {{name}} 
                 ```
-                {{gmInfo.Model}}
+                {{entityInfo.Model}}
                 ```
                 """;
         }
+
         return null;
     }
 
@@ -283,12 +277,5 @@ public class EntityManager : IEntityManager
             default:
                 throw new NotSupportedException($"Unsupported property value type: {token.Type}");
         }
-    }
-
-    private async Task<DatabasesEntitiesShowCommandResult?> GetEntityInfoAsync(IConnection connection, string databaseName, string entityType, string entityName, CancellationToken cancellationToken)
-    {
-        var command = $"{CslCommandGenerator.GenerateDatabaseEntityShowCommand(databaseName, entityName)} | where EntityType == {KustoFacts.GetSingleQuotedStringLiteral(entityType)}";
-        var results = await connection.ExecuteAsync<DatabasesEntitiesShowCommandResult>(command, cancellationToken: cancellationToken).ConfigureAwait(false);
-        return results.Values?.FirstOrDefault();
     }
 }

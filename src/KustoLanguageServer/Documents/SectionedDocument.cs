@@ -248,4 +248,24 @@ public class SectionedDocument : IDocument
             return block.Service.GetRelatedElements(position, options, cancellationToken);
         return RelatedInfo.Empty;
     }
+
+    public ImmutableList<ClusterReference> GetClusterReferences(CancellationToken cancellationToken = default)
+    {
+        var refs = new List<ClusterReference>();
+        foreach (var block in _script.Blocks)
+        {
+            refs.AddRange(block.Service.GetClusterReferences(cancellationToken));
+        }
+        return refs.ToImmutableList();
+    }
+
+    public ImmutableList<DatabaseReference> GetDatabaseReferences(CancellationToken cancellationToken = default)
+    {
+        var refs = new List<DatabaseReference>();
+        foreach (var block in _script.Blocks)
+        {
+            refs.AddRange(block.Service.GetDatabaseReferences(cancellationToken));
+        }
+        return refs.ToImmutableList();
+    }
 }

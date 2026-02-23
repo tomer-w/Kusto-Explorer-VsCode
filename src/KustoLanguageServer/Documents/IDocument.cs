@@ -115,6 +115,16 @@ public interface IDocument
     /// Gets the locations of the items related to the item at the position in the document.
     /// </summary>
     RelatedInfo GetRelatedElements(int position, FindRelatedOptions options = FindRelatedOptions.None, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the clusters referenced in the document.
+    /// </summary>
+    ImmutableList<ClusterReference> GetClusterReferences(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the databases reference in the document.
+    /// </summary>
+    ImmutableList<DatabaseReference> GetDatabaseReferences(CancellationToken cancellationToken = default);
 }
 
 /// <summary>

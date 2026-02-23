@@ -6,10 +6,12 @@ using Kusto.Data.Common.Impl;
 using Kusto.Data.Data;
 using Kusto.Data.Net.Client;
 using Kusto.Data.Utils;
+using Kusto.Language;
 using Kusto.Language.Editor;
-using Kusto.Toolkit;
 using System.Collections.Immutable;
 using System.Data;
+using System.Diagnostics.CodeAnalysis;
+using System.Diagnostics.Metrics;
 
 namespace Kusto.Lsp;
 
@@ -19,8 +21,13 @@ namespace Kusto.Lsp;
 /// </summary>
 public class ConnectionManager : IConnectionManager
 {
-    private ImmutableDictionary<string, ConnectionInfo> _clusterToBuilderInfoMap =
+    private ImmutableDictionary<string, ConnectionInfo> _connectionStringsToInfoMap =
         ImmutableDictionary<string, ConnectionInfo>.Empty;
+
+    private ImmutableDictionary<string, ConnectionInfo> _clusterToInfoMap =
+        ImmutableDictionary<string, ConnectionInfo>.Empty;
+
+    private string _defaultDomain = KustoFacts.KustoWindowsNet;
 
     private class ConnectionInfo
     {
@@ -28,27 +35,6 @@ public class ConnectionManager : IConnectionManager
 
         public ImmutableDictionary<string, KustoConnection> DatabaseConnections =
             ImmutableDictionary<string, KustoConnection>.Empty;
-    }
-
-    public string GetClusterName(string clusterOrConnection)
-    {
-        try
-        {
-            var kcsb = GetConnection(clusterOrConnection);
-            return kcsb.Cluster;
-        }
-        catch
-        {
-            return clusterOrConnection;
-        }
-    }
-
-    public async Task<string> GetServerKindAsync(string clusterOrConnection, CancellationToken cancellationToken)
-    {
-        var connection = this.GetConnection(clusterOrConnection);
-        var results = await connection.ExecuteAsync<ShowVersionResult>(".show version").ConfigureAwait(false);
-        var version = results.Values?.FirstOrDefault();
-        return version != null ? version.ServiceType : "Unknown";
     }
 
     public class ShowVersionResult
@@ -60,63 +46,92 @@ public class ConnectionManager : IConnectionManager
         public string ServiceSubType = default!;
     }
 
-    public IConnection GetConnection(string clusterOrConnection, string? database = null)
+    public IConnection GetOrAddConnection(string connectionString)
     {
-        KustoConnection connection;
-
-        if (!_clusterToBuilderInfoMap.TryGetValue(clusterOrConnection, out var info))
+        if (!_connectionStringsToInfoMap.TryGetValue(connectionString, out var info))
         {
-            var builder = new KustoConnectionStringBuilder(clusterOrConnection);
+            info = CreateConnectionInfo(connectionString);
+            ImmutableInterlocked.GetOrAdd(ref _connectionStringsToInfoMap, connectionString, info);
+
+            var cluster = info.Connection.Cluster;
+            ImmutableInterlocked.GetOrAdd(ref _clusterToInfoMap, cluster, info);
+
+            var shortName = KustoFacts.GetShortHostName(cluster, _defaultDomain);
+            if (shortName != cluster)
+            {
+                ImmutableInterlocked.GetOrAdd(ref _clusterToInfoMap, shortName, info);
+            }
+        }
+
+        return info.Connection;
+
+        ConnectionInfo CreateConnectionInfo(string cs)
+        {
+            var builder = new KustoConnectionStringBuilder(cs);
 
             // if is not explicitly a connection string, add federated security
-            if (!clusterOrConnection.Contains(";"))
+            if (!cs.Contains(";"))
             {
                 builder.FederatedSecurity = true;
             }
 
-            connection = new KustoConnection(builder);
+            var connection = new KustoConnection(this, builder);
 
-            info = new ConnectionInfo { Connection = connection  };
-
-            _clusterToBuilderInfoMap = _clusterToBuilderInfoMap.Add(clusterOrConnection, info);
-
-            if (connection.Cluster != clusterOrConnection)
-                _clusterToBuilderInfoMap = _clusterToBuilderInfoMap.Add(connection.Cluster, info);
+            return new ConnectionInfo { Connection = connection };
         }
-        else
+    }
+
+    public bool TryGetConnection(string cluster, [NotNullWhen(true)] out IConnection? connection)
+    {
+        if (_clusterToInfoMap.TryGetValue(cluster, out var info))
         {
             connection = info.Connection;
+            return true;
         }
 
-        if (database != null)
-        {
-            if (!info.DatabaseConnections.TryGetValue(database, out var databaseConnection))
-            {
-                databaseConnection = connection.WithInitialCatalog(database);
-                ImmutableInterlocked.Update(ref info.DatabaseConnections, _map => _map.SetItem(database, databaseConnection));
-            }
-            connection = databaseConnection;
-        }
-
-        return connection;
+        connection = null;
+        return false;
     }
 
     private class KustoConnection : IKustoConnection
     {
+        private readonly ConnectionManager _manager;
         private readonly KustoConnectionStringBuilder _builder;
 
-        public KustoConnection(KustoConnectionStringBuilder builder)
+        public KustoConnection(ConnectionManager manager, KustoConnectionStringBuilder builder)
         {
+            _manager = manager;
             _builder = builder;
         }
 
         public string Cluster => _builder.Hostname;
         public string? Database => _builder.InitialCatalog;
 
-        public KustoConnection WithInitialCatalog(string? initialCatalog)
+        public IConnection WithCluster(string clusterName)
         {
-            var newBuilder = new KustoConnectionStringBuilder(_builder) { InitialCatalog = initialCatalog };
-            return new KustoConnection(newBuilder);
+            var clusterUri = clusterName;
+
+            if (!clusterUri.Contains("://"))
+            {
+                clusterUri = _builder.ConnectionScheme + "://" + clusterUri;
+            }
+
+            clusterUri = KustoFacts.GetFullHostName(clusterUri, _manager._defaultDomain);
+
+            // borrow most security settings from default cluster connection
+            var builder = new KustoConnectionStringBuilder(_builder);
+            builder.DataSource = clusterUri;
+            builder.ApplicationCertificateBlob = _builder.ApplicationCertificateBlob;
+            builder.ApplicationKey = _builder.ApplicationKey;
+            builder.InitialCatalog = "NetDefaultDB";
+
+            return new KustoConnection(_manager, builder);
+        }
+
+        public IConnection WithDatabase(string database)
+        {
+            var newBuilder = new KustoConnectionStringBuilder(_builder) { InitialCatalog = database };
+            return new KustoConnection(_manager, newBuilder);
         }
 
         public KustoConnectionStringBuilder GetBuilder()
@@ -152,9 +167,9 @@ public class ConnectionManager : IConnectionManager
 
         public async Task<ExecuteResult> ExecuteAsync(
             EditString query,
-            ImmutableDictionary<string, string>? options,
-            ImmutableDictionary<string, string>? parameters,
-            CancellationToken cancellationToken
+            ImmutableDictionary<string, string>? options = null,
+            ImmutableDictionary<string, string>? parameters = null,
+            CancellationToken cancellationToken = default
             )
         {
             try
@@ -185,9 +200,9 @@ public class ConnectionManager : IConnectionManager
 
         public async Task<ExecuteResult<T>> ExecuteAsync<T>(
             EditString query,
-            ImmutableDictionary<string, string>? options,
-            ImmutableDictionary<string, string>? parameters,
-            CancellationToken cancellationToken
+            ImmutableDictionary<string, string>? options = null,
+            ImmutableDictionary<string, string>? parameters = null,
+            CancellationToken cancellationToken = default
             )
         {
             try
@@ -302,6 +317,13 @@ public class ConnectionManager : IConnectionManager
                     crp.SetOption(name, value);
                     break;
             }
+        }
+
+        public async Task<string> GetServerKindAsync(CancellationToken cancellationToken)
+        {
+            var results = await this.ExecuteAsync<ShowVersionResult>(".show version", cancellationToken: cancellationToken).ConfigureAwait(false);
+            var version = results.Values?.FirstOrDefault();
+            return version != null ? version.ServiceType : "Unknown";
         }
     }
 }

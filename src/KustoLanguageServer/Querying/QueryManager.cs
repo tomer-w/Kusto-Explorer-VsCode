@@ -2,8 +2,8 @@
 using Kusto.Data.Common;
 using Kusto.Language;
 using Kusto.Language.Editor;
-using Kusto.Toolkit;
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Kusto.Lsp;
 
@@ -62,12 +62,14 @@ public class QueryManager : IQueryManager
             while (IsDirective(context.Query));
         }
 
-        var connection = (context.Cluster != null)
-            ? _connectionManager.GetConnection(context.Cluster, context.Database)
-            : GetConnection(document);
-
-        if (connection != null)
+        if (TryGetConnection(document, out var connection))
         {
+            // did a directive have an alternate cluster or database?
+            if (context.Cluster != null)
+                connection = connection.WithCluster(context.Cluster);
+            if (context.Database != null)
+                connection = connection.WithDatabase(context.Database);
+
             return ExecuteQueryAsync(connection, context, cancellationToken);
         }
         else
@@ -316,10 +318,10 @@ public class QueryManager : IQueryManager
     private ExecutionContext ApplyConnectOrDatabaseDirective(ClientDirective directive, ExecutionContext context)
     {
         if (TryGetDirectiveClusterAndDatabase(directive, out var clusterName, out var databaseName)
-            && clusterName != null)
+            && clusterName != null
+            && _connectionManager.TryGetConnection(clusterName, databaseName, out var conn))
         {
             // change default cluster and database and continue
-            var conn = _connectionManager.GetConnection(clusterName, databaseName);
             return context with { Query = directive.AfterDirectiveText, Cluster = clusterName, Database = databaseName };
         }
         return context;
@@ -451,13 +453,16 @@ public class QueryManager : IQueryManager
         return map;
     }
  
-    private IConnection? GetConnection(IDocument document)
+    private bool TryGetConnection(IDocument document, [NotNullWhen(true)] out IConnection? connection)
     {
         var connectionInfo = _documentManager.GetConnection(document.Id);
-        if (connectionInfo.Cluster != null)
+        if (connectionInfo.Cluster != null
+            && _connectionManager.TryGetConnection(connectionInfo.Cluster, connectionInfo.Database, out connection))
         {
-            return _connectionManager.GetConnection(connectionInfo.Cluster, connectionInfo.Database);
+            return true;
         }
-        return null;
+
+        connection = null;
+        return false;
     }
 }

@@ -242,9 +242,27 @@ export function getDataAsExpression(
 
 export interface DatabaseTableInfo {
     name: string;
+    columns?: DatabaseColumnInfo[];
     description?: string;
     folder?: string;
+}
+
+export interface DatabaseExternalTableInfo
+{
+    name: string;
     columns?: DatabaseColumnInfo[];
+    description?: string;
+    folder?: string;
+}
+
+export interface DatabaseMaterializedViewInfo
+{
+    name: string;
+    source: string;
+    query: string;
+    columns?: DatabaseColumnInfo[];
+    description?: string;
+    folder?: string;
 }
 
 export interface DatabaseColumnInfo {
@@ -255,39 +273,45 @@ export interface DatabaseColumnInfo {
 
 export interface DatabaseFunctionInfo {
     name: string;
-    description?: string;
-    folder?: string;
     parameters?: string;
     body?: string;
-}
-
-export interface DatabaseParameterInfo {
-    name: string;
-    type: string;
+    description?: string;
+    folder?: string;
 }
 
 export interface DatabaseEntityGroupInfo {
     name: string;
+    entities?: string[];
     description?: string;
     folder?: string;
-    entities?: string[];
 }
 
 export interface DatabaseGraphModelInfo {
     name: string;
-    edges?: string[];
-    nodes?: string[];
+    model?: string;
     snapshots?: string[];
+    description?: string;
+    folder?: string;
+}
+
+export interface DatabaseStoredQueryResultInfo
+{
+    name: string;
+    columns?: DatabaseColumnInfo[];
+    description?: string;
+    folder?: string;
 }
 
 export interface DatabaseInfo {
     name: string;
+    alternateName?: string;
     tables?: DatabaseTableInfo[];
-    externalTables?: DatabaseTableInfo[];
-    materializedViews?: DatabaseTableInfo[];
+    externalTables?: DatabaseExternalTableInfo[];
+    materializedViews?: DatabaseMaterializedViewInfo[];
     functions?: DatabaseFunctionInfo[];
     entityGroups?: DatabaseEntityGroupInfo[];
     graphModels?: DatabaseGraphModelInfo[];
+    storedQueryResults?: DatabaseStoredQueryResultInfo[];
 }
 
 /** Result of running a query. */
@@ -359,7 +383,12 @@ export interface ServerKindResult {
 /** Result of getting server info (databases) for a connection. */
 export interface ServerInfoResult {
     cluster: string;
-    databases: { name: string; alternateName: string }[];
+    databases: DatabaseName[];
+}
+
+export interface DatabaseName {
+    name: string;
+    alternateName?: string;
 }
 
 /** Selection range passed to runQuery. */
@@ -407,7 +436,3 @@ export function transformPaste(
         }
     );
 }
-
-
-
-

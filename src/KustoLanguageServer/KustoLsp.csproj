@@ -19,7 +19,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\KustoSymbols\KustoSymbols.csproj" />
     <ProjectReference Include="..\LspCommon\LspCommon.csproj" />
   </ItemGroup>
 

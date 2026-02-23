@@ -1,8 +1,5 @@
-﻿using Kusto.Data;
-using Kusto.Language;
+﻿using Kusto.Language;
 using Kusto.Language.Editor;
-using Kusto.Language.Symbols;
-using Kusto.Symbols;
 using Lsp.Common;
 using StreamJsonRpc;
 
@@ -18,6 +15,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
 {
     private readonly IOptionsManager _optionsManager;
     private readonly IConnectionManager _connectionManager;
+    private readonly ISchemaSource _schemaSource;
     private readonly ISymbolManager _symbolManager;
     private readonly IDocumentManager _documentManager;
     private readonly IDiagnosticsManager _diagnosticsManager;
@@ -33,6 +31,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
         string[] args,
         IOptionsManager optionsManager,
         IConnectionManager connectionManager,
+        ISchemaSource schemaSource,
         ISymbolManager symbolManager,
         IDocumentManager documentManager,
         IDiagnosticsManager diagnosticsManager,
@@ -44,6 +43,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
     {
         _args = args.ToImmutableList();
         _optionsManager = optionsManager;
+        _schemaSource = schemaSource;
         _connectionManager = connectionManager;
         _symbolManager = symbolManager;
         _documentManager = documentManager;
@@ -64,13 +64,14 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
         _args = args.ToImmutableList();
         _optionsManager = new OptionsManager(this);
         _connectionManager = new ConnectionManager();
-        _symbolManager = new SymbolManager(_connectionManager);
-        _documentManager = new DocumentManager(_symbolManager);
+        _schemaSource = new ServerSchemaSource(_connectionManager, this);
+        _symbolManager = new SymbolManager(_schemaSource, _optionsManager, this);
+        _documentManager = new DocumentManager(_symbolManager, this);
         _resultsManager = new ResultsManager(_documentManager);
         _diagnosticsManager = new DiagnosticsManager(_documentManager);
         _queryManager = new QueryManager(_connectionManager, _documentManager, this);
         _chartManager = new PlotlyChartManager();
-        _entityManager = new EntityManager(_connectionManager);
+        _entityManager = new EntityManager(_schemaSource);
         InitEvents();
     }
 
@@ -122,7 +123,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
     /// <summary>
     /// Initialize the language server document & settings.
     /// </summary>
-    public override Task<LSP.InitializeResult> OnInitializeAsync(LSP.InitializeParams @params, CancellationToken cancellationToken)
+    public override async Task<LSP.InitializeResult> OnInitializeAsync(LSP.InitializeParams @params, CancellationToken cancellationToken)
     {
         this.ClientSettings = @params;
 
@@ -214,7 +215,12 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
             }
         };
 
-        return Task.FromResult(this.ServerSettings);
+        return this.ServerSettings;
+    }
+
+    public override async Task OnInitializedAsync(LSP.InitializedParams @params, CancellationToken cancellationToken)
+    {
+        await _optionsManager.RefreshAsync(CancellationToken.None);
     }
 
     #endregion
@@ -797,8 +803,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
                     ? GetTextRange(document.Text, lspRange)
                     : new TextRange(0, document.Text.Length);
 
-                var formattingOptions = await _optionsManager.GetFormattingOptionsAsync(cancellationToken);
-                var formatted = document.GetFormattedText(textRange, formattingOptions, cancellationToken);
+                var formatted = document.GetFormattedText(textRange, _optionsManager.FormattingOptions, cancellationToken);
                 var edits = formatted.Edits.Select(e => GetLspTextEdit(document.Text, e)).ToArray();
                 return edits;
             }
@@ -1100,8 +1105,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
                         && _scriptActions.TryGetValue(document, out var scriptActions)
                         && scriptActions.Actions.TryGetValue(actionId, out var action))
                     {
-                        var formatOptions = await _optionsManager.GetFormattingOptionsAsync(cancellationToken).ConfigureAwait(false);
-                        var applyOptions = _codeActionOptions.WithFormattingOptions(formatOptions);
+                        var applyOptions = _codeActionOptions.WithFormattingOptions(_optionsManager.FormattingOptions);
 
                         var result = document.ApplyCodeAction(action, position, applyOptions, cancellationToken);
 
@@ -1153,16 +1157,13 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
     {
         try
         {
-            var clusterName = _connectionManager.GetConnection(@params.Connection).Cluster;
+            var clusterName = _connectionManager.GetOrAddConnection(@params.Connection).Cluster;
 
             // ensure server databases are loaded
-            await _symbolManager.GetOrLoadDatabaseNamesAsync(@params.Connection, cancellationToken).ConfigureAwait(false);
-
-            var globals = _symbolManager.Globals;
-            var clusterSymbol = globals.GetCluster(clusterName);
-            if (clusterSymbol != null)
+            var clusterInfo = await _schemaSource.GetClusterInfoAsync(clusterName, cancellationToken).ConfigureAwait(false);
+            if (clusterInfo != null)
             {
-                var dbs = clusterSymbol.Databases.Select(db => new ServerDatabase
+                var dbs = clusterInfo.Databases.Select(db => new ServerDatabase
                 {
                     Name = db.Name,
                     AlternateName = db.AlternateName ?? ""
@@ -1217,7 +1218,8 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
     {
         try
         {
-            var serverKind = await _connectionManager.GetServerKindAsync(@params.Connection, cancellationToken).ConfigureAwait(false);
+            var connection = _connectionManager.GetOrAddConnection(@params.Connection);
+            var serverKind = await connection.GetServerKindAsync(cancellationToken).ConfigureAwait(false);
             return new GetServerKindResult
             {
                 ServerKind = serverKind
@@ -1245,35 +1247,14 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
     }
 
     [JsonRpcMethod("kusto/getDatabaseInfo", UseSingleObjectParameterDeserialization = true)]
-    public async Task<GetDatabaseInfoResult?> OnGetDatabaseInfo(GetDatabaseInfoParams @params, CancellationToken cancellationToken)
+    public async Task<DatabaseInfo?> OnGetDatabaseInfo(GetDatabaseInfoParams @params, CancellationToken cancellationToken)
     {
         try
         {
             var clusterName = @params.Cluster;
             var databaseName = @params.Database;
 
-            // ensure database symbols are loaded
-            await _symbolManager.LoadSymbolsAsync(clusterName, databaseName, cancellationToken).ConfigureAwait(false);
-
-            var globals = _symbolManager.Globals;
-            var clusterSymbol = globals.GetCluster(clusterName);
-            if (clusterSymbol != null)
-            {
-                var databaseSymbol = clusterSymbol.GetDatabase(databaseName);
-                if (databaseSymbol != null)
-                {
-                    return new GetDatabaseInfoResult
-                    {
-                        Name = databaseName,
-                        Tables = databaseSymbol.Tables.Select(ToTableInfo).ToArray(),
-                        ExternalTables = databaseSymbol.ExternalTables.Select(ToTableInfo).ToArray(),
-                        MaterializedViews = databaseSymbol.MaterializedViews.Select(ToTableInfo).ToArray(),
-                        Functions = databaseSymbol.Functions.Select(ToFunctionInfo).ToArray(),
-                        EntityGroups = databaseSymbol.EntityGroups.Select(ToEntityGroupInfo).ToArray(),
-                        GraphModels = databaseSymbol.GraphModels.Select(g => ToGraphModelInfo(g)).ToArray()
-                    };
-                }
-            }
+            return await _schemaSource.GetDatabaseInfoAsync(clusterName, databaseName, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -1281,49 +1262,6 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
         }
 
         return null;
-
-        static DatabaseTableInfo ToTableInfo(TableSymbol table) =>
-            new()
-            {
-                Name = table.Name,
-                Description = table.Description,
-                Folder = table.Folder,
-                Columns = table.Columns.Select(c => new DatabaseColumnInfo
-                {
-                    Name = c.Name,
-                    Type = c.Type.Name
-                }).ToArray()
-            };
-
-        static DatabaseFunctionInfo ToFunctionInfo(FunctionSymbol func) =>
-            new()
-            {
-                Name = func.Name,
-                Description = func.Description,
-                Folder = func.Folder,
-                Parameters = func.Signatures.FirstOrDefault()?.Parameters is { } prms
-                    ? Parameter.GetParameterListDeclaration(prms)
-                    : "()",
-                Body = func.Signatures.FirstOrDefault()?.Body ?? ""
-            };
-
-        static DatabaseEntityGroupInfo ToEntityGroupInfo(EntityGroupSymbol group) =>
-            new()
-            {
-                Name = group.Name,
-                Description = group.Description,
-                Folder = group.Folder,
-                Entities = group.Members.Select(m => m.Name).ToArray()
-            };
-
-        static DatabaseGraphModelInfo ToGraphModelInfo(GraphModelSymbol graph) =>
-            new()
-            {
-                Name = graph.Name,
-                Edges = graph.Edges.Select(e => e.Body ?? "").ToArray(),
-                Nodes = graph.Nodes.Select(n => n.Body ?? "").ToArray(),
-                Snapshots = graph.Snapshots.Select(s => s.Name).ToArray()
-            };
     }
 
     [DataContract]
@@ -1336,129 +1274,31 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
         public required string Database { get; init; }
     }
 
-    [DataContract]
-    public class GetDatabaseInfoResult
-    {
-        [DataMember(Name = "name")]
-        public required string Name { get; init; }
-
-        [DataMember(Name = "tables")]
-        public DatabaseTableInfo[]? Tables { get; init; }
-
-        [DataMember(Name = "externalTables")]
-        public DatabaseTableInfo[]? ExternalTables { get; init; }
-
-        [DataMember(Name = "materializedViews")]
-        public DatabaseTableInfo[]? MaterializedViews { get; init; }
-
-        [DataMember(Name = "functions")]
-        public DatabaseFunctionInfo[]? Functions { get; init; }
-
-        [DataMember(Name = "entityGroups")]
-        public DatabaseEntityGroupInfo[]? EntityGroups { get; init; }
-
-        [DataMember(Name = "graphModels")]
-        public DatabaseGraphModelInfo[]? GraphModels { get; init; }
-    }
-
-    [DataContract]
-    public class DatabaseTableInfo
-    {
-        [DataMember(Name = "name")]
-        public required string Name { get; init; }
-
-        [DataMember(Name = "description")]
-        public string? Description { get; init; }
-
-        [DataMember(Name = "folder")]
-        public string? Folder { get; init; }
-
-        [DataMember(Name = "columns")]
-        public DatabaseColumnInfo[]? Columns { get; init; }
-    }
-
-    [DataContract]
-    public class DatabaseColumnInfo
-    {
-        [DataMember(Name = "name")]
-        public required string Name { get; init; }
-
-        [DataMember(Name = "type")]
-        public required string Type { get; init; }
-
-        [DataMember(Name = "description")]
-        public string? Description { get; init; }
-    }
-
-    [DataContract]
-    public class DatabaseFunctionInfo
-    {
-        [DataMember(Name = "name")]
-        public required string Name { get; init; }
-
-        [DataMember(Name = "description")]
-        public string? Description { get; init; }
-
-        [DataMember(Name = "folder")]
-        public string? Folder { get; init; }
-
-        [DataMember(Name = "parameters")]
-        public string? Parameters { get; init; }
-
-        [DataMember(Name = "body")]
-        public string? Body { get; init; }
-    }
-
-    [DataContract]
-    public class DatabaseEntityGroupInfo
-    {
-        [DataMember(Name = "name")]
-        public required string Name { get; init; }
-
-        [DataMember(Name = "description")]
-        public string? Description { get; init; }
-
-        [DataMember(Name = "folder")]
-        public string? Folder { get; init; }
-
-        [DataMember(Name = "entities")]
-        public string[]? Entities { get; init; }
-    }
-
-    [DataContract]
-    public class DatabaseGraphModelInfo
-    {
-        [DataMember(Name = "name")]
-        public required string Name { get; init; }
-
-        [DataMember(Name = "edges")]
-        public string[]? Edges { get; init; }
-
-        [DataMember(Name = "nodes")]
-        public string[]? Nodes { get; init; }
-
-        [DataMember(Name = "snapshots")]
-        public string[]? Snapshots { get; init; }
-    }
-
     #endregion
 
     #region Document Connections
 
     [JsonRpcMethod("kusto/connectionsUpdated", UseSingleObjectParameterDeserialization = true)]
-    public Task OnConnectionsUpdatedAsync(ConnectionsUpdatedParams @params, CancellationToken cancellationToken)
+    public async Task OnConnectionsUpdatedAsync(ConnectionsUpdatedParams @params, CancellationToken cancellationToken)
     {
         try
         {
+            var clusterNames = new List<string>();
+
+            // ensure all connections are known by the connection manager
+            foreach (var connectionString in @params.Connections)
+            {
+                var conn = _connectionManager.GetOrAddConnection(connectionString);
+                clusterNames.Add(conn.Cluster);
+            }
+
             // Ensure cluster symbols exist for all configured connections
-            _ = _symbolManager.EnsureClustersAsync(@params.Connections, cancellationToken);
+            await _symbolManager.EnsureClustersAsync(clusterNames.ToImmutableList(), cancellationToken);
         }
         catch (Exception ex)
         {
             _ = this.SendWindowLogMessageAsync(ex);
         }
-
-        return Task.CompletedTask;
     }
 
     [DataContract]
