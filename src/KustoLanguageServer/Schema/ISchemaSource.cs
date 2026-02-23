@@ -9,12 +9,12 @@ public interface ISchemaSource
     /// Gets the cluster schema including all the database names, etc.
     /// Does not include all the database schemas.
     /// </summary>
-    Task<ClusterInfo?> GetClusterInfoAsync(string clusterName, CancellationToken cancellationToken);
+    Task<ClusterInfo?> GetClusterInfoAsync(string clusterName, string? contextCluster, CancellationToken cancellationToken);
 
     /// <summary>
     /// Gets the database schema including all entity definitions.
     /// </summary>
-    Task<DatabaseInfo?> GetDatabaseInfoAsync(string clusterName, string databaseName, CancellationToken cancellationToken);
+    Task<DatabaseInfo?> GetDatabaseInfoAsync(string clusterName, string databaseName, string? contextCluster, CancellationToken cancellationToken);
 
     /// <summary>
     /// Gets the database table entities

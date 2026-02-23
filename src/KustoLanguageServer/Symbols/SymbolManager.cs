@@ -56,7 +56,7 @@ public class SymbolManager : ISymbolManager
     /// <summary>
     /// Loads symbols associated with the given cluster and database into the managed global state.
     /// </summary>
-    public Task EnsureSymbolsAsync(string clusterName, string? databaseName, CancellationToken cancellationToken)
+    public Task EnsureSymbolsAsync(string clusterName, string? databaseName, string? contextCluster, CancellationToken cancellationToken)
     {
         return _taskQueue.Run(cancellationToken, async (useThisCancellationToken) =>
         {
@@ -69,7 +69,7 @@ public class SymbolManager : ISymbolManager
                 var clusterSymbol = globals.GetCluster(clusterName);
                 if (clusterSymbol == null)
                 {
-                    globals = await this.AddClusterAsync(globals, clusterName, useThisCancellationToken).ConfigureAwait(false);
+                    globals = await this.AddClusterAsync(globals, clusterName, contextCluster, useThisCancellationToken).ConfigureAwait(false);
                     clusterSymbol = globals.GetCluster(clusterName);
                 }
 
@@ -78,7 +78,7 @@ public class SymbolManager : ISymbolManager
                     var databaseSymbol = clusterSymbol?.GetDatabase(databaseName);
                     if (databaseSymbol == null || databaseSymbol.IsOpen)
                     {
-                        globals = await this.AddDatabaseAsync(globals, clusterName, databaseName, cancellationToken: useThisCancellationToken).ConfigureAwait(false);
+                        globals = await this.AddDatabaseAsync(globals, clusterName, databaseName, contextCluster, cancellationToken: useThisCancellationToken).ConfigureAwait(false);
                     }
                 }
 
@@ -91,12 +91,12 @@ public class SymbolManager : ISymbolManager
         });
     }
 
-    private async Task<GlobalState> AddClusterAsync(GlobalState globals, string clusterName, CancellationToken cancellationToken)
+    private async Task<GlobalState> AddClusterAsync(GlobalState globals, string clusterName, string? contextCluster, CancellationToken cancellationToken)
     {
         var clusterSymbol = globals.GetCluster(clusterName);
         if (clusterSymbol == null)
         {
-            var clusterInfo = await _schemaSource.GetClusterInfoAsync(clusterName, cancellationToken).ConfigureAwait(false);
+            var clusterInfo = await _schemaSource.GetClusterInfoAsync(clusterName, contextCluster, cancellationToken).ConfigureAwait(false);
             if (clusterInfo != null)
             {
                 try
@@ -117,7 +117,7 @@ public class SymbolManager : ISymbolManager
         return globals;
     }
 
-    private async Task<GlobalState> AddDatabaseAsync(GlobalState globals, string clusterName, string databaseName, CancellationToken cancellationToken)
+    private async Task<GlobalState> AddDatabaseAsync(GlobalState globals, string clusterName, string databaseName, string? contextCluster, CancellationToken cancellationToken)
     {
         var clusterSymbol = globals.GetCluster(clusterName);
         if (clusterSymbol != null)
@@ -125,7 +125,7 @@ public class SymbolManager : ISymbolManager
             var databaseSymbol = clusterSymbol.GetDatabase(databaseName);
             if (databaseSymbol == null || databaseSymbol.IsOpen)
             {
-                var databaseInfo = await _schemaSource.GetDatabaseInfoAsync(clusterName, databaseName, cancellationToken).ConfigureAwait(false);
+                var databaseInfo = await _schemaSource.GetDatabaseInfoAsync(clusterName, databaseName, contextCluster, cancellationToken).ConfigureAwait(false);
                 if (databaseInfo != null)
                 {
                     var newDatabaseSymbol = databaseInfo.ToSymbol();
@@ -159,7 +159,7 @@ public class SymbolManager : ISymbolManager
                     if (clusterSymbol == null)
                     {
                         _logger?.Log($"SymbolManager: Adding partial cluster symbol for '{clusterName}'");
-                        globals = await this.AddClusterAsync(globals, clusterName, useThisCancellationToken).ConfigureAwait(false);
+                        globals = await this.AddClusterAsync(globals, clusterName, contextCluster: null, useThisCancellationToken).ConfigureAwait(false);
                         changed = true;
                     }
                 }
@@ -220,6 +220,8 @@ public class SymbolManager : ISymbolManager
 
         async Task<GlobalState> ResolveReferencesAsync(GlobalState globals, IDocument document, CancellationToken cancellationToken = default)
         {
+            var contextCluster = document.Globals.Cluster != ClusterSymbol.Unknown ? document.Globals.Cluster.Name : null;
+
             // find all explicit cluster('xxx') references
             var clusterRefs = document.GetClusterReferences(cancellationToken);
             foreach (var clusterRef in clusterRefs)
@@ -236,7 +238,7 @@ public class SymbolManager : ISymbolManager
                 var cluster = globals.GetCluster(clusterName);
                 if (cluster == null || cluster.IsOpen)
                 {
-                    globals = await this.AddClusterAsync(globals, clusterName, cancellationToken).ConfigureAwait(false);
+                    globals = await this.AddClusterAsync(globals, clusterName, contextCluster, cancellationToken).ConfigureAwait(false);
                 }
             }
 
@@ -270,7 +272,7 @@ public class SymbolManager : ISymbolManager
                 var db = cluster.GetDatabase(dbRef.Database);
                 if (db == null || (db != null && db.Members.Count == 0 && db.IsOpen))
                 {
-                    var newGlobals = await this.AddDatabaseAsync(globals, cluster.Name, dbRef.Database, cancellationToken).ConfigureAwait(false);
+                    var newGlobals = await this.AddDatabaseAsync(globals, cluster.Name, dbRef.Database, contextCluster, cancellationToken).ConfigureAwait(false);
                     globals = newGlobals ?? globals;
                 }
             }

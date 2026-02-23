@@ -5,13 +5,11 @@ using Kusto.Data.Common;
 using Kusto.Data.Common.Impl;
 using Kusto.Data.Data;
 using Kusto.Data.Net.Client;
-using Kusto.Data.Utils;
 using Kusto.Language;
 using Kusto.Language.Editor;
 using System.Collections.Immutable;
 using System.Data;
 using System.Diagnostics.CodeAnalysis;
-using System.Diagnostics.Metrics;
 
 namespace Kusto.Lsp;
 

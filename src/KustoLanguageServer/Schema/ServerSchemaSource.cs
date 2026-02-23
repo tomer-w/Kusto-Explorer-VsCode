@@ -20,15 +20,15 @@ public class ServerSchemaSource : ISchemaSource
 
     public ServerSchemaSource(
         IConnectionManager connectionManager,
-        ILogger? logger)
+        ILogger? logger = null)
     {
         _connectionManager = connectionManager;
         _logger = logger;
     }
 
-    public async Task<ClusterInfo?> GetClusterInfoAsync(string clusterName, CancellationToken cancellationToken)
+    public async Task<ClusterInfo?> GetClusterInfoAsync(string clusterName, string? contextCluster, CancellationToken cancellationToken)
     {
-        if (!_connectionManager.TryGetConnection(clusterName, out var conn))
+        if (!_connectionManager.TryGetConnection(clusterName, null, contextCluster, out var conn))
             return null;
 
         var result = await conn.ExecuteAsync<DatabaseNamesResult>(
@@ -73,13 +73,13 @@ public class ServerSchemaSource : ISchemaSource
         badDbNames.Add(databaseName);
     }
 
-    public async Task<DatabaseInfo?> GetDatabaseInfoAsync(string clusterName, string databaseName, CancellationToken cancellationToken)
+    public async Task<DatabaseInfo?> GetDatabaseInfoAsync(string clusterName, string databaseName, string? contextCluster, CancellationToken cancellationToken)
     {
         // if we've already determined this database name is bad, then bail out
         if (IsBadDatabaseName(clusterName, databaseName))
             throw GetInvalidDatabaseException(databaseName);
 
-        if (!_connectionManager.TryGetConnection(clusterName, databaseName, out var conn))
+        if (!_connectionManager.TryGetConnection(clusterName, databaseName, contextCluster, out var conn))
             return null;
 
         var dbName = await GetBothDatabaseNamesAsync(conn, databaseName, cancellationToken).ConfigureAwait(false);

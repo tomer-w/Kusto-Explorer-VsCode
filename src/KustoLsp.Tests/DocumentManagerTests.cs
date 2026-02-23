@@ -57,18 +57,12 @@ public sealed class DocumentManagerTests
         public event EventHandler<GlobalState>? GlobalsChanged;
 #pragma warning restore CS0067
 
-        public Task EnsureClustersAsync(string[] clusterOrConnections, CancellationToken cancellationToken)
+        public Task EnsureClustersAsync(ImmutableList<string> clusterNames, CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
         }
 
-        public Task<ImmutableList<string>> GetDatabaseNamesAsync(string clusterOrConnection, CancellationToken cancellationToken)
-        {
-            var list = this.Globals.GetCluster(clusterOrConnection).Databases.Select(db => db.Name).ToImmutableList();
-            return Task.FromResult(list);
-        }
-
-        public Task EnsureSymbolsAsync(string clusterOrConnection, string? database, CancellationToken cancellationToken)
+        public Task EnsureSymbolsAsync(string clusterName, string? databaseName, string? contextCluster, CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
         }

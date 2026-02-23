@@ -1160,7 +1160,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
             var clusterName = _connectionManager.GetOrAddConnection(@params.Connection).Cluster;
 
             // ensure server databases are loaded
-            var clusterInfo = await _schemaSource.GetClusterInfoAsync(clusterName, cancellationToken).ConfigureAwait(false);
+            var clusterInfo = await _schemaSource.GetClusterInfoAsync(clusterName, null, cancellationToken).ConfigureAwait(false);
             if (clusterInfo != null)
             {
                 var dbs = clusterInfo.Databases.Select(db => new ServerDatabase
@@ -1254,7 +1254,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
             var clusterName = @params.Cluster;
             var databaseName = @params.Database;
 
-            return await _schemaSource.GetDatabaseInfoAsync(clusterName, databaseName, cancellationToken).ConfigureAwait(false);
+            return await _schemaSource.GetDatabaseInfoAsync(clusterName, databaseName, contextCluster: null, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

@@ -24,7 +24,7 @@ public interface ISymbolManager
     /// <summary>
     /// Ensures that the symbols for the cluster and database exist in <see cref="Globals"/>
     /// </summary>
-    Task EnsureSymbolsAsync(string clusterName, string? database, CancellationToken cancellationToken);
+    Task EnsureSymbolsAsync(string clusterName, string? database, string? contextCluster, CancellationToken cancellationToken);
 
     /// <summary>
     /// Adds missing cluster and database symbols referenced in the document.

@@ -179,7 +179,7 @@ public class DocumentManager : IDocumentManager
             {
                 // instruct symbol manager to load symbols for this cluster and database
                 // this will trigger a globals changed event when done, which will update all the script globals
-                await _symbolManager.EnsureSymbolsAsync(info.Cluster, info.Database, useThisCancellationToken);
+                await _symbolManager.EnsureSymbolsAsync(info.Cluster, info.Database, contextCluster: null, useThisCancellationToken);
             }
 
             // force additional update since globals may not have changed.

@@ -19,14 +19,27 @@ public interface IConnectionManager
     /// </summary>
     bool TryGetConnection(string clusterName, string? databaseName, [NotNullWhen(true)] out IConnection? connection)
     {
-        if (TryGetConnection(clusterName, out connection))
+        return TryGetConnection(clusterName, databaseName, null, out connection);
+    }
+
+    /// <summary>
+    /// Gets the connection base on the cluster name and the default database,
+    /// relative to a context cluster.
+    /// </summary>
+    bool TryGetConnection(string clusterName, string? databaseName, string? contextCluster, [NotNullWhen(true)] out IConnection? connection)
+    {
+        if (contextCluster != null && TryGetConnection(contextCluster, out connection))
+        {
+            connection = connection.WithCluster(clusterName);
+            if (databaseName != null)
+                connection = connection.WithDatabase(databaseName);
+        }
+        else if (TryGetConnection(clusterName, out connection))
         {
             if (databaseName != null)
                 connection = connection.WithDatabase(databaseName);
-            return true;
         }
 
-        connection = null;
-        return false;
+        return connection != null;
     }
 }
