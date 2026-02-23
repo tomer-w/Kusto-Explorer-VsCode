@@ -1,4 +1,5 @@
 using System.Data;
+using System.Text.Json;
 using Kusto.Data.Data;
 using Kusto.Data.Utils;
 
@@ -14,6 +15,12 @@ public class PlotlyChartManager : IChartManager
     /// </summary>
     public string? RenderChartToHtmlDiv(DataTable data, ChartVisualizationOptions options, bool darkMode = false)
     {
+        // Handle raw Plotly JSON charts specially - they bypass the builder
+        if (options.Visualization == VisualizationKind.Plotly)
+        {
+            return RenderRawPlotlyChart(data);
+        }
+
         var builder = BuildChart(data, options, darkMode);
         return builder != null ? builder.ToHtmlDiv() : null;
     }
@@ -22,6 +29,59 @@ public class PlotlyChartManager : IChartManager
     {
         var chartDiv = RenderChartToHtmlDiv(data, options, darkMode);
         return chartDiv != null ? PlotlyHtmlHelper.CreateHtmlDocument(chartDiv, darkMode) : null;
+    }
+
+    /// <summary>
+    /// Renders a raw Plotly chart where the data contains pre-built Plotly JSON.
+    /// The expected format is a single column with a single row containing a JSON string
+    /// with "data", "layout", and optionally "config" properties.
+    /// </summary>
+    private string? RenderRawPlotlyChart(DataTable data, string divId = "plotly-chart")
+    {
+        // Expect single column, single row with JSON string
+        if (data.Columns.Count == 0 || data.Rows.Count == 0)
+            return null;
+
+        var cellValue = data.Rows[0][0];
+        if (cellValue == null || cellValue == DBNull.Value)
+            return null;
+
+        var jsonString = cellValue.ToString();
+        if (string.IsNullOrWhiteSpace(jsonString))
+            return null;
+
+        // Validate it's valid JSON and has expected structure
+        try
+        {
+            using var doc = JsonDocument.Parse(jsonString);
+            var root = doc.RootElement;
+
+            // Must have "data" property at minimum
+            if (!root.TryGetProperty("data", out _))
+                return null;
+
+            // Extract components, using defaults if not present
+            var dataJson = root.GetProperty("data").GetRawText();
+            
+            string layoutJson = "{}";
+            if (root.TryGetProperty("layout", out var layoutElement))
+            {
+                layoutJson = layoutElement.GetRawText();
+            }
+
+            string configJson = """{"responsive": true, "displayModeBar": false}""";
+            if (root.TryGetProperty("config", out var configElement))
+            {
+                configJson = configElement.GetRawText();
+            }
+
+            return PlotlyHtmlHelper.CreateChartDiv(dataJson, layoutJson, configJson, divId);
+        }
+        catch (JsonException)
+        {
+            // Invalid JSON
+            return null;
+        }
     }
 
     private PlotlyChartBuilder? BuildChart(DataTable data, ChartVisualizationOptions options, bool darkMode)
@@ -36,6 +96,16 @@ public class PlotlyChartManager : IChartManager
             VisualizationKind.StackedAreaChart => BuildStackedAreaChart(data, options),
             VisualizationKind.Card => BuildCardChart(data, options),
             VisualizationKind.ThreeDChart => BuildThreeDChart(data, options),
+            // Plotly is handled specially in RenderChartToHtmlDiv before reaching here
+            // The following visualization types are not yet supported
+            VisualizationKind.Graph => null,
+            VisualizationKind.PivotChart => null,
+            VisualizationKind.Sankey => null,
+            VisualizationKind.TimeLadderChart => null,
+            VisualizationKind.TimeLineChart => null,
+            VisualizationKind.TimeLineWithAnomalyChart => null,
+            VisualizationKind.TimePivot => null,
+            VisualizationKind.TreeMap => null,
             _ => null
         };
 

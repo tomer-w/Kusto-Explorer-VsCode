@@ -7,6 +7,29 @@ public static class PlotlyHtmlHelper
 {
     private const string PlotlyJsCdn = "https://cdn.plot.ly/plotly-2.27.0.min.js";
 
+    /// <summary>
+    /// Creates an HTML div element with embedded script to render a Plotly chart.
+    /// </summary>
+    /// <param name="dataJson">JSON string representing the Plotly data array (traces).</param>
+    /// <param name="layoutJson">JSON string representing the Plotly layout object.</param>
+    /// <param name="configJson">JSON string representing the Plotly config object.</param>
+    /// <param name="divId">The HTML element ID for the chart container.</param>
+    /// <returns>HTML string containing the div and script elements.</returns>
+    public static string CreateChartDiv(string dataJson, string layoutJson, string configJson, string divId = "plotly-chart")
+    {
+        return $$"""
+            <div id="{{divId}}" style="width:100%; height:100%;"></div>
+            <script>
+            try {
+              var data = {{dataJson}};
+              var layout = {{layoutJson}};
+              var config = {{configJson}};
+              Plotly.newPlot('{{divId}}', data, layout, config);
+            } catch(e) { console.error('Plotly error:', e); document.getElementById('{{divId}}').innerText = 'Chart error: ' + e.message; }
+            </script>
+            """;
+    }
+
     public static string CreateHtmlDocument(string chartDiv, bool darkMode = false)
     {
         var backgroundColor = darkMode ? "#1e1e1e" : "#ffffff";

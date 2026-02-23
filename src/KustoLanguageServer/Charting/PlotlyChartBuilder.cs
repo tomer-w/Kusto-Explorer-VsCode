@@ -1,5 +1,4 @@
 using System.Collections.Immutable;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -216,18 +215,7 @@ public sealed class PlotlyChartBuilder
         var layoutJson = JsonSerializer.Serialize(_layout, options);
         var configJson = JsonSerializer.Serialize(_config, options);
 
-        var sb = new StringBuilder();
-        sb.AppendLine($"<div id=\"{divId}\" style=\"width:100%; height:100%;\"></div>");
-        sb.AppendLine("<script>");
-        sb.AppendLine("try {");
-        sb.AppendLine($"  var data = {dataJson};");
-        sb.AppendLine($"  var layout = {layoutJson};");
-        sb.AppendLine($"  var config = {configJson};");
-        sb.AppendLine($"  Plotly.newPlot('{divId}', data, layout, config);");
-        sb.AppendLine("} catch(e) { console.error('Plotly error:', e); document.getElementById('" + divId + "').innerText = 'Chart error: ' + e.message; }");
-        sb.AppendLine("</script>");
-
-        return sb.ToString();
+        return PlotlyHtmlHelper.CreateChartDiv(dataJson, layoutJson, configJson, divId);
     }
 }
 
