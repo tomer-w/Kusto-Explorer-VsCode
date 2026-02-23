@@ -65,22 +65,103 @@ public class PlotlyChartManager : IChartManager
         builder = options.Mode switch
         {
             VisualizationMode.Stacked => builder.SetStacked(),
-            VisualizationMode.Stacked100 => builder.SetStacked100(),
+            VisualizationMode.Stacked100 => builder.SetStacked(),  // Use regular stack mode with normalized data
             VisualizationMode.Unstacked => builder.SetGrouped(),
             _ => builder
         };
 
-        return Build2dChart(builder, data, options, 
-            (builder, keys, values, name, yAxis) =>
-                builder.Add2DBarTrace(
-                    x: keys,
-                    y: values,
-                    name: name,
-                    horizontal: isHorizontal,
-                    yAxis: yAxis,
-                    offsetGroup: null
-                )
+        // For Stacked100, we need to normalize the data ourselves
+        if (options.Mode == VisualizationMode.Stacked100)
+        {
+            return BuildStacked100BarOrColumnChart(builder, data, options, isHorizontal);
+        }
+        else
+        {
+            return Build2dChart(builder, data, options,
+                (builder, keys, values, name, yAxis) =>
+                    builder.Add2DBarTrace(
+                        x: keys,
+                        y: values,
+                        name: name,
+                        horizontal: isHorizontal,
+                        yAxis: yAxis,
+                        offsetGroup: null
+                    )
+                );
+        }
+    }
+
+    private PlotlyChartBuilder? BuildStacked100BarOrColumnChart(PlotlyChartBuilder builder, DataTable data, ChartVisualizationOptions options, bool isHorizontal)
+    {
+        var xColumn = Get2dXColumn(data, options);
+        if (xColumn == null)
+            return null;
+
+        var yColumns = Get2dYColumns(data, options, xColumn);
+
+        // Collect all series data first
+        var seriesData = new List<(object[] keys, double[] values, string name)>();
+        
+        foreach (var valueColumn in yColumns)
+        {
+            var (keys, values) = Get2DChartData(xColumn, valueColumn);
+            if (keys != null && values != null)
+            {
+                seriesData.Add((keys, values, valueColumn.ColumnName));
+            }
+        }
+
+        if (seriesData.Count == 0)
+            return null;
+
+        // Calculate totals for each X position (use first series' keys as reference)
+        var referenceKeys = seriesData[0].keys;
+        var totals = new double[referenceKeys.Length];
+
+        foreach (var (keys, values, _) in seriesData)
+        {
+            for (int i = 0; i < Math.Min(values.Length, totals.Length); i++)
+            {
+                totals[i] += Math.Abs(values[i]);  // Use absolute values for proper normalization
+            }
+        }
+
+        // Configure chart based on visualization options
+        if (options.Title != null)
+            builder = builder.WithTitle(options.Title);
+
+        if (options.XTitle != null)
+            builder = builder.SetXAxisTitle(options.XTitle);
+
+        if (options.YTitle != null)
+            builder = builder.SetYAxisTitle(options.YTitle);
+
+        if (options.Legend != LegendVisualizationMode.Visible)
+            builder = builder.HideLegend();
+
+        // Set Y-axis range to 0-1 for percentage display
+        builder = builder.SetYAxisRange(0, 1);
+
+        // Add traces with normalized values
+        foreach (var (keys, values, name) in seriesData)
+        {
+            var normalizedValues = new double[values.Length];
+            for (int i = 0; i < values.Length; i++)
+            {
+                normalizedValues[i] = totals[i] > 0 ? values[i] / totals[i] : 0;
+            }
+
+            builder = builder.Add2DBarTrace(
+                x: keys,
+                y: normalizedValues,
+                name: name,
+                horizontal: isHorizontal,
+                yAxis: null,
+                offsetGroup: null
             );
+        }
+
+        return builder;
     }
 
     private PlotlyChartBuilder? BuildLineChart(DataTable data, ChartVisualizationOptions options)
