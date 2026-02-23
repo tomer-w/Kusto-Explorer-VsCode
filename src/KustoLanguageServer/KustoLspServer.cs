@@ -147,7 +147,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
             ResolveProvider = false,
             TriggerCharacters = ["(", "[", ".", " ", "="],
             // will always commit when these are typed, even if no other typing has narrowed the selection
-            AllCommitCharacters = ["\t", " ", ".", ","] 
+            AllCommitCharacters = ["\t"]
         };
 
         this.ServerSettings = new LSP.InitializeResult
