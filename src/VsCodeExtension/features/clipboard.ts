@@ -1,3 +1,5 @@
+import * as vscode from 'vscode';
+
 /** Generic clipboard context that can carry arbitrary metadata. */
 export interface ClipboardContext {
     /** The text placed on the system clipboard. Used to verify the clipboard hasn't changed. */
@@ -39,7 +41,7 @@ export function clearClipboardContext(): void {
     clipboardContext = undefined;
 }
 
-/** Describes a single item to place on the Windows clipboard. */
+/** Describes a single item to place on the clipboard. */
 export interface ClipboardItem {
     /** The clipboard format name (e.g. 'PNG', 'image/svg+xml', 'Text'). */
     format: string;
@@ -50,12 +52,48 @@ export interface ClipboardItem {
 }
 
 /**
- * Copies multiple data formats to the Windows clipboard.
- * Each item specifies a clipboard format name, the data, and how it is encoded.
+ * Copies multiple data formats to the clipboard.
+ * On Windows, uses PowerShell to set multiple clipboard formats (HTML, PNG, etc.).
+ * On other platforms, falls back to plain text only using VS Code's clipboard API.
  * @param items Array of clipboard items to set
  * @returns A promise that resolves when the clipboard operation completes
  */
-export function copyToClipboard(items: ClipboardItem[]): Promise<void> {
+export async function copyToClipboard(items: ClipboardItem[]): Promise<void> {
+    if (process.platform === 'win32') {
+        return copyToClipboardWindows(items);
+    } else {
+        // Fall back to plain text on non-Windows platforms
+        // VS Code's clipboard API only supports plain text
+        return copyToClipboardFallback(items);
+    }
+}
+
+/**
+ * Copies to clipboard using VS Code's plain text API.
+ * Used as fallback on non-Windows platforms.
+ */
+async function copyToClipboardFallback(items: ClipboardItem[]): Promise<void> {
+    // Find the best text item to use
+    const textItem = items.find(i => i.format === 'Text' && i.encoding === 'text')
+        ?? items.find(i => i.format === 'Text')
+        ?? items.find(i => i.encoding === 'text');
+    
+    if (textItem) {
+        await vscode.env.clipboard.writeText(textItem.data);
+    } else {
+        // No explicit text item, use first item's data as text if available
+        const firstItem = items[0];
+        if (firstItem) {
+            await vscode.env.clipboard.writeText(firstItem.data);
+        }
+    }
+}
+
+/**
+ * Copies multiple data formats to the Windows clipboard using PowerShell.
+ * Uses System.Windows.Forms.Clipboard to support multiple formats.
+ */
+function copyToClipboardWindows(items: ClipboardItem[]): Promise<void> {
     const { spawn } = require('child_process') as typeof import('child_process');
 
     // Use PowerShell to set the clipboard data in multiple formats
