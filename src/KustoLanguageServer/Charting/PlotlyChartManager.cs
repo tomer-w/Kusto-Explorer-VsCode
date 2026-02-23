@@ -1,5 +1,6 @@
 using System.Data;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Kusto.Data.Data;
 using Kusto.Data.Utils;
 
@@ -18,7 +19,7 @@ public class PlotlyChartManager : IChartManager
         // Handle raw Plotly JSON charts specially - they bypass the builder
         if (options.Visualization == VisualizationKind.Plotly)
         {
-            return RenderRawPlotlyChart(data);
+            return RenderRawPlotlyChart(data, darkMode);
         }
 
         var builder = BuildChart(data, options, darkMode);
@@ -36,7 +37,7 @@ public class PlotlyChartManager : IChartManager
     /// The expected format is a single column with a single row containing a JSON string
     /// with "data", "layout", and optionally "config" properties.
     /// </summary>
-    private string? RenderRawPlotlyChart(DataTable data, string divId = "plotly-chart")
+    private string? RenderRawPlotlyChart(DataTable data, bool darkMode = false, string divId = "plotly-chart")
     {
         // Expect single column, single row with JSON string
         if (data.Columns.Count == 0 || data.Rows.Count == 0)
@@ -69,6 +70,12 @@ public class PlotlyChartManager : IChartManager
                 layoutJson = layoutElement.GetRawText();
             }
 
+            // Apply dark mode styling if requested
+            if (darkMode)
+            {
+                layoutJson = ApplyDarkModeToLayout(layoutJson);
+            }
+
             string configJson = """{"responsive": true, "displayModeBar": false}""";
             if (root.TryGetProperty("config", out var configElement))
             {
@@ -82,6 +89,62 @@ public class PlotlyChartManager : IChartManager
             // Invalid JSON
             return null;
         }
+    }
+
+    /// <summary>
+    /// Applies dark mode styling to a Plotly layout JSON string by overriding
+    /// background colors, font colors, and axis colors.
+    /// </summary>
+    private static string ApplyDarkModeToLayout(string layoutJson)
+    {
+        var layout = JsonNode.Parse(layoutJson)?.AsObject() ?? new JsonObject();
+
+        // Override background colors
+        layout["paper_bgcolor"] = "#1e1e1e";
+        layout["plot_bgcolor"] = "#1e1e1e";
+
+        // Override font color
+        var font = layout["font"]?.AsObject() ?? new JsonObject();
+        font["color"] = "#f2f5fa";
+        layout["font"] = font;
+
+        // Apply dark mode to xaxis
+        ApplyDarkModeToAxis(layout, "xaxis");
+        
+        // Apply dark mode to yaxis
+        ApplyDarkModeToAxis(layout, "yaxis");
+
+        // Apply dark mode to additional axes (xaxis2, yaxis2, etc.)
+        foreach (var key in layout.ToArray().Select(kvp => kvp.Key))
+        {
+            if ((key.StartsWith("xaxis") || key.StartsWith("yaxis")) && key != "xaxis" && key != "yaxis")
+            {
+                ApplyDarkModeToAxis(layout, key);
+            }
+        }
+
+        // Apply dark mode to 3D scene axes if present
+        if (layout["scene"] is JsonObject scene)
+        {
+            ApplyDarkModeToAxis(scene, "xaxis");
+            ApplyDarkModeToAxis(scene, "yaxis");
+            ApplyDarkModeToAxis(scene, "zaxis");
+        }
+
+        return layout.ToJsonString();
+    }
+
+    /// <summary>
+    /// Applies dark mode colors to a specific axis within a layout or scene object.
+    /// </summary>
+    private static void ApplyDarkModeToAxis(JsonObject parent, string axisKey)
+    {
+        var axis = parent[axisKey]?.AsObject() ?? new JsonObject();
+        axis["color"] = "#f2f5fa";
+        axis["gridcolor"] = "#444444";
+        axis["linecolor"] = "#666666";
+        axis["zerolinecolor"] = "#666666";
+        parent[axisKey] = axis;
     }
 
     private PlotlyChartBuilder? BuildChart(DataTable data, ChartVisualizationOptions options, bool darkMode)
