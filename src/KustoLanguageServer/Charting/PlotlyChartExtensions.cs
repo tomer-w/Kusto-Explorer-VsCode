@@ -143,6 +143,7 @@ public static class PlotlyChartExtensions
             Y = y.Cast<object>().ToArray(),
             Mode = PlotlyScatterModes.Lines,
             Fill = stackGroup != null ? PlotlyFillModes.ToNextY : PlotlyFillModes.ToZeroY,
+            StackGroup = stackGroup,
             Name = name,
             YAxis = yAxis
         };

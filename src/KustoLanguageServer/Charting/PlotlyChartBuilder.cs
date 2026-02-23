@@ -325,6 +325,12 @@ public sealed record ScatterTrace : PlotlyTrace
     public string? Fill { get; init; }
 
     /// <summary>
+    /// Stack group identifier for stacked area charts. Traces with the same stackgroup are stacked together.
+    /// </summary>
+    [JsonPropertyName("stackgroup")]
+    public string? StackGroup { get; init; }
+
+    /// <summary>
     /// Line styling (color, width, dash style).
     /// </summary>
     [JsonPropertyName("line")]
