@@ -1364,6 +1364,38 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
         public required string Database { get; init; }
     }
 
+    [JsonRpcMethod("kusto/refreshSchema", UseSingleObjectParameterDeserialization = true)]
+    public async Task OnRefreshSchemaAsync(RefreshSchemaParams @params, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var clusterName = @params.Cluster;
+            var databaseName = @params.Database;
+
+            _ = this.SendWindowLogMessageAsync($"RefreshSchema: refreshing schema for cluster: {clusterName}, database: {databaseName ?? "(all)"}");
+
+            // Refresh the schema cache first
+            await _schemaManager.RefreshAsync(clusterName, databaseName, cancellationToken).ConfigureAwait(false);
+
+            // Refresh the symbol cache
+            await _symbolManager.RefreshAsync(clusterName, databaseName, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex);
+        }
+    }
+
+    [DataContract]
+    public class RefreshSchemaParams
+    {
+        [DataMember(Name = "cluster")]
+        public required string Cluster { get; init; }
+
+        [DataMember(Name = "database")]
+        public string? Database { get; init; }
+    }
+
     #endregion
 
     #region Document Connections

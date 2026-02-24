@@ -71,5 +71,10 @@ public sealed class DocumentManagerTests
         {
             return Task.CompletedTask;
         }
+
+        public Task RefreshAsync(string clusterName, string? databaseName, CancellationToken cancellationToken)
+        {
+            return Task.CompletedTask;
+        }
     }
 }

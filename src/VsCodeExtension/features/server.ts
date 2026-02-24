@@ -460,3 +460,21 @@ export function transformPaste(
         }
     );
 }
+
+/**
+ * Refreshes the schema cache for a cluster or specific database on the server.
+ * After this completes, the client should clear its local cache and re-fetch data through normal means.
+ * @param client The language client for LSP communication
+ * @param cluster The cluster name
+ * @param database The database name (optional - if omitted, refreshes all databases in the cluster)
+ */
+export function refreshSchema(
+    client: LanguageClient,
+    cluster: string,
+    database?: string
+): Promise<void> {
+    return client.sendRequest<void>(
+        'kusto/refreshSchema',
+        { cluster, database }
+    );
+}

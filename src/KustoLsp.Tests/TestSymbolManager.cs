@@ -11,8 +11,9 @@ public class TestSymbolManager
     {
         var connectionManager = new ConnectionManager();
         var schemaSource = new ServerSchemaSource(connectionManager);
+        var schemaManager = new SchemaManager(schemaSource, logger: null);
         var optionsManager = new OptionsManager(new TestSettingsSource());
-        var symbolManager = new SymbolManager(schemaSource, optionsManager);
+        var symbolManager = new SymbolManager(schemaManager, optionsManager);
         await symbolManager.EnsureSymbolsAsync("help.kusto.windows.net", "Samples", null, CancellationToken.None);
     }
 

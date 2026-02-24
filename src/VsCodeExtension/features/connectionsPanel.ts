@@ -29,8 +29,13 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
             await updateTreeSelectionForActiveDocument();
         }
     }));
-    context.subscriptions.push(connections.registerOnServersAndGroupsChanged(() => {
+    context.subscriptions.push(connections.registerOnServersAndGroupsChanged(async () => {
         connectionsProvider?.refresh();
+        // After refresh, restore the tree selection based on the current document's connection
+        // Use a small delay to allow the tree to rebuild first
+        setTimeout(async () => {
+            await updateTreeSelectionForActiveDocument();
+        }, 100);
     }));
     
     // Create tree view with drag and drop support
@@ -248,6 +253,14 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
 
         vscode.commands.registerCommand('kusto.renameServerGroup', async (item: ServerGroupTreeItem) => {
             await connectionsProvider!.promptRenameServerGroup(item.groupInfo.name);
+        }),
+
+        vscode.commands.registerCommand('kusto.refreshServer', async (item: ServerTreeItem) => {
+            await connections.refreshClusterSchema(item.clusterName);
+        }),
+
+        vscode.commands.registerCommand('kusto.refreshDatabase', async (item: DatabaseTreeItem) => {
+            await connections.refreshDatabaseSchema(item.clusterName, item.databaseName);
         }),
 
         vscode.commands.registerCommand('kusto.copyEntityAsCommand', async (item: EntityTreeItem) => {

@@ -110,6 +110,16 @@
         "icon": "$(edit)"
       },
       {
+        "command": "kusto.refreshServer",
+        "title": "Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "kusto.refreshDatabase",
+        "title": "Refresh",
+        "icon": "$(refresh)"
+      },
+      {
         "command": "kusto.copyQuery",
         "title": "Copy Query",
         "icon": "$(copy)"
@@ -216,6 +226,26 @@
           "command": "kusto.renameServerGroup",
           "when": "view == kusto.connections && viewItem == serverGroup",
           "group": "7_modification"
+        },
+        {
+          "command": "kusto.refreshServer",
+          "when": "view == kusto.connections && viewItem == server",
+          "group": "inline"
+        },
+        {
+          "command": "kusto.refreshServer",
+          "when": "view == kusto.connections && viewItem == server",
+          "group": "navigation"
+        },
+        {
+          "command": "kusto.refreshDatabase",
+          "when": "view == kusto.connections && viewItem == database",
+          "group": "inline"
+        },
+        {
+          "command": "kusto.refreshDatabase",
+          "when": "view == kusto.connections && viewItem == database",
+          "group": "navigation"
         },
         {
           "command": "kusto.viewEntityDefinition",
