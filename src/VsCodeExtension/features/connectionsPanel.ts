@@ -173,16 +173,17 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
         }
     }, 100);
 
-    // Handle tree item expansion events
+    // Handle tree item expansion events - fetch data for servers (databases fetch in getChildren)
     context.subscriptions.push(
         treeView.onDidExpandElement(async (event) => {
             const element = event.element;
 
             if (element instanceof ServerTreeItem) {
                 await connections.fetchDatabasesForCluster(element.clusterName);
-            } else if (element instanceof DatabaseTreeItem) {
-                await connections.fetchDatabaseInfo(element.clusterName, element.databaseName);
+                // Refresh only this server item to show its databases
+                connectionsProvider?.refreshItem(element);
             }
+            // DatabaseTreeItem fetches data in getChildren, so no action needed here
         })
     );
 
@@ -898,6 +899,10 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
         this._onDidChangeTreeData.fire(undefined);
     }
 
+    refreshItem(item: KustoTreeItem): void {
+        this._onDidChangeTreeData.fire(item);
+    }
+
     // =========================================================================
     // UI Prompt Methods
     // =========================================================================
@@ -1138,101 +1143,109 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
         }
 
         if (element instanceof DatabaseTreeItem) {
-            const folders: DatabaseFolderTreeItem[] = [];
-            const dbInfo = connections.getDatabaseInfo(element.clusterName, element.databaseName);
+            // Fetch database info if not cached (returns cached data if available)
+            return connections.getDatabaseSchema(element.clusterName, element.databaseName).then(dbInfo => {
+                const folders: DatabaseFolderTreeItem[] = [];
 
-            if (dbInfo?.tables && dbInfo.tables.length > 0) {
-                folders.push(new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'tables', 'Tables', 'table'));
-            }
-            if (dbInfo?.externalTables && dbInfo.externalTables.length > 0) {
-                folders.push(new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'externalTables', 'External Tables', 'cloud'));
-            }
-            if (dbInfo?.materializedViews && dbInfo.materializedViews.length > 0) {
-                folders.push(new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'materializedViews', 'Materialized Views', 'eye'));
-            }
-            if (dbInfo?.functions && dbInfo.functions.length > 0) {
-                folders.push(new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'functions', 'Functions', 'symbol-function'));
-            }
-            if (dbInfo?.entityGroups && dbInfo.entityGroups.length > 0) {
-                folders.push(new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'entityGroups', 'Entity Groups', 'symbol-namespace'));
-            }
-            if (dbInfo?.graphModels && dbInfo.graphModels.length > 0) {
-                folders.push(new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'graphModels', 'Graph Models', 'type-hierarchy'));
-            }
+                if (dbInfo?.tables && dbInfo.tables.length > 0) {
+                    folders.push(new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'tables', 'Tables', 'table'));
+                }
+                if (dbInfo?.externalTables && dbInfo.externalTables.length > 0) {
+                    folders.push(new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'externalTables', 'External Tables', 'cloud'));
+                }
+                if (dbInfo?.materializedViews && dbInfo.materializedViews.length > 0) {
+                    folders.push(new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'materializedViews', 'Materialized Views', 'eye'));
+                }
+                if (dbInfo?.functions && dbInfo.functions.length > 0) {
+                    folders.push(new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'functions', 'Functions', 'symbol-function'));
+                }
+                if (dbInfo?.entityGroups && dbInfo.entityGroups.length > 0) {
+                    folders.push(new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'entityGroups', 'Entity Groups', 'symbol-namespace'));
+                }
+                if (dbInfo?.graphModels && dbInfo.graphModels.length > 0) {
+                    folders.push(new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'graphModels', 'Graph Models', 'type-hierarchy'));
+                }
 
-            return folders;
+                return folders;
+            });
         }
 
         if (element instanceof DatabaseFolderTreeItem) {
-            const dbInfo = connections.getDatabaseInfo(element.clusterName, element.databaseName);
-            if (!dbInfo) return [];
+            // Fetch database info if not cached (returns cached data if available)
+            return connections.getDatabaseSchema(element.clusterName, element.databaseName).then(dbInfo => {
+                if (!dbInfo) return [];
 
-            switch (element.folderType) {
-                case 'tables':
-                    return buildEntityFolderChildren(
-                        dbInfo.tables ?? [], '', element.clusterName, element.databaseName, 'tables',
-                        t => new TableTreeItem(element.clusterName, element.databaseName, t)
-                    );
-                case 'externalTables':
-                    return buildEntityFolderChildren(
-                        dbInfo.externalTables ?? [], '', element.clusterName, element.databaseName, 'externalTables',
-                        t => new ExternalTableTreeItem(element.clusterName, element.databaseName, t)
-                    );
-                case 'materializedViews':
-                    return buildEntityFolderChildren(
-                        dbInfo.materializedViews ?? [], '', element.clusterName, element.databaseName, 'materializedViews',
-                        v => new MaterializedViewTreeItem(element.clusterName, element.databaseName, v)
-                    );
-                case 'functions':
-                    return buildEntityFolderChildren(
-                        dbInfo.functions ?? [], '', element.clusterName, element.databaseName, 'functions',
-                        f => new FunctionTreeItem(element.clusterName, element.databaseName, f)
-                    );
-                case 'entityGroups':
-                    return buildEntityFolderChildren(
-                        dbInfo.entityGroups ?? [], '', element.clusterName, element.databaseName, 'entityGroups',
-                        g => new EntityGroupTreeItem(element.clusterName, element.databaseName, g)
-                    );
-                case 'graphModels':
-                    return (dbInfo.graphModels ?? [])
-                        .map(g => new GraphModelTreeItem(element.clusterName, element.databaseName, g))
-                        .sort((a, b) => a.graphInfo.name.localeCompare(b.graphInfo.name, undefined, { sensitivity: 'base' }));
-            }
+                switch (element.folderType) {
+                    case 'tables':
+                        return buildEntityFolderChildren(
+                            dbInfo.tables ?? [], '', element.clusterName, element.databaseName, 'tables',
+                            t => new TableTreeItem(element.clusterName, element.databaseName, t)
+                        );
+                    case 'externalTables':
+                        return buildEntityFolderChildren(
+                            dbInfo.externalTables ?? [], '', element.clusterName, element.databaseName, 'externalTables',
+                            t => new ExternalTableTreeItem(element.clusterName, element.databaseName, t)
+                        );
+                    case 'materializedViews':
+                        return buildEntityFolderChildren(
+                            dbInfo.materializedViews ?? [], '', element.clusterName, element.databaseName, 'materializedViews',
+                            v => new MaterializedViewTreeItem(element.clusterName, element.databaseName, v)
+                        );
+                    case 'functions':
+                        return buildEntityFolderChildren(
+                            dbInfo.functions ?? [], '', element.clusterName, element.databaseName, 'functions',
+                            f => new FunctionTreeItem(element.clusterName, element.databaseName, f)
+                        );
+                    case 'entityGroups':
+                        return buildEntityFolderChildren(
+                            dbInfo.entityGroups ?? [], '', element.clusterName, element.databaseName, 'entityGroups',
+                            g => new EntityGroupTreeItem(element.clusterName, element.databaseName, g)
+                        );
+                    case 'graphModels':
+                        return (dbInfo.graphModels ?? [])
+                            .map(g => new GraphModelTreeItem(element.clusterName, element.databaseName, g))
+                            .sort((a, b) => a.graphInfo.name.localeCompare(b.graphInfo.name, undefined, { sensitivity: 'base' }));
+                    default:
+                        return [];
+                }
+            });
         }
 
         if (element instanceof EntityFolderTreeItem) {
-            const dbInfo = connections.getDatabaseInfo(element.clusterName, element.databaseName);
-            if (!dbInfo) return [];
+            // Fetch database info if not cached (returns cached data if available)
+            return connections.getDatabaseSchema(element.clusterName, element.databaseName).then(dbInfo => {
+                if (!dbInfo) return [];
 
-            switch (element.folderType) {
-                case 'tables':
-                    return buildEntityFolderChildren(
-                        dbInfo.tables ?? [], element.folderPath, element.clusterName, element.databaseName, 'tables',
-                        t => new TableTreeItem(element.clusterName, element.databaseName, t)
-                    );
-                case 'externalTables':
-                    return buildEntityFolderChildren(
-                        dbInfo.externalTables ?? [], element.folderPath, element.clusterName, element.databaseName, 'externalTables',
-                        t => new ExternalTableTreeItem(element.clusterName, element.databaseName, t)
-                    );
-                case 'materializedViews':
-                    return buildEntityFolderChildren(
-                        dbInfo.materializedViews ?? [], element.folderPath, element.clusterName, element.databaseName, 'materializedViews',
-                        v => new MaterializedViewTreeItem(element.clusterName, element.databaseName, v)
-                    );
-                case 'functions':
-                    return buildEntityFolderChildren(
-                        dbInfo.functions ?? [], element.folderPath, element.clusterName, element.databaseName, 'functions',
-                        f => new FunctionTreeItem(element.clusterName, element.databaseName, f)
-                    );
-                case 'entityGroups':
-                    return buildEntityFolderChildren(
-                        dbInfo.entityGroups ?? [], element.folderPath, element.clusterName, element.databaseName, 'entityGroups',
-                        g => new EntityGroupTreeItem(element.clusterName, element.databaseName, g)
-                    );
-                default:
-                    return [];
-            }
+                switch (element.folderType) {
+                    case 'tables':
+                        return buildEntityFolderChildren(
+                            dbInfo.tables ?? [], element.folderPath, element.clusterName, element.databaseName, 'tables',
+                            t => new TableTreeItem(element.clusterName, element.databaseName, t)
+                        );
+                    case 'externalTables':
+                        return buildEntityFolderChildren(
+                            dbInfo.externalTables ?? [], element.folderPath, element.clusterName, element.databaseName, 'externalTables',
+                            t => new ExternalTableTreeItem(element.clusterName, element.databaseName, t)
+                        );
+                    case 'materializedViews':
+                        return buildEntityFolderChildren(
+                            dbInfo.materializedViews ?? [], element.folderPath, element.clusterName, element.databaseName, 'materializedViews',
+                            v => new MaterializedViewTreeItem(element.clusterName, element.databaseName, v)
+                        );
+                    case 'functions':
+                        return buildEntityFolderChildren(
+                            dbInfo.functions ?? [], element.folderPath, element.clusterName, element.databaseName, 'functions',
+                            f => new FunctionTreeItem(element.clusterName, element.databaseName, f)
+                        );
+                    case 'entityGroups':
+                        return buildEntityFolderChildren(
+                            dbInfo.entityGroups ?? [], element.folderPath, element.clusterName, element.databaseName, 'entityGroups',
+                            g => new EntityGroupTreeItem(element.clusterName, element.databaseName, g)
+                        );
+                    default:
+                        return [];
+                }
+            });
         }
 
         if (element instanceof TableTreeItem) {

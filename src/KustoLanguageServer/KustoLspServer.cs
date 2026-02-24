@@ -1240,7 +1240,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
 
     #region Kusto Extensions
 
-    #region Connection Info
+    #region Schema
 
     [JsonRpcMethod("kusto/getServerInfo", UseSingleObjectParameterDeserialization = true)]
     public async Task<GetServerInfoResult?> OnGetServerInfoAsync(GetServerInfoParams @params, CancellationToken cancellationToken)
@@ -1394,6 +1394,39 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
 
         [DataMember(Name = "database")]
         public string? Database { get; init; }
+    }
+
+    /// <summary>
+    /// Refreshes the database schemas specifically referenced by the document.
+    /// </summary>
+    [JsonRpcMethod("kusto/refreshDocumentSchema", UseSingleObjectParameterDeserialization = true)]
+    public async Task OnRefreshDocumentSchemaAsync(RefreshDocumentSchemaParams @params, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (_documentManager.TryGetDocument(@params.Uri, out var document))
+            {
+                var dbRefs = document.GetDatabaseReferences(cancellationToken);
+                foreach (var dbRef in dbRefs)
+                {
+                    // Refresh the schema cache first
+                    await _schemaManager.RefreshAsync(dbRef.Cluster, dbRef.Database, cancellationToken).ConfigureAwait(false);
+                    // Refresh the symbol cache
+                    await _symbolManager.RefreshAsync(dbRef.Cluster, dbRef.Database, cancellationToken).ConfigureAwait(false);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex);
+        }
+    }
+
+    [DataContract]
+    public class RefreshDocumentSchemaParams
+    {
+        [DataMember(Name = "uri")]
+        public required Uri Uri { get; init; }
     }
 
     #endregion

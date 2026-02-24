@@ -478,3 +478,19 @@ export function refreshSchema(
         { cluster, database }
     );
 }
+
+/**
+ * Refreshes the schema cache for all databases referenced by a document.
+ * This includes databases accessed via cluster() and database() functions.
+ * @param client The language client for LSP communication
+ * @param uri The document URI
+ */
+export function refreshDocumentSchema(
+    client: LanguageClient,
+    uri: string
+): Promise<void> {
+    return client.sendRequest<void>(
+        'kusto/refreshDocumentSchema',
+        { uri }
+    );
+}

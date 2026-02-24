@@ -171,6 +171,11 @@
         "command": "kusto.copyTableAsExpression",
         "title": "Copy as Expression",
         "icon": "$(symbol-snippet)"
+      },
+      {
+        "command": "kusto.refreshDocumentSchema",
+        "title": "Refresh Schema",
+        "icon": "$(refresh)"
       }
     ],
     "menus": {
@@ -270,6 +275,11 @@
           "group": "navigation@1"
         },
         {
+          "command": "kusto.refreshDocumentSchema",
+          "when": "editorLangId == kusto",
+          "group": "navigation@2"
+        },
+        {
           "command": "kusto.copyChartTransparent",
           "when": "activeWebviewPanelId == kusto",
           "group": "navigation@1"
@@ -290,6 +300,11 @@
           "command": "kusto.runQuery",
           "when": "editorLangId == kusto",
           "group": "0_kusto@3"
+        },
+        {
+          "command": "kusto.refreshDocumentSchema",
+          "when": "editorLangId == kusto",
+          "group": "0_kusto@4"
         }
       ],
       "webview/context": [

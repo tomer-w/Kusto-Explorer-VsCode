@@ -509,7 +509,6 @@ export function setDatabaseInfo(cluster: string, databaseInfo: DatabaseInfo): vo
     } else {
         connectionInfo.databases.push(databaseInfo);
     }
-    raiseServersAndGroupsChanged();
 }
 
 /**
@@ -573,22 +572,31 @@ export async function fetchDatabaseInfo(clusterName: string, databaseName: strin
 export async function refreshClusterSchema(clusterName: string): Promise<void> {
     if (!languageClient) return;
 
-    try {
-        // Call server to refresh its schema cache
-        await lspServer.refreshSchema(languageClient, clusterName);
+    await vscode.window.withProgress(
+        {
+            location: vscode.ProgressLocation.Notification,
+            title: `Refreshing schema for ${clusterName}...`,
+            cancellable: false
+        },
+        async () => {
+            try {
+                // Call server to refresh its schema cache
+                await lspServer.refreshSchema(languageClient!, clusterName);
 
-        // Clear the client-side cache for this cluster so tree will re-fetch on expand
-        const connectionInfo = clusterConnections.find(c => c.cluster === clusterName);
-        if (connectionInfo) {
-            connectionInfo.databases = [];
+                // Clear the client-side cache for this cluster so tree will re-fetch on expand
+                const connectionInfo = clusterConnections.find(c => c.cluster === clusterName);
+                if (connectionInfo) {
+                    connectionInfo.databases = [];
+                }
+
+                // Trigger tree refresh - items will re-fetch data when expanded
+                raiseServersAndGroupsChanged();
+            } catch (error) {
+                console.error(`Failed to refresh schema for ${clusterName}:`, error);
+                vscode.window.showErrorMessage(`Failed to refresh schema for ${clusterName}`);
+            }
         }
-
-        // Trigger tree refresh - items will re-fetch data when expanded
-        raiseServersAndGroupsChanged();
-    } catch (error) {
-        console.error(`Failed to refresh schema for ${clusterName}:`, error);
-        vscode.window.showErrorMessage(`Failed to refresh schema for ${clusterName}`);
-    }
+    );
 }
 
 /**
@@ -600,26 +608,35 @@ export async function refreshClusterSchema(clusterName: string): Promise<void> {
 export async function refreshDatabaseSchema(clusterName: string, databaseName: string): Promise<void> {
     if (!languageClient) return;
 
-    try {
-        // Call server to refresh its schema cache for this database
-        await lspServer.refreshSchema(languageClient, clusterName, databaseName);
+    await vscode.window.withProgress(
+        {
+            location: vscode.ProgressLocation.Notification,
+            title: `Refreshing schema for ${databaseName}...`,
+            cancellable: false
+        },
+        async () => {
+            try {
+                // Call server to refresh its schema cache for this database
+                await lspServer.refreshSchema(languageClient!, clusterName, databaseName);
 
-        // Clear the client-side cache for this database so tree will re-fetch on expand
-        const connectionInfo = clusterConnections.find(c => c.cluster === clusterName);
-        if (connectionInfo?.databases) {
-            const dbIndex = connectionInfo.databases.findIndex(d => d.name === databaseName);
-            if (dbIndex >= 0) {
-                // Clear the detailed info, keep just the name
-                connectionInfo.databases[dbIndex] = { name: databaseName };
+                // Clear the client-side cache for this database so tree will re-fetch on expand
+                const connectionInfo = clusterConnections.find(c => c.cluster === clusterName);
+                if (connectionInfo?.databases) {
+                    const dbIndex = connectionInfo.databases.findIndex(d => d.name === databaseName);
+                    if (dbIndex >= 0) {
+                        // Clear the detailed info, keep just the name
+                        connectionInfo.databases[dbIndex] = { name: databaseName };
+                    }
+                }
+
+                // Trigger tree refresh - items will re-fetch data when expanded
+                raiseServersAndGroupsChanged();
+            } catch (error) {
+                console.error(`Failed to refresh schema for ${clusterName}/${databaseName}:`, error);
+                vscode.window.showErrorMessage(`Failed to refresh schema for ${clusterName}/${databaseName}`);
             }
         }
-
-        // Trigger tree refresh - items will re-fetch data when expanded
-        raiseServersAndGroupsChanged();
-    } catch (error) {
-        console.error(`Failed to refresh schema for ${clusterName}/${databaseName}:`, error);
-        vscode.window.showErrorMessage(`Failed to refresh schema for ${clusterName}/${databaseName}`);
-    }
+    );
 }
 
 // =============================================================================

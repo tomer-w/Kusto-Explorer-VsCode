@@ -35,7 +35,8 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
         vscode.commands.registerCommand('kusto.copyQueryTransparent', () => copyQueryTransparent(client)),
         vscode.commands.registerCommand('kusto.formatQuery', () => formatQuery(client)),
         vscode.commands.registerCommand('kusto.selectQuery', (startLine: number, startChar: number, endLine: number, endChar: number) => selectQuery(startLine, startChar, endLine, endChar)),
-        vscode.commands.registerCommand('kusto.showResults', (uri: string, line: number, character: number) => showResults(client, uri, line, character))
+        vscode.commands.registerCommand('kusto.showResults', (uri: string, line: number, character: number) => showResults(client, uri, line, character)),
+        vscode.commands.registerCommand('kusto.refreshDocumentSchema', () => refreshDocumentSchema(client))
     );
 
     // Register CodeLens provider for queries
@@ -347,6 +348,34 @@ async function formatQuery(client: LanguageClient): Promise<void> {
     } catch (error) {
         vscode.window.showErrorMessage(`Failed to format query: ${error}`);
     }
+}
+
+/**
+ * Refreshes the schema for all databases referenced in the current document.
+ * This includes databases accessed via cluster() and database() functions.
+ * @param client The language client for LSP communication
+ */
+async function refreshDocumentSchema(client: LanguageClient): Promise<void> {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || editor.document.languageId !== 'kusto') {
+        return;
+    }
+
+    await vscode.window.withProgress(
+        {
+            location: vscode.ProgressLocation.Notification,
+            title: 'Refreshing schema for referenced databases...',
+            cancellable: false
+        },
+        async () => {
+            try {
+                const uri = editor.document.uri.toString();
+                await server.refreshDocumentSchema(client, uri);
+            } catch (error) {
+                vscode.window.showErrorMessage(`Failed to refresh schema: ${error}`);
+            }
+        }
+    );
 }
 
 // =============================================================================
