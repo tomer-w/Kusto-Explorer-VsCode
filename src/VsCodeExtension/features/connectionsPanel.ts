@@ -40,6 +40,15 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
     });
     context.subscriptions.push(treeView);
 
+    // Register drop edit provider so entity drops resolve text at drop time with the target document URI
+    context.subscriptions.push(
+        vscode.languages.registerDocumentDropEditProvider(
+            { language: 'kusto' },
+            new KustoDocumentDropEditProvider(),
+            { dropMimeTypes: [ENTITY_DRAG_MIME] }
+        )
+    );
+
     // Load servers and groups from global state
     connections.loadServersAndGroups();
 
@@ -102,17 +111,44 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
                 return;
             }
 
+            // Ignore selection changes triggered by drag operations
+            if (isDragging) {
+                return;
+            }
+
             if (event.selection.length === 0) {
                 return;
             }
+
+            const selected = event.selection[0];
+
+            // Only allow selection of connectable items (server, database, no-connection)
+            const isSelectableItem = selected instanceof NoConnectionTreeItem
+                || selected instanceof ServerTreeItem
+                || selected instanceof DatabaseTreeItem;
+
+            if (!isSelectableItem) {
+                // Revert to the last valid selection
+                if (lastValidSelection && treeView) {
+                    isProgrammaticSelection = true;
+                    try {
+                        await treeView.reveal(lastValidSelection, { select: true, focus: false, expand: false });
+                    } catch {
+                        // Silently ignore reveal errors
+                    } finally {
+                        setTimeout(() => { isProgrammaticSelection = false; }, 50);
+                    }
+                }
+                return;
+            }
+
+            lastValidSelection = selected;
 
             const editor = vscode.window.activeTextEditor;
             if (!editor || editor.document.languageId !== 'kusto') {
                 return;
             }
 
-            const selected = event.selection[0];
-            
             if (selected instanceof NoConnectionTreeItem) {
                 await connections.setDocumentConnection(editor.document.uri.toString(), undefined, undefined);
             } else if (selected instanceof ServerTreeItem) {
@@ -135,7 +171,7 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
     context.subscriptions.push(
         treeView.onDidExpandElement(async (event) => {
             const element = event.element;
-            
+
             if (element instanceof ServerTreeItem) {
                 await connections.fetchDatabasesForCluster(element.clusterName);
             } else if (element instanceof DatabaseTreeItem) {
@@ -148,6 +184,7 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
     context.subscriptions.push(
         vscode.commands.registerCommand('kusto.selectServer', () => {}),
         vscode.commands.registerCommand('kusto.selectDatabase', () => {}),
+        vscode.commands.registerCommand('kusto.selectEntity', () => {}),
 
         vscode.commands.registerCommand('kusto.addServer', async () => {
             await connectionsProvider!.promptAddServer();
@@ -267,7 +304,8 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
                     item.clusterName,
                     item.databaseName,
                     entityType,
-                    entityName
+                    entityName,
+                    null
                 );
 
                 if (expression) {
@@ -352,6 +390,16 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
 
 /** Entity tree item types that support copy operations */
 type EntityTreeItem = TableTreeItem | ExternalTableTreeItem | MaterializedViewTreeItem | FunctionTreeItem | EntityGroupTreeItem | GraphModelTreeItem;
+
+/** Type guard for entity tree items that support copy/drag operations */
+function isEntityTreeItem(item: KustoTreeItem): item is EntityTreeItem {
+    return item instanceof TableTreeItem
+        || item instanceof ExternalTableTreeItem
+        || item instanceof MaterializedViewTreeItem
+        || item instanceof FunctionTreeItem
+        || item instanceof EntityGroupTreeItem
+        || item instanceof GraphModelTreeItem;
+}
 
 /** Maps contextValue to the entity type expected by the server */
 const entityTypeMap: Record<string, string> = {
@@ -541,6 +589,8 @@ class TableTreeItem extends vscode.TreeItem {
         if (tableInfo.description) {
             this.tooltip = tableInfo.description;
         }
+        // Set command to prevent auto-expand on click/drag (selection still fires)
+        this.command = { command: 'kusto.selectEntity', title: 'Select Entity', arguments: [this] };
     }
 }
 
@@ -559,6 +609,8 @@ class ExternalTableTreeItem extends vscode.TreeItem {
         if (tableInfo.description) {
             this.tooltip = tableInfo.description;
         }
+        // Set command to prevent auto-expand on click/drag (selection still fires)
+        this.command = { command: 'kusto.selectEntity', title: 'Select Entity', arguments: [this] };
     }
 }
 
@@ -577,6 +629,8 @@ class MaterializedViewTreeItem extends vscode.TreeItem {
         if (viewInfo.description) {
             this.tooltip = viewInfo.description;
         }
+        // Set command to prevent auto-expand on click/drag (selection still fires)
+        this.command = { command: 'kusto.selectEntity', title: 'Select Entity', arguments: [this] };
     }
 }
 
@@ -633,6 +687,8 @@ class EntityGroupTreeItem extends vscode.TreeItem {
         if (groupInfo.description) {
             this.tooltip = groupInfo.description;
         }
+        // Set command to prevent auto-expand on click/drag (selection still fires)
+        this.command = { command: 'kusto.selectEntity', title: 'Select Entity', arguments: [this] };
     }
 }
 
@@ -1235,14 +1291,24 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
 }
 
 /**
- * Drag and drop controller for moving servers between groups.
+ * Custom MIME type for dragging entity metadata from the tree.
+ */
+const ENTITY_DRAG_MIME = 'application/vnd.kusto.entity';
+
+/**
+ * Drag and drop controller for moving servers between groups
+ * and dragging entities onto text editors.
  */
 class KustoDragAndDropController implements vscode.TreeDragAndDropController<KustoTreeItem> {
     readonly dropMimeTypes = ['application/vnd.code.tree.kusto.connections'];
-    readonly dragMimeTypes = ['application/vnd.code.tree.kusto.connections'];
+    readonly dragMimeTypes = ['application/vnd.code.tree.kusto.connections', ENTITY_DRAG_MIME];
 
-    handleDrag(source: readonly KustoTreeItem[], dataTransfer: vscode.DataTransfer, token: vscode.CancellationToken): void {
-        // Only allow dragging ServerTreeItem
+    async handleDrag(source: readonly KustoTreeItem[], dataTransfer: vscode.DataTransfer, token: vscode.CancellationToken): Promise<void> {
+        // Suppress selection changes during drag
+        isDragging = true;
+        setTimeout(() => { isDragging = false; }, 100);
+
+        // Allow dragging ServerTreeItem for reordering between groups
         const servers = source.filter((item): item is ServerTreeItem => item instanceof ServerTreeItem);
         if (servers.length > 0) {
             const dragData = servers.map(s => ({
@@ -1250,6 +1316,27 @@ class KustoDragAndDropController implements vscode.TreeDragAndDropController<Kus
                 groupName: s.groupName
             }));
             dataTransfer.set('application/vnd.code.tree.kusto.connections', new vscode.DataTransferItem(dragData));
+        }
+
+        // Allow dragging entity items (tables, functions, etc.) onto the editor
+        if (source.length === 1) {
+            const item = source[0]!;
+            if (isEntityTreeItem(item)) {
+                // Pass entity metadata via custom MIME type — the actual text is resolved
+                // at drop time by KustoDocumentDropEditProvider, which has access to the
+                // target document URI.
+                const entityType = getEntityType(item);
+                if (entityType) {
+                    const entityName = getEntityName(item);
+                    const metadata = {
+                        cluster: item.clusterName,
+                        database: item.databaseName,
+                        entityType,
+                        entityName
+                    };
+                    dataTransfer.set(ENTITY_DRAG_MIME, new vscode.DataTransferItem(JSON.stringify(metadata)));
+                }
+            }
         }
     }
 
@@ -1285,6 +1372,53 @@ class KustoDragAndDropController implements vscode.TreeDragAndDropController<Kus
     }
 }
 
+/**
+ * Document drop edit provider that resolves entity expression text at drop time.
+ * This allows us to pass the target document URI to the server so it can generate
+ * the correct expression based on the document's connection context.
+ */
+class KustoDocumentDropEditProvider implements vscode.DocumentDropEditProvider {
+    async provideDocumentDropEdits(
+        document: vscode.TextDocument,
+        position: vscode.Position,
+        dataTransfer: vscode.DataTransfer,
+        token: vscode.CancellationToken
+    ): Promise<vscode.DocumentDropEdit | undefined> {
+        const transferItem = dataTransfer.get(ENTITY_DRAG_MIME);
+        if (!transferItem || !languageClient) {
+            return undefined;
+        }
+
+        const raw = await transferItem.asString();
+        if (!raw || token.isCancellationRequested) {
+            return undefined;
+        }
+
+        let metadata: { cluster: string; database: string; entityType: string; entityName: string };
+        try {
+            metadata = JSON.parse(raw);
+        } catch {
+            return undefined;
+        }
+
+        const expression = await lspServer.getEntityAsExpression(
+            languageClient,
+            metadata.cluster,
+            metadata.database,
+            metadata.entityType,
+            metadata.entityName,
+            document.uri.toString()
+        );
+
+        if (!expression || token.isCancellationRequested) {
+            return undefined;
+        }
+
+        const edit = new vscode.DocumentDropEdit(expression);
+        return edit;
+    }
+}
+
 // =============================================================================
 // Module-level state (initialized by activate)
 // =============================================================================
@@ -1293,6 +1427,8 @@ let languageClient: LanguageClient | undefined;
 let connectionsProvider: KustoConnectionsProvider | undefined;
 let treeView: vscode.TreeView<KustoTreeItem> | undefined;
 let isProgrammaticSelection = false;
+let isDragging = false;
+let lastValidSelection: KustoTreeItem | undefined;
 
 /**
  * Finds a tree item matching the cluster/database.
@@ -1370,6 +1506,7 @@ async function selectNeutralTreeItem(): Promise<void> {
         if (noConnectionItem) {
             try {
                 await treeView.reveal(noConnectionItem, { select: true, focus: false, expand: false });
+                lastValidSelection = noConnectionItem;
             } catch {
                 // Silently ignore reveal errors
             }
@@ -1411,6 +1548,7 @@ async function updateTreeSelectionForActiveDocument(): Promise<void> {
                 const currentEditor = vscode.window.activeTextEditor;
                 if (currentEditor && currentEditor.document.languageId === 'kusto') {
                     await treeView.reveal(itemToSelect, { select: true, focus: false, expand: false });
+                    lastValidSelection = itemToSelect;
                 }
             } catch {
                 // Silently ignore reveal errors

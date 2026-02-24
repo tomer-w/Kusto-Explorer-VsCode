@@ -141,6 +141,7 @@ export function getEntityAsCommand(
  * @param database The database name
  * @param entityType The type of entity (e.g., 'Table', 'ExternalTable', 'Function', etc.)
  * @param entityName The name of the entity
+ * @param uri The document URI, or null
  * @returns The entity expression as a string, or null if not found
  */
 export function getEntityAsExpression(
@@ -148,11 +149,12 @@ export function getEntityAsExpression(
     cluster: string,
     database: string,
     entityType: string,
-    entityName: string
+    entityName: string,
+    uri: string | null
 ): Promise<string | null> {
     return client.sendRequest<string | null>(
         'kusto/getEntityAsExpression',
-        { cluster, database, entityType, entityName }
+        { cluster, database, entityType, entityName, uri }
     );
 }
 

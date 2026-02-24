@@ -1820,9 +1820,6 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
         [DataMember(Name="database")]
         public required string Database { get; init; }
 
-        /// <summary>
-        /// Kind of entity: Table, ExternalTable, etc.
-        /// </summary>
         [DataMember(Name = "entityType")]
         public required string EntityType { get; init; }
 
@@ -1845,7 +1842,13 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
                     EntityName = @params.EntityName
                 };
 
-                return await _entityManager.GetQueryExpression(entityId, null, cancellationToken).ConfigureAwait(false);
+                IDocument? document = null;
+                if (@params.Uri is { } uri)
+                {
+                    _documentManager.TryGetDocument(uri, out document);
+                }
+
+                return await _entityManager.GetQueryExpression(entityId, document, cancellationToken).ConfigureAwait(false);
             }
         }
         catch (Exception ex)
@@ -1865,19 +1868,18 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
         [DataMember(Name="database")]
         public required string Database { get; init; }
 
-        /// <summary>
-        /// Kind of entity: Table, ExternalTable, etc.
-        /// </summary>
         [DataMember(Name = "entityType")]
         public required string EntityType { get; init; }
 
         [DataMember(Name="entityName")]
         public required string EntityName { get; init; }
+
+        [DataMember(Name = "uri")]
+        public Uri? Uri { get; init; }
     }
     #endregion
 
     #region Transform Paste
-
 
     [JsonRpcMethod("kusto/transformPaste", UseSingleObjectParameterDeserialization = true)]
     public async Task<string?> OnTransformPasteAsync(TransformPasteParams @params, CancellationToken cancellationToken)
