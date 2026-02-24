@@ -260,12 +260,14 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
             }
 
             const entityName = getEntityName(item);
+            const cluster = getEntityCluster(item);
+            const database = getEntityDatabase(item);
 
             try {
                 const definition = await lspServer.getEntityAsCommand(
                     client,
-                    item.clusterName,
-                    item.databaseName,
+                    cluster,
+                    database,
                     entityType,
                     entityName
                 );
@@ -275,8 +277,8 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
                     setClipboardContext({
                         text: definition,
                         kind: 'command',
-                        entityCluster: item.clusterName,
-                        entityDatabase: item.databaseName,
+                        entityCluster: cluster,
+                        entityDatabase: database,
                         entityType: entityType,
                         entityName: entityName
                     });
@@ -297,12 +299,14 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
             }
 
             const entityName = getEntityName(item);
+            const cluster = getEntityCluster(item);
+            const database = getEntityDatabase(item);
 
             try {
                 const expression = await lspServer.getEntityAsExpression(
                     client,
-                    item.clusterName,
-                    item.databaseName,
+                    cluster,
+                    database,
                     entityType,
                     entityName,
                     null
@@ -313,8 +317,8 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
                     setClipboardContext({
                         text: expression,
                         kind: 'expression',
-                        entityCluster: item.clusterName,
-                        entityDatabase: item.databaseName,
+                        entityCluster: cluster,
+                        entityDatabase: database,
                         entityType: entityType,
                         entityName: entityName
                     });
@@ -388,12 +392,14 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
 // Entity Helper Functions
 // =============================================================================
 
-/** Entity tree item types that support copy operations */
-type EntityTreeItem = TableTreeItem | ExternalTableTreeItem | MaterializedViewTreeItem | FunctionTreeItem | EntityGroupTreeItem | GraphModelTreeItem;
+/** Entity tree item types that support copy/drag operations */
+type EntityTreeItem = ServerTreeItem | DatabaseTreeItem | TableTreeItem | ExternalTableTreeItem | MaterializedViewTreeItem | FunctionTreeItem | EntityGroupTreeItem | GraphModelTreeItem;
 
 /** Type guard for entity tree items that support copy/drag operations */
 function isEntityTreeItem(item: KustoTreeItem): item is EntityTreeItem {
-    return item instanceof TableTreeItem
+    return item instanceof ServerTreeItem
+        || item instanceof DatabaseTreeItem
+        || item instanceof TableTreeItem
         || item instanceof ExternalTableTreeItem
         || item instanceof MaterializedViewTreeItem
         || item instanceof FunctionTreeItem
@@ -403,6 +409,8 @@ function isEntityTreeItem(item: KustoTreeItem): item is EntityTreeItem {
 
 /** Maps contextValue to the entity type expected by the server */
 const entityTypeMap: Record<string, string> = {
+    'server': 'Cluster',
+    'database': 'Database',
     'table': 'Table',
     'externalTable': 'ExternalTable',
     'materializedView': 'MaterializedView',
@@ -426,7 +434,11 @@ function getEntityType(item: EntityTreeItem): string | undefined {
  * @returns The entity name
  */
 function getEntityName(item: EntityTreeItem): string {
-    if (item instanceof TableTreeItem || item instanceof ExternalTableTreeItem) {
+    if (item instanceof ServerTreeItem) {
+        return item.clusterName;
+    } else if (item instanceof DatabaseTreeItem) {
+        return item.databaseName;
+    } else if (item instanceof TableTreeItem || item instanceof ExternalTableTreeItem) {
         return item.tableInfo.name;
     } else if (item instanceof MaterializedViewTreeItem) {
         return item.viewInfo.name;
@@ -439,6 +451,30 @@ function getEntityName(item: EntityTreeItem): string {
     }
     // This should never happen if EntityTreeItem type is correct
     throw new Error(`Unknown entity tree item type`);
+}
+
+/**
+ * Gets the cluster context for an entity tree item.
+ * Server items have no cluster context (they ARE the entity).
+ * All other items have a cluster from their parent.
+ */
+function getEntityCluster(item: EntityTreeItem): string {
+    if (item instanceof ServerTreeItem) {
+        return '';
+    }
+    return item.clusterName;
+}
+
+/**
+ * Gets the database context for an entity tree item.
+ * Server and Database items have no database context.
+ * All other items have a database from their parent.
+ */
+function getEntityDatabase(item: EntityTreeItem): string {
+    if (item instanceof ServerTreeItem || item instanceof DatabaseTreeItem) {
+        return '';
+    }
+    return item.databaseName;
 }
 
 // =============================================================================
@@ -1318,7 +1354,7 @@ class KustoDragAndDropController implements vscode.TreeDragAndDropController<Kus
             dataTransfer.set('application/vnd.code.tree.kusto.connections', new vscode.DataTransferItem(dragData));
         }
 
-        // Allow dragging entity items (tables, functions, etc.) onto the editor
+        // Allow dragging entity items (servers, databases, tables, functions, etc.) onto the editor
         if (source.length === 1) {
             const item = source[0]!;
             if (isEntityTreeItem(item)) {
@@ -1329,8 +1365,8 @@ class KustoDragAndDropController implements vscode.TreeDragAndDropController<Kus
                 if (entityType) {
                     const entityName = getEntityName(item);
                     const metadata = {
-                        cluster: item.clusterName,
-                        database: item.databaseName,
+                        cluster: getEntityCluster(item),
+                        database: getEntityDatabase(item),
                         entityType,
                         entityName
                     };
