@@ -6,6 +6,7 @@ let resultsView: vscode.WebviewView | undefined;
 let lastDataId: string | undefined;
 let lastTableNames: string[] = [];
 let activeTabIndex = 0;
+let languageClient: LanguageClient | undefined;
 
 /**
  * Activates the results panel webview and registers associated commands.
@@ -13,6 +14,8 @@ let activeTabIndex = 0;
  * @param client The language client for LSP communication
  */
 export function activate(context: vscode.ExtensionContext, client: LanguageClient): void {
+
+    languageClient = client;
 
     // Register the results view webview provider
     vscode.window.registerWebviewViewProvider('kusto.resultsView', {
@@ -31,6 +34,11 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
             webviewView.webview.onDidReceiveMessage((message) => {
                 if (message.command === 'tabChanged' && typeof message.index === 'number') {
                     activeTabIndex = message.index;
+                    // Refresh the cached expression for the newly active tab
+                    sendExpressionToWebview();
+                }
+                if (message.command === 'requestExpression') {
+                    sendExpressionToWebview();
                 }
             });
             webviewView.webview.html = '<html>no results</html>';
@@ -70,6 +78,8 @@ export async function displayResultsById(
         const html = buildTabbedHtml(data.tables);
         const totalRows = data.tables.reduce((sum, t) => sum + t.rowCount, 0);
         await displayResults(html, totalRows, data.hasChart);
+        // Eagerly fetch and send the datatable expression to the webview for drag-and-drop
+        sendExpressionToWebview();
     } else {
         await displayResults('<html>no results</html>', undefined, false);
     }
@@ -306,6 +316,18 @@ const webviewMessageHandlerScript = `
     const vscode = acquireVsCodeApi();
 
     // Tab switching
+    let cachedExpression = '';
+
+    function makeTablesDraggable() {
+        // Find tables in the active tab, or all tables if no tabs
+        const activeTab = document.querySelector('.tab-content.active');
+        const container = activeTab || document.body;
+        container.querySelectorAll('table').forEach(function(tbl) {
+            tbl.setAttribute('draggable', 'true');
+        });
+    }
+    makeTablesDraggable();
+
     function switchTab(index) {
         document.querySelectorAll('.tab-button').forEach(function(btn, i) {
             btn.classList.toggle('active', i === index);
@@ -313,6 +335,8 @@ const webviewMessageHandlerScript = `
         document.querySelectorAll('.tab-content').forEach(function(content, i) {
             content.classList.toggle('active', i === index);
         });
+        cachedExpression = '';  // Clear stale expression until the new tab's expression arrives
+        makeTablesDraggable();  // Re-apply draggable on newly visible tables
         vscode.postMessage({ command: 'tabChanged', index: index });
     }
 
@@ -322,8 +346,27 @@ const webviewMessageHandlerScript = `
         lastContextTarget = event.target;
     });
 
+    // Drag and drop from result tables: use event delegation so it works
+    // regardless of when tables become visible (tab switching).
+    // The actual expression text is sent from the extension host and cached here.
+    document.addEventListener('dragstart', function(e) {
+        const tbl = e.target.closest ? e.target.closest('table') : null;
+        if (!tbl) { return; }
+        if (cachedExpression) {
+            e.dataTransfer.setData('text/plain', cachedExpression);
+            e.dataTransfer.effectAllowed = 'copy';
+        } else {
+            // No expression cached yet — request it for next time
+            vscode.postMessage({ command: 'requestExpression' });
+            e.preventDefault();
+        }
+    });
+
     window.addEventListener('message', event => {
         const message = event.data;
+        if (message.command === 'setExpression' && typeof message.expression === 'string') {
+            cachedExpression = message.expression;
+        }
         if (message.command === 'copyData') {
             const sel = window.getSelection();
             const prevRange = sel.rangeCount > 0 ? sel.getRangeAt(0).cloneRange() : null;
@@ -356,6 +399,25 @@ const webviewMessageHandlerScript = `
         }
     });
 </script>`;
+
+/**
+ * Fetches the datatable expression for the current result/tab and sends it
+ * to the webview so it is available immediately on dragstart.
+ */
+async function sendExpressionToWebview(): Promise<void> {
+    if (!resultsView || !languageClient || !lastDataId) {
+        return;
+    }
+    try {
+        const tableName = lastTableNames[activeTabIndex];
+        const result = await server.getDataAsExpression(languageClient, lastDataId, tableName);
+        if (result?.expression && resultsView) {
+            resultsView.webview.postMessage({ command: 'setExpression', expression: result.expression });
+        }
+    } catch {
+        // Ignore — drag will just not work until expression is available
+    }
+}
 
 /**
  * Injects the message handler script into webview HTML content.
