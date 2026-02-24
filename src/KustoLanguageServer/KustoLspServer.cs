@@ -16,7 +16,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
 {
     private readonly IOptionsManager _optionsManager;
     private readonly IConnectionManager _connectionManager;
-    private readonly ISchemaSource _schemaSource;
+    private readonly ISchemaManager _schemaManager;
     private readonly ISymbolManager _symbolManager;
     private readonly IDocumentManager _documentManager;
     private readonly IDiagnosticsManager _diagnosticsManager;
@@ -32,7 +32,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
         string[] args,
         IOptionsManager optionsManager,
         IConnectionManager connectionManager,
-        ISchemaSource schemaSource,
+        ISchemaManager schemaManager,
         ISymbolManager symbolManager,
         IDocumentManager documentManager,
         IDiagnosticsManager diagnosticsManager,
@@ -44,7 +44,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
     {
         _args = args.ToImmutableList();
         _optionsManager = optionsManager;
-        _schemaSource = schemaSource;
+        _schemaManager = schemaManager;
         _connectionManager = connectionManager;
         _symbolManager = symbolManager;
         _documentManager = documentManager;
@@ -65,14 +65,14 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
         _args = args.ToImmutableList();
         _optionsManager = new OptionsManager(this);
         _connectionManager = new ConnectionManager();
-        _schemaSource = new ServerSchemaSource(_connectionManager, this);
-        _symbolManager = new SymbolManager(_schemaSource, _optionsManager, this);
+        _schemaManager = new SchemaManager(new ServerSchemaSource(_connectionManager, this), this);
+        _symbolManager = new SymbolManager(_schemaManager, _optionsManager, this);
         _documentManager = new DocumentManager(_symbolManager, this);
         _resultsManager = new ResultsManager(_documentManager);
         _diagnosticsManager = new DiagnosticsManager(_documentManager);
         _queryManager = new QueryManager(_connectionManager, _documentManager, this);
         _chartManager = new PlotlyChartManager();
-        _entityManager = new EntityManager(_schemaSource);
+        _entityManager = new EntityManager(_schemaManager);
         InitEvents();
     }
 
@@ -1250,7 +1250,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
             var clusterName = _connectionManager.GetOrAddConnection(@params.Connection).Cluster;
 
             // ensure server databases are loaded
-            var clusterInfo = await _schemaSource.GetClusterInfoAsync(clusterName, null, cancellationToken).ConfigureAwait(false);
+            var clusterInfo = await _schemaManager.GetClusterInfoAsync(clusterName, null, cancellationToken).ConfigureAwait(false);
             if (clusterInfo != null)
             {
                 var dbs = clusterInfo.Databases.Select(db => new ServerDatabase
@@ -1344,7 +1344,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
             var clusterName = @params.Cluster;
             var databaseName = @params.Database;
 
-            return await _schemaSource.GetDatabaseInfoAsync(clusterName, databaseName, contextCluster: null, cancellationToken).ConfigureAwait(false);
+            return await _schemaManager.GetDatabaseInfoAsync(clusterName, databaseName, contextCluster: null, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

@@ -8,7 +8,7 @@ using System.Collections.Immutable;
 namespace Kusto.Lsp;
 
 /// <summary>
-/// A <see cref="ISchemaSource"/> that pulls schema direct from the server.
+/// A <see cref="ISchemaManager"/> that pulls schema direct from the server.
 /// </summary>
 public class ServerSchemaSource : ISchemaSource
 {
@@ -75,18 +75,27 @@ public class ServerSchemaSource : ISchemaSource
 
     public async Task<DatabaseInfo?> GetDatabaseInfoAsync(string clusterName, string databaseName, string? contextCluster, CancellationToken cancellationToken)
     {
+        _logger?.Log($"ServerSchemaSource: Loading schema for database: {clusterName} {databaseName}");
+
         // if we've already determined this database name is bad, then bail out
         if (IsBadDatabaseName(clusterName, databaseName))
-            throw GetInvalidDatabaseException(databaseName);
+        {
+            _logger?.Log($"ServerSchemaSource: Bad database name: {databaseName}");
+            return null;
+        }
 
         if (!_connectionManager.TryGetConnection(clusterName, databaseName, contextCluster, out var conn))
+        {
+            _logger?.Log($"ServerSchemaSource: Failed to get connection for database: {clusterName} {databaseName}");
             return null;
+        }
 
         var dbName = await GetBothDatabaseNamesAsync(conn, databaseName, cancellationToken).ConfigureAwait(false);
         if (dbName == null)
         {
             AddBadDatabaseName(clusterName, databaseName);
-            throw GetInvalidDatabaseException(databaseName);
+            _logger?.Log($"ServerSchemaSource: Bad database name: {databaseName}");
+            return null;
         }
 
         // use the primary database name if we need do refer to the database later

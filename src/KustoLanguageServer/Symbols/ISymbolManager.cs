@@ -17,6 +17,12 @@ public interface ISymbolManager
     event EventHandler<GlobalState>? GlobalsChanged;
 
     /// <summary>
+    /// Refreshes the cached symbols for the given cluster and database. 
+    /// If database is null, refreshes the all the databases in the cluster.
+    /// </summary>
+    Task RefreshAsync(string clusterName, string? databaseName, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Ensures that symbols for the specified cluster existing in <see cref="Globals"/>
     /// </summary>
     Task EnsureClustersAsync(ImmutableList<string> clusterNames, CancellationToken cancellationToken);

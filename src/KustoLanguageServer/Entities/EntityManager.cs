@@ -8,9 +8,9 @@ namespace Kusto.Lsp;
 
 public class EntityManager : IEntityManager
 {
-    private readonly ISchemaSource _schemaSource;
+    private readonly ISchemaManager _schemaSource;
 
-    public EntityManager(ISchemaSource schemaSource)
+    public EntityManager(ISchemaManager schemaSource)
     {
         _schemaSource = schemaSource;
     }

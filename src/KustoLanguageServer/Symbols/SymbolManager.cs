@@ -7,7 +7,7 @@ namespace Kusto.Lsp;
 
 public class SymbolManager : ISymbolManager
 {
-    private readonly ISchemaSource _schemaSource;
+    private readonly ISchemaManager _schemaManager;
     private readonly IOptionsManager _optionsManager;
     private readonly ILogger? _logger;
 
@@ -18,11 +18,11 @@ public class SymbolManager : ISymbolManager
     private readonly TaskQueue _taskQueue = new TaskQueue();
 
     public SymbolManager(
-        ISchemaSource schemaSource, 
+        ISchemaManager schemaManager, 
         IOptionsManager optionsManager,
         ILogger? logger = null)
     {
-        _schemaSource = schemaSource;
+        _schemaManager = schemaManager;
         _optionsManager = optionsManager;
         _logger = logger;
     }
@@ -53,6 +53,42 @@ public class SymbolManager : ISymbolManager
         }
     }
 
+    public async Task RefreshAsync(string clusterName, string? databaseName, CancellationToken cancellationToken)
+    {
+        var clusterSymbol = this.Globals.GetCluster(clusterName);
+        if (clusterSymbol != null)
+        {
+            if (databaseName == null)
+            {
+                // replace with new empty/open cluster which should cause it to be reloaded when symbols are resolved
+                SetGlobals(this.Globals.AddOrReplaceCluster(new ClusterSymbol(clusterName, [], isOpen: true)));
+
+                // ensure cluster is reloaded (gets new list of databases)
+                await EnsureSymbolsAsync(clusterName, null, null, cancellationToken).ConfigureAwait(false);
+
+                // ensure previously loaded databases are reloaded since documents may depend on them
+                foreach (var db in clusterSymbol.Databases)
+                {
+                    if (!db.IsOpen)
+                    {
+                        await EnsureSymbolsAsync(clusterName, db.Name, contextCluster: null, CancellationToken.None).ConfigureAwait(false);
+                    }
+                }
+            }
+            else
+            {
+                var db = clusterSymbol.GetDatabase(databaseName);
+                if (db != null && !db.IsOpen)
+                {
+                    var newCluster = clusterSymbol.AddOrUpdateDatabase(new DatabaseSymbol(db.Name, db.AlternateName, null, isOpen: true));
+                    SetGlobals(this.Globals.AddOrReplaceCluster(newCluster));
+                }
+
+                await EnsureSymbolsAsync(clusterName, databaseName, contextCluster: null, CancellationToken.None).ConfigureAwait(false);
+            }
+        }
+    }
+
     /// <summary>
     /// Loads symbols associated with the given cluster and database into the managed global state.
     /// </summary>
@@ -62,12 +98,12 @@ public class SymbolManager : ISymbolManager
         {
             var globals = this.Globals;
 
-            _logger?.Log($"SymbolManager: Loading symbols for cluster '{clusterName}', database '{databaseName}'");
+            _logger?.Log($"SymbolManager: Ensuring symbols for cluster '{clusterName}', database '{databaseName}'");
 
             try
             {
                 var clusterSymbol = globals.GetCluster(clusterName);
-                if (clusterSymbol == null)
+                if (clusterSymbol == null || clusterSymbol.IsOpen)
                 {
                     globals = await this.AddClusterAsync(globals, clusterName, contextCluster, useThisCancellationToken).ConfigureAwait(false);
                     clusterSymbol = globals.GetCluster(clusterName);
@@ -75,7 +111,7 @@ public class SymbolManager : ISymbolManager
 
                 if (clusterSymbol != null && databaseName != null)
                 {
-                    var databaseSymbol = clusterSymbol?.GetDatabase(databaseName);
+                    var databaseSymbol = clusterSymbol.GetDatabase(databaseName);
                     if (databaseSymbol == null || databaseSymbol.IsOpen)
                     {
                         globals = await this.AddDatabaseAsync(globals, clusterName, databaseName, contextCluster, cancellationToken: useThisCancellationToken).ConfigureAwait(false);
@@ -94,23 +130,20 @@ public class SymbolManager : ISymbolManager
     private async Task<GlobalState> AddClusterAsync(GlobalState globals, string clusterName, string? contextCluster, CancellationToken cancellationToken)
     {
         var clusterSymbol = globals.GetCluster(clusterName);
-        if (clusterSymbol == null)
+        if (clusterSymbol == null || clusterSymbol.IsOpen)
         {
-            var clusterInfo = await _schemaSource.GetClusterInfoAsync(clusterName, contextCluster, cancellationToken).ConfigureAwait(false);
+            var clusterInfo = await _schemaManager.GetClusterInfoAsync(clusterName, contextCluster, cancellationToken).ConfigureAwait(false);
             if (clusterInfo != null)
             {
-                try
-                {
-                    var openDatabases = clusterInfo.Databases.Select(db => new DatabaseSymbol(db.Name, db.AlternateName, null, isOpen: true)).ToList();
-                    var newCluster = new ClusterSymbol(clusterName, openDatabases);
-                    globals = globals.AddOrReplaceCluster(newCluster);
+                var openDatabases = clusterInfo.Databases.Select(db => new DatabaseSymbol(db.Name, db.AlternateName, null, isOpen: true)).ToList();
+                var newCluster = new ClusterSymbol(clusterName, openDatabases);
+                globals = globals.AddOrReplaceCluster(newCluster);
 
-                    _logger?.Log($"SymbolManager: Added cluster symbol: {clusterName} databases: {openDatabases.Count}");
-                }
-                catch (Exception)
-                {
-                    throw;
-                }
+                _logger?.Log($"SymbolManager: Added cluster symbol: {clusterName} databases: {openDatabases.Count}");
+            }
+            else
+            {
+                _logger?.Log($"SymbolManager: No cluster info found for cluster '{clusterName}'");
             }
         }
 
@@ -125,7 +158,7 @@ public class SymbolManager : ISymbolManager
             var databaseSymbol = clusterSymbol.GetDatabase(databaseName);
             if (databaseSymbol == null || databaseSymbol.IsOpen)
             {
-                var databaseInfo = await _schemaSource.GetDatabaseInfoAsync(clusterName, databaseName, contextCluster, cancellationToken).ConfigureAwait(false);
+                var databaseInfo = await _schemaManager.GetDatabaseInfoAsync(clusterName, databaseName, contextCluster, cancellationToken).ConfigureAwait(false);
                 if (databaseInfo != null)
                 {
                     var newDatabaseSymbol = databaseInfo.ToSymbol();
@@ -133,6 +166,10 @@ public class SymbolManager : ISymbolManager
                     globals = globals.AddOrReplaceCluster(clusterSymbol);
 
                     _logger?.Log($"SymbolManager: Added database symbol: {databaseInfo.Name} tables: {newDatabaseSymbol.Tables.Count}");
+                }
+                else
+                {
+                    _logger?.Log($"SymbolManager: No database info found for cluster '{clusterName}' database '{databaseName}'");
                 }
             }
         }
@@ -158,7 +195,7 @@ public class SymbolManager : ISymbolManager
                     var clusterSymbol = globals.GetCluster(clusterName);
                     if (clusterSymbol == null)
                     {
-                        _logger?.Log($"SymbolManager: Adding partial cluster symbol for '{clusterName}'");
+                        _logger?.Log($"SymbolManager: Ensuring cluster symbol for '{clusterName}'");
                         globals = await this.AddClusterAsync(globals, clusterName, contextCluster: null, useThisCancellationToken).ConfigureAwait(false);
                         changed = true;
                     }
