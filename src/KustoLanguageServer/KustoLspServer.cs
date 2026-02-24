@@ -1,5 +1,6 @@
 ﻿using Kusto.Language;
 using Kusto.Language.Editor;
+using Kusto.Language.Symbols;
 using Lsp.Common;
 using StreamJsonRpc;
 
@@ -367,41 +368,6 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
         var map = await GetSettingsAsync([setting], cancellationToken).ConfigureAwait(false);
         return setting.GetValue(map);
     }
-
-    #endregion
-
-    #region Query Highlighting
-
-    //public override async Task OnTextDocumentSelectionAsync(TextDocumentSelectionParams @params, CancellationToken cancellationToken)
-    //{
-    //    try
-    //    {
-    //        var uri = new Uri(@params.Uri);
-    //        if (_scriptManager.TryGetScript(uri, out var script))
-    //        {
-    //            if (@params.Selections.Length > 0)
-    //            {
-    //                var position = GetTextPosition(script, @params.Selections[0].Start);
-    //                var block = script.GetBlockAtPosition(position);
-    //                if (block != null)
-    //                {
-    //                    var lspRange = GetLspRange(script, new TextRange(block.Start, block.Length));
-    //                    await this.SendSetDecorationsAsync(@params.Uri, "currentQuery", [lspRange], cancellationToken).ConfigureAwait(false);
-    //                }
-    //            }
-    //            else
-    //            {
-    //                // clear decoration
-    //                await this.SendSetDecorationsAsync(@params.Uri, "currentQuery", [], cancellationToken).ConfigureAwait(false);
-    //            }
-    //        }
-
-    //    }
-    //    catch (Exception e)
-    //    {
-    //        await this.SendWindowLogMessageAsync(e.Message);
-    //    }
-    //}
 
     #endregion
 
@@ -967,6 +933,11 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
 
     #region Goto Definition
 
+    /// <summary>
+    /// Custom URI scheme for virtual entity definition documents.
+    /// </summary>
+    private const string EntityDefinitionScheme = "kusto-entity";
+
     public override Task<LSP.SumType<LSP.Location, LSP.Location[]>?> OnTextDocumentDefinitionAsync(LSP.TextDocumentPositionParams @params, CancellationToken cancellationToken)
     {
         try
@@ -975,9 +946,12 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
             {
                 var position = GetTextPosition(document.Text, @params.Position);
                 RelatedInfo relatedInfo = document.GetRelatedElements(position, _defaultFindRelatedOptions, cancellationToken);
+                
+                // Check for local declarations first (variables, let statements, etc.)
                 var definitionElements = relatedInfo.Elements
                     .Where(elem => elem.Kind == RelatedElementKind.Declaration)
                     .ToArray();
+
                 if (definitionElements.Length == 1)
                 {
                     var elem = definitionElements[0];
@@ -999,8 +973,14 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
                             }).ToArray();
                     return Task.FromResult<LSP.SumType<LSP.Location, LSP.Location[]>?>(lspLocations);
                 }
-            }
 
+                // No local declaration found - check if it's a database entity
+                var entityLocation = TryGetDatabaseEntityLocation(document, position, cancellationToken);
+                if (entityLocation != null)
+                {
+                    return Task.FromResult<LSP.SumType<LSP.Location, LSP.Location[]>?>(entityLocation);
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -1010,7 +990,116 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
         return Task.FromResult<LSP.SumType<LSP.Location, LSP.Location[]>?>(null);
     }
 
+    /// <summary>
+    /// Attempts to create a Location pointing to a virtual document for a database entity.
+    /// </summary>
+    private LSP.Location? TryGetDatabaseEntityLocation(IDocument document, int position, CancellationToken cancellationToken)
+    {
+        // Get the referenced symbol at the position
+        var referencedSymbol = document.GetReferencedSymbol(position, cancellationToken);
+        if (referencedSymbol == null)
+            return null;
+
+        // Determine the entity type and name based on the symbol
+        var (entityType, entityName) = GetEntityTypeAndName(document, referencedSymbol);
+        if (entityType == null || entityName == null)
+            return null;
+
+        // Get cluster and database from the symbol or document context
+        var cluster = GetClusterName(document, referencedSymbol);
+        var database = GetDatabaseName(document, referencedSymbol);
+
+        if (cluster == null || database == null)
+            return null;
+
+        // Create a virtual document URI for this entity
+        var virtualUri = CreateEntityDefinitionUri(cluster, database, entityType, entityName);
+
+        return new LSP.Location
+        {
+            Uri = virtualUri,
+            Range = new LSP.Range
+            {
+                Start = new LSP.Position { Line = 0, Character = 0 },
+                End = new LSP.Position { Line = 0, Character = 0 }
+            }
+        };
+    }
+
+    private static (string? entityType, string? entityName) GetEntityTypeAndName(IDocument document, Symbol symbol)
+    {
+        if (document.Globals.GetDatabase(symbol) == null)
+            return (null, null);
+
+        return symbol switch
+        {
+            ExternalTableSymbol extable => ("ExternalTable", extable.Name),
+            MaterializedViewSymbol mv => ("MaterializedView", mv.Name),
+            StoredQueryResultSymbol sqr => ("StoredQueryResult", sqr.Name),
+            TableSymbol table => ("Table", table.Name),
+            FunctionSymbol func => ("Function", func.Name),
+            EntityGroupSymbol eg => ("EntityGroup", eg.Name),
+            GraphModelSymbol graph => ("Graph", graph.Name),
+            _ => (null, null)
+        };
+    }
+
+    private static string? GetClusterName(IDocument document, Symbol symbol)
+    {
+        var db = document.Globals.GetDatabase(symbol);
+        return db != null ? document.Globals.GetCluster(db).Name : null;
+    }
+
+    private static string? GetDatabaseName(IDocument document, Symbol symbol)
+    {
+        return document.Globals.GetDatabase(symbol)?.Name;
+    }
+
+    /// <summary>
+    /// Creates a virtual document URI for an entity definition.
+    /// Format: kusto-entity://cluster/database/entityType/entityName.kql
+    /// </summary>
+    private static Uri CreateEntityDefinitionUri(string cluster, string database, string entityType, string entityName)
+    {
+        var encodedCluster = Uri.EscapeDataString(cluster);
+        var encodedDatabase = Uri.EscapeDataString(database);
+        var encodedEntityType = Uri.EscapeDataString(entityType);
+        var encodedEntityName = Uri.EscapeDataString(entityName);
+        return new Uri($"{EntityDefinitionScheme}://{encodedCluster}/{encodedDatabase}/{encodedEntityType}/{encodedEntityName}.kql");
+    }
+
+    /// <summary>
+    /// Parses an entity definition URI to extract entity information.
+    /// </summary>
+    private static bool TryParseEntityDefinitionUri(Uri uri, out string cluster, out string database, out string entityType, out string entityName)
+    {
+        cluster = database = entityType = entityName = "";
+
+        if (uri.Scheme != EntityDefinitionScheme)
+            return false;
+
+        try
+        {
+            cluster = Uri.UnescapeDataString(uri.Host);
+            var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length >= 3)
+            {
+                database = Uri.UnescapeDataString(segments[0]);
+                entityType = Uri.UnescapeDataString(segments[1]);
+                entityName = Uri.UnescapeDataString(Path.GetFileNameWithoutExtension(segments[2]));
+                return true;
+            }
+        }
+        catch
+        {
+            // Parsing failed
+        }
+
+        return false;
+    }
+
     #endregion
+
 
     #region Code Actions
 
@@ -1877,6 +1966,62 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
         [DataMember(Name = "uri")]
         public Uri? Uri { get; init; }
     }
+
+    /// <summary>
+    /// Gets the content of a virtual entity definition document.
+    /// Called by the VS Code extension's TextDocumentContentProvider.
+    /// </summary>
+    [JsonRpcMethod("kusto/getEntityDefinitionContent", UseSingleObjectParameterDeserialization = true)]
+    public async Task<GetEntityDefinitionContentResult?> OnGetEntityDefinitionContentAsync(GetEntityDefinitionContentParams @params, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var uri = new Uri(@params.Uri);
+            if (TryParseEntityDefinitionUri(uri, out var cluster, out var database, out var entityType, out var entityName))
+            {
+                if (Kusto.Data.Common.ExtendedEntityType.FastTryParse(entityType, out var parsedEntityType))
+                {
+                    var entityId = new EntityId
+                    {
+                        Cluster = cluster,
+                        Database = database,
+                        EntityType = parsedEntityType,
+                        EntityName = entityName
+                    };
+
+                    var content = await _entityManager.GetCreateCommand(entityId, cancellationToken).ConfigureAwait(false);
+                    if (content != null)
+                    {
+                        return new GetEntityDefinitionContentResult
+                        {
+                            Content = content
+                        };
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex);
+        }
+
+        return null;
+    }
+
+    [DataContract]
+    public class GetEntityDefinitionContentParams
+    {
+        [DataMember(Name = "uri")]
+        public required string Uri { get; init; }
+    }
+
+    [DataContract]
+    public class GetEntityDefinitionContentResult
+    {
+        [DataMember(Name = "content")]
+        public required string Content { get; init; }
+    }
+
     #endregion
 
     #region Transform Paste

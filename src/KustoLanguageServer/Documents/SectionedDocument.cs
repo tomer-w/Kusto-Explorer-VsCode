@@ -1,7 +1,9 @@
-using Kusto.Language;
-using Kusto.Language.Editor;
 using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
+
+using Kusto.Language;
+using Kusto.Language.Editor;
+using Kusto.Language.Symbols;
 
 namespace Kusto.Lsp;
 
@@ -317,6 +319,16 @@ public class SectionedDocument : IDocument
         if (block != null)
             return block.Service.GetRelatedElements(position, options, cancellationToken);
         return RelatedInfo.Empty;
+    }
+
+    public Symbol? GetReferencedSymbol(int position, CancellationToken cancellationToken)
+    {
+        var block = _script.GetBlockAtPosition(position);
+        if (block != null)
+        {
+            return block.Service.GetReferencedSymbol(position - block.Start, cancellationToken);
+        }
+        return null;
     }
 
     public ImmutableList<ClusterReference> GetClusterReferences(CancellationToken cancellationToken = default)

@@ -399,6 +399,28 @@ export interface SelectionRange {
     end: Position;
 }
 
+/** Result of getting entity definition content. */
+export interface EntityDefinitionContentResult {
+    content: string;
+}
+
+/**
+ * Gets the content of a virtual entity definition document.
+ * This is called by the EntityDefinitionProvider when VS Code opens a kusto-entity:// URI.
+ * @param client The language client for LSP communication
+ * @param uri The kusto-entity:// URI for the entity
+ * @returns The entity definition content, or null if not available
+ */
+export function getEntityDefinitionContent(
+    client: LanguageClient,
+    uri: string
+): Promise<EntityDefinitionContentResult | null> {
+    return client.sendRequest<EntityDefinitionContentResult | null>(
+        'kusto/getEntityDefinitionContent',
+        { uri }
+    );
+}
+
 /**
  * Asks the server to transform pasted text based on source and target connection context.
  * Returns the transformed text, or null if no transformation is needed.

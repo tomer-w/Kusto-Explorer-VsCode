@@ -7,6 +7,7 @@ import * as documentPanels from './features/documentPanels'
 import * as chartPanel from './features/chartPanel'
 import * as copilot from './features/copilot'
 import * as connectionStatusBar from './features/connectionStatusBar'
+import { registerEntityDefinitionProvider } from './features/entityDefinitionProvider'
 import
     {
         LanguageClient,
@@ -57,6 +58,9 @@ export async function activate(context: ExtensionContext)
 
     // Start the client BEFORE activating features that send notifications
     await client.start();
+
+    // Register entity definition provider for "Go to Definition" on database entities
+    registerEntityDefinitionProvider(context, client);
 
     // Register command to fix doubled commit characters after completion acceptance
     context.subscriptions.push(

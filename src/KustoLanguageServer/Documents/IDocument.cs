@@ -1,6 +1,8 @@
+using System.Collections.Immutable;
+
 using Kusto.Language;
 using Kusto.Language.Editor;
-using System.Collections.Immutable;
+using Kusto.Language.Symbols;
 
 namespace Kusto.Lsp;
 
@@ -115,6 +117,11 @@ public interface IDocument
     /// Gets the locations of the items related to the item at the position in the document.
     /// </summary>
     RelatedInfo GetRelatedElements(int position, FindRelatedOptions options = FindRelatedOptions.None, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the referenced symbol at the location.
+    /// </summary>
+    Symbol? GetReferencedSymbol(int position, CancellationToken cancellationToken);
 
     /// <summary>
     /// Gets the clusters referenced in the document.
