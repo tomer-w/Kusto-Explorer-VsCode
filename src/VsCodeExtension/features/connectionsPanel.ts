@@ -6,6 +6,7 @@ import * as connections from './connections';
 import { getHostName, isServerGroup } from './connections';
 import type { ServerInfo, ServerGroupInfo } from './connections';
 import type { DatabaseTableInfo, DatabaseColumnInfo, DatabaseFunctionInfo, DatabaseEntityGroupInfo, DatabaseGraphModelInfo } from './server';
+import { ENTITY_DEFINITION_SCHEME } from './entityDefinitionProvider';
 
 
 // =============================================================================
@@ -325,6 +326,43 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
                 }
             } catch (error) {
                 vscode.window.showErrorMessage(`Failed to copy expression: ${error}`);
+            }
+        }),
+
+        vscode.commands.registerCommand('kusto.viewEntityDefinition', async (item: EntityTreeItem) => {
+            const entityType = getEntityType(item);
+            if (!entityType) {
+                return;
+            }
+
+            // Only support entities that have definitions (not server/database)
+            if (item instanceof ServerTreeItem || item instanceof DatabaseTreeItem) {
+                return;
+            }
+
+            const entityName = getEntityName(item);
+            const cluster = getEntityCluster(item);
+            const database = getEntityDatabase(item);
+
+            if (!cluster || !database) {
+                return;
+            }
+
+            // Build the virtual document URI - must match the format in KustoLspServer.cs
+            const encodedCluster = encodeURIComponent(cluster);
+            const encodedDatabase = encodeURIComponent(database);
+            const encodedEntityType = encodeURIComponent(entityType);
+            const encodedEntityName = encodeURIComponent(entityName);
+            
+            const uri = vscode.Uri.parse(
+                `${ENTITY_DEFINITION_SCHEME}://${encodedCluster}/${encodedDatabase}/${encodedEntityType}/${encodedEntityName}.kql`
+            );
+
+            try {
+                const doc = await vscode.workspace.openTextDocument(uri);
+                await vscode.window.showTextDocument(doc, { preview: true });
+            } catch (error) {
+                vscode.window.showErrorMessage(`Failed to open entity definition: ${error}`);
             }
         }),
 

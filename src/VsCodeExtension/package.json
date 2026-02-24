@@ -139,6 +139,11 @@
         "icon": "$(symbol-variable)"
       },
       {
+        "command": "kusto.viewEntityDefinition",
+        "title": "View Definition",
+        "icon": "$(go-to-file)"
+      },
+      {
         "command": "kusto.copyChart",
         "title": "Copy Chart (As Is)",
         "icon": "$(file-media)"
@@ -211,6 +216,11 @@
           "command": "kusto.renameServerGroup",
           "when": "view == kusto.connections && viewItem == serverGroup",
           "group": "7_modification"
+        },
+        {
+          "command": "kusto.viewEntityDefinition",
+          "when": "view == kusto.connections && viewItem =~ /^(table|externalTable|materializedView|function|entityGroup|graphModel)$/",
+          "group": "navigation"
         },
         {
           "command": "kusto.copyEntityAsCommand",
