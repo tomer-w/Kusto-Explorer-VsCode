@@ -258,11 +258,6 @@
           "group": "navigation"
         },
         {
-          "command": "kusto.copyEntityAsCommand",
-          "when": "view == kusto.connections && viewItem =~ /^(table|materializedView|function|entityGroup|graphModel)$/",
-          "group": "9_cutcopypaste"
-        },
-        {
           "command": "kusto.copyEntityAsExpression",
           "when": "view == kusto.connections && viewItem =~ /^(server|database|table|externalTable|materializedView|function|entityGroup|graphModel)$/",
           "group": "9_cutcopypaste"
