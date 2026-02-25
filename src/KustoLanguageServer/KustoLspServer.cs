@@ -1344,6 +1344,42 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
         public required string ServerKind { get; set; }
     }
 
+    [JsonRpcMethod("kusto/decodeConnectionString", UseSingleObjectParameterDeserialization = true)]
+    public Task<DecodeConnectionStringResult?> OnDecodeConnectionStringAsync(DecodeConnectionStringParams @params, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var connection = _connectionManager.GetOrAddConnection(@params.ConnectionString);
+            return Task.FromResult<DecodeConnectionStringResult?>(new DecodeConnectionStringResult
+            {
+                Cluster = connection.Cluster,
+                Database = connection.Database
+            });
+        }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex);
+            return Task.FromResult<DecodeConnectionStringResult?>(null);
+        }
+    }
+
+    [DataContract]
+    public class DecodeConnectionStringParams
+    {
+        [DataMember(Name = "connectionString")]
+        public required string ConnectionString { get; set; }
+    }
+
+    [DataContract]
+    public class DecodeConnectionStringResult
+    {
+        [DataMember(Name = "cluster")]
+        public required string Cluster { get; set; }
+
+        [DataMember(Name = "database")]
+        public string? Database { get; set; }
+    }
+
     [JsonRpcMethod("kusto/getDatabaseInfo", UseSingleObjectParameterDeserialization = true)]
     public async Task<DatabaseInfo?> OnGetDatabaseInfo(GetDatabaseInfoParams @params, CancellationToken cancellationToken)
     {
@@ -1723,7 +1759,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
                         }
                     };
                 }
-                else if (runResult?.ExecuteResult != null)
+                else
                 {
                     return new RunQueryResults
                     {

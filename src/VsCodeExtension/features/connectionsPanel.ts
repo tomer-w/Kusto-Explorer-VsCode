@@ -949,20 +949,14 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
         }
 
         // Extract cluster hostname from connection string
-        const cluster = getHostName(connectionString);
+        const cluster = await getHostName(connectionString);
 
-        // Extract short name for display name using the configured default domain
-        var displayName = cluster;
-        const defaultDomain = vscode.workspace.getConfiguration('kusto').get<string>('defaultDomain', '.kusto.windows.net');
-        if (defaultDomain && cluster.endsWith(defaultDomain)) {
-            displayName = cluster.substring(0, cluster.length - defaultDomain.length);
-        }
-
+        const displayName = connections.getDisplayName(cluster);
         const server: ServerInfo = { 
             connection: connectionString,
             cluster: cluster
         };
-        if (displayName && displayName !== cluster) {
+        if (displayName) {
             server.displayName = displayName;
         }
 
@@ -1053,7 +1047,7 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
             return;
         }
 
-        const newCluster = getHostName(newConnectionString);
+        const newCluster = await getHostName(newConnectionString);
 
         let newDisplayName: string | undefined;
         if (newCluster === cluster) {

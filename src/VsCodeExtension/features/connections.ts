@@ -66,18 +66,41 @@ export function isServer(item: ServerOrGroup): item is ServerInfo {
 // =============================================================================
 
 /**
- * Extracts the hostname from a connection string.
+ * Extracts the cluster hostname from a connection string using the language server.
+ * Falls back to simple parsing if the language client is not available.
  * @param connection The connection string (URL or hostname)
  * @returns The cluster hostname
  */
-export function getHostName(connection: string): string {
+export async function getHostName(connection: string): Promise<string> {
+    // Try to use the language server to decode the connection string
+    if (languageClient) {
+        try {
+            const result = await lspServer.decodeConnectionString(languageClient, connection);
+            if (result?.cluster) {
+                return result.cluster;
+            }
+        } catch {
+            // Fall through to simple parsing
+        }
+    }
+
+    // Fallback: simple URL parsing for when language client is not available
+    return getHostNameSimple(connection);
+}
+
+/**
+ * Simple synchronous hostname extraction for fallback scenarios.
+ * @param connection The connection string (URL or hostname)
+ * @returns The cluster hostname
+ */
+function getHostNameSimple(connection: string): string {
     let dataSource = connection;
-    var connectionParts = connection.split(';');
+    const connectionParts = connection.split(';');
     if (connectionParts.length > 1) {
         // Connection string with parameters; find the "Data Source" part
         const dataSourcePart = connectionParts.find(part => part.trim().toLowerCase().startsWith('data source='));
         if (dataSourcePart) {
-            var dsParts = dataSourcePart.split('=');
+            const dsParts = dataSourcePart.split('=');
             if (dsParts.length > 1 && dsParts[1]) {
                 dataSource = dsParts[1].trim();
             }
@@ -97,6 +120,24 @@ export function getHostName(connection: string): string {
         // If it's not a valid URL, return as-is (might already be just a hostname)
         return dataSource;
     }
+}
+
+/**
+ * Gets the suggested display name for a cluster.
+ * If the cluster ends with the configured default domain, returns the short name;
+ * otherwise returns undefined (meaning no special display name is needed).
+ * @param cluster The cluster hostname
+ * @returns The suggested display name, or undefined if the cluster name should be used as-is
+ */
+export function getDisplayName(cluster: string): string | undefined {
+    const defaultDomain = vscode.workspace.getConfiguration('kusto').get<string>('defaultDomain', '.kusto.windows.net');
+    if (defaultDomain && cluster.endsWith(defaultDomain)) {
+        const shortName = cluster.substring(0, cluster.length - defaultDomain.length);
+        if (shortName && shortName !== cluster) {
+            return shortName;
+        }
+    }
+    return undefined;
 }
 
 // =============================================================================
@@ -251,6 +292,36 @@ export async function addServer(server: ServerInfo, groupName?: string): Promise
 }
 
 /**
+ * Ensures a server entry exists for the given connection string.
+ * If no server with the corresponding cluster hostname is found, creates one
+ * (with display name and server kind) and adds it to the root level.
+ * @param connectionString The connection string for the server
+ */
+export async function ensureServer(connectionString: string): Promise<void> {
+    const cluster = await getHostName(connectionString);
+    if (findServerInfo(cluster)) {
+        return;
+    }
+
+    const newServer: ServerInfo = {
+        connection: connectionString,
+        cluster: cluster
+    };
+
+    const displayName = getDisplayName(cluster);
+    if (displayName) {
+        newServer.displayName = displayName;
+    }
+
+    const serverKind = await fetchServerKind(connectionString);
+    if (serverKind) {
+        newServer.serverKind = serverKind;
+    }
+
+    await addServer(newServer);
+}
+
+/**
  * Adds a new server group.
  */
 export async function addServerGroup(group: ServerGroupInfo): Promise<void> {
@@ -377,7 +448,7 @@ export async function editServer(oldCluster: string, newConnection: string, newD
 
     if (!serverInfo) return;
 
-    const newCluster = getHostName(newConnection);
+    const newCluster = await getHostName(newConnection);
 
     serverInfo.connection = newConnection;
     serverInfo.cluster = newCluster;

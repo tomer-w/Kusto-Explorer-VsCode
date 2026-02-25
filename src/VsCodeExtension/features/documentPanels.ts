@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
-import { setDocumentConnection } from './connections';
+import { setDocumentConnection, ensureServer } from './connections';
 import * as server from './server';
 import * as resultsPanel from './resultsPanel';
 import * as chartPanel from './chartPanel';
@@ -86,6 +86,11 @@ async function runQuery(client: LanguageClient): Promise<void> {
 
         // run query and get results from the server
         const runResult = await server.runQuery(client, uri, selection);
+
+        // If the result includes a connection string for an unknown cluster, add it as a server
+        if (runResult?.connection || runResult?.cluster) {
+            await ensureServer(runResult.connection ?? runResult.cluster!);
+        }
 
         // If query changed cluster/database, update document connection
         if (runResult && runResult.cluster) {

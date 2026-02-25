@@ -85,6 +85,22 @@ export function getServerKind(
 }
 
 /**
+ * Decodes a connection string to extract the cluster and database names.
+ * @param client The language client for LSP communication
+ * @param connectionString The connection string to decode
+ * @returns The decoded cluster and database names, or null if decoding failed
+ */
+export function decodeConnectionString(
+    client: LanguageClient,
+    connectionString: string
+): Promise<DecodeConnectionStringResult | null> {
+    return client.sendRequest<DecodeConnectionStringResult | null>(
+        'kusto/decodeConnectionString',
+        { connectionString }
+    );
+}
+
+/**
  * Gets server info (list of databases) for a cluster.
  */
 export function getServerInfo(
@@ -381,6 +397,12 @@ export interface QueryRangesResult {
 /** Result of getting the server kind for a connection. */
 export interface ServerKindResult {
     serverKind: string;
+}
+
+/** Result of decoding a connection string. */
+export interface DecodeConnectionStringResult {
+    cluster: string;
+    database?: string;
 }
 
 /** Result of getting server info (databases) for a connection. */
