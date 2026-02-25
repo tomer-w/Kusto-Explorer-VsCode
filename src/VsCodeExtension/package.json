@@ -382,15 +382,10 @@
       {
         "title": "Connections",
         "properties": {
-          "kust.defaultDomain": {
+          "kusto.defaultDomain": {
             "type": "string",
             "default": ".kusto.windows.net",
-            "description": "The implicit domain used with short cluster names."
-          },
-          "kusto.defaultConnection": {
-            "type": "string",
-            "default": "help.kusto.windows.net;Initial Catalog=Samples",
-            "description": "The connection string used for documents not yet associated with a connection."
+            "description": "The domain appended to abbreviated cluster names in cluster() expressions."
           }
         }
       },

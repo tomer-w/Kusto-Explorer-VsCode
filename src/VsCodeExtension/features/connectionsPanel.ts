@@ -924,10 +924,11 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
         // Extract cluster hostname from connection string
         const cluster = getHostName(connectionString);
 
-        // Extract short name for display name
+        // Extract short name for display name using the configured default domain
         var displayName = cluster;
-        if (cluster.endsWith('.kusto.windows.net')) {
-            displayName = cluster.substring(0, cluster.indexOf('.kusto.windows.net'));
+        const defaultDomain = vscode.workspace.getConfiguration('kusto').get<string>('defaultDomain', '.kusto.windows.net');
+        if (defaultDomain && cluster.endsWith(defaultDomain)) {
+            displayName = cluster.substring(0, cluster.length - defaultDomain.length);
         }
 
         const server: ServerInfo = { 
