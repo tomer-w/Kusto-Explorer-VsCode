@@ -11,15 +11,18 @@ public class QueryManager : IQueryManager
 {
     private readonly IConnectionManager _connectionManager;
     private readonly IDocumentManager _documentManager;
+    private readonly IOptionsManager _optionsManager;
     private readonly ILogger? _logger;
 
     public QueryManager(
         IConnectionManager connectionManager,
         IDocumentManager documentManager,
+        IOptionsManager optionsManager,
         ILogger? logger = null)
     {
         _connectionManager = connectionManager;
         _documentManager = documentManager;
+        _optionsManager = optionsManager; 
         _logger = logger;
     }
 
@@ -233,16 +236,17 @@ public class QueryManager : IQueryManager
 
         RunResult? ExecuteConnectOrDatabaseDirective(ClientDirective directive, ExecutionContext context)
         {
-            var newContext = ApplyConnectOrDatabaseDirective(directive, context);
-            if (newContext.Cluster != null)
+            if (directive.TryGetConnectionInfo(out var connection, out var clusterName, out var databaseName))
             {
                 return new RunResult
                 {
                     Query = context.Query,
-                    Cluster = newContext.Cluster,
-                    Database = newContext.Database
+                    Connection = connection,
+                    Cluster = KustoFacts.GetFullHostName(clusterName, _optionsManager.DefaultDomain),
+                    Database = databaseName
                 };
             }
+
             return null;
         }
 

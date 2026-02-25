@@ -319,6 +319,7 @@ export interface DatabaseInfo {
 /** Result of running a query. */
 export interface RunQueryResult {
     dataId?: string;
+    connection?: string;
     cluster?: string;
     database?: string;
     error?: QueryDiagnostic;

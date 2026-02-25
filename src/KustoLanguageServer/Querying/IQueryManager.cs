@@ -47,6 +47,11 @@ public record RunResult
     public ImmutableDictionary<string, string>? QueryParameters { get; init; }
 
     /// <summary>
+    /// The resulting connection string.
+    /// </summary>
+    public string? Connection { get; init; }
+
+    /// <summary>
     /// The resulting cluster
     /// </summary>
     public string? Cluster { get; init; }
@@ -61,4 +66,3 @@ public record RunResult
     /// </summary>
     public Diagnostic? Error { get; init; }
 };
-

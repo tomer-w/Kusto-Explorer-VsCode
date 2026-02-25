@@ -63,14 +63,17 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
         : base(input, output)
     {
         _args = args.ToImmutableList();
-        _optionsManager = new OptionsManager(this);
+        ILogger logger = this;
+        ISettingSource settingSource = this;
+        _optionsManager = new OptionsManager(settingSource);
         _connectionManager = new ConnectionManager();
-        _schemaManager = new SchemaManager(new ServerSchemaSource(_connectionManager, this), this);
-        _symbolManager = new SymbolManager(_schemaManager, _optionsManager, this);
-        _documentManager = new DocumentManager(_symbolManager, this);
+        var schemaSource = new ServerSchemaSource(_connectionManager, logger);
+        _schemaManager = new SchemaManager(schemaSource, logger);
+        _symbolManager = new SymbolManager(_schemaManager, _optionsManager, logger);
+        _documentManager = new DocumentManager(_symbolManager, logger);
         _resultsManager = new ResultsManager(_documentManager);
         _diagnosticsManager = new DiagnosticsManager(_documentManager);
-        _queryManager = new QueryManager(_connectionManager, _documentManager, this);
+        _queryManager = new QueryManager(_connectionManager, _documentManager, _optionsManager, logger);
         _chartManager = new PlotlyChartManager();
         _entityManager = new EntityManager(_schemaManager);
         InitEvents();
@@ -1725,6 +1728,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
                     return new RunQueryResults
                     {
                         DataId = resultId,
+                        Connection = runResult?.Connection,
                         Cluster = runResult?.Cluster,
                         Database = runResult?.Database
                     };
@@ -1753,6 +1757,9 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
     {
         [DataMember(Name = "dataId")]
         public string? DataId { get; init; }
+
+        [DataMember(Name = "connection")]
+        public string? Connection { get; init; }
 
         [DataMember(Name = "cluster")]
         public string? Cluster { get; init; }
