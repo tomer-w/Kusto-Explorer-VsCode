@@ -160,7 +160,7 @@
       },
       {
         "command": "kusto.copyChartTransparent",
-        "title": "Copy Chart (Light/Transparent)",
+        "title": "Copy Chart",
         "icon": "$(file-media)"
       },
       {
@@ -317,10 +317,6 @@
           "command": "kusto.copyTableAsExpression",
           "when": "webviewId == 'kusto.resultsView'",
           "group": "9_cutcopypaste@3"
-        },
-        {
-          "command": "kusto.copyChart",
-          "when": "webviewId == 'kusto'"
         },
         {
           "command": "kusto.copyChartTransparent",
