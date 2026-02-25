@@ -132,6 +132,10 @@ public interface IDocument
     /// Gets the databases reference in the document.
     /// </summary>
     ImmutableList<DatabaseReference> GetDatabaseReferences(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the inferred connection information for the document, if available.
+    InferredConnection? GetInferredConnection(CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -177,4 +181,12 @@ public record DocumentEdits
     }
 
     private EditString? _formattedText;
+}
+
+
+public class InferredConnection
+{       
+    public string? Connection { get; init; }
+    public string? ClusterName { get; init; }
+    public string? DatabaseName { get; init; }
 }

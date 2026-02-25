@@ -272,6 +272,12 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
 
             // temporary telemetry
             _ = this.SendWindowLogMessageAsync($"text document opened: {@params.TextDocument.Uri}");
+
+            // Notify client that the document is ready
+            _ = this.SendNotificationAsync("kusto/documentReady", new
+            {
+                uri = @params.TextDocument.Uri.ToString()
+            });
         }
         catch (Exception ex)
         {
@@ -1100,7 +1106,6 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
 
     #endregion
 
-
     #region Code Actions
 
     /// <summary>
@@ -1433,6 +1438,50 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
 
     #region Document Connections
 
+    /// <summary>
+    /// Ensures the server has a document. If the document is not known to the server,
+    /// it will be added with the provided text. Always sends a documentReady notification.
+    /// This handles the VS Code case where closing a tab may send didClose but reopening
+    /// doesn't always send didOpen.
+    /// </summary>
+    [JsonRpcMethod("kusto/ensureDocument", UseSingleObjectParameterDeserialization = true)]
+    public Task OnEnsureDocumentAsync(EnsureDocumentParams @params, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var uri = new Uri(@params.Uri);
+            
+            if (!_documentManager.TryGetDocument(uri, out _))
+            {
+                // Document not known to server - add it
+                _documentManager.AddDocument(uri, @params.Text);
+                _ = this.SendWindowLogMessageAsync($"ensureDocument: added document {@params.Uri}");
+            }
+            
+            // Always send documentReady notification
+            _ = this.SendNotificationAsync("kusto/documentReady", new
+            {
+                uri = @params.Uri
+            });
+        }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    [DataContract]
+    public class EnsureDocumentParams
+    {
+        [DataMember(Name = "uri")]
+        public required string Uri { get; set; }
+
+        [DataMember(Name = "text")]
+        public required string Text { get; set; }
+    }
+
     [JsonRpcMethod("kusto/connectionsUpdated", UseSingleObjectParameterDeserialization = true)]
     public async Task OnConnectionsUpdatedAsync(ConnectionsUpdatedParams @params, CancellationToken cancellationToken)
     {
@@ -1493,6 +1542,54 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
 
         [DataMember(Name = "serverKind")]
         public string? ServerKind { get; set; }
+    }
+
+
+    [JsonRpcMethod("kusto/inferDocumentConnection", UseSingleObjectParameterDeserialization = true)]
+    public async Task<InferDocumentConnectionResult?> OnInferDocumentConnectionAsync(InferDocumentConnectionParams @params, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (_documentManager.TryGetDocument(@params.Uri, out var document))
+            {
+                var info = document.GetInferredConnection(cancellationToken);
+                if (info != null)
+                {
+                    return new InferDocumentConnectionResult
+                    {
+                        Connection = info.Connection,
+                        Cluster = info.ClusterName,
+                        Database = info.DatabaseName
+                    };
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex);
+        }
+
+        return null;
+    }
+
+    [DataContract]
+    public class InferDocumentConnectionParams
+    {
+        [DataMember(Name = "uri")]
+        public required Uri Uri { get; set; }
+    }
+
+    [DataContract]
+    public class InferDocumentConnectionResult
+    {
+        [DataMember(Name = "connection")]
+        public string? Connection { get; set; }
+
+        [DataMember(Name = "cluster")]
+        public string? Cluster { get; set; }
+
+        [DataMember(Name = "database")]
+        public string? Database { get; set; }
     }
 
     #endregion

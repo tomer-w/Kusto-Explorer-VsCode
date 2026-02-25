@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 import * as lspServer from './server';
+import type { DocumentReadyNotification } from './server';
 import { setClipboardContext } from './clipboard';
 import * as connections from './connections';
 import { getHostName, isServerGroup } from './connections';
@@ -25,6 +26,11 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
     
     // Register for connection change events
     context.subscriptions.push(connections.registerOnDocumentConnectionChanged(async (uri: string) => {
+        // Skip if the connection change was initiated from tree selection
+        // (tree already shows the correct selection in that case)
+        if (isTreeSelectionChangingConnection) {
+            return;
+        }
         if (vscode.window.activeTextEditor?.document.uri.toString() === uri) {
             await updateTreeSelectionForActiveDocument();
         }
@@ -33,11 +39,18 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
         connectionsProvider?.refresh();
         // After refresh, restore the tree selection based on the current document's connection
         // Use a small delay to allow the tree to rebuild first
-        setTimeout(async () => {
-            await updateTreeSelectionForActiveDocument();
-        }, 100);
+        // Skip if we're already updating the tree (to prevent infinite loop from fetchDatabasesForCluster)
+        if (!isFetchingDatabasesForTreeUpdate) {
+            setTimeout(async () => {
+                await updateTreeSelectionForActiveDocument();
+            }, 100);
+        }
     }));
     
+    // Load servers and groups from global state first
+    // This must happen before tree view creation so initial getChildren() has data
+    connections.loadServersAndGroups();
+
     // Create tree view with drag and drop support
     treeView = vscode.window.createTreeView('kusto.connections', {
         treeDataProvider: connectionsProvider,
@@ -55,9 +68,6 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
         )
     );
 
-    // Load servers and groups from global state
-    connections.loadServersAndGroups();
-
     // Send initial connections list to server
     const initialConnections = connections.getConfiguredConnections();
     client.sendNotification('kusto/connectionsUpdated', {
@@ -68,9 +78,11 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
     await connections.loadDocumentConnections();
 
     // Initialize connection info for documents that are already open
+    // Note: For documents already open at activation, the server already has them,
+    // so we can safely infer connections
     for (const document of vscode.workspace.textDocuments) {
         if (document.languageId === 'kusto') {
-            const connection = connections.getDocumentConnection(document.uri.toString());
+            const connection = await connections.getDocumentConnection(document.uri.toString());
             const serverKind = connection?.cluster ? (connections.findServerInfo(connection.cluster)?.serverKind ?? null) : null;
             await client.sendNotification('kusto/documentConnectionChanged', {
                 uri: document.uri.toString(),
@@ -81,26 +93,30 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
         }
     }
 
-    // Handle document open events - notify server of connection
-    context.subscriptions.push(
-        vscode.workspace.onDidOpenTextDocument(async (document) => {
-            if (document.languageId === 'kusto') {
-                const connection = connections.getDocumentConnection(document.uri.toString());
-                const serverKind = connection?.cluster ? (connections.findServerInfo(connection.cluster)?.serverKind ?? null) : null;
-                await client.sendNotification('kusto/documentConnectionChanged', {
-                    uri: document.uri.toString(),
-                    cluster: connection?.cluster || null,
-                    database: connection?.database || null,
-                    serverKind: serverKind
-                });
-            }
-        })
-    );
+    // Handle document ready notification from server - update connection and tree selection
+    // This fires after the server has fully processed the document and can infer connections
+    client.onNotification('kusto/documentReady', async (params: DocumentReadyNotification) => {
+        const editor = vscode.window.activeTextEditor;
+        if (editor && editor.document.uri.toString() === params.uri) {
+            await updateTreeSelectionForActiveDocument();
+        }
+    });
 
     // Update tree selection when active editor changes
+    // Calls ensureDocument which always triggers documentReady notification
     context.subscriptions.push(
-        vscode.window.onDidChangeActiveTextEditor(async () => {
-            await updateTreeSelectionForActiveDocument();
+        vscode.window.onDidChangeActiveTextEditor(async (editor) => {
+            if (editor && editor.document.languageId === 'kusto') {
+                // Ensure the server has this document and trigger documentReady
+                // The notification handler will call updateTreeSelectionForActiveDocument
+                await lspServer.ensureDocument(
+                    client,
+                    editor.document.uri.toString(),
+                    editor.document.getText()
+                );
+            } else {
+                await updateTreeSelectionForActiveDocument();
+            }
         })
     );
 
@@ -113,7 +129,7 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
     context.subscriptions.push(
         treeView.onDidChangeSelection(async (event) => {
             // Ignore if this is a programmatic selection (not user-initiated)
-            if (isProgrammaticSelection) {
+            if (isProgrammaticSelection()) {
                 return;
             }
 
@@ -135,18 +151,16 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
 
             if (!isSelectableItem) {
                 // Revert to the last valid selection
-                if (lastValidSelection && treeView) {
-                    isProgrammaticSelection = true;
+                if (lastValidSelection) {
                     try {
-                        await treeView.reveal(lastValidSelection, { select: true, focus: false, expand: false });
+                        await programmaticSelectTreeItem(lastValidSelection, { select: true, focus: false, expand: false });
                     } catch {
                         // Silently ignore reveal errors
-                    } finally {
-                        setTimeout(() => { isProgrammaticSelection = false; }, 50);
                     }
                 }
                 return;
             }
+
 
             lastValidSelection = selected;
 
@@ -155,12 +169,22 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
                 return;
             }
 
-            if (selected instanceof NoConnectionTreeItem) {
-                await connections.setDocumentConnection(editor.document.uri.toString(), undefined, undefined);
-            } else if (selected instanceof ServerTreeItem) {
-                await connections.setDocumentConnection(editor.document.uri.toString(), selected.clusterName, undefined);
-            } else if (selected instanceof DatabaseTreeItem) {
-                await connections.setDocumentConnection(editor.document.uri.toString(), selected.clusterName, selected.databaseName);
+            // Set flag to prevent the onDocumentConnectionChanged callback from
+            // calling updateTreeSelectionForActiveDocument (which would overwrite
+            // the user's selection with the inferred connection)
+            isTreeSelectionChangingConnection = true;
+            try {
+                if (selected instanceof NoConnectionTreeItem) {
+                    await connections.setDocumentConnection(editor.document.uri.toString(), undefined, undefined);
+                } else if (selected instanceof ServerTreeItem) {
+                    await connections.setDocumentConnection(editor.document.uri.toString(), selected.clusterName, undefined);
+                } else if (selected instanceof DatabaseTreeItem) {
+                    await connections.setDocumentConnection(editor.document.uri.toString(), selected.clusterName, selected.databaseName);
+                }
+            } catch (error) {
+                console.error('Failed to set document connection:', error);
+            } finally {
+                isTreeSelectionChangingConnection = false;
             }
         })
     );
@@ -172,6 +196,9 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
             await updateTreeSelectionForActiveDocument();
         }
     }, 100);
+
+    // Ensure tree is populated after all initialization
+    connectionsProvider.refresh();
 
     // Handle tree item expansion events - fetch data for servers (databases fetch in getChildren)
     context.subscriptions.push(
@@ -1527,9 +1554,58 @@ class KustoDocumentDropEditProvider implements vscode.DocumentDropEditProvider {
 let languageClient: LanguageClient | undefined;
 let connectionsProvider: KustoConnectionsProvider | undefined;
 let treeView: vscode.TreeView<KustoTreeItem> | undefined;
-let isProgrammaticSelection = false;
+let programmaticSelectionCount = 0;
+let isTreeSelectionChangingConnection = false;
+let isFetchingDatabasesForTreeUpdate = false;
 let isDragging = false;
 let lastValidSelection: KustoTreeItem | undefined;
+
+/**
+ * Checks if a programmatic selection is in progress.
+ */
+function isProgrammaticSelection(): boolean {
+    return programmaticSelectionCount > 0;
+}
+
+/**
+ * Performs a programmatic reveal, ignoring the resulting selection event.
+ */
+async function programmaticSelectTreeItem(item: KustoTreeItem, options?: { select?: boolean; focus?: boolean; expand?: boolean }): Promise<void> {
+    if (!treeView) return;
+    
+    programmaticSelectionCount++;
+    try {
+        await treeView.reveal(item, options);
+    } finally {
+        programmaticSelectionCount--;
+    }
+}
+
+/**
+ * Finds the server tree item for a given cluster name.
+ */
+async function findServerTreeItem(cluster: string): Promise<ServerTreeItem | undefined> {
+    if (!connectionsProvider) return undefined;
+    
+    const clusterLower = cluster.toLowerCase();
+    const rootItems = await connectionsProvider.getChildren();
+    
+    for (const item of rootItems) {
+        if (item instanceof ServerGroupTreeItem) {
+            // Check servers within group
+            const groupItems = await connectionsProvider.getChildren(item);
+            for (const sItem of groupItems) {
+                if (sItem instanceof ServerTreeItem && sItem.clusterName.toLowerCase() === clusterLower) {
+                    return sItem;
+                }
+            }
+        } else if (item instanceof ServerTreeItem && item.clusterName.toLowerCase() === clusterLower) {
+            return item;
+        }
+    }
+    
+    return undefined;
+}
 
 /**
  * Finds a tree item matching the cluster/database.
@@ -1539,33 +1615,11 @@ let lastValidSelection: KustoTreeItem | undefined;
 async function findTreeItem(cluster: string, database: string | undefined): Promise<ServerTreeItem | DatabaseTreeItem | undefined> {
     if (!connectionsProvider || !languageClient) return undefined;
     
-    // Get root items
-    const rootItems = await connectionsProvider.getChildren();
-    
-    // First pass: find the server item
-    let serverItem: ServerTreeItem | undefined;
-    
-    for (const item of rootItems) {
-        if (item instanceof ServerGroupTreeItem) {
-            // Check servers within group
-            const groupItems = await connectionsProvider.getChildren(item);
-            for (const sItem of groupItems) {
-                if (sItem instanceof ServerTreeItem && sItem.clusterName === cluster) {
-                    serverItem = sItem;
-                    break;
-                }
-            }
-        } else if (item instanceof ServerTreeItem && item.clusterName === cluster) {
-            serverItem = item;
-        }
-        
-        if (serverItem) {
-            break;
-        }
-    }
+    // Find the server item
+    let serverItem = await findServerTreeItem(cluster);
     
     if (!serverItem) {
-        return undefined; // Server not found
+        return undefined;
     }
     
     // If we're not looking for a database, return the server
@@ -1575,15 +1629,27 @@ async function findTreeItem(cluster: string, database: string | undefined): Prom
     
     // We need a database - ensure the server is expanded first
     // This triggers loading of databases if not already loaded
-    await connections.fetchDatabasesForCluster(cluster);
+    // Set flag to prevent onServersAndGroupsChanged from triggering another update
+    isFetchingDatabasesForTreeUpdate = true;
+    try {
+        await connections.fetchDatabasesForCluster(serverItem.clusterName);
+    } finally {
+        isFetchingDatabasesForTreeUpdate = false;
+    }
     
-    // Small delay to let the tree update
-    await new Promise(resolve => setTimeout(resolve, 50));
+    // Wait for the tree to refresh after database fetch
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // Re-find the server item since tree items are recreated after refresh
+    serverItem = await findServerTreeItem(cluster);
+    if (!serverItem) {
+        return undefined;
+    }
     
     // Now try to find the database
     const dbItems = await connectionsProvider.getChildren(serverItem);
     for (const dbItem of dbItems) {
-        if (dbItem instanceof DatabaseTreeItem && dbItem.databaseName === database) {
+        if (dbItem instanceof DatabaseTreeItem && dbItem.databaseName.toLowerCase() === database.toLowerCase()) {
             return dbItem;
         }
     }
@@ -1599,14 +1665,13 @@ async function findTreeItem(cluster: string, database: string | undefined): Prom
 async function selectNeutralTreeItem(): Promise<void> {
     if (!connectionsProvider || !treeView) return;
     
-    isProgrammaticSelection = true;
     try {
         const rootItems = await connectionsProvider.getChildren();
         const noConnectionItem = rootItems.find(item => item instanceof NoConnectionTreeItem);
         
         if (noConnectionItem) {
             try {
-                await treeView.reveal(noConnectionItem, { select: true, focus: false, expand: false });
+                await programmaticSelectTreeItem(noConnectionItem, { select: true, focus: false, expand: false });
                 lastValidSelection = noConnectionItem;
             } catch {
                 // Silently ignore reveal errors
@@ -1614,15 +1679,14 @@ async function selectNeutralTreeItem(): Promise<void> {
         }
     } catch {
         // Silently fail
-    } finally {
-        setTimeout(() => {
-            isProgrammaticSelection = false;
-        }, 50);
     }
 }
 
+
+
 /**
  * Updates the tree selection to match the active document's connection.
+ * Also notifies the server of the document's connection (saved or inferred).
  */
 async function updateTreeSelectionForActiveDocument(): Promise<void> {
     if (!treeView) return;
@@ -1633,14 +1697,27 @@ async function updateTreeSelectionForActiveDocument(): Promise<void> {
         return;
     }
     
-    const connection = connections.getDocumentConnection(editor.document.uri.toString());
+    const uri = editor.document.uri.toString();
+    
+    // Get the connection (saved or inferred)
+    const connection = await connections.getDocumentConnection(uri);
     
     if (!connection?.cluster) {
         await selectNeutralTreeItem();
         return;
     }
+    
+    // Notify the server of the document's connection
+    if (languageClient) {
+        const serverKind = connections.findServerInfo(connection.cluster)?.serverKind ?? null;
+        await languageClient.sendNotification('kusto/documentConnectionChanged', {
+            uri,
+            cluster: connection.cluster,
+            database: connection.database || null,
+            serverKind: serverKind
+        });
+    }
 
-    isProgrammaticSelection = true;
     try {
         const itemToSelect = await findTreeItem(connection.cluster, connection.database);
         
@@ -1648,7 +1725,7 @@ async function updateTreeSelectionForActiveDocument(): Promise<void> {
             try {
                 const currentEditor = vscode.window.activeTextEditor;
                 if (currentEditor && currentEditor.document.languageId === 'kusto') {
-                    await treeView.reveal(itemToSelect, { select: true, focus: false, expand: false });
+                    await programmaticSelectTreeItem(itemToSelect, { select: true, focus: false, expand: false });
                     lastValidSelection = itemToSelect;
                 }
             } catch {
@@ -1657,10 +1734,6 @@ async function updateTreeSelectionForActiveDocument(): Promise<void> {
         }
     } catch {
         // Silently fail - tree might not be fully loaded yet
-    } finally {
-        setTimeout(() => {
-            isProgrammaticSelection = false;
-        }, 50);
     }
 }
 

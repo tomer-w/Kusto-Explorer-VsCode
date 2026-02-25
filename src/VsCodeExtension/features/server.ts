@@ -494,3 +494,51 @@ export function refreshDocumentSchema(
         { uri }
     );
 }
+
+/** Result of inferring a document's connection from its content. */
+export interface InferDocumentConnectionResult {
+    connection?: string;
+    cluster?: string;
+    database?: string;
+}
+
+/**
+ * Infers the connection for a document based on its content.
+ * This analyzes the document for cluster() and database() references.
+ * @param client The language client for LSP communication
+ * @param uri The document URI
+ * @returns The inferred connection info, or null if none could be inferred
+ */
+export function inferDocumentConnection(
+    client: LanguageClient,
+    uri: string
+): Promise<InferDocumentConnectionResult | null> {
+    return client.sendRequest<InferDocumentConnectionResult | null>(
+        'kusto/inferDocumentConnection',
+        { uri }
+    );
+}
+
+/** Notification sent by the server when a document has been fully processed and is ready. */
+export interface DocumentReadyNotification {
+    uri: string;
+}
+
+/**
+ * Ensures the server has a document. If the server doesn't have the document,
+ * it will be added with the provided text. Always triggers a kusto/documentReady
+ * notification from the server.
+ * @param client The language client for LSP communication
+ * @param uri The document URI
+ * @param text The document text content
+ */
+export function ensureDocument(
+    client: LanguageClient,
+    uri: string,
+    text: string
+): Promise<void> {
+    return client.sendRequest<void>(
+        'kusto/ensureDocument',
+        { uri, text }
+    );
+}

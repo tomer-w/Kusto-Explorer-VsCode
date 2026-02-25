@@ -350,4 +350,31 @@ public class SectionedDocument : IDocument
         }
         return refs.ToImmutableList();
     }
+
+    /// <summary>
+    /// Gets the inferred connection information for the document, if available.
+    /// </summary>
+    public InferredConnection? GetInferredConnection(CancellationToken cancellationToken = default)
+    {
+        if (_script.Blocks.Count > 0)
+        {
+            if (ClientDirective.TryParse(_script.Blocks[0].Text, out var directive))
+            {
+                // if the first line is just a connection directive with no other text, we can infer the connection information for the document
+                if (directive.Name == "connect"
+                    && directive.TryGetConnectionInfo(out var connection, out var clusterName, out var databaseName)
+                    && Kusto.Language.Parsing.TextFacts.IsWhitespaceOnly(directive.AfterDirectiveText))
+                {
+                    return new InferredConnection
+                    {
+                        Connection = connection,
+                        ClusterName = clusterName,
+                        DatabaseName = databaseName
+                    };
+                }
+            }
+        }
+
+        return null;
+    }
 }

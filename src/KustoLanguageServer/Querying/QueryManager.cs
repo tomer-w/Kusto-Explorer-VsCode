@@ -95,13 +95,6 @@ public class QueryManager : IQueryManager
             && string.IsNullOrWhiteSpace(directive.AfterDirectiveText);
     }
 
-    private Diagnostic CreateDiagnostic(EditString query, Exception exception)
-    {
-        var start = query.GetOriginalPosition(0);
-        var end = query.GetOriginalPosition(query.Length);
-        return new Diagnostic("KLS100", exception.Message).WithLocation(start, end - start);
-    }
-
     private Diagnostic CreateDiagnostic(EditString query, string message)
     {
         var start = query.GetOriginalPosition(0);
@@ -317,7 +310,7 @@ public class QueryManager : IQueryManager
 
     private ExecutionContext ApplyConnectOrDatabaseDirective(ClientDirective directive, ExecutionContext context)
     {
-        if (TryGetDirectiveClusterAndDatabase(directive, out var clusterName, out var databaseName)
+        if (directive.TryGetConnectionInfo(out _, out var clusterName, out var databaseName)
             && clusterName != null
             && _connectionManager.TryGetConnection(clusterName, databaseName, out var conn))
         {
@@ -330,13 +323,13 @@ public class QueryManager : IQueryManager
     private ExecutionContext ApplyClientRequestPropertyDirective(ClientDirective directive, ExecutionContext context)
     {
         var properties = context.Options;
-        var newProperties = SetKeyValuePairs(directive, properties);
+        var newProperties = directive.GetArgumentPairs(properties);
         return context with { Options = newProperties };
     }
 
     private ExecutionContext ApplyQueryParameterDirective(ClientDirective directive, ExecutionContext context)
     {
-        var newParameters = SetKeyValuePairs(directive, context.Parameters);
+        var newParameters = directive.GetArgumentPairs(context.Parameters);
         return context = context with { Query = directive.AfterDirectiveText, Parameters = newParameters };
     }
 
@@ -348,109 +341,6 @@ public class QueryManager : IQueryManager
             return context with { Query = directive.AfterDirectiveText, StoredQueryResultName = name };
         }
         return context;
-    }
-
-    private static bool TryGetDirectiveClusterAndDatabase(
-        ClientDirective directive, out string? clusterName, out string? databaseName)
-    {
-        clusterName = null;
-        databaseName = null;
-
-        if (directive.Name == "database")
-        {
-            if (directive.Arguments.Count > 1)
-            {
-                clusterName = GetDirectiveArgumentStringValue(directive.Arguments[0]);
-                databaseName = GetDirectiveArgumentStringValue(directive.Arguments[1]);
-                return true;
-            }
-            else if (directive.Arguments.Count == 1)
-            {
-                var arg = GetDirectiveArgumentStringValue(directive.Arguments[0]);
-                KustoFacts.GetHostAndPath(arg, out var hostname, out var path);
-                if (hostname != null && path != null)
-                {
-                    clusterName = hostname;
-                    databaseName = path;
-                    return true;
-                }
-                else if (hostname != null)
-                {
-                    clusterName = null;
-                    databaseName = hostname;
-                    return true;
-                }
-            }
-        }
-        else if (directive.Name == "connect" && directive.Arguments.Count > 0)
-        {
-            var arg = directive.Arguments[0];
-            if (arg.Text.StartsWith("cluster"))
-            {
-                var cluster = GetStringValueAfterPrefix(arg.Text, "cluster(", 0, out var end);
-                if (cluster != null)
-                {
-                    KustoFacts.GetHostAndPath(cluster, out clusterName, out var path);
-                    databaseName = GetStringValueAfterPrefix(arg.Text, "database(", end, out _)
-                        ?? path;
-                    return clusterName != null;
-                }
-            }
-            else if (!arg.Text.StartsWith("@"))
-            {
-                var connection = GetDirectiveArgumentStringValue(arg);
-                var builder = new KustoConnectionStringBuilder(connection);
-                clusterName = builder.Hostname;
-                databaseName = builder.InitialCatalog;
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static string? GetStringValueAfterPrefix(string text, string prefix, int start, out int end)
-    {
-        var index = text.IndexOf(prefix, start);
-        if (index >= 0)
-        {
-            var wsLen = Kusto.Language.Parsing.TokenParser.ScanWhitespace(text, index + prefix.Length);
-            var stringStart = index + prefix.Length + wsLen;
-            if (Kusto.Language.Parsing.TokenParser.ScanStringLiteral(text, stringStart) is int len
-                && len > 0)
-            {
-                var stringLiteral = text.Substring(stringStart, len);
-                end = index + len;
-                return KustoFacts.GetStringLiteralValue(stringLiteral);
-            }
-        }
-        end = start;
-        return null;
-    }
-
-    private static string GetDirectiveArgumentStringValue(ClientDirectiveArgument argument)
-    {
-        return argument.Value as string ?? "";
-    }
-
-    private static ImmutableDictionary<string, string> SetKeyValuePairs(ClientDirective directive, ImmutableDictionary<string, string> map)
-    {
-        foreach (var arg in directive.Arguments)
-        {
-            if (arg.Name != null)
-            {
-                if (arg.Value != null)
-                {
-                    map = map.SetItem(arg.Name, arg.Value.ToString()!);
-                }
-                else
-                {
-                    map = map.Remove(arg.Name);
-                }
-            }
-        }
-
-        return map;
     }
  
     private bool TryGetConnection(IDocument document, [NotNullWhen(true)] out IConnection? connection)

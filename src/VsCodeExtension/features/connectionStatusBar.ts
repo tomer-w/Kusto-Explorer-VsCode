@@ -68,7 +68,7 @@ function hide(): void {
 /**
  * Updates the status bar item to reflect the connection for the active document.
  */
-function updateStatusBar(): void {
+async function updateStatusBar(): Promise<void> {
     const editor = vscode.window.activeTextEditor;
 
     if (!editor || editor.document.languageId !== 'kusto') {
@@ -77,6 +77,6 @@ function updateStatusBar(): void {
     }
 
     show();
-    const connection = connections.getDocumentConnection(editor.document.uri.toString());
+    const connection = await connections.getDocumentConnection(editor.document.uri.toString());
     update(connection?.cluster, connection?.database);
 }

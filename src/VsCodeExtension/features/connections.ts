@@ -666,16 +666,60 @@ async function saveDocumentConnections(): Promise<void> {
     await extensionContext.workspaceState.update(DOCUMENT_CONNECTIONS_KEY, values);
 }
 
+
+/**
+ * Gets the saved connection for a document (does not infer).
+ * Use this when you only want explicitly saved connections.
+ */
+export function getSavedDocumentConnection(uri: string): DocumentConnection | undefined {
+    return documentConnections.get(uri);
+}
+
 /**
  * Gets the connection for a document.
+ * If no saved connection exists, attempts to infer the connection from the document content.
+ * @param uri The document URI
+ * @param retryDelay If inference fails, retry after this delay (in ms). Set to 0 to skip retry.
  */
-export function getDocumentConnection(uri: string): DocumentConnection | undefined {
-    return documentConnections.get(uri);
+export async function getDocumentConnection(uri: string, retryDelay: number = 100): Promise<DocumentConnection | undefined> {
+    // First check for a saved connection
+    const saved = documentConnections.get(uri);
+    if (saved) {
+        return saved;
+    }
+
+    // No saved connection - try to infer from document content
+    if (languageClient) {
+        try {
+            let inferred = await lspServer.inferDocumentConnection(languageClient, uri);
+            
+            // If inference returned null and retry is enabled, wait and try again
+            // This handles the case where the document hasn't been processed by the server yet
+            if (!inferred?.cluster && retryDelay > 0) {
+                await new Promise(resolve => setTimeout(resolve, retryDelay));
+                inferred = await lspServer.inferDocumentConnection(languageClient, uri);
+            }
+            
+            if (inferred?.cluster) {
+                return {
+                    uri,
+                    cluster: inferred.cluster,
+                    database: inferred.database
+                };
+            }
+        } catch (error) {
+            console.error(`Failed to infer connection for ${uri}:`, error);
+        }
+    }
+
+    return undefined;
 }
 
 /**
  * Sets the connection for a document, saves it, and notifies the server.
  * Also calls the registered documentConnectionChanged callback for UI updates.
+ * If both cluster and database are undefined, the document connection is removed.
+ * If the connection matches the inferred connection, it is not saved (will be inferred).
  */
 export async function setDocumentConnection(uri: string, cluster: string | undefined, database: string | undefined): Promise<void> {
     if (!languageClient) {
@@ -683,12 +727,35 @@ export async function setDocumentConnection(uri: string, cluster: string | undef
         return;
     }
 
-    const connection: DocumentConnection = {
-        uri,
-        cluster: cluster ?? undefined,
-        database: database ?? undefined
-    };
-    documentConnections.set(uri, connection);
+    // If no connection specified, remove the document connection entry
+    if (!cluster && !database) {
+        documentConnections.delete(uri);
+    } else {
+        // Check if the connection matches the inferred connection
+        let matchesInferred = false;
+        try {
+            const inferred = await lspServer.inferDocumentConnection(languageClient, uri);
+            if (inferred?.cluster === cluster && inferred?.database === database) {
+                matchesInferred = true;
+            }
+        } catch (error) {
+            // If inference fails, save the connection anyway
+            console.error(`Failed to infer connection for ${uri}:`, error);
+        }
+
+        if (matchesInferred) {
+            // Connection matches inferred - remove any saved entry (will be inferred)
+            documentConnections.delete(uri);
+        } else {
+            // Connection differs from inferred - save it
+            const connection: DocumentConnection = {
+                uri,
+                cluster: cluster ?? undefined,
+                database: database ?? undefined
+            };
+            documentConnections.set(uri, connection);
+        }
+    }
     await saveDocumentConnections();
 
     // Notify listeners (status bar + tree selection)
@@ -830,13 +897,13 @@ export async function getDatabaseSchema(cluster: string, database: string): Prom
  * Gets the connection for the active document.
  * @returns The cluster and database for the active document, or undefined
  */
-export function getActiveDocumentConnection(): { cluster: string; database: string | undefined } | undefined {
+export async function getActiveDocumentConnection(): Promise<{ cluster: string; database: string | undefined } | undefined> {
     const editor = vscode.window.activeTextEditor;
     if (!editor || editor.document.languageId !== 'kusto') {
         return undefined;
     }
 
-    const connection = getDocumentConnection(editor.document.uri.toString());
+    const connection = await getDocumentConnection(editor.document.uri.toString());
     if (!connection?.cluster) {
         return undefined;
     }

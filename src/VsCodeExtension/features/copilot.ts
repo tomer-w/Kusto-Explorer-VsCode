@@ -45,7 +45,7 @@ class KustoDatabaseSchemaTool implements vscode.LanguageModelTool<{ cluster?: st
         let database = options.input.database;
         
         if (!cluster || !database) {
-            const activeConnection = conn.getActiveDocumentConnection();
+            const activeConnection = await conn.getActiveDocumentConnection();
             if (activeConnection) {
                 cluster = cluster ?? activeConnection.cluster;
                 database = database ?? activeConnection.database;
@@ -69,7 +69,7 @@ class KustoDatabaseSchemaTool implements vscode.LanguageModelTool<{ cluster?: st
         let database = options.input.database;
         
         if (!cluster || !database) {
-            const activeConnection = conn.getActiveDocumentConnection();
+            const activeConnection = await conn.getActiveDocumentConnection();
             if (activeConnection) {
                 cluster = cluster ?? activeConnection.cluster;
                 database = database ?? activeConnection.database;
@@ -112,7 +112,7 @@ async function handleChatRequest(
 ): Promise<vscode.ChatResult> {
     
     // Get the active document's connection
-    const activeConnection = conn.getActiveDocumentConnection();
+    const activeConnection = await conn.getActiveDocumentConnection();
     
     if (!activeConnection) {
         stream.markdown('⚠️ No active Kusto connection.\n\nPlease:\n1. Open a `.kql` file\n2. Click on a database in the **Connections** panel to connect');
