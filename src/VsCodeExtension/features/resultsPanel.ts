@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 import * as server from './server';
+import { copyToClipboard, formatCfHtml } from './clipboard';
 
 let resultsView: vscode.WebviewView | undefined;
 let lastDataId: string | undefined;
@@ -40,6 +41,9 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
                 if (message.command === 'requestExpression') {
                     sendExpressionToWebview();
                 }
+                if (message.command === 'copyText' && typeof message.text === 'string') {
+                    vscode.env.clipboard.writeText(message.text);
+                }
             });
             webviewView.webview.html = '<html>no results</html>';
         }
@@ -70,7 +74,7 @@ export async function displayResultsById(
     dataId?: string
 ): Promise<void>
 {
-    const data = dataId ? await server.getDataAsHmtlTables(client, dataId) : null;
+    const data = dataId ? await server.getDataAsHtmlTables(client, dataId) : null;
     if (data && data.tables.length > 0) {
         lastDataId = dataId;
         lastTableNames = data.tables.map(t => t.name);
@@ -299,15 +303,32 @@ async function copyTableAsExpression(client: LanguageClient): Promise<void> {
 }
 
 /**
- * Copies the results view content (as rich HTML) to the clipboard.
+ * Copies the results view content (as rich HTML + markdown) to the clipboard.
+ * Requests both HTML and markdown directly from the server using the data ID.
  */
 async function copyData(): Promise<void> {
-    if (!resultsView) {
+    if (!languageClient || !lastDataId) {
         return;
     }
 
-    // Tell the webview to select all and copy (preserves HTML formatting)
-    resultsView.webview.postMessage({ command: 'copyData' });
+    const tableName = lastTableNames[activeTabIndex];
+
+    const [htmlResult, markdownResult] = await Promise.all([
+        server.getDataAsHtmlTables(languageClient, lastDataId, tableName),
+        server.getDataAsMarkdown(languageClient, lastDataId, tableName),
+    ]);
+
+    const html = htmlResult?.tables[0]?.html;
+    const markdown = markdownResult?.markdown;
+
+    if (html) {
+        copyToClipboard([
+            { format: 'HTML Format', data: formatCfHtml(html), encoding: 'utf8' },
+            { format: 'Text', data: markdown || html, encoding: 'text' },
+        ]);
+    } else if (markdown) {
+        vscode.env.clipboard.writeText(markdown);
+    }
 }
 
 /** Script injected into webview HTML to handle messages from the extension. */
@@ -367,34 +388,12 @@ const webviewMessageHandlerScript = `
         if (message.command === 'setExpression' && typeof message.expression === 'string') {
             cachedExpression = message.expression;
         }
-        if (message.command === 'copyData') {
-            const sel = window.getSelection();
-            const prevRange = sel.rangeCount > 0 ? sel.getRangeAt(0).cloneRange() : null;
-            // If tabs exist, copy only the active tab content
-            const activeTab = document.querySelector('.tab-content.active');
-            const target = activeTab || document.body;
-            const range = document.createRange();
-            range.selectNodeContents(target);
-            sel.removeAllRanges();
-            sel.addRange(range);
-            document.execCommand('copy');
-            // Restore previous selection
-            sel.removeAllRanges();
-            if (prevRange) { sel.addRange(prevRange); }
-        }
+
         if (message.command === 'copyCell') {
             // Find the closest td or th from the right-clicked element
             const cell = lastContextTarget ? lastContextTarget.closest('td, th') : null;
             if (cell) {
-                const sel = window.getSelection();
-                const prevRange = sel.rangeCount > 0 ? sel.getRangeAt(0).cloneRange() : null;
-                const range = document.createRange();
-                range.selectNodeContents(cell);
-                sel.removeAllRanges();
-                sel.addRange(range);
-                document.execCommand('copy');
-                sel.removeAllRanges();
-                if (prevRange) { sel.addRange(prevRange); }
+                vscode.postMessage({ command: 'copyText', text: cell.innerText });
             }
         }
     });

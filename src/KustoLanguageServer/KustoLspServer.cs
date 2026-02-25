@@ -1901,7 +1901,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
 
     #region Html Tables
     [JsonRpcMethod("kusto/getDataAsHtmlTables", UseSingleObjectParameterDeserialization = true)]
-    public Task<GetDataAsHtmlTablesResult?> OnGetDataAsHtmlTablesAsync(GetDataAsHtmlTablesParams @params, CancellationToken cancellationToken)
+    public Task<GetDataAsHtmlTablesResult?> OnGetDataAsHtmlAsync(GetDataAsHtmlTablesParams @params, CancellationToken cancellationToken)
     {
         if (_resultsManager.TryGetCachedResultById(@params.DataId, out var cachedResults))
         {
@@ -1910,10 +1910,18 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
                 var hasChart = cachedResults.ChartOptions != null
                     && cachedResults.ChartOptions.Visualization != Data.Utils.VisualizationKind.None;
 
+                var tables = cachedResults.Tables;
+                
+                // Filter to specific table if tableName is provided
+                if (@params.TableName != null)
+                {
+                    tables = tables.Where(t => t.TableName == @params.TableName).ToImmutableList();
+                }
+
                 return Task.FromResult<GetDataAsHtmlTablesResult?>(
                     new GetDataAsHtmlTablesResult
                     {
-                        Tables = cachedResults.Tables.Select(t => new HtmlTable
+                        Tables = tables.Select(t => new HtmlTable
                         {
                             Html = GetDataAsHtml(t),
                             Name = t.TableName,
@@ -1932,6 +1940,9 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
     {
         [DataMember(Name = "dataId")]
         public required string DataId { get; init; }
+
+        [DataMember(Name = "tableName")]
+        public string? TableName { get; init; }
     }
 
     [DataContract]
@@ -2072,6 +2083,56 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
     {
         [DataMember(Name = "expression")]
         public required string Expression { get; init; }
+    }
+    #endregion
+
+    #region Markdown
+
+    [JsonRpcMethod("kusto/getDataAsMarkdown", UseSingleObjectParameterDeserialization = true)]
+    public Task<GetDataAsMarkdownResult?> OnGetDataAsMarkdown(GetDataAsMarkdownParams @params, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (_resultsManager.TryGetCachedResultById(@params.DataId, out var results)
+                && results.Tables != null
+                && results.Tables.Count > 0)
+            {
+                var table = @params.TableName != null ? results.Tables.FirstOrDefault(t => t.TableName == @params.TableName) : null;
+                if (table == null)
+                    table = results.Tables[0];
+
+                var builder = new MarkdownBuilder();
+                builder.WriteDataTable(table);
+                var markdown = builder.Text;
+
+                return Task.FromResult<GetDataAsMarkdownResult?>(
+                    new GetDataAsMarkdownResult { Markdown = markdown }
+                    );
+            }
+        }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex.Message);
+        }
+
+        return Task.FromResult<GetDataAsMarkdownResult?>(null);
+    }
+
+    [DataContract]
+    public class GetDataAsMarkdownParams
+    {
+        [DataMember(Name = "dataId")]
+        public required string DataId { get; init; }
+
+        [DataMember(Name = "tableName")]
+        public string? TableName { get; init; }
+    }
+
+    [DataContract]
+    public class GetDataAsMarkdownResult
+    {
+        [DataMember(Name = "markdown")]
+        public required string Markdown { get; init; }
     }
     #endregion
 

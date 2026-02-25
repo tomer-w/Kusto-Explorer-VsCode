@@ -178,16 +178,19 @@ export function getEntityAsExpression(
  * Gets the HTML representation of data from the last run query.
  * @param client The language client for LSP communication
  * @param dataId The data ID from running a query
+ * @param tableName Optional name of a specific table to get HTML for (defaults to all tables)
  * @returns The data result with HTML tables and row count, or null if not available
  */
-export function getDataAsHmtlTables(
+export function getDataAsHtmlTables(
     client: LanguageClient,
-    dataId: string
+    dataId: string,
+    tableName?: string
 ): Promise<DataAsHtmlTables | null> {
     return client.sendRequest<DataAsHtmlTables | null>(
         'kusto/getDataAsHtmlTables',
         {
-            dataId
+            dataId,
+            tableName
         }
     );
 }
@@ -251,6 +254,27 @@ export function getDataAsExpression(
 ): Promise<DataAsExpression | null> {
     return client.sendRequest<DataAsExpression | null>(
         'kusto/getDataAsExpression',
+        {
+            dataId,
+            tableName
+        }
+    );
+}
+
+/**
+ * Gets the query result data as a markdown table.
+ * @param client The language client for LSP communication
+ * @param dataId The data ID from running a query
+ * @param tableName Optional name of a specific table to convert (defaults to first table)
+ * @returns The markdown table as a string, or null if not available
+ */
+export function getDataAsMarkdown(
+    client: LanguageClient,
+    dataId: string,
+    tableName?: string
+): Promise<DataAsMarkdown | null> {
+    return client.sendRequest<DataAsMarkdown | null>(
+        'kusto/getDataAsMarkdown',
         {
             dataId,
             tableName
@@ -374,6 +398,11 @@ export interface QueryAsHtmlResult {
 /** Result of getting data as a KQL expression. */
 export interface DataAsExpression {
     expression: string;
+}
+
+/** Result of getting data as markdown. */
+export interface DataAsMarkdown {
+    markdown: string;
 }
 
 /** Position in a document. */

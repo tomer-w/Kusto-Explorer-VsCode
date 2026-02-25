@@ -52,6 +52,48 @@ export interface ClipboardItem {
 }
 
 /**
+ * Wraps an HTML fragment in the Windows CF_HTML clipboard format,
+ * which includes a header with byte offsets so that applications like
+ * Word and Excel recognize the content as rich HTML.
+ * @param html The raw HTML fragment to wrap
+ * @returns The full CF_HTML formatted string
+ */
+export function formatCfHtml(html: string): string {
+    // The header uses fixed-width 10-digit byte offsets.
+    // We build a template first to measure the header length, then fill in real values.
+    const header =
+        'Version:0.9\r\n' +
+        'StartHTML:XXXXXXXXXX\r\n' +
+        'EndHTML:XXXXXXXXXX\r\n' +
+        'StartFragment:XXXXXXXXXX\r\n' +
+        'EndFragment:XXXXXXXXXX\r\n';
+
+    const prefix = '<html><body>\r\n<!--StartFragment-->';
+    const suffix = '<!--EndFragment-->\r\n</body></html>';
+
+    const headerBytes = Buffer.byteLength(header, 'utf8');
+    const prefixBytes = Buffer.byteLength(prefix, 'utf8');
+    const htmlBytes = Buffer.byteLength(html, 'utf8');
+    const suffixBytes = Buffer.byteLength(suffix, 'utf8');
+
+    const startHtml = headerBytes;
+    const startFragment = headerBytes + prefixBytes;
+    const endFragment = startFragment + htmlBytes;
+    const endHtml = endFragment + suffixBytes;
+
+    const pad = (n: number) => n.toString().padStart(10, '0');
+
+    const filledHeader =
+        'Version:0.9\r\n' +
+        `StartHTML:${pad(startHtml)}\r\n` +
+        `EndHTML:${pad(endHtml)}\r\n` +
+        `StartFragment:${pad(startFragment)}\r\n` +
+        `EndFragment:${pad(endFragment)}\r\n`;
+
+    return filledHeader + prefix + html + suffix;
+}
+
+/**
  * Copies multiple data formats to the clipboard.
  * On Windows, uses PowerShell to set multiple clipboard formats (HTML, PNG, etc.).
  * On other platforms, falls back to plain text only using VS Code's clipboard API.
