@@ -108,7 +108,7 @@ let languageClient: LanguageClient | undefined;
 const documentConnectionChangedListeners: ((uri: string) => Promise<void>)[] = [];
 const serversAndGroupsChangedListeners: (() => void)[] = [];
 
-/** Document connections (URI  connection mapping). */
+/** Document connections (URI ? connection mapping). Persisted to workspace state. */
 const documentConnections = new Map<string, DocumentConnection>();
 
 /** Servers and groups data - loaded from global state. */
@@ -676,35 +676,41 @@ export function getSavedDocumentConnection(uri: string): DocumentConnection | un
 }
 
 /**
- * Gets the connection for a document.
- * If no saved connection exists, attempts to infer the connection from the document content.
- * @param uri The document URI
- * @param retryDelay If inference fails, retry after this delay (in ms). Set to 0 to skip retry.
+ * Checks if a document has a saved connection (including "no connection").
  */
-export async function getDocumentConnection(uri: string, retryDelay: number = 100): Promise<DocumentConnection | undefined> {
-    // First check for a saved connection
+export function hasSavedDocumentConnection(uri: string): boolean {
+    return documentConnections.has(uri);
+}
+
+/**
+ * Gets the connection for a document.
+ * If the document has a saved connection (including "no connection"), returns that.
+ * Otherwise, attempts to infer the connection from the document content.
+ * 
+ * Optimization: If a saved connection matches the inferred connection, the saved
+ * entry is removed (will be inferred in the future).
+ * 
+ * @param uri The document URI
+ */
+export async function getDocumentConnection(uri: string): Promise<DocumentConnection | undefined> {
     const saved = documentConnections.get(uri);
-    if (saved) {
-        return saved;
+    
+    // If saved is "no connection" (has entry but no cluster), return undefined without inferring
+    if (saved && !saved.cluster) {
+        return undefined;
     }
 
-    // No saved connection - try to infer from document content
+    // Try to infer connection from document content
+    let inferred: DocumentConnection | undefined;
     if (languageClient) {
         try {
-            let inferred = await lspServer.inferDocumentConnection(languageClient, uri);
+            const inferredResult = await lspServer.inferDocumentConnection(languageClient, uri);
             
-            // If inference returned null and retry is enabled, wait and try again
-            // This handles the case where the document hasn't been processed by the server yet
-            if (!inferred?.cluster && retryDelay > 0) {
-                await new Promise(resolve => setTimeout(resolve, retryDelay));
-                inferred = await lspServer.inferDocumentConnection(languageClient, uri);
-            }
-            
-            if (inferred?.cluster) {
-                return {
+            if (inferredResult?.cluster) {
+                inferred = {
                     uri,
-                    cluster: inferred.cluster,
-                    database: inferred.database
+                    cluster: inferredResult.cluster,
+                    database: inferredResult.database
                 };
             }
         } catch (error) {
@@ -712,14 +718,28 @@ export async function getDocumentConnection(uri: string, retryDelay: number = 10
         }
     }
 
-    return undefined;
+    // If we have a saved connection with a cluster
+    if (saved?.cluster) {
+        // Check if it matches inferred - if so, remove from saved set
+        if (inferred && saved.cluster === inferred.cluster && saved.database === inferred.database) {
+            documentConnections.delete(uri);
+            await saveDocumentConnections();
+        }
+        // Return the saved connection (same value either way)
+        return saved;
+    }
+
+    // No saved connection - return inferred (may be undefined)
+    return inferred;
 }
 
 /**
  * Sets the connection for a document, saves it, and notifies the server.
  * Also calls the registered documentConnectionChanged callback for UI updates.
- * If both cluster and database are undefined, the document connection is removed.
- * If the connection matches the inferred connection, it is not saved (will be inferred).
+ * 
+ * Behavior:
+ * - All user-set connections are saved to documentConnections (including "no connection")
+ * - If the connection matches the inferred connection, it is removed from saved (will be inferred)
  */
 export async function setDocumentConnection(uri: string, cluster: string | undefined, database: string | undefined): Promise<void> {
     if (!languageClient) {
@@ -727,12 +747,9 @@ export async function setDocumentConnection(uri: string, cluster: string | undef
         return;
     }
 
-    // If no connection specified, remove the document connection entry
-    if (!cluster && !database) {
-        documentConnections.delete(uri);
-    } else {
-        // Check if the connection matches the inferred connection
-        let matchesInferred = false;
+    // Check if the connection matches the inferred connection
+    let matchesInferred = false;
+    if (cluster) {
         try {
             const inferred = await lspServer.inferDocumentConnection(languageClient, uri);
             if (inferred?.cluster === cluster && inferred?.database === database) {
@@ -742,20 +759,21 @@ export async function setDocumentConnection(uri: string, cluster: string | undef
             // If inference fails, save the connection anyway
             console.error(`Failed to infer connection for ${uri}:`, error);
         }
-
-        if (matchesInferred) {
-            // Connection matches inferred - remove any saved entry (will be inferred)
-            documentConnections.delete(uri);
-        } else {
-            // Connection differs from inferred - save it
-            const connection: DocumentConnection = {
-                uri,
-                cluster: cluster ?? undefined,
-                database: database ?? undefined
-            };
-            documentConnections.set(uri, connection);
-        }
     }
+
+    if (matchesInferred) {
+        // Connection matches inferred - remove any saved entry (will be inferred)
+        documentConnections.delete(uri);
+    } else {
+        // Save the connection (including "no connection" with undefined cluster)
+        const connection: DocumentConnection = {
+            uri,
+            cluster: cluster ?? undefined,
+            database: database ?? undefined
+        };
+        documentConnections.set(uri, connection);
+    }
+    
     await saveDocumentConnections();
 
     // Notify listeners (status bar + tree selection)
