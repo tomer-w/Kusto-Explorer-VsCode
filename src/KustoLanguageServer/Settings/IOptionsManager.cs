@@ -10,6 +10,11 @@ public interface IOptionsManager
     Task RefreshAsync(CancellationToken cancellationToken);
 
     /// <summary>
+    /// Raised when the options have changed.
+    /// </summary>
+    event EventHandler? OptionsChanged;
+
+    /// <summary>
     /// The default domain for cluster names.
     /// </summary>
     string DefaultDomain { get; }

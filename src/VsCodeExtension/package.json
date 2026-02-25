@@ -382,14 +382,15 @@
       {
         "title": "Connections",
         "properties": {
-          "kusto.connections": {
-            "type": "array",
-            "uniqueItems": true,
-            "items": {
-              "type": "string"
-            },
-            "default": [],
-            "description": "A list of Kusto cluster connections known by the editor."
+          "kust.defaultDomain": {
+            "type": "string",
+            "default": ".kusto.windows.net",
+            "description": "The implicit domain used with short cluster names."
+          },
+          "kusto.defaultConnection": {
+            "type": "string",
+            "default": "help.kusto.windows.net;Initial Catalog=Samples",
+            "description": "The connection string used for documents not yet associated with a connection."
           }
         }
       },

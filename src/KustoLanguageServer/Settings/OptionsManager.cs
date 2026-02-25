@@ -17,6 +17,8 @@ public class OptionsManager : IOptionsManager
         _settingSource.SettingsChanged += _settingSource_SettingsChanged;
     }
 
+    public event EventHandler? OptionsChanged;
+
     public string DefaultDomain => _defaultDomain;
     public KLE.FormattingOptions FormattingOptions => _formattingOptions;
 
@@ -27,7 +29,11 @@ public class OptionsManager : IOptionsManager
 
     public async Task RefreshAsync(CancellationToken cancellationToken)
     {
+        _defaultDomain = await _settingSource.GetSettingAsync(ConnectionSettings.DefaultDomain, cancellationToken).ConfigureAwait(false);
         _formattingOptions = await GetFormattingOptionsAsync(cancellationToken).ConfigureAwait(false);
+
+        // raise event after refresh
+        this.OptionsChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private async Task<KLE.FormattingOptions> GetFormattingOptionsAsync(CancellationToken cancellationToken)

@@ -4,6 +4,11 @@ namespace Kusto.Lsp;
 
 public class ConnectionSettings
 {
-    public static Setting<ImmutableList<string>> Connections = 
-        new ArraySetting<string>("kusto.connections", ImmutableList<string>.Empty);
+    public static Setting<string> DefaultDomain =
+        new Setting<string>("kusto.defaultDomain", ".kusto.windows.net");
+
+    public static readonly ImmutableList<Setting> All =
+        [
+            DefaultDomain
+        ];
 }

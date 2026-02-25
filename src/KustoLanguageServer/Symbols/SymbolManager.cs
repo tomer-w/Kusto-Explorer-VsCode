@@ -25,6 +25,14 @@ public class SymbolManager : ISymbolManager
         _schemaManager = schemaManager;
         _optionsManager = optionsManager;
         _logger = logger;
+
+        _optionsManager.OptionsChanged += _optionsManager_OptionsChanged;
+    }
+
+    private void _optionsManager_OptionsChanged(object? sender, EventArgs e)
+    {
+        var newGlobals = this.Globals.WithDomain(_optionsManager.DefaultDomain);
+        this.SetGlobals(newGlobals);
     }
 
     public GlobalState Globals { get; private set; } = GlobalState.Default;
@@ -36,6 +44,8 @@ public class SymbolManager : ISymbolManager
 
     private void SetGlobals(GlobalState newGlobals)
     {
+        newGlobals = newGlobals.WithDomain(_optionsManager.DefaultDomain);
+
         if (newGlobals != this.Globals)
         {
             _logger?.Log("SymbolManager: globals updated");
@@ -263,7 +273,7 @@ public class SymbolManager : ISymbolManager
             var clusterRefs = document.GetClusterReferences(cancellationToken);
             foreach (var clusterRef in clusterRefs)
             {
-                var clusterName = SymbolFacts.GetFullHostName(clusterRef.Cluster, _optionsManager.DefaultDomain);
+                var clusterName = SymbolFacts.GetFullHostName(clusterRef.Cluster, globals.Domain);
 
                 // don't bother with clusters were already resolved or do not exist
                 if (string.IsNullOrEmpty(clusterName)
@@ -285,7 +295,7 @@ public class SymbolManager : ISymbolManager
             {
                 var cluster = string.IsNullOrEmpty(dbRef.Cluster)
                     ? globals.Cluster
-                    : globals.GetCluster(SymbolFacts.GetFullHostName(dbRef.Cluster, _optionsManager.DefaultDomain));
+                    : globals.GetCluster(SymbolFacts.GetFullHostName(dbRef.Cluster, globals.Domain));
 
                 // don't rely on the user to do the right thing.
                 if (cluster == null
