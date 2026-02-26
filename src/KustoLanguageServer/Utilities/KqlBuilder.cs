@@ -48,7 +48,7 @@ public class KqlBuilder : TextBuilder
     }
 
     /// <summary>
-    /// Writes the line minimally spaced form the previously written text.
+    /// Writes the text using the spacing rule.
     /// </summary>
     public void WriteSpaced(string text, Func<char, char, bool> fnNeedsSpace)
     {
@@ -69,10 +69,20 @@ public class KqlBuilder : TextBuilder
         Write(text);
     }
 
+    /// <summary>
+    /// Writes the text using, adding a space if not whitespace is on either side.
+    /// </summary>
+    public void WriteSpaced(string text) =>
+        WriteSpaced(text, SpaceIfNone);
+
     private bool _isLineList;
     private int _listCount;
     private string _listSeparator = ",";
 
+    /// <summary>
+    /// Writes an element of a list.
+    /// You use this nested within a call to <see cref="WriteList"/>
+    /// </summary>
     public void WriteListElement(Action action)
     {
         if (_listCount > 0)
@@ -89,11 +99,19 @@ public class KqlBuilder : TextBuilder
         _listCount++;
     }
 
+    /// <summary>
+    /// Writes an element of a list.
+    /// You use this nested within a call to <see cref="WriteList"/>
+    /// </summary>
     public void WriteListElement(string content)
     {
         WriteListElement(() => Write(content));
     }
 
+    /// <summary>
+    /// Writes a list of elements, with the separator between them.
+    /// The action writes elements by calling <see cref="WriteListElement"/> within the action.
+    /// </summary>
     public void WriteList(string separator, Action action)
     {
         var oldIsLineList = _isLineList;
@@ -108,6 +126,10 @@ public class KqlBuilder : TextBuilder
         _listSeparator = oldListSeparator;
     }
 
+    /// <summary>
+    /// Writes a list of elements, each on a different line.
+    /// The action writes elements by calling <see cref="WriteListElement"/> within the action.
+    /// </summary>
     public void WriteLineSeparatedList(string separator, Action action)
     {
         var oldIsLineList = _isLineList;
@@ -330,21 +352,46 @@ public class KqlBuilder : TextBuilder
         }
 
         WriteParameterList(Parameter.ParseList(info.Parameters), KustoDialect.EngineCommand);
-        WriteBodyNested(() => WriteLinesAdjusted(info.Body));
+
+        var bodyTrimmed = info.Body.Trim();
+        if (bodyTrimmed.StartsWith("{") && bodyTrimmed.EndsWith("}"))
+        {
+            WriteLineOnNewLine(info.Body);
+        }
+        else
+        {
+            WriteBodyNested(() => WriteLinesAdjusted(info.Body));
+        }
     }
 
-    public void WriteParameterList(IEnumerable<Parameter> parameters, KustoDialect dialect)
+    public void WriteParameterList(IReadOnlyList<Parameter> parameters, KustoDialect dialect)
     {
-        WriteParametersNested(() =>
+        if (parameters.Count < 5)
         {
-            WriteLineSeparatedCommaList(() =>
+            Write(" (");
+            WriteCommaList(() =>
             {
                 foreach (var p in parameters)
                 {
                     WriteListElement(() => Write(GetParameterDeclaration(p, dialect)));
                 }
             });
-        });
+            Write(")");
+        }
+        else
+        {
+            // many parameters, split across multiple lines
+            WriteParametersNested(() =>
+            {
+                WriteLineSeparatedCommaList(() =>
+                {
+                    foreach (var p in parameters)
+                    {
+                        WriteListElement(() => Write(GetParameterDeclaration(p, dialect)));
+                    }
+                });
+            });
+        }
     }
 
     public void WriteCreateEntityGroupCommand(EntityGroupInfo info)

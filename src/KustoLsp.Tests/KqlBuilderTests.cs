@@ -217,11 +217,7 @@ public class KqlBuilderTests
             },
             FormattingOptions.Default,
             """
-            .create-or-alter function TestFunction
-            (
-                x: int,
-                y: string
-            )
+            .create-or-alter function TestFunction (x: int, y: string)
             {
                 T | where a > b
             }
@@ -249,14 +245,77 @@ public class KqlBuilderTests
                     folder='folder',
                     docstring='description'
                 )
-            TestFunction
-            (
-                x: int,
-                y: string
-            )
+            TestFunction (x: int, y: string)
             {
                 T | where a > b
             }
+
+            """
+            );
+
+        // no parameters
+        TestFunction(
+            new FunctionInfo
+            {
+                Name = "TestFunction",
+                Parameters = "()",
+                Body =
+                """
+                T | where a > b
+                """
+            },
+            FormattingOptions.Default,
+            """
+            .create-or-alter function TestFunction ()
+            {
+                T | where a > b
+            }
+
+            """
+            );
+
+        // includes braces
+        TestFunction(
+            new FunctionInfo
+            {
+                Name = "TestFunction",
+                Parameters = "()",
+                Body =
+                """
+                { T | where a > b }
+                """
+            },
+            FormattingOptions.Default,
+            """
+            .create-or-alter function TestFunction ()
+            { T | where a > b }
+
+            """
+            );
+
+        // lots of parameters
+        TestFunction(
+            new FunctionInfo
+            {
+                Name = "TestFunction",
+                Parameters = "(a: long, b: long, c: long, d: long, e: long, f: long)",
+                Body =
+                """
+                { T | where a > b }
+                """
+            },
+            FormattingOptions.Default,
+            """
+            .create-or-alter function TestFunction
+            (
+                a: long,
+                b: long,
+                c: long,
+                d: long,
+                e: long,
+                f: long
+            )
+            { T | where a > b }
 
             """
             );
