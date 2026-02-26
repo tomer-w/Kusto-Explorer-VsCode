@@ -7,7 +7,7 @@ import * as documentPanels from './features/documentPanels'
 import * as chartPanel from './features/chartPanel'
 import * as copilot from './features/copilot'
 import * as connectionStatusBar from './features/connectionStatusBar'
-import { registerEntityDefinitionProvider } from './features/entityDefinitionProvider'
+import { registerEntityDefinitionProvider, ENTITY_DEFINITION_SCHEME } from './features/entityDefinitionProvider'
 import
     {
         LanguageClient,
@@ -34,7 +34,10 @@ export async function activate(context: ExtensionContext)
     const outputChannel = window.createOutputChannel('Kusto');
 
     const clientOptions: LanguageClientOptions = {
-        documentSelector: [{ scheme: 'file', language: 'kusto' }],
+        documentSelector: [
+            { scheme: 'file', language: 'kusto' },
+            { scheme: ENTITY_DEFINITION_SCHEME, language: 'kusto' }
+        ],
         synchronize: { 
             fileEvents: workspace.createFileSystemWatcher('**/*.{kql,csl,kusto}')
         },
