@@ -1589,6 +1589,17 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
     {
         try
         {
+            // Check if this is a virtual entity definition document
+            // These have the cluster and database encoded in the URI
+            if (TryParseEntityDefinitionUri(@params.Uri, out var cluster, out var database, out _, out _))
+            {
+                return new InferDocumentConnectionResult
+                {
+                    Cluster = cluster,
+                    Database = database
+                };
+            }
+
             if (_documentManager.TryGetDocument(@params.Uri, out var document))
             {
                 var info = document.GetInferredConnection(cancellationToken);
