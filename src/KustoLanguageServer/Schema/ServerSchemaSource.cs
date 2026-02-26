@@ -257,7 +257,7 @@ public class ServerSchemaSource : ISchemaSource
         if (entities.Count == 0)
             return ImmutableList<MaterializedViewInfo>.Empty;
 
-        var mviews = entities.Where(e => e.EntityName == "MaterializedView").ToImmutableList();
+        var mviews = entities.Where(e => e.EntityType == "MaterializedView").ToImmutableList();
 
         if (mviews.Count == 0)
             return ImmutableList<MaterializedViewInfo>.Empty;
