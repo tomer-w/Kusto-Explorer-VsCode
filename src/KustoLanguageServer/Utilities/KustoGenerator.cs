@@ -35,10 +35,16 @@ public static class KustoGenerator
 
     public static string GenerateTableRow(DataRow row)
     {
-        return string.Join(", ", row.Table.Columns.OfType<DataColumn>().Select(dc => GetKustoLiteral(row[dc], GetKustoSymbol(dc.DataType))));
+        return string.Join(", ", row.Table.Columns.OfType<DataColumn>().Select(dc => GetLiteral(row[dc], GetKustoSymbol(dc.DataType))));
     }
 
-    private static string GetKustoLiteral(object? value, ScalarSymbol symbol)
+    public static string GetLiteral(object value) =>
+        GetLiteral(value, value.GetType());
+
+    public static string GetLiteral(object? value, Type type) =>
+        GetLiteral(value, GetKustoSymbol(type));
+
+    public static string GetLiteral(object? value, ScalarSymbol symbol)
     {
         var isNull = value == null || value == DBNull.Value;
 
@@ -97,7 +103,7 @@ public static class KustoGenerator
         }
     }
 
-    private static ScalarSymbol GetKustoSymbol(Type type)
+    public static ScalarSymbol GetKustoSymbol(Type type)
     {
         // ignore through Nullable<T>
         if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>))

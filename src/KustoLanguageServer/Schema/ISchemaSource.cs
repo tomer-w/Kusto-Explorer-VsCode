@@ -50,6 +50,11 @@ public interface ISchemaSource
     /// Gets the database stored query result entities
     /// </summary>
     Task<ImmutableList<StoredQueryResultInfo>> GetStoredQueryResultInfosAsync(string clusterName, string databaseName, string? entityName, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets the extended information for an external table.
+    /// </summary>
+    Task<ExternalTableInfoEx?> GetExternalTableInfoExAsync(string clusterName, string databaseName, string name, CancellationToken cancellationToken);
 }
 
 [DataContract]
@@ -178,6 +183,73 @@ public class ExternalTableInfo
     [DataMember(Name = "folder")]
     public string? Folder { get; init; }
 }
+
+public class ExternalTableInfoEx
+{
+    /// <summary>
+    /// The name of the external table
+    /// </summary>
+    public required string Name { get; init; }
+
+    [DataMember(Name = "columns")]
+    public ImmutableList<ColumnInfo> Columns
+    {
+        get => field ?? ImmutableList<ColumnInfo>.Empty;
+        init;
+    }
+
+    public string? Folder { get; init; }
+    public string? Description { get; init; }
+
+    /// <summary>
+    /// The type of external table stored: blob, sql
+    /// </summary>
+    public required string Type { get; init; }
+
+    /// <summary>
+    /// Any properties assign to the external table
+    /// </summary>
+    public ImmutableDictionary<string, object> Properties { get; init; } = ImmutableDictionary<string, object>.Empty;
+
+    /// <summary>
+    /// Any connection strings used by the external table
+    /// </summary>
+    public ImmutableList<string> ConnectionStrings { get; init; } = ImmutableList<string>.Empty;
+
+    /// <summary>
+    /// Any partitions defined for the external table.
+    /// </summary>
+    public ImmutableList<ExternalTablePartition> Partitions { get; init; } = ImmutableList<ExternalTablePartition>.Empty;
+
+    /// <summary>
+    /// The path format - related to partitions
+    /// </summary>
+    public string? PathFormat { get; init; }
+}
+
+public class ExternalTablePartition
+{
+    /// <summary>
+    /// The name of the partition
+    /// </summary>
+    public required string Name { get; init; }
+
+    // this is the type bin, startofday, startofweek, startofmonth, startofyear
+    public string? Function { get; init; }
+
+    /// <summary>
+    /// The associated column that is arg0 of the function
+    /// </summary>
+    public string? ColumnName { get; init; }
+
+    /// <summary>
+    /// The additional value that is arg1 of the function
+    /// </summary>
+    public string? PartitionBy { get; init; }
+
+    public required int Ordinal { get; init; }
+}
+
 
 [DataContract]
 public class MaterializedViewInfo

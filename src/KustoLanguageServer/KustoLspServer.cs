@@ -75,7 +75,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
         _diagnosticsManager = new DiagnosticsManager(_documentManager);
         _queryManager = new QueryManager(_connectionManager, _documentManager, _optionsManager, logger);
         _chartManager = new PlotlyChartManager();
-        _entityManager = new EntityManager(_schemaManager);
+        _entityManager = new EntityManager(_schemaManager, _optionsManager);
         InitEvents();
     }
 
@@ -2155,7 +2155,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
                     EntityName = @params.EntityName
                 };
 
-                return await _entityManager.GetCreateCommand(entityId, cancellationToken).ConfigureAwait(false);
+                return await _entityManager.GetDefinition(entityId, cancellationToken).ConfigureAwait(false);
             }
         }
         catch (Exception ex)
@@ -2255,7 +2255,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
                         EntityName = entityName
                     };
 
-                    var content = await _entityManager.GetCreateCommand(entityId, cancellationToken).ConfigureAwait(false);
+                    var content = await _entityManager.GetDefinition(entityId, cancellationToken).ConfigureAwait(false);
                     if (content != null)
                     {
                         return new GetEntityDefinitionContentResult

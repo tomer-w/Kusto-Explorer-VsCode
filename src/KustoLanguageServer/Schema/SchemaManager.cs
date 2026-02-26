@@ -203,4 +203,9 @@ public class SchemaManager : ISchemaManager
         }
         return ImmutableList<TableInfo>.Empty;
     }
+
+    public Task<ExternalTableInfoEx?> GetExternalTableInfoExAsync(string clusterName, string databaseName, string name, CancellationToken cancellationToken)
+    {
+        return _source.GetExternalTableInfoExAsync(clusterName, databaseName, name, cancellationToken);
+    }
 }

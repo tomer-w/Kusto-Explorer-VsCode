@@ -2,12 +2,17 @@
 
 namespace Kusto.Lsp;
 
-public abstract class TextBuilder
+public class TextBuilder
 {
+    private readonly string _indent;
     private StringBuilder _builder = new StringBuilder();
     private string _lineStartIndentation = "";
-    private const string _indent = "    ";
     private bool _isLineStart = true;
+
+    public TextBuilder(int indentSize = 4)
+    {
+        _indent = new string(' ', indentSize);
+    }
 
     /// <summary>
     /// The built text.
@@ -15,12 +20,31 @@ public abstract class TextBuilder
     public string Text => _builder.ToString();
 
     /// <summary>
+    /// The last character writtern to the builder
+    /// </summary>
+    protected char LastCharacter =>
+        _builder.Length == 0 ? '\0' : _builder[_builder.Length - 1];
+
+    /// <summary>
     /// Writes text.
     /// If the text contains new lines, each line is written separately.
     /// </summary>
     public void Write(string text)
     {
-#if false
+        if (_isLineStart)
+        {
+            _builder.Append(_lineStartIndentation);
+            _isLineStart = false;
+        }
+
+        _builder.Append(text);
+    }
+
+    /// <summary>
+    /// Writes the multiple lines in the text separately, adjusted to the current indentation.
+    /// </summary>
+    public void WriteLinesAdjusted(string text)
+    {
         if (text.Contains('\n'))
         {
             var lines = text.ReplaceLineEndings("\n").Split('\n');
@@ -33,15 +57,8 @@ public abstract class TextBuilder
             }
         }
         else
-#endif
         {
-            if (_isLineStart)
-            {
-                _builder.Append(_lineStartIndentation);
-                _isLineStart = false;
-            }
-
-            _builder.Append(text);
+            Write(text);
         }
     }
 
@@ -112,6 +129,7 @@ public abstract class TextBuilder
         WriteNested(action);
         WriteLineOnNewLine(close);
     }
+
 
     private List<string> _blocks = default!;
 

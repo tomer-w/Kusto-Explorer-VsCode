@@ -3,6 +3,8 @@ using Kusto.Data.Common;
 using Kusto.Language;
 using Kusto.Language.Symbols;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 
 namespace Kusto.Lsp;
@@ -444,7 +446,70 @@ public class ServerSchemaSource : ISchemaSource
             ).ToImmutableList();
     }
 
-    #nullable disable
+    public async Task<ExternalTableInfoEx?> GetExternalTableInfoExAsync(string clusterName, string databaseName, string name, CancellationToken cancellationToken)
+    {
+        var etInfo = (await this.GetExternalTableInfosAsync(clusterName, databaseName, name, cancellationToken).ConfigureAwait(false)).FirstOrDefault();
+        if (etInfo == null)
+            return null;
+
+        if (!_connectionManager.TryGetConnection(clusterName, databaseName, out var connection))
+            return null;
+
+        var command = $".show external table {KustoFacts.BracketNameIfNecessary(name, KustoDialect.EngineCommand)}";
+        var result = (await connection.ExecuteAsync<ShowExternalTableResult>(command, null, null, cancellationToken)).Values?.FirstOrDefault();
+        if (result != null)
+        {
+            var props = DeserializeProperties(result.Properties);
+            var connstrs = DeserializeList<string>(result.ConnectionStrings);
+            var partitions = DeserializeList<ExternalTablePartition>(result.Partitions);
+
+            return new ExternalTableInfoEx
+            {
+                Name = result.TableName,
+                Columns = etInfo.Columns,
+                Folder = result.Folder,
+                Description = result.DocString,
+                Type = result.TableType,
+                Properties = props,
+                Partitions = partitions,
+                PathFormat = result.PathFormat,
+                ConnectionStrings = connstrs,
+            };
+        }
+
+        return null;
+    }
+
+    private ImmutableDictionary<string, object> DeserializeProperties(string? text)
+    {
+        return text != null
+            && JsonConvert.DeserializeObject<ImmutableDictionary<string, object>>(text) is { } map
+            ? map
+            : ImmutableDictionary<string, object>.Empty;
+    }
+
+    private ImmutableList<T> DeserializeList<T>(string? text)
+    {
+        return text != null
+            && JsonConvert.DeserializeObject<ImmutableList<T>>(text) is { } list
+            ? list
+            : ImmutableList<T>.Empty;
+    }
+
+#nullable disable
+
+    public class ShowExternalTableResult
+    {
+        public string TableName;
+        public string TableType;
+        public string Folder;
+        public string DocString;
+        public string Properties;
+        public string ConnectionStrings;
+        public string Partitions;
+        public string PathFormat;
+    }
+
     public class DatabaseNamesResult
     {
         public string DatabaseName;

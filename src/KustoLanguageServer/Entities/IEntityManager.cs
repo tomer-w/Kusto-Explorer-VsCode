@@ -6,9 +6,9 @@ namespace Kusto.Lsp;
 public interface IEntityManager
 {
     /// <summary>
-    /// Gets a create command that re-creates the existing entity.
+    /// Gets the definition of the entity as text to display 
     /// </summary>
-    Task<string?> GetCreateCommand(EntityId id, CancellationToken cancellationToken);
+    Task<string?> GetDefinition(EntityId id, CancellationToken cancellationToken);
 
     /// <summary>
     /// Gets the text of a KQL expression that references the entity in a query.
