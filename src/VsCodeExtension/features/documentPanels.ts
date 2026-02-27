@@ -5,6 +5,7 @@ import * as server from './server';
 import * as resultsPanel from './resultsPanel';
 import * as chartPanel from './chartPanel';
 import { getClipboardContext, clearClipboardContext, copyToClipboard } from './clipboard';
+import { ENTITY_DEFINITION_SCHEME } from './entityDefinitionProvider';
 
 const PASTE_KIND = vscode.DocumentDropOrPasteEditKind.Text.append('kusto');
 
@@ -74,6 +75,11 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
 async function runQuery(client: LanguageClient): Promise<void> {
     const editor = vscode.window.activeTextEditor;
     if (!editor || editor.document.languageId !== 'kusto') {
+        return;
+    }
+
+    // Entity definition documents are read-only metadata views; don't allow running queries
+    if (editor.document.uri.scheme === ENTITY_DEFINITION_SCHEME) {
         return;
     }
 
@@ -401,6 +407,8 @@ class KustoCodeLensProvider implements vscode.CodeLensProvider {
     }
 
     async provideCodeLenses(document: vscode.TextDocument): Promise<vscode.CodeLens[]> {
+        const isEntityDefinition = document.uri.scheme === ENTITY_DEFINITION_SCHEME;
+
         const result = await server.getQueryRanges(this.client, document.uri.toString());
         if (!result || !result.ranges.length) {
             return [];
@@ -426,11 +434,14 @@ class KustoCodeLensProvider implements vscode.CodeLensProvider {
                 arguments: [range.start.line, range.start.character, range.end.line, range.end.character]
             }));
 
-            lenses.push(new vscode.CodeLens(vsRange, {
-                title: '▶ Run',
-                command: 'kusto.runQuery',
-                tooltip: 'Run this query'
-            }));
+            // Hide Run, Format, and Results lenses in entity definition documents
+            if (!isEntityDefinition) {
+                lenses.push(new vscode.CodeLens(vsRange, {
+                    title: '▶ Run',
+                    command: 'kusto.runQuery',
+                    tooltip: 'Run this query'
+                }));
+            }
 
             lenses.push(new vscode.CodeLens(vsRange, {
                 title: '📋 Copy',
@@ -438,21 +449,23 @@ class KustoCodeLensProvider implements vscode.CodeLensProvider {
                 tooltip: 'Copy this query with syntax highlighting'
             }));
 
-            lenses.push(new vscode.CodeLens(vsRange, {
-                title: '✎ Format',
-                command: 'kusto.formatQuery',
-                tooltip: 'Format this query'
-            }));
-
-            // Only show Results lens if there is cached data for this query
-            const dataId = await server.getDataId(this.client, document.uri.toString(), range.start);
-            if (dataId) {
+            if (!isEntityDefinition) {
                 lenses.push(new vscode.CodeLens(vsRange, {
-                    title: '📊 Results',
-                    command: 'kusto.showResults',
-                    tooltip: 'Show cached results for this query',
-                    arguments: [document.uri.toString(), range.start.line, range.start.character]
+                    title: '✎ Format',
+                    command: 'kusto.formatQuery',
+                    tooltip: 'Format this query'
                 }));
+
+                // Only show Results lens if there is cached data for this query
+                const dataId = await server.getDataId(this.client, document.uri.toString(), range.start);
+                if (dataId) {
+                    lenses.push(new vscode.CodeLens(vsRange, {
+                        title: '📊 Results',
+                        command: 'kusto.showResults',
+                        tooltip: 'Show cached results for this query',
+                        arguments: [document.uri.toString(), range.start.line, range.start.character]
+                    }));
+                }
             }
         }
 

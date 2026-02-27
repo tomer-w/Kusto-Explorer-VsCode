@@ -266,12 +266,12 @@
       "editor/title": [
         {
           "command": "kusto.runQuery",
-          "when": "editorLangId == kusto",
+          "when": "editorLangId == kusto && !kusto.isEntityDefinition",
           "group": "navigation@1"
         },
         {
           "command": "kusto.refreshDocumentSchema",
-          "when": "editorLangId == kusto",
+          "when": "editorLangId == kusto && !kusto.isEntityDefinition",
           "group": "navigation@2"
         },
         {
@@ -283,22 +283,22 @@
       "editor/context": [
         {
           "command": "kusto.copyQueryTransparent",
-          "when": "editorLangId == kusto",
+          "when": "editorLangId == kusto && !kusto.isEntityDefinition",
           "group": "0_kusto@1"
         },
         {
           "command": "kusto.formatQuery",
-          "when": "editorLangId == kusto",
+          "when": "editorLangId == kusto && !kusto.isEntityDefinition",
           "group": "0_kusto@2"
         },
         {
           "command": "kusto.runQuery",
-          "when": "editorLangId == kusto",
+          "when": "editorLangId == kusto && !kusto.isEntityDefinition",
           "group": "0_kusto@3"
         },
         {
           "command": "kusto.refreshDocumentSchema",
-          "when": "editorLangId == kusto",
+          "when": "editorLangId == kusto && !kusto.isEntityDefinition",
           "group": "0_kusto@4"
         }
       ],
@@ -328,7 +328,7 @@
       {
         "command": "kusto.runQuery",
         "key": "F5",
-        "when": "editorLangId == kusto"
+        "when": "editorLangId == kusto && !kusto.isEntityDefinition"
       },
       {
         "command": "kusto.connectDatabase",

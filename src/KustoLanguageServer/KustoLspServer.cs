@@ -1,4 +1,5 @@
-﻿using Kusto.Language;
+﻿using Kusto.Data.Common;
+using Kusto.Language;
 using Kusto.Language.Editor;
 using Kusto.Language.Symbols;
 using Lsp.Common;
@@ -6,8 +7,10 @@ using StreamJsonRpc;
 
 using System.Collections.Immutable;
 using System.Data;
+using System.Reflection.Metadata;
 using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
+using System.Xml.Linq;
 using LSP=Microsoft.VisualStudio.LanguageServer.Protocol;
 
 namespace Kusto.Lsp;
@@ -955,41 +958,27 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
             if (_documentManager.TryGetDocument(@params.TextDocument.Uri, out var document))
             {
                 var position = GetTextPosition(document.Text, @params.Position);
-                RelatedInfo relatedInfo = document.GetRelatedElements(position, _defaultFindRelatedOptions, cancellationToken);
-                
-                // Check for local declarations first (variables, let statements, etc.)
-                var definitionElements = relatedInfo.Elements
-                    .Where(elem => elem.Kind == RelatedElementKind.Declaration)
-                    .ToArray();
 
-                if (definitionElements.Length == 1)
+                // Get the referenced symbol at the position
+                var referencedSymbol = document.GetReferencedSymbol(position, cancellationToken);
+                if (referencedSymbol == null)
+                    return null;
+
+                var declarations = document.GetDeclarationLocations(position, cancellationToken);
+                if (declarations.Count > 0)
                 {
-                    var elem = definitionElements[0];
-                    var lspLocation = new LSP.Location
+                    var lspLocations = new List<LSP.Location>(declarations.Count);
+
+                    foreach (var decl in declarations)
                     {
-                        Uri = @params.TextDocument.Uri,
-                        Range = GetLspRange(document.Text, elem.Range)
-                    };
-                    return lspLocation;
-                }
-                else if (definitionElements.Length > 1)
-                {
-                    var lspLocations = definitionElements
-                        .Select(elem =>
-                            new LSP.Location
-                            {
-                                Uri = @params.TextDocument.Uri,
-                                Range = GetLspRange(document.Text, elem.Range)
-                            }).ToArray();
-                    return lspLocations;
+                        var lspLocation = await GetLocationAsync(document, referencedSymbol, decl, cancellationToken).ConfigureAwait(false);
+                        lspLocations.Add(lspLocation);
+                    }
+
+                    return lspLocations.ToArray();
                 }
 
-                // No local declaration found - check if it's a database entity
-                var entityLocation = await TryGetDatabaseEntityLocationAsync(document, position, cancellationToken).ConfigureAwait(false);
-                if (entityLocation != null)
-                {
-                    return entityLocation;
-                }
+                return null;
             }
         }
         catch (Exception ex)
@@ -1000,206 +989,131 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
         return null;
     }
 
-    /// <summary>
-    /// Attempts to create a Location pointing to a virtual document for a database entity.
-    /// For columns, returns a location within the parent table's definition.
-    /// </summary>
-    private async Task<LSP.Location?> TryGetDatabaseEntityLocationAsync(IDocument document, int position, CancellationToken cancellationToken)
+    private async Task<LSP.Location> GetLocationAsync(IDocument document, Symbol symbol, DeclarationLocation location, CancellationToken cancellationToken)
     {
-        // Get the referenced symbol at the position
-        var referencedSymbol = document.GetReferencedSymbol(position, cancellationToken);
-        if (referencedSymbol == null)
-            return null;
-
-        // Handle ColumnSymbol specially - find the parent table and locate the column within its definition
-        if (referencedSymbol is ColumnSymbol column)
+        if (location.Entity != null)
         {
-            return await TryGetColumnLocationAsync(document, column, cancellationToken).ConfigureAwait(false);
-        }
+            var databaseSymbol = document.Globals.GetDatabase(location.Entity);
+            var clusterSymbol = document.Globals.GetCluster(databaseSymbol);
+            var databaseName = databaseSymbol.Name;
+            var clusterName = clusterSymbol.Name;
+            var entityType = GetEntityType(location.Entity);
+            var entityName = location.Entity.Name;
 
-        // Determine the entity type and name based on the symbol
-        var (entityType, entityName) = GetEntityTypeAndName(document, referencedSymbol);
-        if (entityType == null || entityName == null)
-            return null;
+            // Create the virtual URI for the entity
+            var virtualUri = CreateEntityDefinitionUri(clusterName, databaseName, entityType, entityName);
 
-        // Get cluster and database from the symbol or document context
-        var cluster = GetClusterName(document, referencedSymbol);
-        var database = GetDatabaseName(document, referencedSymbol);
-
-        if (cluster == null || database == null)
-            return null;
-
-        // Create a virtual document URI for this entity
-        var virtualUri = CreateEntityDefinitionUri(cluster, database, entityType, entityName);
-
-        return new LSP.Location
-        {
-            Uri = virtualUri,
-            Range = new LSP.Range
+            // Get the table definition content to find the column's location
+            var entityId = new EntityId
             {
-                Start = new LSP.Position { Line = 0, Character = 0 },
-                End = new LSP.Position { Line = 0, Character = 0 }
-            }
-        };
-    }
-
-    /// <summary>
-    /// Attempts to create a Location for a column within its parent table's definition.
-    /// </summary>
-    private async Task<LSP.Location?> TryGetColumnLocationAsync(IDocument document, ColumnSymbol column, CancellationToken cancellationToken)
-    {
-        // Get the parent table for this column
-        var table = document.Globals.GetTable(column);
-        if (table == null)
-            return null;
-
-        // Get the entity type for the table (could be Table, ExternalTable, MaterializedView, etc.)
-        var (entityType, entityName) = GetEntityTypeAndName(document, table);
-        if (entityType == null || entityName == null)
-            return null;
-
-        // Get cluster and database from the table
-        var cluster = GetClusterName(document, table);
-        var database = GetDatabaseName(document, table);
-
-        if (cluster == null || database == null)
-            return null;
-
-        // Create the virtual URI for the table
-        var virtualUri = CreateEntityDefinitionUri(cluster, database, entityType, entityName);
-
-        // Get the table definition content to find the column's location
-        var entityId = new EntityId
-        {
-            Cluster = cluster,
-            Database = database,
-            EntityType = GetExtendedEntityType(entityType),
-            EntityName = entityName
-        };
-
-        var definitionContent = await _entityManager.GetDefinition(entityId, cancellationToken).ConfigureAwait(false);
-        if (definitionContent == null)
-        {
-            // Fall back to pointing to the start of the table definition
-            return new LSP.Location
-            {
-                Uri = virtualUri,
-                Range = new LSP.Range
-                {
-                    Start = new LSP.Position { Line = 0, Character = 0 },
-                    End = new LSP.Position { Line = 0, Character = 0 }
-                }
+                Cluster = clusterName,
+                Database = databaseName,
+                EntityType = entityType,
+                EntityName = entityName
             };
-        }
 
-        // Find the column definition within the table definition text
-        var columnRange = FindColumnRangeInDefinition(definitionContent, column.Name);
-
-        return new LSP.Location
-        {
-            Uri = virtualUri,
-            Range = columnRange
-        };
-    }
-
-    /// <summary>
-    /// Converts an entity type string to the corresponding ExtendedEntityType.
-    /// </summary>
-    private static Kusto.Data.Common.EntityType GetExtendedEntityType(string entityType)
-    {
-        return entityType switch
-        {
-            "Table" => Kusto.Data.Common.EntityType.Table,
-            "ExternalTable" => Kusto.Data.Common.EntityType.ExternalTable,
-            "MaterializedView" => Kusto.Data.Common.EntityType.MaterializedView,
-            "Function" => Kusto.Data.Common.EntityType.Function,
-            "EntityGroup" => Kusto.Data.Common.EntityType.EntityGroup,
-            "Graph" => Kusto.Data.Common.EntityType.Graph,
-            "StoredQueryResult" => Kusto.Data.Common.EntityType.StoredQueryResult,
-            _ => Kusto.Data.Common.EntityType.Table // Default fallback, should not happen
-        };
-    }
-
-    /// <summary>
-    /// Finds the range of a column definition within a table definition text.
-    /// Searches for patterns like "ColumnName: type" or "[ColumnName]: type" in the schema.
-    /// </summary>
-    private static LSP.Range FindColumnRangeInDefinition(string definitionText, string columnName)
-    {
-        // Try to find the column in the definition
-        // Column definitions appear as "ColumnName: type" or "[ColumnName]: type"
-        var bracketedName = $"[{columnName}]";
-        
-        // Search for bracketed name first (more specific)
-        var searchPatterns = new[]
-        {
-            bracketedName + ":",
-            columnName + ":"
-        };
-
-        foreach (var pattern in searchPatterns)
-        {
-            var index = definitionText.IndexOf(pattern, StringComparison.OrdinalIgnoreCase);
-            if (index >= 0)
+            // is the the one in the location itself?
+            if (symbol == location.Entity)
             {
-                // Found the column - calculate line and character position
-                var position = GetLspPosition(definitionText, index);
-                var endPosition = GetLspPosition(definitionText, index + pattern.Length - 1); // -1 to exclude the colon
-                
-                return new LSP.Range
+                return new LSP.Location { Range = GetLspRange(document.Text, location.Range), Uri = virtualUri };
+            }
+
+            // find the correct location in the definition text
+            var definitionContent = await _entityManager.GetDefinition(entityId, cancellationToken).ConfigureAwait(false);
+            if (definitionContent != null)
+            {
+                var declarationRange = FindRangeInDefinition(definitionContent, document.Globals, symbol);
+                return new LSP.Location
                 {
-                    Start = position,
-                    End = endPosition
+                    Uri = virtualUri,
+                    Range = GetLspRange(definitionContent, declarationRange)
                 };
             }
+
+            // Fall back to pointing to the start of the table definition
+            return
+                new LSP.Location
+                {
+                    Uri = virtualUri,
+                    Range = new LSP.Range
+                    {
+                        Start = new LSP.Position { Line = 0, Character = 0 },
+                        End = new LSP.Position { Line = 0, Character = 0 }
+                    }
+                };
+        }
+        else
+        {
+            return new LSP.Location
+            {
+                Uri = document.Id,
+                Range = GetLspRange(document.Text, location.Range)
+            };
+        }
+    }
+
+    private static TextRange FindRangeInDefinition(string definition, GlobalState globals, Symbol symbol)
+    {
+        var code = KustoCode.ParseAndAnalyze(definition, globals);
+
+        // look for declarations in the definition with this name and same symbol type
+        var decl = DeclarationFinder.GetLocalDeclarations(code.Syntax, symbol.Name)
+            .Where(d => d.ReferencedSymbol?.GetType() == symbol.GetType())
+            .FirstOrDefault();
+        if (decl != null)
+        {
+            return new TextRange(decl.TextStart, decl.Width);
         }
 
-        // Column not found - return start of document
-        return new LSP.Range
+        // otherwise, look for any declaration with this name..
+        // this happens with table create commands and maybe other command syntax
+        var name = KustoFacts.BracketNameIfNecessary(symbol.Name, KustoDialect.EngineCommand);
+        var pos = 0;
+        do
         {
-            Start = new LSP.Position { Line = 0, Character = 0 },
-            End = new LSP.Position { Line = 0, Character = 0 }
-        };
+            var index = definition.IndexOf(name, pos);
+            if (index >= pos && index < definition.Length)
+            {
+                var token = code.Syntax.GetTokenAt(index);
+                if (token != null 
+                    && token.Parent != null
+                    && token.Parent.GetAncestorsOrSelf<Kusto.Language.Syntax.Name>().FirstOrDefault() is { } nameNode
+                    && nameNode.Parent is Kusto.Language.Syntax.NameDeclaration nd)
+                {
+                    return new TextRange(nameNode.TextStart, nameNode.Width);
+                }
+            }
+
+            // continue searching
+            pos = index + 1;
+        }
+        while (pos < definition.Length);
+
+        return default;
     }
 
-    private static (string? entityType, string? entityName) GetEntityTypeAndName(IDocument document, Symbol symbol)
-    {
-        if (document.Globals.GetDatabase(symbol) == null)
-            return (null, null);
-
-        return symbol switch
+    private static EntityType GetEntityType(Symbol symbol) =>   
+        symbol switch
         {
-            ExternalTableSymbol extable => ("ExternalTable", extable.Name),
-            MaterializedViewSymbol mv => ("MaterializedView", mv.Name),
-            StoredQueryResultSymbol sqr => ("StoredQueryResult", sqr.Name),
-            TableSymbol table => ("Table", table.Name),
-            FunctionSymbol func => ("Function", func.Name),
-            EntityGroupSymbol eg => ("EntityGroup", eg.Name),
-            GraphModelSymbol graph => ("Graph", graph.Name),
-            _ => (null, null)
+            ExternalTableSymbol => EntityType.ExternalTable,
+            MaterializedViewSymbol => EntityType.MaterializedView,
+            StoredQueryResultSymbol => EntityType.StoredQueryResult,
+            TableSymbol => EntityType.Table,
+            FunctionSymbol => EntityType.Function,
+            EntityGroupSymbol => EntityType.EntityGroup,
+            GraphModelSymbol => EntityType.Graph,
+            _ => EntityType.Table // Default fallback, should not happen
         };
-    }
-
-    private static string? GetClusterName(IDocument document, Symbol symbol)
-    {
-        var db = document.Globals.GetDatabase(symbol);
-        return db != null ? document.Globals.GetCluster(db).Name : null;
-    }
-
-    private static string? GetDatabaseName(IDocument document, Symbol symbol)
-    {
-        return document.Globals.GetDatabase(symbol)?.Name;
-    }
 
     /// <summary>
     /// Creates a virtual document URI for an entity definition.
     /// Format: kusto-entity://cluster/database/entityType/entityName.kql
     /// </summary>
-    private static Uri CreateEntityDefinitionUri(string cluster, string database, string entityType, string entityName)
+    private static Uri CreateEntityDefinitionUri(string cluster, string database, EntityType entityType, string entityName)
     {
         var encodedCluster = Uri.EscapeDataString(cluster);
         var encodedDatabase = Uri.EscapeDataString(database);
-        var encodedEntityType = Uri.EscapeDataString(entityType);
+        var encodedEntityType = Uri.EscapeDataString(entityType.FastToString());
         var encodedEntityName = Uri.EscapeDataString(entityName);
         return new Uri($"{EntityDefinitionScheme}://{encodedCluster}/{encodedDatabase}/{encodedEntityType}/{encodedEntityName}.kql");
     }
@@ -1234,7 +1148,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
         return false;
     }
 
-    #endregion
+#endregion
 
     #region Code Actions
 
@@ -1371,7 +1285,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
     }
     #endregion
 
-    #endregion
+#endregion
 
     #region Kusto Extensions
 

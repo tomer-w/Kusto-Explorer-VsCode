@@ -124,6 +124,11 @@ public interface IDocument
     Symbol? GetReferencedSymbol(int position, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Gets the source or entity declaration locations for the symbol referenced at the position in the document, if available.
+    /// </summary>
+    ImmutableList<DeclarationLocation> GetDeclarationLocations(int position, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Gets the clusters referenced in the document.
     /// </summary>
     ImmutableList<ClusterReference> GetClusterReferences(CancellationToken cancellationToken = default);
@@ -183,10 +188,24 @@ public record DocumentEdits
     private EditString? _formattedText;
 }
 
-
 public class InferredConnection
 {       
     public string? Connection { get; init; }
     public string? ClusterName { get; init; }
     public string? DatabaseName { get; init; }
 }
+
+public class DeclarationLocation
+{
+    /// <summary>
+    /// The text ranges in the document or within the entity defintion
+    /// that the declaration is associated with.
+    /// </summary>
+    public TextRange Range { get; init; } = default;
+
+    /// <summary>
+    ///  The entity, if defined as part of a database table or function.
+    /// </summary>
+    public Symbol? Entity { get; init; }
+}
+ 

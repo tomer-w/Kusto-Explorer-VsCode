@@ -331,6 +331,41 @@ public class SectionedDocument : IDocument
         return null;
     }
 
+    public ImmutableList<DeclarationLocation> GetDeclarationLocations(int position, CancellationToken cancellationToken)
+    {
+        var block = _script.GetBlockAtPosition(position);
+        if (block != null)
+        {
+            var symbol = this.GetReferencedSymbol(position, cancellationToken);
+            if (symbol != null)
+            {
+                // this is a cluster, database or direct database entity
+                if (symbol is ClusterSymbol
+                    || symbol is DatabaseSymbol 
+                    || this.Globals.GetDatabase(symbol) != null)
+                {
+                    return [new DeclarationLocation { Entity = symbol }];
+                }
+
+                // otherwise search the source and find to find the database entity that declares this symbol
+                if (block.Service.TryGetBoundCode(cancellationToken, out var code))
+                {
+                    var locations = DeclarationFinder.GetSourceDeclarations(this.Globals, code.Syntax, symbol);
+                    if (locations.Count > 0)
+                    {
+                        return locations.Select(loc => new DeclarationLocation
+                        {
+                            Range = new TextRange(block.Start + loc.Range.Start, loc.Range.Length),
+                            Entity = loc.Entity
+                        }).ToImmutableList();
+                    }
+                }
+            }
+        }
+
+        return ImmutableList<DeclarationLocation>.Empty;
+    }
+
     public ImmutableList<ClusterReference> GetClusterReferences(CancellationToken cancellationToken = default)
     {
         var refs = new List<ClusterReference>();

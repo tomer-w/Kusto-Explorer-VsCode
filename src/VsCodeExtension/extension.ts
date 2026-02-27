@@ -76,6 +76,11 @@ export async function activate(context: ExtensionContext)
         const hasKustoDocument = vscode.workspace.textDocuments.some(doc => doc.languageId === 'kusto');
         const isKustoActive = hasKustoDocument || chartPanel.hasChartPanel();
         vscode.commands.executeCommand('setContext', 'kusto.hasActiveDocument', isKustoActive);
+
+        // Track whether the active editor is showing a read-only entity definition
+        const activeEditor = vscode.window.activeTextEditor;
+        const isEntityDef = activeEditor?.document.uri.scheme === ENTITY_DEFINITION_SCHEME;
+        vscode.commands.executeCommand('setContext', 'kusto.isEntityDefinition', isEntityDef);
     };
 
     // Command to notify when chart panel state changes (triggers context update)
