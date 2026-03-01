@@ -165,6 +165,9 @@ function copyToClipboardWindows(items: ClipboardItem[]): Promise<void> {
                         $imgStream = New-Object System.IO.MemoryStream(,$bytes)
                         $streams += $imgStream
                         $bitmap = [System.Drawing.Image]::FromStream($imgStream)
+                        # Force 96 DPI so the bitmap renders at full pixel size on HiDPI displays
+                        # (otherwise it inherits the screen DPI and appears the same logical size)
+                        $bitmap.SetResolution(96, 96)
                         $data.SetImage($bitmap)
                     }
                 }

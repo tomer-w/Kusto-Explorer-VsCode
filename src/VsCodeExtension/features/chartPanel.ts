@@ -233,15 +233,17 @@ const chartMessageHandlerScript = `
                             const svgDataUrl = await Plotly.toImage(plotDiv, { format: 'svg', width: width, height: height });
 
                             // Generate white-background PNG with light-mode colors (for bitmap: Teams, Discord)
+                            // Scale 2x so the bitmap is large enough to read when pasted
                             await Plotly.relayout(plotDiv, whiteBg);
-                            const pngDataUrl = await Plotly.toImage(plotDiv, { format: 'png', width: width, height: height });
+                            const pngDataUrl = await Plotly.toImage(plotDiv, { format: 'png', width: width, height: height, scale: 2 });
 
                             // Restore original layout
                             await Plotly.relayout(plotDiv, savedLayout);
 
                             vscodeApi.postMessage({ command: 'copyChartResult', pngDataUrl: pngDataUrl, svgDataUrl: svgDataUrl });
                         } else {
-                            const pngDataUrl = await Plotly.toImage(plotDiv, { format: 'png', width: width, height: height });
+                            // Scale 2x so the bitmap is large enough to read when pasted
+                            const pngDataUrl = await Plotly.toImage(plotDiv, { format: 'png', width: width, height: height, scale: 2 });
                             const svgDataUrl = await Plotly.toImage(plotDiv, { format: 'svg', width: width, height: height });
                             vscodeApi.postMessage({ command: 'copyChartResult', pngDataUrl: pngDataUrl, svgDataUrl: svgDataUrl });
                         }
