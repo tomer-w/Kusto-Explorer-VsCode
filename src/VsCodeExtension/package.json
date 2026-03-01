@@ -59,11 +59,7 @@
         "title": "Run Query",
         "icon": "$(play)"
       },
-      {
-        "command": "kusto.connectDatabase",
-        "title": "Connect to Database",
-        "icon": "$(database)"
-      },
+
       {
         "command": "kusto.addServer",
         "title": "Add Connection",
@@ -330,11 +326,7 @@
         "key": "F5",
         "when": "editorLangId == kusto && !kusto.isEntityDefinition"
       },
-      {
-        "command": "kusto.connectDatabase",
-        "key": "F6",
-        "when": "editorLangId == kusto"
-      },
+
       {
         "command": "editor.action.triggerSuggest",
         "key": "ctrl+space",

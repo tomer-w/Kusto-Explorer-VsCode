@@ -405,64 +405,6 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
             } catch (error) {
                 vscode.window.showErrorMessage(`Failed to open entity definition: ${error}`);
             }
-        }),
-
-        vscode.commands.registerCommand('kusto.connectDatabase', async () => {
-            const editor = vscode.window.activeTextEditor;
-            if (!editor || editor.document.languageId !== 'kusto') {
-                return;
-            }
-
-            const clusterNames = connections.getConfiguredConnections();
-            
-            if (clusterNames.length === 0) {
-                const addServer = await vscode.window.showInformationMessage(
-                    'No server connections configured.',
-                    'Add Server'
-                );
-                if (addServer) {
-                    await vscode.commands.executeCommand('kusto.addServer');
-                }
-                return;
-            }
-
-            const cluster = await vscode.window.showQuickPick(clusterNames, {
-                placeHolder: 'Select a cluster',
-                title: 'Select Cluster'
-            });
-
-            if (!cluster) {
-                return;
-            }
-
-            const databases = await connections.getDatabasesForCluster(cluster);
-            
-            if (databases.length === 0) {
-                const noDbSelection = await vscode.window.showInformationMessage(
-                    `No databases found for cluster "${cluster}".`,
-                    'Connect without database'
-                );
-                if (noDbSelection) {
-                    await connections.setDocumentConnection(editor.document.uri.toString(), cluster, undefined);
-                }
-                return;
-            }
-
-            const databaseChoices = ['<None>', ...databases];
-            const database = await vscode.window.showQuickPick(databaseChoices, {
-                placeHolder: 'Select a database',
-                title: `Select Database for ${cluster}`
-            });
-
-            if (!database) {
-                return;
-            }
-
-            await connections.setDocumentConnection(
-                editor.document.uri.toString(),
-                cluster,
-                database === '<None>' ? undefined : database
-            );
         })
     );
 }

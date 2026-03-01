@@ -13,8 +13,6 @@ export function activate(context: vscode.ExtensionContext): void {
         0  // priority (higher = more to the left)
     );
     connectionStatusBarItem.text = "$(database) not connected";
-    connectionStatusBarItem.tooltip = "Click to change connection";
-    connectionStatusBarItem.command = "kusto.connectDatabase";
     connectionStatusBarItem.show();
     context.subscriptions.push(connectionStatusBarItem);
 
