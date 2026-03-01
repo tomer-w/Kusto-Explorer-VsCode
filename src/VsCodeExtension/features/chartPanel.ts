@@ -179,14 +179,26 @@ const chartMessageHandlerScript = `
         const vscodeApi = (typeof acquireVsCodeApi === 'function') ? acquireVsCodeApi() : null;
         if (!vscodeApi) return;
 
-        // Layout overrides for transparent copy
-        const transparentLayout = {
+        // Light-mode color overrides (dot-notation keys for precise save/restore)
+        const lightModeColors = {
+            'font.color': '#333333',
+            'xaxis.color': '#333333',
+            'xaxis.gridcolor': '#e0e0e0',
+            'yaxis.color': '#333333',
+            'yaxis.gridcolor': '#e0e0e0',
+            'legend.font.color': '#333333'
+        };
+
+        // Transparent background for SVG (pastes well into Word/Outlook)
+        const transparentBg = {
             paper_bgcolor: 'rgba(0,0,0,0)',
-            plot_bgcolor: 'rgba(0,0,0,0)',
-            font: { color: '#333333' },
-            xaxis: { color: '#333333', gridcolor: '#e0e0e0' },
-            yaxis: { color: '#333333', gridcolor: '#e0e0e0' },
-            legend: { font: { color: '#333333' } }
+            plot_bgcolor: 'rgba(0,0,0,0)'
+        };
+
+        // White background for bitmap (pastes well into Teams/Discord)
+        const whiteBg = {
+            paper_bgcolor: '#ffffff',
+            plot_bgcolor: '#ffffff'
         };
 
         window.addEventListener('message', async event => {
@@ -204,26 +216,35 @@ const chartMessageHandlerScript = `
                         let savedLayout = null;
                         if (transparent) {
                             const layout = plotDiv.layout || {};
+                            // Use dot-notation keys so Plotly restores nested properties correctly.
                             savedLayout = {
                                 paper_bgcolor: layout.paper_bgcolor,
                                 plot_bgcolor: layout.plot_bgcolor,
-                                font: layout.font ? JSON.parse(JSON.stringify(layout.font)) : undefined,
-                                xaxis: layout.xaxis ? JSON.parse(JSON.stringify(layout.xaxis)) : undefined,
-                                yaxis: layout.yaxis ? JSON.parse(JSON.stringify(layout.yaxis)) : undefined,
-                                legend: layout.legend ? JSON.parse(JSON.stringify(layout.legend)) : undefined
+                                'font.color': layout.font?.color ?? null,
+                                'xaxis.color': layout.xaxis?.color ?? null,
+                                'xaxis.gridcolor': layout.xaxis?.gridcolor ?? null,
+                                'yaxis.color': layout.yaxis?.color ?? null,
+                                'yaxis.gridcolor': layout.yaxis?.gridcolor ?? null,
+                                'legend.font.color': layout.legend?.font?.color ?? null
                             };
-                            await Plotly.relayout(plotDiv, transparentLayout);
-                        }
 
-                        const pngDataUrl = await Plotly.toImage(plotDiv, { format: 'png', width: width, height: height });
-                        const svgDataUrl = await Plotly.toImage(plotDiv, { format: 'svg', width: width, height: height });
+                            // Generate transparent SVG with light-mode colors
+                            await Plotly.relayout(plotDiv, { ...transparentBg, ...lightModeColors });
+                            const svgDataUrl = await Plotly.toImage(plotDiv, { format: 'svg', width: width, height: height });
 
-                        // Restore original layout if we changed it
-                        if (transparent && savedLayout) {
+                            // Generate white-background PNG with light-mode colors (for bitmap: Teams, Discord)
+                            await Plotly.relayout(plotDiv, whiteBg);
+                            const pngDataUrl = await Plotly.toImage(plotDiv, { format: 'png', width: width, height: height });
+
+                            // Restore original layout
                             await Plotly.relayout(plotDiv, savedLayout);
-                        }
 
-                        vscodeApi.postMessage({ command: 'copyChartResult', pngDataUrl: pngDataUrl, svgDataUrl: svgDataUrl });
+                            vscodeApi.postMessage({ command: 'copyChartResult', pngDataUrl: pngDataUrl, svgDataUrl: svgDataUrl });
+                        } else {
+                            const pngDataUrl = await Plotly.toImage(plotDiv, { format: 'png', width: width, height: height });
+                            const svgDataUrl = await Plotly.toImage(plotDiv, { format: 'svg', width: width, height: height });
+                            vscodeApi.postMessage({ command: 'copyChartResult', pngDataUrl: pngDataUrl, svgDataUrl: svgDataUrl });
+                        }
                     } else {
                         // Fallback: use canvas if available
                         const canvas = document.querySelector('canvas');

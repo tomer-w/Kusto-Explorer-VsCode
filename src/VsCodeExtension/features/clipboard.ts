@@ -159,6 +159,14 @@ function copyToClipboardWindows(items: ClipboardItem[]): Promise<void> {
                     $stream = New-Object System.IO.MemoryStream(,$bytes)
                     $streams += $stream
                     $data.SetData($item.format, $false, $stream)
+                    # Also set as standard bitmap so Electron apps (Teams, Discord) can paste it
+                    if ($item.format -eq 'PNG') {
+                        Add-Type -AssemblyName System.Drawing
+                        $imgStream = New-Object System.IO.MemoryStream(,$bytes)
+                        $streams += $imgStream
+                        $bitmap = [System.Drawing.Image]::FromStream($imgStream)
+                        $data.SetImage($bitmap)
+                    }
                 }
             }
             [System.Windows.Forms.Clipboard]::SetDataObject($data, $true)
