@@ -1,7 +1,7 @@
 {
-  "name": "kusto-lsp",
-  "displayName": "Kusto",
-  "description": "Kusto Query Language (KQL)",
+  "name": "kusto-explorer-vscode",
+  "displayName": "Kusto Explorer",
+  "description": "Edit, Run, Chart and Explore Kusto Queries (KQL)",
   "version": "0.1.0",
   "publisher": "Microsoft",
   "author": "Microsoft",

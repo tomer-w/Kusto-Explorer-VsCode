@@ -1,17 +1,15 @@
-﻿using Kusto.Data.Common;
+﻿using System.Collections.Immutable;
+using System.Data;
+using System.Runtime.CompilerServices;
+using System.Runtime.Serialization;
+using StreamJsonRpc;
+using LSP = Microsoft.VisualStudio.LanguageServer.Protocol;
+
+using Kusto.Data.Common;
 using Kusto.Language;
 using Kusto.Language.Editor;
 using Kusto.Language.Symbols;
 using Lsp.Common;
-using StreamJsonRpc;
-
-using System.Collections.Immutable;
-using System.Data;
-using System.Reflection.Metadata;
-using System.Runtime.CompilerServices;
-using System.Runtime.Serialization;
-using System.Xml.Linq;
-using LSP=Microsoft.VisualStudio.LanguageServer.Protocol;
 
 namespace Kusto.Lsp;
 
