@@ -113,3 +113,14 @@ A VS Code extension for the Kusto Query Language (KQL)
 ## Installing the VSIX manually
 
 Run `code --install-extension <vsix file> [--force]` on command line.
+
+## Uninstalling the extension manually
+
+Run `code --uninstall-extension Microsoft.kusto-explorer-vscode` on command line.
+
+## Launching in VS Code debug mode (without installing VSIX)
+
+1. Open VsCodeExtension folder in VS Code.
+2. Build the client side using `compile` command in explorer panel `NPM SCRIPTS`
+3. Build the server side using `build-debug-server` in explorer panel `NPM SCRIPTS`
+4. Press F5 to launch the extension in a new VS Code window with debugging enabled.

@@ -31,10 +31,10 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
 
     // Register query-related commands
     context.subscriptions.push(
-        vscode.commands.registerCommand('kusto.runQuery', () => runQuery(client)),
+        vscode.commands.registerCommand('kusto.runQuery', (startLine?: number, startChar?: number, endLine?: number, endChar?: number) => runQuery(client, rangeFromArgs(startLine, startChar, endLine, endChar))),
         vscode.commands.registerCommand('kusto.copyQuery', () => copyQuery(client)),
-        vscode.commands.registerCommand('kusto.copyQueryTransparent', () => copyQueryTransparent(client)),
-        vscode.commands.registerCommand('kusto.formatQuery', () => formatQuery(client)),
+        vscode.commands.registerCommand('kusto.copyQueryTransparent', (startLine?: number, startChar?: number, endLine?: number, endChar?: number) => copyQueryTransparent(client, rangeFromArgs(startLine, startChar, endLine, endChar))),
+        vscode.commands.registerCommand('kusto.formatQuery', (startLine?: number, startChar?: number, endLine?: number, endChar?: number) => formatQuery(client, rangeFromArgs(startLine, startChar, endLine, endChar))),
         vscode.commands.registerCommand('kusto.selectQuery', (startLine: number, startChar: number, endLine: number, endChar: number) => selectQuery(startLine, startChar, endLine, endChar)),
         vscode.commands.registerCommand('kusto.showResults', (uri: string, line: number, character: number) => showResults(client, uri, line, character)),
         vscode.commands.registerCommand('kusto.refreshDocumentSchema', () => refreshDocumentSchema(client))
@@ -69,10 +69,23 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
 }
 
 /**
- * Runs the query at the current cursor position or selection.
- * @param client The language client for LSP communication
+ * Builds a SelectionRange from optional CodeLens arguments.
+ * Returns undefined when no arguments are provided (cursor-based fallback).
  */
-async function runQuery(client: LanguageClient): Promise<void> {
+function rangeFromArgs(startLine?: number, startChar?: number, endLine?: number, endChar?: number): server.SelectionRange | undefined {
+    if (startLine !== undefined && startChar !== undefined && endLine !== undefined && endChar !== undefined) {
+        return { start: { line: startLine, character: startChar }, end: { line: endLine, character: endChar } };
+    }
+    return undefined;
+}
+
+/**
+ * Runs the query at the current cursor position or selection,
+ * or the specific query range if provided (e.g. from a CodeLens).
+ * @param client The language client for LSP communication
+ * @param queryRange Optional query range from CodeLens; uses editor selection when omitted
+ */
+async function runQuery(client: LanguageClient, queryRange?: server.SelectionRange): Promise<void> {
     const editor = vscode.window.activeTextEditor;
     if (!editor || editor.document.languageId !== 'kusto') {
         return;
@@ -85,7 +98,7 @@ async function runQuery(client: LanguageClient): Promise<void> {
 
     try {
         const uri = editor.document.uri.toString();
-        const selection = {
+        const selection = queryRange ?? {
             start: { line: editor.selection.start.line, character: editor.selection.start.character },
             end: { line: editor.selection.end.line, character: editor.selection.end.character }
         };
@@ -229,7 +242,7 @@ async function copyQuery(client: LanguageClient): Promise<void> {
  * Uses the server to generate HTML rather than the editor's current theme.
  * @param client The language client for LSP communication
  */
-async function copyQueryTransparent(client: LanguageClient): Promise<void> {
+async function copyQueryTransparent(client: LanguageClient, codeLensRange?: server.SelectionRange): Promise<void> {
     const editor = vscode.window.activeTextEditor;
     if (!editor || editor.document.languageId !== 'kusto') {
         return;
@@ -237,13 +250,16 @@ async function copyQueryTransparent(client: LanguageClient): Promise<void> {
 
     try {
         const uri = editor.document.uri.toString();
-        const cursorPos = editor.selection.active;
 
-        // Get the query range containing the cursor position from the server
-        const queryRange = await server.getQueryRange(
-            client, uri,
-            { line: cursorPos.line, character: cursorPos.character }
-        );
+        // Use the CodeLens range if provided, otherwise resolve from cursor position
+        let queryRange: server.Range | undefined | null = codeLensRange;
+        if (!queryRange) {
+            const cursorPos = editor.selection.active;
+            queryRange = await server.getQueryRange(
+                client, uri,
+                { line: cursorPos.line, character: cursorPos.character }
+            );
+        }
 
         if (!queryRange) {
             return;
@@ -317,20 +333,23 @@ function wrapHtmlForClipboard(html: string): string {
  * Formats the query at the current cursor position using the LSP range formatting.
  * @param client The language client for LSP communication
  */
-async function formatQuery(client: LanguageClient): Promise<void> {
+async function formatQuery(client: LanguageClient, codeLensRange?: server.SelectionRange): Promise<void> {
     const editor = vscode.window.activeTextEditor;
     if (!editor || editor.document.languageId !== 'kusto') {
         return;
     }
 
     try {
-        // Get the query range containing the cursor position
-        const cursorPos = editor.selection.active;
-        const queryRange = await server.getQueryRange(
-            client,
-            editor.document.uri.toString(),
-            { line: cursorPos.line, character: cursorPos.character }
-        );
+        // Use the CodeLens range if provided, otherwise resolve from cursor position
+        let queryRange: server.Range | undefined | null = codeLensRange;
+        if (!queryRange) {
+            const cursorPos = editor.selection.active;
+            queryRange = await server.getQueryRange(
+                client,
+                editor.document.uri.toString(),
+                { line: cursorPos.line, character: cursorPos.character }
+            );
+        }
 
         if (!queryRange) {
             return;
@@ -439,21 +458,24 @@ class KustoCodeLensProvider implements vscode.CodeLensProvider {
                 lenses.push(new vscode.CodeLens(vsRange, {
                     title: '▶ Run',
                     command: 'kusto.runQuery',
-                    tooltip: 'Run this query'
+                    tooltip: 'Run this query',
+                    arguments: [range.start.line, range.start.character, range.end.line, range.end.character]
                 }));
             }
 
             lenses.push(new vscode.CodeLens(vsRange, {
                 title: '📋 Copy',
                 command: 'kusto.copyQueryTransparent',
-                tooltip: 'Copy this query with syntax highlighting'
+                tooltip: 'Copy this query with syntax highlighting',
+                arguments: [range.start.line, range.start.character, range.end.line, range.end.character]
             }));
 
             if (!isEntityDefinition) {
                 lenses.push(new vscode.CodeLens(vsRange, {
                     title: '✎ Format',
                     command: 'kusto.formatQuery',
-                    tooltip: 'Format this query'
+                    tooltip: 'Format this query',
+                    arguments: [range.start.line, range.start.character, range.end.line, range.end.character]
                 }));
 
                 // Only show Results lens if there is cached data for this query

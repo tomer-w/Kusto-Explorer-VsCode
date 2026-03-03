@@ -1,11 +1,12 @@
 {
   "name": "kusto-explorer-vscode",
   "displayName": "Kusto Explorer",
-  "description": "Edit, Run, Chart and Explore Kusto Queries (KQL)",
+  "description": "Edit, run and chart Kusto queries (KQL).",
   "version": "0.1.0",
   "publisher": "Microsoft",
   "author": "Microsoft",
   "license": "MIT",
+  "icon": "images/kusto_explorer.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/microsoft/Kusto-Language-Server"

@@ -63,12 +63,18 @@ public class ConnectionManager : IConnectionManager
 
         return info.Connection;
 
-        ConnectionInfo CreateConnectionInfo(string cs)
+        ConnectionInfo CreateConnectionInfo(string connectionString)
         {
-            var builder = new KustoConnectionStringBuilder(cs);
+            var builder = new KustoConnectionStringBuilder(connectionString);
+
+            // if no schema is provided, default to https
+            if (string.IsNullOrEmpty(builder.ConnectionScheme))
+            {
+                builder.ConnectionScheme = "https://";
+            }
 
             // if is not explicitly a connection string, add federated security
-            if (!cs.Contains(";"))
+            if (!connectionString.Contains(";"))
             {
                 builder.FederatedSecurity = true;
             }
@@ -107,17 +113,17 @@ public class ConnectionManager : IConnectionManager
 
         public IConnection WithCluster(string clusterName)
         {
-            var clusterUri = clusterName;
+            var clusterUri = KustoFacts.GetFullHostName(clusterName, _manager._defaultDomain);
 
-            if (!clusterUri.Contains("://"))
+            if (!clusterUri.Contains("://")
+                && !string.IsNullOrEmpty(_builder.ConnectionScheme))
             {
                 clusterUri = _builder.ConnectionScheme + "://" + clusterUri;
             }
 
-            clusterUri = KustoFacts.GetFullHostName(clusterUri, _manager._defaultDomain);
-
             // borrow most security settings from default cluster connection
             var builder = new KustoConnectionStringBuilder(_builder);
+
             builder.DataSource = clusterUri;
             builder.ApplicationCertificateBlob = _builder.ApplicationCertificateBlob;
             builder.ApplicationKey = _builder.ApplicationKey;
