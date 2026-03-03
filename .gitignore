@@ -421,4 +421,5 @@ FodyWeavers.xsd
 src/VsCodeExtension/server/
 src/VsCodeExtension/out/
 src/VsCodeExtension/LICENSE
+src/VsCodeExtension/PATH.TXT
 
