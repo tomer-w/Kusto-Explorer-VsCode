@@ -1,4 +1,7 @@
-﻿using Newtonsoft.Json.Linq;
+﻿// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+using Newtonsoft.Json.Linq;
 using System.Collections.Immutable;
 
 namespace Kusto.Lsp;

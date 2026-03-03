@@ -1,4 +1,7 @@
-﻿using Kusto.Data.Common;
+﻿// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+using Kusto.Data.Common;
 using Kusto.Language;
 
 namespace Kusto.Lsp;

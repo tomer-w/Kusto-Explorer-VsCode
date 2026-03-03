@@ -1,4 +1,7 @@
-﻿using Kusto.Lsp;
+﻿// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+using Kusto.Lsp;
 using System.Collections.Immutable;
 
 namespace KustoLspTests;

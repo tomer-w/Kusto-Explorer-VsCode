@@ -1,4 +1,7 @@
-﻿using Kusto.Language.Symbols;
+﻿// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+using Kusto.Language.Symbols;
 using System.Collections.Immutable;
 
 namespace Kusto.Lsp;

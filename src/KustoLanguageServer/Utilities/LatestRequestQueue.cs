@@ -1,4 +1,7 @@
-﻿namespace Kusto.Lsp;
+﻿// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+namespace Kusto.Lsp;
 
 /// <summary>
 /// A task queue that cancels the previous task when a new task is queued.

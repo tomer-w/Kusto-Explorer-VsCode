@@ -1,4 +1,7 @@
-﻿using System.Diagnostics.CodeAnalysis;
+﻿// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+using System.Diagnostics.CodeAnalysis;
 using Kusto.Data.Common;
 
 namespace Kusto.Lsp;

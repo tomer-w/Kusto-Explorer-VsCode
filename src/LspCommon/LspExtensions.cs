@@ -1,4 +1,7 @@
-﻿using System.Runtime.Serialization;
+﻿// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+using System.Runtime.Serialization;
 
 namespace Microsoft.VisualStudio.LanguageServer.Protocol;
 

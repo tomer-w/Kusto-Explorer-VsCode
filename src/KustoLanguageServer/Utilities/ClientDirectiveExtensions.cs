@@ -1,4 +1,7 @@
-﻿using Kusto.Data;
+﻿// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+using Kusto.Data;
 using Kusto.Language;
 using Kusto.Language.Editor;
 using System.Collections.Immutable;

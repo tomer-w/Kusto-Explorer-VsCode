@@ -1,4 +1,7 @@
-﻿using System.Collections.Immutable;
+﻿// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
 using Kusto.Language;
 using Kusto.Language.Editor;

@@ -1,4 +1,7 @@
-﻿using Kusto.Language;
+﻿// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+using Kusto.Language;
 using Kusto.Language.Editor;
 using Kusto.Language.Parsing;
 using Kusto.Language.Symbols;

@@ -1,4 +1,7 @@
-﻿using Kusto.Cloud.Platform.Data;
+﻿// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+using Kusto.Cloud.Platform.Data;
 using Kusto.Cloud.Platform.Utils;
 using Kusto.Data;
 using Kusto.Data.Common;

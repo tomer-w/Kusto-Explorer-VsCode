@@ -1,4 +1,7 @@
-﻿namespace Kusto.Lsp;
+﻿// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+namespace Kusto.Lsp;
 
 public interface ISchemaManager : ISchemaSource
 {

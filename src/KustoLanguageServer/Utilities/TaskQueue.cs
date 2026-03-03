@@ -1,4 +1,7 @@
-﻿namespace Kusto.Lsp;
+﻿// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+namespace Kusto.Lsp;
 
 /// <summary>
 /// Maintains a queue of tasks that run sequentially

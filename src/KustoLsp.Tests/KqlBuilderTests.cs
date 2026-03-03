@@ -1,4 +1,7 @@
-﻿using Kusto.Lsp;
+﻿// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+using Kusto.Lsp;
 using Kusto.Language.Editor;
 using Kusto.Language.Symbols;
 using System.Linq;
