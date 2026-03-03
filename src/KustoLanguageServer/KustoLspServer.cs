@@ -73,7 +73,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
         _symbolManager = new SymbolManager(_schemaManager, _optionsManager, logger);
         _documentManager = new DocumentManager(_symbolManager, logger);
         _resultsManager = new ResultsManager(_documentManager);
-        _diagnosticsManager = new DiagnosticsManager(_documentManager);
+        _diagnosticsManager = new DiagnosticsManager(_documentManager, logger);
         _queryManager = new QueryManager(_connectionManager, _documentManager, _optionsManager, logger);
         _chartManager = new PlotlyChartManager();
         _entityManager = new EntityManager(_schemaManager, _optionsManager);

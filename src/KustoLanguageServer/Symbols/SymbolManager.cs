@@ -42,6 +42,9 @@ public class SymbolManager : ISymbolManager
     /// </summary>
     public event EventHandler<GlobalState>? GlobalsChanged;
 
+    /// <summary>
+    /// Update the shared globals and notify listeners.
+    /// </summary>
     private void SetGlobals(GlobalState newGlobals)
     {
         newGlobals = newGlobals.WithDomain(_optionsManager.DefaultDomain);
@@ -230,43 +233,44 @@ public class SymbolManager : ISymbolManager
     {
         return _taskQueue.Run(cancellationToken, async (useThisCancellationToken) =>
         {
+            _logger?.Log($"SymbolManager: Resolving references for document '{document.Id}'");
+
             try
             {
-                var newGlobals = await this.AddReferencedSymbols(document.Globals, document, cancellationToken).ConfigureAwait(false);
+                // start with the latest clusters
+                document = document.WithGlobals(document.Globals.WithClusterList(this.Globals.Clusters));
+
+                // use current globals
+                var resolvedGlobals = await ResolveReferencesDeepAsync(document, cancellationToken).ConfigureAwait(false);
+                
+                // backfill any changes to the clusters
+                var newGlobals = this.Globals.WithClusterList(resolvedGlobals.Clusters);
                 SetGlobals(newGlobals);
             }
             catch (Exception e)
             {
-                _logger?.Log($"SymbolManager: Error resolving symbols for document '{document.Text}': {e.Message}");
+                _logger?.Log($"SymbolManager: Error resolving symbols for document '{document.Id}': {e.Message}");
             }
         });
-    }
 
-    /// <summary>
-    /// Maximum loops allowed when checking for additional references after just adding referenced database schema.
-    /// If this is exceeded then there is probably a bug that keeps updating the globals even when no new found databases are added.
-    /// </summary>
-    private const int MaxLoopCount = 20;
-
-    private readonly Dictionary<string, HashSet<string>> _clustersResolvedOrInvalid
-        = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
-
-    private async Task<GlobalState> AddReferencedSymbols(GlobalState globals, IDocument document, CancellationToken cancellationToken)
-    {
-        // keep looping until no more changes are made to the globals
-        for (int loopCount = 0; loopCount < MaxLoopCount; loopCount++)
+        async Task<GlobalState> ResolveReferencesDeepAsync(IDocument document, CancellationToken cancellationToken)
         {
-            var newGlobals = await ResolveReferencesAsync(globals, document, cancellationToken).ConfigureAwait(false);
-            if (newGlobals == globals)
-                return newGlobals;
-            document = document.WithGlobals(newGlobals);
-            globals = newGlobals;
+            // keep looping until no more changes are made to the globals
+            for (int loopCount = 0; loopCount < MaxLoopCount; loopCount++)
+            {
+                var newGlobals = await ResolveReferencesAsync(document, cancellationToken).ConfigureAwait(false);
+                if (newGlobals == document.Globals)
+                    return newGlobals;
+                document = document.WithGlobals(newGlobals);
+            }
+
+            return document.Globals;
         }
 
-        return globals;
-
-        async Task<GlobalState> ResolveReferencesAsync(GlobalState globals, IDocument document, CancellationToken cancellationToken = default)
+        async Task<GlobalState> ResolveReferencesAsync(IDocument document, CancellationToken cancellationToken)
         {
+            var globals = document.Globals;
+
             var contextCluster = document.Globals.Cluster != ClusterSymbol.Unknown ? document.Globals.Cluster.Name : null;
 
             // find all explicit cluster('xxx') references
@@ -327,4 +331,14 @@ public class SymbolManager : ISymbolManager
             return globals;
         }
     }
+
+    /// <summary>
+    /// Maximum loops allowed when checking for additional references after just adding referenced database schema.
+    /// If this is exceeded then there is probably a bug that keeps updating the globals even when no new found databases are added.
+    /// </summary>
+    private const int MaxLoopCount = 20;
+
+    private readonly Dictionary<string, HashSet<string>> _clustersResolvedOrInvalid
+        = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+
 }

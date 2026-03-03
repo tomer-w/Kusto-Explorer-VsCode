@@ -1,5 +1,6 @@
 ﻿using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
+using System.Reflection.Metadata;
 
 namespace Kusto.Lsp;
 
@@ -8,7 +9,7 @@ public class DocumentManager : IDocumentManager
     private readonly ISymbolManager _symbolManager;
     private readonly ILogger? _logger;
 
-    private ImmutableDictionary<Uri, DocumentInfo> _idToScriptInfoMap =
+    private ImmutableDictionary<Uri, DocumentInfo> _idToInfoMap =
         ImmutableDictionary<Uri, DocumentInfo>.Empty;
 
     public DocumentManager(
@@ -21,9 +22,9 @@ public class DocumentManager : IDocumentManager
         // update scripts when global symbols change
         _symbolManager.GlobalsChanged += (_, _) =>
         {
-            foreach (var id in _idToScriptInfoMap.Keys)
+            foreach (var id in _idToInfoMap.Keys)
             {
-                UpdateGlobalsAsync(id);
+                UpdateGlobals(id);
             }
         };
     }
@@ -47,7 +48,6 @@ public class DocumentManager : IDocumentManager
             Task.Run(() => this.DocumentRemoved?.Invoke(this, id));
         }
     }
-
 
     /// <summary>
     /// An event that is raised when a script has changed (text or globals).
@@ -86,7 +86,7 @@ public class DocumentManager : IDocumentManager
 
     public ImmutableList<Uri> GetDocumentIds()
     {
-        return _idToScriptInfoMap.Keys.ToImmutableList();
+        return _idToInfoMap.Keys.ToImmutableList();
     }
 
     /// <summary>
@@ -95,7 +95,7 @@ public class DocumentManager : IDocumentManager
     private DocumentInfo GetOrCreateDocumentInfo(Uri id)
     {
         return ImmutableInterlocked.GetOrAdd(
-            ref _idToScriptInfoMap, id, 
+            ref _idToInfoMap, id, 
             _ => new DocumentInfo(id) { Document = new SectionedDocument(id, "", _symbolManager.Globals) }
             );
     }
@@ -122,7 +122,7 @@ public class DocumentManager : IDocumentManager
     {
         _logger?.Log($"DocumentManager: Removing document {id}");
 
-        ImmutableInterlocked.TryRemove(ref _idToScriptInfoMap, id, out _);
+        ImmutableInterlocked.TryRemove(ref _idToInfoMap, id, out _);
         RaiseDocumentRemoved(id);
     }
 
@@ -148,8 +148,11 @@ public class DocumentManager : IDocumentManager
         }
         else
         {
+            UpdateGlobals(info);
+            ResolveSymbolsAsync(info);
+
             // No cluster, so just update globals to reflect that
-            return UpdateGlobalsAsync(id);
+            return Task.CompletedTask;
         }
     }
 
@@ -158,7 +161,7 @@ public class DocumentManager : IDocumentManager
     /// </summary>
     public DocumentConnection GetConnection(Uri documentId)
     {
-        if (_idToScriptInfoMap.TryGetValue(documentId, out var info))
+        if (_idToInfoMap.TryGetValue(documentId, out var info))
         {
             return new DocumentConnection(info.Cluster, info.Database);
         }
@@ -180,10 +183,10 @@ public class DocumentManager : IDocumentManager
                 // instruct symbol manager to load symbols for this cluster and database
                 // this will trigger a globals changed event when done, which will update all the script globals
                 await _symbolManager.EnsureSymbolsAsync(info.Cluster, info.Database, contextCluster: null, useThisCancellationToken);
+                UpdateGlobals(info);
             }
 
-            // force additional update since globals may not have changed.
-            await UpdateGlobalsAsync(info.Id);
+            _ = ResolveSymbolsAsync(info);
         });
     }
 
@@ -192,7 +195,7 @@ public class DocumentManager : IDocumentManager
     /// </summary>
     public Task UpdateTextAsync(Uri documentId, string newText)
     {
-        if (_idToScriptInfoMap.TryGetValue(documentId, out var info))
+        if (_idToInfoMap.TryGetValue(documentId, out var info))
         {
             if (newText != info.Document.Text)
             {
@@ -220,53 +223,59 @@ public class DocumentManager : IDocumentManager
     }
 
     /// <summary>
-    /// Updates the script with the latest globals from the symbol manager.
+    /// Updates the document with the latest globals from the symbol manager.
     /// </summary>
-    public Task UpdateGlobalsAsync(Uri documentId)
+    private void UpdateGlobals(Uri documentId)
     {
-        if (_idToScriptInfoMap.TryGetValue(documentId, out var info))
+        if (_idToInfoMap.TryGetValue(documentId, out var info))
         {
-            var originalScript = info.Document;
+            UpdateGlobals(info);
+        }
+    }
 
-            // update script with latest symbols
-            var newGlobals = originalScript.Globals.WithClusterList(_symbolManager.Globals.Clusters);
+    /// <summary>
+    /// Updates the document with the latest globals from the symbol manager.
+    /// </summary>
+    private void UpdateGlobals(DocumentInfo info)
+    {
+        var originalDoc = info.Document;
 
-            // set server kind (default to Engine if unknown)
-            newGlobals = newGlobals.WithServerKind(info.ServerKind ?? Kusto.Language.ServerKinds.Engine);
+        // update script with latest symbols
+        var newGlobals = originalDoc.Globals.WithClusterList(_symbolManager.Globals.Clusters);
 
-            if (info.Cluster == null 
-                && newGlobals.Cluster != Language.Symbols.ClusterSymbol.Unknown)
-            {
-                newGlobals = newGlobals.WithCluster(Language.Symbols.ClusterSymbol.Unknown);
-            }
-            else if (info.Cluster != null 
-                && newGlobals.GetCluster(info.Cluster) is { } clusterSymbol
-                && newGlobals.Cluster != clusterSymbol)
-            {
-                newGlobals = newGlobals.WithCluster(clusterSymbol);
-            }
+        // set server kind (default to Engine if unknown)
+        newGlobals = newGlobals.WithServerKind(info.ServerKind ?? Kusto.Language.ServerKinds.Engine);
 
-            if (info.Database == null 
-                && newGlobals.Database != Language.Symbols.DatabaseSymbol.Unknown)
-            {
-                newGlobals = newGlobals.WithDatabase(Language.Symbols.DatabaseSymbol.Unknown);
-            }
-            else if (info.Database != null 
-                && newGlobals.Cluster.GetDatabase(info.Database) is { } databaseSymbol
-                && newGlobals.Database != databaseSymbol)
-            {
-                newGlobals = newGlobals.WithDatabase(databaseSymbol);
-            }
-
-            if (originalScript.Globals != newGlobals)
-            {
-                var script = originalScript.WithGlobals(newGlobals);
-                info.Document = script;
-                RaiseDocumentChanged(documentId);
-            }
+        if (info.Cluster == null
+            && newGlobals.Cluster != Language.Symbols.ClusterSymbol.Unknown)
+        {
+            newGlobals = newGlobals.WithCluster(Language.Symbols.ClusterSymbol.Unknown);
+        }
+        else if (info.Cluster != null
+            && newGlobals.GetCluster(info.Cluster) is { } clusterSymbol
+            && newGlobals.Cluster != clusterSymbol)
+        {
+            newGlobals = newGlobals.WithCluster(clusterSymbol);
         }
 
-        return Task.CompletedTask;
+        if (info.Database == null
+            && newGlobals.Database != Language.Symbols.DatabaseSymbol.Unknown)
+        {
+            newGlobals = newGlobals.WithDatabase(Language.Symbols.DatabaseSymbol.Unknown);
+        }
+        else if (info.Database != null
+            && newGlobals.Cluster.GetDatabase(info.Database) is { } databaseSymbol
+            && newGlobals.Database != databaseSymbol)
+        {
+            newGlobals = newGlobals.WithDatabase(databaseSymbol);
+        }
+
+        if (originalDoc.Globals != newGlobals)
+        {
+            var newDoc = originalDoc.WithGlobals(newGlobals);
+            info.Document = newDoc;
+            RaiseDocumentChanged(info.Id);
+        }
     }
 
     /// <summary>
@@ -274,8 +283,9 @@ public class DocumentManager : IDocumentManager
     /// </summary>
     public bool TryGetDocument(Uri documentId, [NotNullWhen(true)] out IDocument? document)
     {
-        if (_idToScriptInfoMap.TryGetValue(documentId, out var info))
+        if (_idToInfoMap.TryGetValue(documentId, out var info))
         {
+            UpdateGlobals(info);
             document = info.Document;
             return true;
         }

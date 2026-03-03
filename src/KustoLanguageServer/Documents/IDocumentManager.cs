@@ -1,5 +1,6 @@
 ﻿using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
+using Kusto.Language;
 using Kusto.Language.Editor;
 
 
@@ -36,11 +37,6 @@ public interface IDocumentManager
     /// Updates the document's text
     /// </summary>
     Task UpdateTextAsync(Uri id, string newText);
-
-    /// <summary>
-    /// Updates the documents globals
-    /// </summary>
-    Task UpdateGlobalsAsync(Uri id);
 
     /// <summary>
     /// Gets the current document for the specified id

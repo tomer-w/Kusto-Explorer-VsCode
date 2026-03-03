@@ -1,4 +1,7 @@
-﻿import * as path from 'path';
+﻿// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { workspace, ExtensionContext, window } from 'vscode';
 import * as conn from './features/connectionsPanel'

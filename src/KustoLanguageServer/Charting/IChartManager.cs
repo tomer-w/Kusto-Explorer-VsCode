@@ -1,4 +1,7 @@
-﻿using System.Data;
+﻿// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+using System.Data;
 using Kusto.Data.Utils;
 
 namespace Kusto.Lsp;

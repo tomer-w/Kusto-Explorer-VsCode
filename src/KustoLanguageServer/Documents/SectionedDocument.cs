@@ -38,8 +38,8 @@ public class SectionedDocument : IDocument
     }
 
     public IDocument WithGlobals(GlobalState globals)
-    {  
-        return new SectionedDocument(_id, _script.WithGlobals(globals)); 
+    {
+        return new SectionedDocument(_id, _script.WithGlobals(globals));
     }
 
     // use codeservice as key, since it does not change across edits of other blocks.

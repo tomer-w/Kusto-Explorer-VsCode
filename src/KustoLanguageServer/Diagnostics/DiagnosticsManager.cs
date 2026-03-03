@@ -10,11 +10,14 @@ public record DiagnosticInfo(Uri Id, string Text, ImmutableList<Diagnostic> Diag
 public class DiagnosticsManager : IDiagnosticsManager
 {
     private readonly IDocumentManager _documentManager;
+    private readonly ILogger? _logger;
 
     public DiagnosticsManager(
-        IDocumentManager scriptManager)
+        IDocumentManager scriptManager,
+        ILogger? logger = null)
     {
         _documentManager = scriptManager;
+        _logger = logger;
 
         _documentManager.DocumentAdded += (s, id) =>
         {
@@ -75,6 +78,8 @@ public class DiagnosticsManager : IDiagnosticsManager
                 // wait for delay before starting work (to batch up multiple changes)
                 await Task.Delay(10, useThisCancellationToken);
                 useThisCancellationToken.ThrowIfCancellationRequested();
+
+                _logger?.Log($"Recomputed diagnostics for: {documentId}");
 
                 var diagnostics = new List<Diagnostic>();
 
