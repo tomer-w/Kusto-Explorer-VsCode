@@ -3,10 +3,6 @@
 Edit, run and chart Kusto queries (KQL).
 Explore databases and query results.
 
-<img src="./images/kusto_explorer.png" 
-     alt="Kusto Explorer" 
-     width="128">
-
 ## Features
 
 - KQL Documents
