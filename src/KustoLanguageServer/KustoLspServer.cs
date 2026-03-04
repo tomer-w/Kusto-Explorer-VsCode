@@ -16,7 +16,7 @@ using Lsp.Common;
 
 namespace Kusto.Lsp;
 
-public class KustoLspServer : LspServer, ILogger, ISettingSource
+public class KustoLspServer : LspServer, ILogger, ISettingSource, IDataManager
 {
     private readonly IOptionsManager _optionsManager;
     private readonly IConnectionManager _connectionManager;
@@ -69,10 +69,11 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
         _args = args.ToImmutableList();
         ILogger logger = this;
         ISettingSource settingSource = this;
+        IDataManager dataManager = this;
         _optionsManager = new OptionsManager(settingSource);
         _connectionManager = new ConnectionManager();
         var schemaSource = new ServerSchemaSource(_connectionManager, logger);
-        _schemaManager = new SchemaManager(schemaSource, logger);
+        _schemaManager = new SchemaManager(schemaSource, dataManager, logger);
         _symbolManager = new SymbolManager(_schemaManager, _optionsManager, logger);
         _documentManager = new DocumentManager(_symbolManager, logger);
         _resultsManager = new ResultsManager(_documentManager);
@@ -1460,8 +1461,14 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
 
             _ = this.SendWindowLogMessageAsync($"RefreshSchema: refreshing schema for cluster: {clusterName}, database: {databaseName ?? "(all)"}");
 
-            // Refresh the schema cache first
-            await _schemaManager.RefreshAsync(clusterName, databaseName, cancellationToken).ConfigureAwait(false);
+            if (databaseName != null)
+            {
+                await _schemaManager.ClearCachedDatabaseAsync(clusterName, databaseName, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                await _schemaManager.ClearCachedClusterAsync(clusterName, cancellationToken).ConfigureAwait(false);
+            }
 
             // Refresh the symbol cache
             await _symbolManager.RefreshAsync(clusterName, databaseName, cancellationToken).ConfigureAwait(false);
@@ -1492,11 +1499,18 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
         {
             if (_documentManager.TryGetDocument(@params.Uri, out var document))
             {
-                var dbRefs = document.GetDatabaseReferences(cancellationToken);
+                // get list of unique database references in the document
+                var dbRefs = document
+                    .GetDatabaseReferences(cancellationToken)
+                    .Select(dbr => (dbr.Cluster, dbr.Database))
+                    .Distinct()
+                    .ToList();
+
                 foreach (var dbRef in dbRefs)
                 {
-                    // Refresh the schema cache first
-                    await _schemaManager.RefreshAsync(dbRef.Cluster, dbRef.Database, cancellationToken).ConfigureAwait(false);
+                    // clear the cached databases
+                    await _schemaManager.ClearCachedDatabaseAsync(dbRef.Cluster, dbRef.Database, cancellationToken).ConfigureAwait(false);
+
                     // Refresh the symbol cache
                     await _symbolManager.RefreshAsync(dbRef.Cluster, dbRef.Database, cancellationToken).ConfigureAwait(false);
                 }
@@ -2498,4 +2512,59 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource
     }
 
     #endregion
+
+    #region Client Storage
+
+    /// <summary>
+    /// Requests stored data from the client.
+    /// Returns default if no data exists for the given key.
+    /// </summary>
+    /// <typeparam name="T">The type to deserialize the data as</typeparam>
+    /// <param name="key">A unique key identifying the stored data</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>The stored data deserialized as T, or default if not found</returns>
+    public Task<T?> GetDataAsync<T>(string key, CancellationToken cancellationToken)
+    {
+        return SendRequestAsync<T?>(
+            "kusto/getData",
+            new GetDataParams { Key = key },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Requests the client to store data in its persistent storage.
+    /// Pass null for data to remove the key.
+    /// </summary>
+    /// <typeparam name="T">The type of data to store</typeparam>
+    /// <param name="key">A unique key identifying the data</param>
+    /// <param name="data">The data to store, or null to remove</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    public Task SetDataAsync<T>(string key, T? data, CancellationToken cancellationToken)
+    {
+        return SendRequestAsync<object?>(
+            "kusto/setData",
+            new SetDataParams<T> { Key = key, Data = data },
+            cancellationToken);
+    }
+
+    [DataContract]
+    public class GetDataParams
+    {
+        [DataMember(Name = "key")]
+        public required string Key { get; set; }
+    }
+
+    [DataContract]
+    public class SetDataParams<T>
+    {
+        [DataMember(Name = "key")]
+        public required string Key { get; set; }
+
+        [DataMember(Name = "data")]
+        public T? Data { get; set; }
+    }
+
+    #endregion
 }
+
+

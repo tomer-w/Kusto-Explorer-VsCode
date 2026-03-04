@@ -6,8 +6,6 @@ using Kusto.Data.Common;
 using Kusto.Language;
 using Kusto.Language.Symbols;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
-using System.Collections.Generic;
 using System.Collections.Immutable;
 
 namespace Kusto.Lsp;
@@ -267,7 +265,7 @@ public class ServerSchemaSource : ISchemaSource
 
         var infos = new List<MaterializedViewInfo>();
 
-        foreach (var mv in entities)
+        foreach (var mv in mviews)
         {
             var mvCommand = CslCommandGenerator.GenerateMaterializedViewShowCommand(mv.EntityName);
             var mvShow = (await connection.ExecuteAsync<MaterializedViewShowCommandResult>(mvCommand, cancellationToken: cancellationToken).ConfigureAwait(false)).Values?.FirstOrDefault();

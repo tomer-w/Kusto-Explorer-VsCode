@@ -11,116 +11,304 @@ namespace Kusto.Lsp;
 public class SchemaManager : ISchemaManager
 {
     private readonly ISchemaSource _source;
+    private readonly IDataManager _dataManager;
     private readonly ILogger? _logger;
     private TaskQueue _schemaQueue = new();
 
-    private class ClusterData
-    {
-        public required ClusterInfo Info;
+    private ImmutableDictionary<string, CachedCluster> _cachedClusters =
+        ImmutableDictionary<string, CachedCluster>.Empty;
 
-        public ImmutableDictionary<string, DatabaseInfo?> DatabaseInfoCache =
-            ImmutableDictionary<string, DatabaseInfo?>.Empty;
+    private enum CacheState
+    {
+        /// <summary>
+        /// The item is not in the manager's cache
+        /// </summary>
+        NotCached = 0,
+
+        /// <summary>
+        /// Cached item is from schema source
+        /// </summary>
+        SchemaSource,
+
+        /// <summary>
+        /// Cached item is from persistent data manager
+        /// </summary>
+        DataManager
     }
 
-    private ImmutableDictionary<string, ClusterData> _clusterDataCache =
-        ImmutableDictionary<string, ClusterData>.Empty;
+    private class CachedCluster
+    {
+        public required string Name { get; init; }
+        public string? ContextCluster { get; init; }
 
+        public CacheState State = CacheState.NotCached;
+        public ClusterInfo? Info;
 
-    public SchemaManager(ISchemaSource source, ILogger? logger)
+        public readonly LatestRequestQueue RefreshQueue = new LatestRequestQueue();
+        public ImmutableDictionary<string, CachedDatabase> CachedDatabases =
+            ImmutableDictionary<string, CachedDatabase>.Empty;
+    }
+
+    private class CachedDatabase
+    {
+        public required string Name { get; init; }
+
+        public CacheState State;
+        public DatabaseInfo? Info;
+
+        public readonly LatestRequestQueue RefreshQueue = new LatestRequestQueue();
+    }
+
+    public SchemaManager(
+        ISchemaSource source, 
+        IDataManager dataManager, 
+        ILogger? logger)
     {
         _source = source;
+        _dataManager = dataManager;
         _logger = logger;
     }
 
-    public Task RefreshAsync(string clusterName, string? databaseName, CancellationToken cancellationToken)
-    {
-        // just remove from cache and next request will refresh from source.
-        if (databaseName == null)
-        {
-            ImmutableInterlocked.TryRemove(ref _clusterDataCache, clusterName, out _);
-        }
-        else if (_clusterDataCache.TryGetValue(clusterName, out var clusterData))
-        {
-            ImmutableInterlocked.TryRemove(ref clusterData.DatabaseInfoCache, databaseName, out _);
-        }
+    /// <summary>
+    /// An event that fires when the cluster schema has been refreshed
+    /// </summary>
+    public event ClusterSchemaRefreshedHandler? ClusterRefreshed;
 
-        return Task.CompletedTask;
+    /// <summary>
+    /// An event that fire when the database schema has been refreshed
+    /// </summary>
+    public event DatabaseSchemaRefreshedHandler? DatabaseRefreshed;
+
+    /// <summary>
+    /// Determines the data manager key to user for cluster info
+    /// </summary>
+    private static string GetClusterDataKey(string clusterName) =>
+        $"cluster_info: {clusterName}";
+
+    /// <summary>
+    /// Determines the data manager key to user for database info.
+    /// </summary>
+    private static string GetDatabaseDataKey(string clusterName, string databaseName) =>
+        $"database_info: {clusterName};{databaseName}";
+
+    /// <summary>
+    /// Clears the cluster info (and related database info) from the schema cache.
+    /// </summary>
+    public async Task ClearCachedClusterAsync(string clusterName, CancellationToken cancellationToken)
+    {
+        if (_cachedClusters.TryGetValue(clusterName, out var cachedCluster))
+        {
+            // clear all related database infos
+            foreach (var databaseName in cachedCluster.CachedDatabases.Keys)
+            {
+                await ClearCachedDatabaseAsync(clusterName, databaseName, cancellationToken).ConfigureAwait(false);
+            }
+
+            // remove from data manager first
+            var key = GetClusterDataKey(cachedCluster.Name);
+            await _dataManager.SetDataAsync<ClusterInfo>(key, null, cancellationToken).ConfigureAwait(false);
+
+            // clear cached info
+            cachedCluster.Info = null;
+            cachedCluster.State = CacheState.NotCached;
+        }
     }
 
-    private async Task<ClusterData?> GetClusterDataAsync(string clusterName, string? contextCluster, CancellationToken cancellationToken)
+    /// <summary>
+    /// Clears the database info from the schema cache.
+    /// </summary>
+    public async Task ClearCachedDatabaseAsync(string clusterName, string databaseName, CancellationToken cancellationToken)
     {
-        if (!_clusterDataCache.TryGetValue(clusterName, out var clusterData))
+        if (_cachedClusters.TryGetValue(clusterName, out var cachedCluster)
+            && cachedCluster.CachedDatabases.TryGetValue(databaseName, out var cachedDatabase))
         {
-            // serialize actual schema reading
-            await _schemaQueue.Run(cancellationToken, async (useThisCancellationToken) =>
-            {
-                if (!_clusterDataCache.TryGetValue(clusterName, out clusterData))
-                {
-                    var info = await _source.GetClusterInfoAsync(clusterName, contextCluster, useThisCancellationToken).ConfigureAwait(false);
-                    if (info != null)
-                    {
-                        _logger?.Log($"SchemaManager: adding cluster {clusterName} info to cache");
+            // remove from data manager first
+            var key = GetDatabaseDataKey(cachedCluster.Name, cachedDatabase.Name);
+            await _dataManager.SetDataAsync<DatabaseInfo>(key, null, cancellationToken).ConfigureAwait(false);
 
-                        clusterData = ImmutableInterlocked.AddOrUpdate(
-                            ref _clusterDataCache,
-                            clusterName,
-                            new ClusterData { Info = info },
-                            (key, prev) =>
-                            {
-                                prev.Info = info;
-                                return prev;
-                            });
-                    }
-                }
-            });
+            // clear cached info
+            cachedDatabase.Info = null;
+            cachedDatabase.State = CacheState.NotCached;
         }
+    }
 
-        return clusterData;
+    private CachedCluster GetCachedCluster(string clusterName)
+    {
+        if (!_cachedClusters.TryGetValue(clusterName, out var cachedCluster))
+        {
+            cachedCluster = ImmutableInterlocked.GetOrAdd(ref _cachedClusters, clusterName, _name => new CachedCluster { Name = _name });
+        }
+        return cachedCluster;
     }
 
     public async Task<ClusterInfo?> GetClusterInfoAsync(string clusterName, string? contextCluster, CancellationToken cancellationToken)
     {
-        var clusterData = await GetClusterDataAsync(clusterName, contextCluster, cancellationToken).ConfigureAwait(false);
-        return clusterData?.Info;
+        var cachedCluster = GetCachedCluster(clusterName);
+
+        if (cachedCluster.Info == null 
+            && cachedCluster.State == CacheState.NotCached)
+        {
+            var key = GetClusterDataKey(clusterName);
+            var info = await _dataManager.GetDataAsync<ClusterInfo>(key, cancellationToken).ConfigureAwait(false);
+            if (info != null)
+            {
+                cachedCluster.Info = info;
+                cachedCluster.State = CacheState.DataManager;
+
+                _logger?.Log($"SchemaManager: Loaded cluster {clusterName} data from persistent cache");
+
+                _ = DelayRefreshClusterFromSourceAsync(cachedCluster, contextCluster, key, cancellationToken);
+            }
+            else
+            {
+                await LoadClusterFromSourceAsync(cachedCluster, contextCluster, key, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        return cachedCluster.Info;
+    }
+
+    private async Task DelayRefreshClusterFromSourceAsync(CachedCluster cachedCluster, string? contextCluster, string key, CancellationToken cancellationToken)
+    {
+        await cachedCluster.RefreshQueue.Run(async (useThisCancellationToken) =>
+        {
+            await Task.Delay(100);
+            if (cachedCluster.State != CacheState.SchemaSource)
+            {
+                await LoadClusterFromSourceAsync(cachedCluster, contextCluster, key, cancellationToken).ConfigureAwait(false);
+                this.ClusterRefreshed?.Invoke(cachedCluster.Name);
+            }
+        });
+    }
+
+    private async Task LoadClusterFromSourceAsync(CachedCluster cachedCluster, string? contextCluster, string clusterSchemaKey, CancellationToken cancellationToken)
+    {
+        if (cachedCluster.State == CacheState.SchemaSource)
+            return;
+
+        // serialize actual schema reading
+        await _schemaQueue.Run(cancellationToken, async (useThisCancellationToken) =>
+        {
+            if (cachedCluster.State == CacheState.SchemaSource)
+                return;
+
+            var info = await _source.GetClusterInfoAsync(cachedCluster.Name, contextCluster, useThisCancellationToken).ConfigureAwait(false);
+            cachedCluster.Info = info;
+            cachedCluster.State = CacheState.SchemaSource;
+
+            // save newly loaded info into data manager
+            await _dataManager.SetDataAsync(clusterSchemaKey, info);
+
+            if (info != null)
+            {
+                _logger?.Log($"SchemaManager: cluster info for {cachedCluster.Name} loaded from source.");
+            }
+            else
+            {
+                _logger?.Log($"SchemaManager: cluster info for {cachedCluster.Name} not found in source");
+            }
+        });
     }
 
     public async Task<DatabaseInfo?> GetDatabaseInfoAsync(string clusterName, string databaseName, string? contextCluster, CancellationToken cancellationToken)
     {
-        var clusterData = await GetClusterDataAsync(clusterName, contextCluster, cancellationToken).ConfigureAwait(false);
-        if (clusterData != null)
+        var cachedCluster = GetCachedCluster(clusterName);
+
+        if (!cachedCluster.CachedDatabases.TryGetValue(databaseName, out var cachedDatabase))
         {
-            if (!clusterData.DatabaseInfoCache.TryGetValue(databaseName, out var databaseInfo))
-            {
-                // serialize actual schema reading
-                await _schemaQueue.Run(cancellationToken, async (useThisCancellationToken) =>
-                {
-                    if (!clusterData.DatabaseInfoCache.TryGetValue(databaseName, out databaseInfo))
-                    {
-                        databaseInfo = await _source.GetDatabaseInfoAsync(clusterName, databaseName, contextCluster, useThisCancellationToken).ConfigureAwait(false);
-
-                        if (databaseInfo != null)
-                        {
-                            _logger?.Log($"SchemaManager: adding database: {databaseName} info to cache");
-                        }
-                        else
-                        {
-                            _logger?.Log($"SchemaManager: database: {databaseName} not found in schema source");
-                        }
-
-                        // even if databaseInfo is null, we want to cache that fact to avoid repeated calls to source for non-existent databases.
-                        databaseInfo = ImmutableInterlocked.GetOrAdd(
-                            ref clusterData.DatabaseInfoCache, 
-                            databaseName, 
-                            databaseInfo
-                            );
-                    }
-                });
-            }
-
-            return databaseInfo;
+            cachedDatabase = ImmutableInterlocked.GetOrAdd(ref cachedCluster.CachedDatabases, databaseName, _name => new CachedDatabase { Name = _name });
         }
 
-        return null;
+        if (cachedDatabase.Info == null 
+            && cachedDatabase.State == CacheState.NotCached)
+        {
+            // try getting from client cache
+            var key = GetDatabaseDataKey(clusterName, databaseName);
+            var info = await _dataManager.GetDataAsync<DatabaseInfo>(key, cancellationToken).ConfigureAwait(false);
+            if (info != null)
+            {
+                cachedDatabase.Info = info;
+                cachedDatabase.State = CacheState.DataManager;
+
+                _logger?.Log($"SchemaManager: loaded database {databaseName} from persistent cache");
+
+                // refresh from source on delay
+                _ = DelayRefreshDatabaseFromSourceAsync(cachedCluster, contextCluster, cachedDatabase, key, cancellationToken);
+            }
+            else
+            {
+                _logger?.Log($"SchemaManager: database {databaseName} not found in persistent cached, attempting to load data from source");
+
+                // load from source now
+                await LoadDatabaseFromSourceAsync(cachedCluster, contextCluster, cachedDatabase, key, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        return cachedDatabase.Info;
+    }
+
+    private async Task DelayRefreshDatabaseFromSourceAsync(
+        CachedCluster cachedCluster, string? contextCluster, 
+        CachedDatabase cachedDatabase, string key, 
+        CancellationToken cancellationToken)
+    {
+        await cachedDatabase.RefreshQueue.Run(
+            cancellationToken,
+            async (useThisCancellationToken) =>
+            {
+                await Task.Delay(100);
+                await LoadDatabaseFromSourceAsync(cachedCluster, contextCluster, cachedDatabase, key, useThisCancellationToken);
+                this.DatabaseRefreshed?.Invoke(cachedCluster.Name, cachedDatabase.Name);
+            });
+    }
+
+    private async Task LoadDatabaseFromSourceAsync(
+        CachedCluster cachedCluster, string? contextCluster,
+        CachedDatabase cachedDatabase, string key, 
+        CancellationToken cancellationToken)
+    {
+        if (cachedDatabase.State == CacheState.SchemaSource)
+        {
+            _logger?.Log($"SchemaManager: database {cachedDatabase.Name} already loaded from source?");
+            return;
+        }
+
+        // serialize actual schema reading to avoid over parallelizing.
+        await _schemaQueue.Run(
+            cancellationToken,
+            async (useThisCancellationToken) =>
+            {
+                if (cachedDatabase.State == CacheState.SchemaSource)
+                {
+                    _logger?.Log($"SchemaManager: database {cachedDatabase.Name} already loaded from source?");
+                    return;
+                }
+
+                DatabaseInfo? info = null;
+                try
+                {
+                    info = await _source.GetDatabaseInfoAsync(cachedCluster.Name, cachedDatabase.Name, contextCluster, useThisCancellationToken).ConfigureAwait(false);
+                }
+                catch
+                {
+                    _logger?.Log($"SchemaManager: loading database {cachedDatabase.Name} from source failed");
+                }
+
+                cachedDatabase.Info = info;
+                cachedDatabase.State = CacheState.SchemaSource;
+
+                // save newly loaded info into persistent cache
+                await _dataManager.SetDataAsync(key, info).ConfigureAwait(false);
+
+                if (info != null)
+                {
+                    _logger?.Log($"SchemaManager: database info for {cachedDatabase.Name} loaded from source.");
+                }
+                else
+                {
+                    _logger?.Log($"SchemaManager: database info for {cachedDatabase.Name} not found in source.");
+                }
+            });
     }
 
     public async Task<ImmutableList<EntityGroupInfo>> GetEntityGroupInfosAsync(string clusterName, string databaseName, string? entityName, CancellationToken cancellationToken)
