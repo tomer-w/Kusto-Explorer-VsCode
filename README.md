@@ -61,7 +61,7 @@ A VS Code extension for the Kusto Query Language (KQL)
     | where StartTime > ago(7d)
     | summarize EventCount = count() by State
     | top 10 by EventCount desc
-    | render barchar
+    | render barchart
      ```
 
 5. Press F5 to run the query

@@ -10,6 +10,11 @@ namespace Kusto.Lsp;
 /// </summary>
 public class SchemaManager : ISchemaManager
 {
+    /// <summary>
+    /// How long to delay before queuing low-priority schema refresh
+    /// </summary>
+    private const int REFRESH_DELAY_MS = 500; // 30 sec
+
     private readonly ISchemaSource _source;
     private readonly IDataManager _dataManager;
     private readonly ILogger? _logger;
@@ -172,7 +177,7 @@ public class SchemaManager : ISchemaManager
     {
         await cachedCluster.RefreshQueue.Run(async (useThisCancellationToken) =>
         {
-            await Task.Delay(100);
+            await Task.Delay(REFRESH_DELAY_MS);
             if (cachedCluster.State != CacheState.SchemaSource)
             {
                 await LoadClusterFromSourceAsync(cachedCluster, contextCluster, key, cancellationToken).ConfigureAwait(false);
@@ -193,8 +198,13 @@ public class SchemaManager : ISchemaManager
                 return;
 
             var info = await _source.GetClusterInfoAsync(cachedCluster.Name, contextCluster, useThisCancellationToken).ConfigureAwait(false);
-            cachedCluster.Info = info;
-            cachedCluster.State = CacheState.SchemaSource;
+
+            if (info != null 
+                || cachedCluster.State == CacheState.NotCached)
+            {
+                cachedCluster.Info = info;
+                cachedCluster.State = CacheState.SchemaSource;
+            }
 
             // save newly loaded info into data manager
             await _dataManager.SetDataAsync(clusterSchemaKey, info);
@@ -256,7 +266,7 @@ public class SchemaManager : ISchemaManager
             cancellationToken,
             async (useThisCancellationToken) =>
             {
-                await Task.Delay(100);
+                await Task.Delay(REFRESH_DELAY_MS);
                 await LoadDatabaseFromSourceAsync(cachedCluster, contextCluster, cachedDatabase, key, useThisCancellationToken);
                 this.DatabaseRefreshed?.Invoke(cachedCluster.Name, cachedDatabase.Name);
             });
@@ -268,10 +278,7 @@ public class SchemaManager : ISchemaManager
         CancellationToken cancellationToken)
     {
         if (cachedDatabase.State == CacheState.SchemaSource)
-        {
-            _logger?.Log($"SchemaManager: database {cachedDatabase.Name} already loaded from source?");
             return;
-        }
 
         // serialize actual schema reading to avoid over parallelizing.
         await _schemaQueue.Run(
@@ -279,23 +286,16 @@ public class SchemaManager : ISchemaManager
             async (useThisCancellationToken) =>
             {
                 if (cachedDatabase.State == CacheState.SchemaSource)
-                {
-                    _logger?.Log($"SchemaManager: database {cachedDatabase.Name} already loaded from source?");
                     return;
-                }
 
-                DatabaseInfo? info = null;
-                try
-                {
-                    info = await _source.GetDatabaseInfoAsync(cachedCluster.Name, cachedDatabase.Name, contextCluster, useThisCancellationToken).ConfigureAwait(false);
-                }
-                catch
-                {
-                    _logger?.Log($"SchemaManager: loading database {cachedDatabase.Name} from source failed");
-                }
+                var info = await _source.GetDatabaseInfoAsync(cachedCluster.Name, cachedDatabase.Name, contextCluster, useThisCancellationToken).ConfigureAwait(false);
 
-                cachedDatabase.Info = info;
-                cachedDatabase.State = CacheState.SchemaSource;
+                if (info != null
+                    || cachedDatabase.State == CacheState.NotCached)
+                {
+                    cachedDatabase.Info = info;
+                    cachedDatabase.State = CacheState.SchemaSource;
+                }
 
                 // save newly loaded info into persistent cache
                 await _dataManager.SetDataAsync(key, info).ConfigureAwait(false);
