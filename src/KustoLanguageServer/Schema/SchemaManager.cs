@@ -16,7 +16,7 @@ public class SchemaManager : ISchemaManager
     private const int REFRESH_DELAY_MS = 500; // 30 sec
 
     private readonly ISchemaSource _source;
-    private readonly IDataManager _dataManager;
+    private readonly IStorage _store;
     private readonly ILogger? _logger;
     private TaskQueue _schemaQueue = new();
 
@@ -66,11 +66,11 @@ public class SchemaManager : ISchemaManager
 
     public SchemaManager(
         ISchemaSource source, 
-        IDataManager dataManager, 
+        IStorage store, 
         ILogger? logger)
     {
         _source = source;
-        _dataManager = dataManager;
+        _store = store;
         _logger = logger;
     }
 
@@ -85,15 +85,15 @@ public class SchemaManager : ISchemaManager
     public event DatabaseSchemaRefreshedHandler? DatabaseRefreshed;
 
     /// <summary>
-    /// Determines the data manager key to user for cluster info
+    /// Determines the storage key to user for cluster info
     /// </summary>
-    private static string GetClusterDataKey(string clusterName) =>
+    private static string GetClusterStorageKey(string clusterName) =>
         $"cluster_info: {clusterName}";
 
     /// <summary>
-    /// Determines the data manager key to user for database info.
+    /// Determines the storage key to user for database info.
     /// </summary>
-    private static string GetDatabaseDataKey(string clusterName, string databaseName) =>
+    private static string GetDatabaseStorageKey(string clusterName, string databaseName) =>
         $"database_info: {clusterName};{databaseName}";
 
     /// <summary>
@@ -109,9 +109,9 @@ public class SchemaManager : ISchemaManager
                 await ClearCachedDatabaseAsync(clusterName, databaseName, cancellationToken).ConfigureAwait(false);
             }
 
-            // remove from data manager first
-            var key = GetClusterDataKey(cachedCluster.Name);
-            await _dataManager.SetDataAsync<ClusterInfo>(key, null, cancellationToken).ConfigureAwait(false);
+            // remove from the persistent storer first
+            var key = GetClusterStorageKey(cachedCluster.Name);
+            await _store.SetValueAsync<ClusterInfo>(key, null, cancellationToken).ConfigureAwait(false);
 
             // clear cached info
             cachedCluster.Info = null;
@@ -127,9 +127,9 @@ public class SchemaManager : ISchemaManager
         if (_cachedClusters.TryGetValue(clusterName, out var cachedCluster)
             && cachedCluster.CachedDatabases.TryGetValue(databaseName, out var cachedDatabase))
         {
-            // remove from data manager first
-            var key = GetDatabaseDataKey(cachedCluster.Name, cachedDatabase.Name);
-            await _dataManager.SetDataAsync<DatabaseInfo>(key, null, cancellationToken).ConfigureAwait(false);
+            // remove from persistent store first
+            var key = GetDatabaseStorageKey(cachedCluster.Name, cachedDatabase.Name);
+            await _store.SetValueAsync<DatabaseInfo>(key, null, cancellationToken).ConfigureAwait(false);
 
             // clear cached info
             cachedDatabase.Info = null;
@@ -153,14 +153,14 @@ public class SchemaManager : ISchemaManager
         if (cachedCluster.Info == null 
             && cachedCluster.State == CacheState.NotCached)
         {
-            var key = GetClusterDataKey(clusterName);
-            var info = await _dataManager.GetDataAsync<ClusterInfo>(key, cancellationToken).ConfigureAwait(false);
+            var key = GetClusterStorageKey(clusterName);
+            var info = await _store.GetValueAsync<ClusterInfo>(key, cancellationToken).ConfigureAwait(false);
             if (info != null)
             {
                 cachedCluster.Info = info;
                 cachedCluster.State = CacheState.DataManager;
 
-                _logger?.Log($"SchemaManager: Loaded cluster {clusterName} data from persistent cache");
+                _logger?.Log($"SchemaManager: Loaded cluster {clusterName} data from persistent store");
 
                 _ = DelayRefreshClusterFromSourceAsync(cachedCluster, contextCluster, key, cancellationToken);
             }
@@ -207,7 +207,7 @@ public class SchemaManager : ISchemaManager
             }
 
             // save newly loaded info into data manager
-            await _dataManager.SetDataAsync(clusterSchemaKey, info);
+            await _store.SetValueAsync(clusterSchemaKey, info);
 
             if (info != null)
             {
@@ -233,21 +233,21 @@ public class SchemaManager : ISchemaManager
             && cachedDatabase.State == CacheState.NotCached)
         {
             // try getting from client cache
-            var key = GetDatabaseDataKey(clusterName, databaseName);
-            var info = await _dataManager.GetDataAsync<DatabaseInfo>(key, cancellationToken).ConfigureAwait(false);
+            var key = GetDatabaseStorageKey(clusterName, databaseName);
+            var info = await _store.GetValueAsync<DatabaseInfo>(key, cancellationToken).ConfigureAwait(false);
             if (info != null)
             {
                 cachedDatabase.Info = info;
                 cachedDatabase.State = CacheState.DataManager;
 
-                _logger?.Log($"SchemaManager: loaded database {databaseName} from persistent cache");
+                _logger?.Log($"SchemaManager: loaded database {databaseName} from persistent store");
 
                 // refresh from source on delay
                 _ = DelayRefreshDatabaseFromSourceAsync(cachedCluster, contextCluster, cachedDatabase, key, cancellationToken);
             }
             else
             {
-                _logger?.Log($"SchemaManager: database {databaseName} not found in persistent cached, attempting to load data from source");
+                _logger?.Log($"SchemaManager: database {databaseName} not found in persistent store, attempting to load data from source");
 
                 // load from source now
                 await LoadDatabaseFromSourceAsync(cachedCluster, contextCluster, cachedDatabase, key, cancellationToken).ConfigureAwait(false);
@@ -298,15 +298,11 @@ public class SchemaManager : ISchemaManager
                 }
 
                 // save newly loaded info into persistent cache
-                await _dataManager.SetDataAsync(key, info).ConfigureAwait(false);
+                await _store.SetValueAsync(key, info).ConfigureAwait(false);
 
                 if (info != null)
                 {
                     _logger?.Log($"SchemaManager: database info for {cachedDatabase.Name} loaded from source.");
-                }
-                else
-                {
-                    _logger?.Log($"SchemaManager: database info for {cachedDatabase.Name} not found in source.");
                 }
             });
     }

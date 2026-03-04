@@ -16,7 +16,7 @@ using Lsp.Common;
 
 namespace Kusto.Lsp;
 
-public class KustoLspServer : LspServer, ILogger, ISettingSource, IDataManager
+public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
 {
     private readonly IOptionsManager _optionsManager;
     private readonly IConnectionManager _connectionManager;
@@ -69,11 +69,11 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IDataManager
         _args = args.ToImmutableList();
         ILogger logger = this;
         ISettingSource settingSource = this;
-        IDataManager dataManager = this;
+        IStorage store = this;
         _optionsManager = new OptionsManager(settingSource);
         _connectionManager = new ConnectionManager();
         var schemaSource = new ServerSchemaSource(_connectionManager, logger);
-        _schemaManager = new SchemaManager(schemaSource, dataManager, logger);
+        _schemaManager = new SchemaManager(schemaSource, store, logger);
         _symbolManager = new SymbolManager(_schemaManager, _optionsManager, logger);
         _documentManager = new DocumentManager(_symbolManager, logger);
         _resultsManager = new ResultsManager(_documentManager);
@@ -2523,7 +2523,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IDataManager
     /// <param name="key">A unique key identifying the stored data</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>The stored data deserialized as T, or default if not found</returns>
-    public Task<T?> GetDataAsync<T>(string key, CancellationToken cancellationToken)
+    public Task<T?> GetValueAsync<T>(string key, CancellationToken cancellationToken)
     {
         return SendRequestAsync<T?>(
             "kusto/getData",
@@ -2539,7 +2539,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IDataManager
     /// <param name="key">A unique key identifying the data</param>
     /// <param name="data">The data to store, or null to remove</param>
     /// <param name="cancellationToken">Cancellation token</param>
-    public Task SetDataAsync<T>(string key, T? data, CancellationToken cancellationToken)
+    public Task SetValueAsync<T>(string key, T? data, CancellationToken cancellationToken)
     {
         return SendRequestAsync<object?>(
             "kusto/setData",
