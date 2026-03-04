@@ -61,7 +61,7 @@ public class SectionedDocument : IDocument
         {
             if (!_blockSections.TryGetValue(block.Service, out var section))
             {
-                section = _blockSections.GetOrAdd(block.Service, _service => new BlockSection(_service));
+                section = _blockSections.GetValue(block.Service, _service => new BlockSection(_service));
             }
             return section;
         }

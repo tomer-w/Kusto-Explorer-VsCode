@@ -33,7 +33,7 @@ public class Setting<T> : Setting
             {
                 return tvalue;
             }
-            else if (value == null && typeof(T).CanBeNull)
+            else if (value == null && typeof(T).CanBeNull())
             {
                 return (T)value!;
             }

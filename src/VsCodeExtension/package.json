@@ -387,6 +387,16 @@
         }
       },
       {
+        "title": "Runtime",
+        "properties": {
+          "kusto.runtime.useSystemDotnet": {
+            "type": "boolean",
+            "default": true,
+            "description": "Use system-installed .NET runtime if available. Set to false to always use the VS Code runtime acquisition extension."
+          }
+        }
+      },
+      {
         "title": "Formatting",
         "properties": {
           "kusto.format.insertMissingTokens": {

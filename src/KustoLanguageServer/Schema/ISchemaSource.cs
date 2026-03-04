@@ -64,18 +64,12 @@ public interface ISchemaSource
 public class ClusterInfo
 {
     [DataMember(Name = "databases")]
-    public ImmutableList<DatabaseName> Databases 
-    { 
-        get => field ?? ImmutableList<DatabaseName>.Empty;
-        init;
-    }
+    public ImmutableList<DatabaseName> Databases { get; init; }
+        = ImmutableList<DatabaseName>.Empty;
 
     [DataMember(Name = "plugins")]
-    public ImmutableList<string> Plugins
-    {
-        get => field ?? ImmutableList<string>.Empty;
-        init;
-    }
+    public ImmutableList<string> Plugins { get; init; }
+        = ImmutableList<string>.Empty;
 }
 
 [DataContract]
@@ -98,53 +92,32 @@ public class DatabaseInfo
     public string? AlternateName { get; init; }
 
     [DataMember(Name = "tables")]
-    public ImmutableList<TableInfo> Tables 
-    {
-        get => field ?? ImmutableList<TableInfo>.Empty;
-        init; 
-    }
+    public ImmutableList<TableInfo> Tables { get; init; }
+        = ImmutableList<TableInfo>.Empty;
 
     [DataMember(Name = "externalTables")]
-    public ImmutableList<ExternalTableInfo> ExternalTables 
-    {
-        get => field ?? ImmutableList<ExternalTableInfo>.Empty;
-        init; 
-    }
+    public ImmutableList<ExternalTableInfo> ExternalTables { get; init; }
+        = ImmutableList<ExternalTableInfo>.Empty;
 
     [DataMember(Name = "materializedViews")]
-    public ImmutableList<MaterializedViewInfo> MaterializedViews
-    {
-        get => field ?? ImmutableList<MaterializedViewInfo>.Empty;
-        init;
-    }
+    public ImmutableList<MaterializedViewInfo> MaterializedViews { get; init; }
+        = ImmutableList<MaterializedViewInfo>.Empty;
 
     [DataMember(Name = "functions")]
-    public ImmutableList<FunctionInfo> Functions 
-    {
-        get => field ?? ImmutableList<FunctionInfo>.Empty;
-        init;
-    }
+    public ImmutableList<FunctionInfo> Functions { get; init; }
+        = ImmutableList<FunctionInfo>.Empty;
 
     [DataMember(Name = "entityGroups")]
-    public ImmutableList<EntityGroupInfo> EntityGroups 
-    {
-        get => field ?? ImmutableList<EntityGroupInfo>.Empty;
-        init;
-    }
+    public ImmutableList<EntityGroupInfo> EntityGroups { get; init; }
+         = ImmutableList<EntityGroupInfo>.Empty;
 
     [DataMember(Name = "graphModels")]
-    public ImmutableList<GraphModelInfo> GraphModels 
-    {
-        get => field ?? ImmutableList<GraphModelInfo>.Empty;
-        init;
-    }
+    public ImmutableList<GraphModelInfo> GraphModels { get; init; }
+         = ImmutableList<GraphModelInfo>.Empty;
 
     [DataMember(Name = "storedQueryResults")]
-    public ImmutableList<StoredQueryResultInfo> StoredQueryResults
-    {
-        get => field ?? ImmutableList<StoredQueryResultInfo>.Empty;
-        init;
-    }
+    public ImmutableList<StoredQueryResultInfo> StoredQueryResults { get; init; }   
+        = ImmutableList<StoredQueryResultInfo>.Empty;
 }
 
 [DataContract]
@@ -154,11 +127,8 @@ public class TableInfo
     public required string Name { get; init; }
 
     [DataMember(Name = "columns")]
-    public ImmutableList<ColumnInfo> Columns
-    {
-        get => field ?? ImmutableList<ColumnInfo>.Empty;
-        init;
-    }
+    public ImmutableList<ColumnInfo> Columns { get; init; }
+        = ImmutableList<ColumnInfo>.Empty;
 
     [DataMember(Name = "description")]
     public string? Description { get; init; }
@@ -174,11 +144,8 @@ public class ExternalTableInfo
     public required string Name { get; init; }
 
     [DataMember(Name = "columns")]
-    public ImmutableList<ColumnInfo> Columns
-    {
-        get => field ?? ImmutableList<ColumnInfo>.Empty;
-        init;
-    }
+    public ImmutableList<ColumnInfo> Columns { get; init; }
+        = ImmutableList<ColumnInfo>.Empty;
 
     [DataMember(Name = "description")]
     public string? Description { get; init; }
@@ -195,11 +162,8 @@ public class ExternalTableInfoEx
     public required string Name { get; init; }
 
     [DataMember(Name = "columns")]
-    public ImmutableList<ColumnInfo> Columns
-    {
-        get => field ?? ImmutableList<ColumnInfo>.Empty;
-        init;
-    }
+    public ImmutableList<ColumnInfo> Columns { get; init; }
+        = ImmutableList<ColumnInfo>.Empty;
 
     public string? Folder { get; init; }
     public string? Description { get; init; }
@@ -212,17 +176,20 @@ public class ExternalTableInfoEx
     /// <summary>
     /// Any properties assign to the external table
     /// </summary>
-    public ImmutableDictionary<string, object> Properties { get; init; } = ImmutableDictionary<string, object>.Empty;
+    public ImmutableDictionary<string, object> Properties { get; init; } 
+        = ImmutableDictionary<string, object>.Empty;
 
     /// <summary>
     /// Any connection strings used by the external table
     /// </summary>
-    public ImmutableList<string> ConnectionStrings { get; init; } = ImmutableList<string>.Empty;
+    public ImmutableList<string> ConnectionStrings { get; init; } 
+        = ImmutableList<string>.Empty;
 
     /// <summary>
     /// Any partitions defined for the external table.
     /// </summary>
-    public ImmutableList<ExternalTablePartition> Partitions { get; init; } = ImmutableList<ExternalTablePartition>.Empty;
+    public ImmutableList<ExternalTablePartition> Partitions { get; init; } 
+        = ImmutableList<ExternalTablePartition>.Empty;
 
     /// <summary>
     /// The path format - related to partitions
@@ -267,11 +234,8 @@ public class MaterializedViewInfo
     public required string Query { get; init; }
 
     [DataMember(Name = "columns")]
-    public ImmutableList<ColumnInfo> Columns
-    {
-        get => field ?? ImmutableList<ColumnInfo>.Empty;
-        init;
-    }
+    public ImmutableList<ColumnInfo> Columns { get; init; }
+         = ImmutableList<ColumnInfo>.Empty;
 
     [DataMember(Name = "description")]
     public string? Description { get; init; }
@@ -300,18 +264,10 @@ public class FunctionInfo
     public required string Name { get; init; }
 
     [DataMember(Name = "parameters")]
-    public string Parameters 
-    {
-        get => field ?? "()";
-        init; 
-    }
+    public string Parameters { get; init; } = "()";
 
     [DataMember(Name = "body")]
-    public string Body 
-    { 
-        get => field ?? ""; 
-        init; 
-    }
+    public string Body { get; init; } = "";
 
     [DataMember(Name = "description")]
     public string? Description { get; init; }
@@ -327,11 +283,8 @@ public class EntityGroupInfo
     public required string Name { get; init; }
 
     [DataMember(Name = "entities")]
-    public ImmutableList<string> Entities 
-    { 
-        init;
-        get => field ?? ImmutableList<string>.Empty;
-    }
+    public ImmutableList<string> Entities { get; init; }
+        = ImmutableList<string>.Empty;
 
     [DataMember(Name = "description")]
     public string? Description { get; init; }
@@ -350,11 +303,8 @@ public class GraphModelInfo
     public required string Model { get; init; }
 
     [DataMember(Name = "snapshots")]
-    public ImmutableList<string> Snapshots 
-    { 
-        get => field ?? ImmutableList<string>.Empty; 
-        init; 
-    }
+    public ImmutableList<string> Snapshots { get; init; }
+         = ImmutableList<string>.Empty;
 
     [DataMember(Name = "description")]
     public string? Description { get; init; }
@@ -370,11 +320,8 @@ public class StoredQueryResultInfo
     public required string Name { get; init; }
 
     [DataMember(Name = "columns")]
-    public ImmutableList<ColumnInfo> Columns 
-    {
-        get => field ?? ImmutableList<ColumnInfo>.Empty;
-        init;
-    }
+    public ImmutableList<ColumnInfo> Columns { get; init; }
+        = ImmutableList<ColumnInfo>.Empty;
 
     [DataMember(Name = "description")]
     public string? Description { get; init; }

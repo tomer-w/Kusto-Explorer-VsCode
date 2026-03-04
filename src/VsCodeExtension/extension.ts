@@ -11,6 +11,7 @@ import * as chartPanel from './features/chartPanel'
 import * as copilot from './features/copilot'
 import * as connectionStatusBar from './features/connectionStatusBar'
 import * as clientStorage from './features/clientStorage'
+import * as dotnet from './features/dotnet'
 import { registerEntityDefinitionProvider, ENTITY_DEFINITION_SCHEME } from './features/entityDefinitionProvider'
 import
     {
@@ -20,53 +21,16 @@ import
         Executable
     } from 'vscode-languageclient/node';
 
-// Interface for the .NET Runtime Acquisition Extension API
-interface IDotnetAcquireResult {
-    dotnetPath: string;
-}
-
 let client: LanguageClient;
-
-/**
- * Acquires the .NET runtime using the ms-dotnettools.vscode-dotnet-runtime extension.
- * @returns The path to the dotnet executable, or undefined if acquisition failed.
- */
-async function acquireDotnetRuntime(): Promise<string | undefined> {
-    const dotnetExtension = vscode.extensions.getExtension('ms-dotnettools.vscode-dotnet-runtime');
-    if (!dotnetExtension) {
-        vscode.window.showErrorMessage(
-            'The .NET Runtime extension is required but not installed. Please install "ms-dotnettools.vscode-dotnet-runtime".'
-        );
-        return undefined;
-    }
-
-    if (!dotnetExtension.isActive) {
-        await dotnetExtension.activate();
-    }
-
-    try {
-        const dotnetApi = dotnetExtension.exports;
-        const result: IDotnetAcquireResult = await dotnetApi.acquireRuntime({
-            version: '10.0',
-            requestingExtensionId: 'Microsoft.kusto-explorer-vscode'
-        });
-        return result.dotnetPath;
-    } catch (error) {
-        vscode.window.showErrorMessage(
-            `Failed to acquire .NET runtime: ${error instanceof Error ? error.message : String(error)}`
-        );
-        return undefined;
-    }
-}
 
 export async function activate(context: ExtensionContext)
 {
-    // Acquire .NET runtime before starting the language server
-    const dotnetPath = await acquireDotnetRuntime();
+    // Create output channel early so dotnet activation can log to it
+    const outputChannel = window.createOutputChannel('Kusto');
+
+    // Find or acquire .NET runtime before starting the language server
+    const dotnetPath = await dotnet.activate(outputChannel);
     if (!dotnetPath) {
-        vscode.window.showErrorMessage(
-            'Kusto Explorer requires .NET runtime to function. Please ensure .NET is available and reload the window.'
-        );
         return;
     }
 
@@ -80,8 +44,6 @@ export async function activate(context: ExtensionContext)
         run: serverExecutable,
         debug: serverExecutable
     };
-
-    const outputChannel = window.createOutputChannel('Kusto');
 
     const clientOptions: LanguageClientOptions = {
         documentSelector: [

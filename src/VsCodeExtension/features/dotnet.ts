@@ -1,0 +1,142 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+import * as vscode from 'vscode';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+
+// Interface for the .NET Runtime Acquisition Extension API
+interface IDotnetAcquireResult {
+    dotnetPath: string;
+}
+
+const execFileAsync = promisify(execFile);
+
+// Output channel for logging - will be set during activation
+let outputChannel: vscode.OutputChannel | undefined;
+
+function log(message: string): void {
+    const timestamp = new Date().toISOString();
+    const logMessage = `[${timestamp}] [dotnet] ${message}`;
+    outputChannel?.appendLine(logMessage);
+    console.log(logMessage);
+}
+
+/**
+ * Checks if dotnet is available in the system PATH.
+ * @returns The path to dotnet if found and version is sufficient, undefined otherwise.
+ */
+async function findSystemDotnet(): Promise<string | undefined> {
+    try
+    {
+        // call out to dotnet --version to check if it's available and get the version
+        const { stdout } = await execFileAsync('dotnet', ['--version']);
+        const version = stdout.trim();
+        // Check if major version is 10 or higher
+        const majorVersion = parseInt(version.split('.')[0] ?? '0', 10);
+        if (majorVersion >= 10) {
+            return 'dotnet';
+        }
+        log(`System dotnet version ${version} is below required version 10.0`);
+        return undefined;
+    } catch {
+        // dotnet not found in PATH
+        return undefined;
+    }
+}
+
+/**
+ * Acquires the .NET runtime using the ms-dotnettools.vscode-dotnet-runtime extension.
+ * @returns The path to the dotnet executable, or undefined if acquisition failed.
+ */
+async function acquireDotnetFromExtension(): Promise<string | undefined> {
+    try {
+        const dotnetExtension = vscode.extensions.getExtension('ms-dotnettools.vscode-dotnet-runtime');
+        if (!dotnetExtension) {
+            log('.NET Runtime acquisition extension not installed');
+            return undefined;
+        }
+
+        if (!dotnetExtension.isActive) {
+            await dotnetExtension.activate();
+        }
+
+        // Use the dotnet.acquire command to acquire the runtime
+        const result = await vscode.commands.executeCommand<IDotnetAcquireResult>(
+            'dotnet.acquire',
+            { version: '10.0', requestingExtensionId: 'Microsoft.kusto-explorer-vscode' }
+        );
+        
+        if (result?.dotnetPath) {
+            return result.dotnetPath;
+        }
+
+        log('.NET Runtime acquisition failed.');
+        return undefined;
+    } catch (error) {
+        log(`.NET Runtime acquisition failed with error: ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+        return undefined;
+    }
+}
+
+/**
+ * Finds or acquires the .NET runtime.
+ * Tries system dotnet first (if enabled), then falls back to runtime acquisition.
+ * @returns The path to the dotnet executable, or undefined if not available.
+ */
+async function getDotnetPath(): Promise<string | undefined> {
+    const config = vscode.workspace.getConfiguration('kusto');
+    const useSystemDotnet = config.get<boolean>('runtime.useSystemDotnet', true);
+
+    // try system dotnet first (if enabled)
+    if (useSystemDotnet) {
+        const systemDotnet = await findSystemDotnet();
+        if (systemDotnet) {
+            log('Using system installed dotnet');
+            return systemDotnet;
+        }
+    }
+
+    // otherwise try to acquire dotnet runtime via extension
+    const acquiredDotnet = await acquireDotnetFromExtension();
+    if (acquiredDotnet) {
+        log(`Using extension installed dotnet: ${acquiredDotnet}`);
+        return acquiredDotnet;
+    }
+
+    return undefined;
+}
+
+/**
+ * Activates the dotnet runtime detection/acquisition.
+ * Finds or acquires the .NET runtime needed to run the language server.
+ * @param channel The output channel to use for logging.
+ * @returns The path to the dotnet executable, or undefined if not available.
+ */
+export async function activate(channel: vscode.OutputChannel): Promise<string | undefined> {
+    // Set the output channel for logging
+    outputChannel = channel;
+
+    // Find or acquire .NET runtime - wrap in try-catch to ensure we always show error dialog
+    let dotnetPath: string | undefined;
+    try {
+        dotnetPath = await getDotnetPath();
+    } catch (error) {
+        log(`Unexpected error during .NET runtime detection: ${error instanceof Error ? error.message : String(error)}`);
+        dotnetPath = undefined;
+    }
+
+    if (!dotnetPath) {
+        const action = await vscode.window.showErrorMessage(
+            'Kusto Explorer requires .NET Runtime 10.0 or later to be installed.',
+            'Download .NET',
+            'Dismiss'
+        );
+        if (action === 'Download .NET') {
+            vscode.env.openExternal(vscode.Uri.parse('https://dot.net/download'));
+        }
+        return undefined;
+    }
+
+    return dotnetPath;
+}

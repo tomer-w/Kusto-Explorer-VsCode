@@ -65,7 +65,7 @@ public class DiagnosticsManager : IDiagnosticsManager
     {
         if (!_idToDiagnosticState.TryGetValue(documentId, out var info))
         {
-            info = _idToDiagnosticState.GetOrAdd(documentId, _id => new DiagnosticsState());
+            info = _idToDiagnosticState.GetOrCreateValue(documentId);
         }
         return info;
     }

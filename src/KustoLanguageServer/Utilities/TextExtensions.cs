@@ -15,7 +15,7 @@ public static class TextExtensions
     {
         if (!_textToLineStartPositions.TryGetValue(text, out var lineStartPositions))
         {
-            lineStartPositions = _textToLineStartPositions.GetOrAdd(text, _ => Kusto.Language.Parsing.TextFacts.GetLineStarts(text).ToList());
+            lineStartPositions = _textToLineStartPositions.GetValue(text, _ => Kusto.Language.Parsing.TextFacts.GetLineStarts(text).ToList());
         }
         return lineStartPositions;
     }
