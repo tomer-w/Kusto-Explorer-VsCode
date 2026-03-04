@@ -20,14 +20,60 @@ import
         Executable
     } from 'vscode-languageclient/node';
 
+// Interface for the .NET Runtime Acquisition Extension API
+interface IDotnetAcquireResult {
+    dotnetPath: string;
+}
 
 let client: LanguageClient;
 
+/**
+ * Acquires the .NET runtime using the ms-dotnettools.vscode-dotnet-runtime extension.
+ * @returns The path to the dotnet executable, or undefined if acquisition failed.
+ */
+async function acquireDotnetRuntime(): Promise<string | undefined> {
+    const dotnetExtension = vscode.extensions.getExtension('ms-dotnettools.vscode-dotnet-runtime');
+    if (!dotnetExtension) {
+        vscode.window.showErrorMessage(
+            'The .NET Runtime extension is required but not installed. Please install "ms-dotnettools.vscode-dotnet-runtime".'
+        );
+        return undefined;
+    }
+
+    if (!dotnetExtension.isActive) {
+        await dotnetExtension.activate();
+    }
+
+    try {
+        const dotnetApi = dotnetExtension.exports;
+        const result: IDotnetAcquireResult = await dotnetApi.acquireRuntime({
+            version: '10.0',
+            requestingExtensionId: 'Microsoft.kusto-explorer-vscode'
+        });
+        return result.dotnetPath;
+    } catch (error) {
+        vscode.window.showErrorMessage(
+            `Failed to acquire .NET runtime: ${error instanceof Error ? error.message : String(error)}`
+        );
+        return undefined;
+    }
+}
+
 export async function activate(context: ExtensionContext)
 {
+    // Acquire .NET runtime before starting the language server
+    const dotnetPath = await acquireDotnetRuntime();
+    if (!dotnetPath) {
+        vscode.window.showErrorMessage(
+            'Kusto Explorer requires .NET runtime to function. Please ensure .NET is available and reload the window.'
+        );
+        return;
+    }
+
+    const serverDll = path.join(context.extensionPath, 'server', 'KustoLspServer.dll');
     const serverExecutable: Executable = {
-        command: path.join(context.extensionPath, 'server', 'KustoLspServer.exe'),
-        args: ["vscode"]
+        command: dotnetPath,
+        args: [serverDll, "vscode"]
     };
 
     const serverOptions: ServerOptions = {

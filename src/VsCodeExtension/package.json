@@ -2,7 +2,7 @@
   "name": "kusto-explorer-vscode",
   "displayName": "Kusto Explorer",
   "description": "Edit, run and chart Kusto queries (KQL).",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "Microsoft",
   "author": "Microsoft",
   "license": "MIT",
@@ -16,6 +16,9 @@
   },
   "categories": [ "Programming Languages" ],
   "activationEvents": [ "onLanguage:kusto", "onLanguageModelTool:kusto_getDatabaseSchema", "onChatParticipant:kusto" ],
+  "extensionDependencies": [
+    "ms-dotnettools.vscode-dotnet-runtime"
+  ],
   "main": "./out/extension.js",
   "scripts": {
     "compile": "tsc -p .",
