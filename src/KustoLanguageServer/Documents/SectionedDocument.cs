@@ -351,7 +351,7 @@ public class SectionedDocument : IDocument
                 }
 
                 // otherwise search the source and find to find the database entity that declares this symbol
-                if (block.Service.TryGetBoundCode(cancellationToken, out var code))
+                if (block.Service.TryGetCode(cancellationToken, out var code))
                 {
                     var locations = DeclarationFinder.GetSourceDeclarations(this.Globals, code.Syntax, symbol);
                     if (locations.Count > 0)

@@ -1,4 +1,7 @@
-﻿using Kusto.Data.Exceptions;
+﻿// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
+using Kusto.Data.Exceptions;
 using Kusto.Lsp;
 using Kusto.Language;
 using Kusto.Language.Editor;

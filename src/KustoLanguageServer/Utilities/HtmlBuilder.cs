@@ -194,7 +194,6 @@ public class HtmlBuilder : TextBuilder
     }
 }
 
-
 public record HtmlOptions
 {
     public string HtmlAttributes { get; set; } = "";

@@ -70,25 +70,39 @@ public interface IConnection
 }
 
 /// <summary>
-/// A connection that has access for a <see cref="KustoConnectionStringBuilder"/>
+/// The result for <see cref="IConnection.ExecuteAsync"/>."/>
 /// </summary>
-public interface IKustoConnection : IConnection
-{
-    /// <summary>
-    /// Gets a copy of the underying connection string builder
-    /// </summary>
-    public KustoConnectionStringBuilder GetBuilder();
-}
-
 public record ExecuteResult
 {
+    /// <summary>
+    /// The resulting tables.
+    /// </summary>
     public ImmutableList<DataTable>? Tables { get; init; }
+
+    /// <summary>
+    /// Any chart visualization options included in the result (due to render operator in query).
+    /// </summary>
     public ChartVisualizationOptions? ChartOptions { get; init; }
+
+    /// <summary>
+    /// Any diagnostics produced during query execution, such as errors or warnings.
+    /// </summary>
     public ImmutableList<Diagnostic>? Diagnostics { get; init; }
 }
 
+/// <summary>
+/// The result for <see cref="IConnection.ExecuteAsync{T}"/>
+/// </summary>
+/// <typeparam name="T">The type that a row is mapped to.</typeparam>
 public record ExecuteResult<T>
 {
+    /// <summary>
+    /// The values mapped from the resulting rows.
+    /// </summary>
     public ImmutableList<T>? Values { get; init; }
+
+    /// <summary>
+    /// Any diagnostics produced during query execution, such as errors or warnings.
+    /// </summary>
     public ImmutableList<Diagnostic>? Diagnostics { get; init; }
 }

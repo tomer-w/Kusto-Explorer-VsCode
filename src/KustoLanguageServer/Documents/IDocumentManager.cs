@@ -3,9 +3,6 @@
 
 using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
-using Kusto.Language;
-using Kusto.Language.Editor;
-
 
 namespace Kusto.Lsp;
 
@@ -34,7 +31,7 @@ public interface IDocumentManager
     /// <summary>
     /// Updates the document's associated connection information.
     /// </summary>
-    Task UpdateConnectionAsync(Uri documentId, string? clusterOrConnection, string? database, string? serverKind);
+    Task UpdateConnectionAsync(Uri documentId, string? clusterName, string? databaseName, string? serverKind);
 
     /// <summary>
     /// Updates the document's text

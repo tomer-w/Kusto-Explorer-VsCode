@@ -280,7 +280,7 @@ public class SymbolManager : ISymbolManager
             var clusterRefs = document.GetClusterReferences(cancellationToken);
             foreach (var clusterRef in clusterRefs)
             {
-                var clusterName = SymbolFacts.GetFullHostName(clusterRef.Cluster, globals.Domain);
+                var clusterName = ConnectionFacts.GetFullHostName(clusterRef.Cluster, globals.Domain);
 
                 // don't bother with clusters were already resolved or do not exist
                 if (string.IsNullOrEmpty(clusterName)
@@ -302,7 +302,7 @@ public class SymbolManager : ISymbolManager
             {
                 var cluster = string.IsNullOrEmpty(dbRef.Cluster)
                     ? globals.Cluster
-                    : globals.GetCluster(SymbolFacts.GetFullHostName(dbRef.Cluster, globals.Domain));
+                    : globals.GetCluster(ConnectionFacts.GetFullHostName(dbRef.Cluster, globals.Domain));
 
                 // don't rely on the user to do the right thing.
                 if (cluster == null
