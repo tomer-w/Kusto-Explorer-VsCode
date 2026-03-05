@@ -1,14 +1,20 @@
 ﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+using Kusto.Language.Symbols;
 using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
-using System.Reflection.Metadata;
 
 namespace Kusto.Lsp;
 
 public class DocumentManager : IDocumentManager
 {
+    /// <summary>
+    /// The maximum number of times the resolve operation
+    /// can repeat resolving as long as symbols are updating.
+    /// </summary>
+    private const int MaxResolveLoopCount = 20;
+
     private readonly ISymbolManager _symbolManager;
     private readonly ILogger? _logger;
 
@@ -77,7 +83,7 @@ public class DocumentManager : IDocumentManager
 
         public string? Database { get; set; }
 
-        public readonly LatestRequestQueue LoadSymbolsQueue = new();
+        public readonly LatestRequestQueue EnsureSymbolsQueue = new();
 
         public readonly LatestRequestQueue ResolveSymbolsQueue = new();
 
@@ -115,7 +121,7 @@ public class DocumentManager : IDocumentManager
         // If connection info was already set, ensure globals are loaded
         if (info.Cluster != null)
         {
-            _ = LoadSymbolsAsync(info);
+            _ = EnsureConnectionSymbolsAsync(info);
         }
 
         RaiseDocumentAdded(id);
@@ -143,20 +149,12 @@ public class DocumentManager : IDocumentManager
         info.Database = databaseName;
         info.ServerKind = serverKind;
 
-        // Load symbols if we have a cluster
-        if (clusterName != null)
-        {
-            // note: already calls UpdateScriptGlobals after loading symbols
-            return LoadSymbolsAsync(info);
-        }
-        else
-        {
-            UpdateGlobals(info);
-            ResolveSymbolsAsync(info);
+        // update changes to the connection info in the document
+        UpdateGlobals(info, raiseDocumentChanged: true);
 
-            // No cluster, so just update globals to reflect that
-            return Task.CompletedTask;
-        }
+        _ = EnsureConnectionSymbolsAsync(info);
+
+        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -174,19 +172,24 @@ public class DocumentManager : IDocumentManager
         }
     }
 
-    private Task LoadSymbolsAsync(DocumentInfo info)
+    /// <summary>
+    /// Ensures the symbols corresponding to the connection are available.
+    /// </summary>
+    private Task EnsureConnectionSymbolsAsync(DocumentInfo info)
     {
         _logger?.Log($"DocumentManager: Ensuring symbols for (cluster: {info.Cluster}, database: {info.Database})");
 
         // ensure symbols are loaded for this cluster and database
-        return info.LoadSymbolsQueue.Run(async (useThisCancellationToken) =>
+        return info.EnsureSymbolsQueue.Run(async (useThisCancellationToken) =>
         {
             if (info.Cluster != null)
             {
-                // instruct symbol manager to load symbols for this cluster and database
-                // this will trigger a globals changed event when done, which will update all the script globals
-                await _symbolManager.EnsureSymbolsAsync(info.Cluster, info.Database, contextCluster: null, useThisCancellationToken);
-                UpdateGlobals(info);
+                await _symbolManager.EnsureClustersAsync([info.Cluster], contextCluster: null, useThisCancellationToken).ConfigureAwait(false);
+
+                if (info.Database != null)
+                {
+                    await _symbolManager.EnsureDatabaseAsync(info.Cluster, info.Database, contextCluster: null, useThisCancellationToken);
+                }
             }
 
             _ = ResolveSymbolsAsync(info);
@@ -221,8 +224,72 @@ public class DocumentManager : IDocumentManager
         // resolve symbols for this script using latest request queue.
         return info.ResolveSymbolsQueue.Run(async (useThisCancellationToken) =>
         {
-            await _symbolManager.AddReferencedSymbolsAsync(info.Document, useThisCancellationToken).ConfigureAwait(false);
+            await Task.Delay(TimeSpan.FromMilliseconds(100));
+            await ResolveDeepAsync(info, useThisCancellationToken).ConfigureAwait(false);
         });
+
+        // ensures symbols for all referenced symbols
+        async Task ResolveDeepAsync(DocumentInfo info, CancellationToken cancellationToken)
+        {
+            // keep looping until no more changes are made to the globals
+            for (int loopCount = 0; loopCount < MaxResolveLoopCount; loopCount++)
+            {
+                var initialGlobals = _symbolManager.Globals;
+                await ResolveAsync(info.Document, cancellationToken).ConfigureAwait(false);
+                if (_symbolManager.Globals.Clusters == initialGlobals.Clusters)
+                    return;
+                // copy current info into document globals if not already done
+                UpdateGlobals(info, raiseDocumentChanged: false);
+            }
+        }
+
+        // ensures symbols for all referenced symbols
+        async Task ResolveAsync(IDocument document, CancellationToken cancellationToken)
+        {
+            var globals = document.Globals;
+            var contextCluster = document.Globals.Cluster != ClusterSymbol.Unknown ? document.Globals.Cluster.Name : null;
+
+            // find all explicit cluster('xxx') references
+            var referencedClusterNames = document.GetClusterReferences(cancellationToken)
+                .Select(cr => ConnectionFacts.GetFullHostName(cr.Cluster, globals.Domain))
+                .Distinct()
+                .ToList();
+
+            foreach (var clusterName in referencedClusterNames)
+            {
+                var cluster = globals.GetCluster(clusterName);
+                if (cluster == null || cluster.IsOpen)
+                {
+                    await _symbolManager.EnsureClustersAsync([clusterName], contextCluster, cancellationToken).ConfigureAwait(false);
+                }
+            }
+
+            // find all explicit database('xxx') references
+            var dbRefs = document.GetDatabaseReferences(cancellationToken)
+                .Select(dbref => (Cluster: ConnectionFacts.GetFullHostName(dbref.Cluster, globals.Domain), Database: dbref.Database, ClusterRef: dbref.Cluster))
+                .Distinct()
+                .ToList();
+
+            foreach (var dbRef in dbRefs)
+            {
+                var cluster = string.IsNullOrEmpty(dbRef.Cluster)
+                    ? globals.Cluster
+                    : globals.GetCluster(ConnectionFacts.GetFullHostName(dbRef.Cluster, globals.Domain));
+
+                // don't rely on the user to do the right thing.
+                if (cluster == null
+                    || cluster == ClusterSymbol.Unknown
+                    || string.IsNullOrEmpty(cluster.Name)
+                    || string.IsNullOrEmpty(dbRef.Database))
+                    continue;
+
+                var db = cluster.GetDatabase(dbRef.Database);
+                if (db == null || (db != null && db.Members.Count == 0 && db.IsOpen))
+                {
+                    await _symbolManager.EnsureDatabaseAsync(dbRef.Cluster, dbRef.Database, contextCluster, cancellationToken).ConfigureAwait(false);
+                }
+            }
+        }
     }
 
     /// <summary>
@@ -232,14 +299,14 @@ public class DocumentManager : IDocumentManager
     {
         if (_idToInfoMap.TryGetValue(documentId, out var info))
         {
-            UpdateGlobals(info);
+            UpdateGlobals(info, raiseDocumentChanged: true);
         }
     }
 
     /// <summary>
     /// Updates the document with the latest globals from the symbol manager.
     /// </summary>
-    private void UpdateGlobals(DocumentInfo info)
+    private void UpdateGlobals(DocumentInfo info, bool raiseDocumentChanged)
     {
         var originalDoc = info.Document;
 
@@ -277,7 +344,9 @@ public class DocumentManager : IDocumentManager
         {
             var newDoc = originalDoc.WithGlobals(newGlobals);
             info.Document = newDoc;
-            RaiseDocumentChanged(info.Id);
+
+            if (raiseDocumentChanged)
+                RaiseDocumentChanged(info.Id);
         }
     }
 
@@ -288,7 +357,7 @@ public class DocumentManager : IDocumentManager
     {
         if (_idToInfoMap.TryGetValue(documentId, out var info))
         {
-            UpdateGlobals(info);
+            UpdateGlobals(info, raiseDocumentChanged: true);
             document = info.Document;
             return true;
         }

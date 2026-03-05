@@ -80,14 +80,14 @@ public class SymbolManager : ISymbolManager
                 SetGlobals(this.Globals.AddOrReplaceCluster(new ClusterSymbol(clusterName, [], isOpen: true)));
 
                 // ensure cluster is reloaded (gets new list of databases)
-                await EnsureSymbolsAsync(clusterName, null, null, cancellationToken).ConfigureAwait(false);
+                await EnsureClustersAsync([clusterName], null, cancellationToken).ConfigureAwait(false);
 
                 // ensure previously loaded databases are reloaded since documents may depend on them
                 foreach (var db in clusterSymbol.Databases)
                 {
                     if (!db.IsOpen)
                     {
-                        await EnsureSymbolsAsync(clusterName, db.Name, contextCluster: null, CancellationToken.None).ConfigureAwait(false);
+                        await EnsureDatabaseAsync(clusterName, db.Name, contextCluster: null, CancellationToken.None).ConfigureAwait(false);
                     }
                 }
             }
@@ -100,7 +100,7 @@ public class SymbolManager : ISymbolManager
                     SetGlobals(this.Globals.AddOrReplaceCluster(newCluster));
                 }
 
-                await EnsureSymbolsAsync(clusterName, databaseName, contextCluster: null, CancellationToken.None).ConfigureAwait(false);
+                await EnsureDatabaseAsync(clusterName, databaseName, contextCluster: null, CancellationToken.None).ConfigureAwait(false);
             }
         }
     }
@@ -108,7 +108,7 @@ public class SymbolManager : ISymbolManager
     /// <summary>
     /// Loads symbols associated with the given cluster and database into the managed global state.
     /// </summary>
-    public Task EnsureSymbolsAsync(string clusterName, string? databaseName, string? contextCluster, CancellationToken cancellationToken)
+    public Task EnsureDatabaseAsync(string clusterName, string databaseName, string? contextCluster, CancellationToken cancellationToken)
     {
         return _taskQueue.Run(cancellationToken, async (useThisCancellationToken) =>
         {
@@ -125,7 +125,7 @@ public class SymbolManager : ISymbolManager
                     clusterSymbol = globals.GetCluster(clusterName);
                 }
 
-                if (clusterSymbol != null && databaseName != null)
+                if (clusterSymbol != null)
                 {
                     var databaseSymbol = clusterSymbol.GetDatabase(databaseName);
                     if (databaseSymbol == null || databaseSymbol.IsOpen)
@@ -197,7 +197,7 @@ public class SymbolManager : ISymbolManager
     /// Ensures cluster symbols exist for all the clusters listed.
     /// This is used to keep the global state synchronized with the client's connection panel.
     /// </summary>
-    public Task EnsureClustersAsync(ImmutableList<string> clusterNames, CancellationToken cancellationToken)
+    public Task EnsureClustersAsync(ImmutableList<string> clusterNames, string? contextCluster, CancellationToken cancellationToken)
     {
         return _taskQueue.Run(cancellationToken, async (useThisCancellationToken) =>
         {
@@ -212,7 +212,7 @@ public class SymbolManager : ISymbolManager
                     if (clusterSymbol == null)
                     {
                         _logger?.Log($"SymbolManager: Ensuring cluster symbol for '{clusterName}'");
-                        globals = await this.AddClusterAsync(globals, clusterName, contextCluster: null, useThisCancellationToken).ConfigureAwait(false);
+                        globals = await this.AddClusterAsync(globals, clusterName, contextCluster, useThisCancellationToken).ConfigureAwait(false);
                         changed = true;
                     }
                 }
@@ -229,6 +229,7 @@ public class SymbolManager : ISymbolManager
         });
     }
 
+#if false
     /// <summary>
     /// Adds missing cluster and database symbols referenced in the document.
     /// </summary>
@@ -343,5 +344,5 @@ public class SymbolManager : ISymbolManager
 
     private readonly Dictionary<string, HashSet<string>> _clustersResolvedOrInvalid
         = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
-
+#endif
 }

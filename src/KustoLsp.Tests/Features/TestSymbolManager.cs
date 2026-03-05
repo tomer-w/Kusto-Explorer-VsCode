@@ -18,7 +18,7 @@ public class TestSymbolManager
         var schemaManager = new SchemaManager(schemaSource, TestStorage.Instance, logger: null);
         var optionsManager = new OptionsManager(new TestSettingsSource());
         var symbolManager = new SymbolManager(schemaManager, optionsManager);
-        await symbolManager.EnsureSymbolsAsync("help.kusto.windows.net", "Samples", null, CancellationToken.None);
+        await symbolManager.EnsureDatabaseAsync("help.kusto.windows.net", "Samples", null, CancellationToken.None);
         Assert.HasCount(1, symbolManager.Globals.Clusters);
         var help = symbolManager.Globals.GetCluster("help.kusto.windows.net");
         Assert.IsNotNull(help);
