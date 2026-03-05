@@ -26,17 +26,12 @@ public interface ISymbolManager
     Task RefreshAsync(string clusterName, string? databaseName, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Ensures that symbols for the specified cluster existing in <see cref="Globals"/>
+    /// Ensures that symbols for the specified clusters exist in <see cref="Globals"/>
     /// </summary>
-    Task EnsureClustersAsync(ImmutableList<string> clusterNames, CancellationToken cancellationToken);
+    Task EnsureClustersAsync(ImmutableList<string> clusterNames, string? contextCluster, CancellationToken cancellationToken);
 
     /// <summary>
     /// Ensures that the symbols for the cluster and database exist in <see cref="Globals"/>
     /// </summary>
-    Task EnsureSymbolsAsync(string clusterName, string? database, string? contextCluster, CancellationToken cancellationToken);
-
-    /// <summary>
-    /// Adds missing cluster and database symbols referenced in the document.
-    /// </summary>
-    Task AddReferencedSymbolsAsync(IDocument document, CancellationToken cancellationToken);
+    Task EnsureDatabaseAsync(string clusterName, string databaseName, string? contextCluster, CancellationToken cancellationToken);
 }

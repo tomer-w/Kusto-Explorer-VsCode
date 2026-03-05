@@ -1593,7 +1593,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
             }
 
             // Ensure cluster symbols exist for all configured connections
-            await _symbolManager.EnsureClustersAsync(clusterNames.ToImmutableList(), cancellationToken);
+            await _symbolManager.EnsureClustersAsync(clusterNames.ToImmutableList(), contextCluster: null, cancellationToken);
         }
         catch (Exception ex)
         {
