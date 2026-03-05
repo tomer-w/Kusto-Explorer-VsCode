@@ -82,6 +82,7 @@ public static class FormatSettings
             FunctionBodyBrackettingStyle,
             FunctionParameterBrackettingStyle,
             FunctionArgumentBrackettingStyle,
+            PipeOperatorPlacementStyle,
             ExpressionPlacementStyle,
             StatementPlacementStyle,
             SemicolonPlacementStyle

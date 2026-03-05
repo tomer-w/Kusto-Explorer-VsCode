@@ -11,13 +11,14 @@ namespace Kusto.Lsp;
 public class SchemaManager : ISchemaManager
 {
     /// <summary>
-    /// How long to delay before queuing low-priority schema refresh
+    /// Default delay before queuing low-priority schema refresh (30 seconds)
     /// </summary>
-    private const int REFRESH_DELAY_MS = 500; // 30 sec
+    public static readonly TimeSpan DefaultRefreshDelay = TimeSpan.FromSeconds(30);
 
     private readonly ISchemaSource _source;
     private readonly IStorage _store;
     private readonly ILogger? _logger;
+    private readonly TimeSpan _refreshDelay;
     private TaskQueue _schemaQueue = new();
 
     private ImmutableDictionary<string, CachedCluster> _cachedClusters =
@@ -67,11 +68,13 @@ public class SchemaManager : ISchemaManager
     public SchemaManager(
         ISchemaSource source, 
         IStorage store, 
-        ILogger? logger)
+        ILogger? logger,
+        TimeSpan? refreshDelay = null)
     {
         _source = source;
         _store = store;
         _logger = logger;
+        _refreshDelay = refreshDelay ?? DefaultRefreshDelay;
     }
 
     /// <summary>
@@ -177,7 +180,7 @@ public class SchemaManager : ISchemaManager
     {
         await cachedCluster.RefreshQueue.Run(async (useThisCancellationToken) =>
         {
-            await Task.Delay(REFRESH_DELAY_MS);
+            await Task.Delay(_refreshDelay);
             if (cachedCluster.State != CacheState.SchemaSource)
             {
                 await LoadClusterFromSourceAsync(cachedCluster, contextCluster, key, cancellationToken).ConfigureAwait(false);
@@ -266,7 +269,7 @@ public class SchemaManager : ISchemaManager
             cancellationToken,
             async (useThisCancellationToken) =>
             {
-                await Task.Delay(REFRESH_DELAY_MS);
+                await Task.Delay(_refreshDelay);
                 await LoadDatabaseFromSourceAsync(cachedCluster, contextCluster, cachedDatabase, key, useThisCancellationToken);
                 this.DatabaseRefreshed?.Invoke(cachedCluster.Name, cachedDatabase.Name);
             });

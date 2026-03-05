@@ -30,7 +30,7 @@ public class OptionsManager : IOptionsManager
         _ = this.RefreshAsync(CancellationToken.None);
     }
 
-    public async Task RefreshAsync(CancellationToken cancellationToken)
+    private async Task RefreshAsync(CancellationToken cancellationToken)
     {
         _defaultDomain = await _settingSource.GetSettingAsync(ConnectionSettings.DefaultDomain, cancellationToken).ConfigureAwait(false);
         _formattingOptions = await GetFormattingOptionsAsync(cancellationToken).ConfigureAwait(false);
