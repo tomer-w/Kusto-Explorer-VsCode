@@ -11,7 +11,7 @@ namespace Kusto.Lsp;
 public interface IResultsManager
 {
     /// <summary>
-    /// Ads the results to the results cache
+    /// Adds the results to the results cache
     /// for the query identifid by the document document position
     /// and returns the id used to retrieve the results.
     /// </summary>

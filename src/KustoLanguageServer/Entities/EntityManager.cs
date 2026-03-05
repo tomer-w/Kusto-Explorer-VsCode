@@ -21,15 +21,15 @@ public class EntityManager : IEntityManager
 
     public async Task<string?> GetDefinition(EntityId id, CancellationToken cancellationToken)
     {
-        if (id.Cluster != null
-            && id.Database != null)
+        if (id.ClusterName != null
+            && id.DatabaseName != null)
         {
             var builder = new KqlBuilder(_optionsManager.FormattingOptions);
 
             switch (id.EntityType)
             {
                 case EntityType.Table:
-                    var tableInfo = (await _schemaManager.GetTableInfosAsync(id.Cluster, id.Database, id.EntityName, cancellationToken).ConfigureAwait(false)).FirstOrDefault();
+                    var tableInfo = (await _schemaManager.GetTableInfosAsync(id.ClusterName, id.DatabaseName, id.EntityName, cancellationToken).ConfigureAwait(false)).FirstOrDefault();
                     if (tableInfo != null)
                     {
                         builder.WriteCreateTableCommand(tableInfo);
@@ -37,7 +37,7 @@ public class EntityManager : IEntityManager
                     }
                     break;
                 case EntityType.MaterializedView:
-                    var mvInfo = (await _schemaManager.GetMaterializedViewInfosAsync(id.Cluster, id.Database, id.EntityName, cancellationToken).ConfigureAwait(false)).FirstOrDefault();
+                    var mvInfo = (await _schemaManager.GetMaterializedViewInfosAsync(id.ClusterName, id.DatabaseName, id.EntityName, cancellationToken).ConfigureAwait(false)).FirstOrDefault();
                     if (mvInfo != null)
                     {
                         builder.WriteCreateMaterializedViewCommand(mvInfo);
@@ -45,7 +45,7 @@ public class EntityManager : IEntityManager
                     }
                     break;
                 case EntityType.Function:
-                    var funInfo = (await _schemaManager.GetFunctionInfosAsync(id.Cluster, id.Database, id.EntityName, cancellationToken).ConfigureAwait(false)).FirstOrDefault();
+                    var funInfo = (await _schemaManager.GetFunctionInfosAsync(id.ClusterName, id.DatabaseName, id.EntityName, cancellationToken).ConfigureAwait(false)).FirstOrDefault();
                     if (funInfo != null)
                     {
                         builder.WriteCreateFunctionCommand(funInfo);
@@ -53,7 +53,7 @@ public class EntityManager : IEntityManager
                     }
                     break;
                 case EntityType.EntityGroup:
-                    var egInfo = (await _schemaManager.GetEntityGroupInfosAsync(id.Cluster, id.Database, id.EntityName, cancellationToken).ConfigureAwait(false)).FirstOrDefault();
+                    var egInfo = (await _schemaManager.GetEntityGroupInfosAsync(id.ClusterName, id.DatabaseName, id.EntityName, cancellationToken).ConfigureAwait(false)).FirstOrDefault();
                     if (egInfo != null)
                     {
                         builder.WriteCreateEntityGroupCommand(egInfo);
@@ -61,7 +61,7 @@ public class EntityManager : IEntityManager
                     }
                     break;
                 case EntityType.Graph:
-                    var gmInfo = (await _schemaManager.GetGraphModelInfosAsync(id.Cluster, id.Database, id.EntityName, cancellationToken).ConfigureAwait(false)).FirstOrDefault();
+                    var gmInfo = (await _schemaManager.GetGraphModelInfosAsync(id.ClusterName, id.DatabaseName, id.EntityName, cancellationToken).ConfigureAwait(false)).FirstOrDefault();
                     if (gmInfo != null)
                     {
                         builder.WriteCreateGraphModelCommand(gmInfo);
@@ -69,7 +69,7 @@ public class EntityManager : IEntityManager
                     }
                     break;
                 case EntityType.ExternalTable:
-                    await BuildExternalTableDefinitionAsync(builder, id.Cluster, id.Database, id.EntityName, cancellationToken).ConfigureAwait(false);
+                    await BuildExternalTableDefinitionAsync(builder, id.ClusterName, id.DatabaseName, id.EntityName, cancellationToken).ConfigureAwait(false);
                     return builder.Text;
                 default:
                     break;
@@ -113,11 +113,11 @@ public class EntityManager : IEntityManager
 
         string GetClusterPrefix()
         {
-            if (id.Cluster != null
+            if (id.ClusterName != null
                 && document != null 
-                && document.Globals.Cluster.Name != id.Cluster)
+                && document.Globals.Cluster.Name != id.ClusterName)
             {
-                return $"{GetClusterExpression(id.Cluster)}.";
+                return $"{GetClusterExpression(id.ClusterName)}.";
             }
             return "";
         }
@@ -129,12 +129,12 @@ public class EntityManager : IEntityManager
 
         string GetDatabasePrefix()
         {
-            if (id.Cluster != null
-                && id.Database != null 
+            if (id.ClusterName != null
+                && id.DatabaseName != null 
                 && document != null 
-                && (document.Globals.Cluster.Name != id.Cluster || document.Globals.Database.Name != id.Database))
+                && (document.Globals.Cluster.Name != id.ClusterName || document.Globals.Database.Name != id.DatabaseName))
             {
-                return $"{GetDatabaseExpression(id.Database)}.";
+                return $"{GetDatabaseExpression(id.DatabaseName)}.";
             }
             return "";
         }

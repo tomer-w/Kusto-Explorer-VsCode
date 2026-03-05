@@ -100,7 +100,7 @@ public class ConnectionManager : IConnectionManager
         return false;
     }
 
-    private class KustoConnection : IKustoConnection
+    private class KustoConnection : IConnection
     {
         private readonly ConnectionManager _manager;
         private readonly KustoConnectionStringBuilder _builder;
@@ -139,11 +139,6 @@ public class ConnectionManager : IConnectionManager
         {
             var newBuilder = new KustoConnectionStringBuilder(_builder) { InitialCatalog = database };
             return new KustoConnection(_manager, newBuilder);
-        }
-
-        public KustoConnectionStringBuilder GetBuilder()
-        {
-            return new KustoConnectionStringBuilder(_builder);
         }
 
         private ICslQueryProvider? _queryProvider;

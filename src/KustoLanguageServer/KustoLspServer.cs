@@ -230,7 +230,8 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
 
     public override async Task OnInitializedAsync(LSP.InitializedParams @params, CancellationToken cancellationToken)
     {
-        await _optionsManager.RefreshAsync(CancellationToken.None);
+        // Trigger initial settings load via SettingsChanged event
+        this.SettingsChanged?.Invoke(this, EventArgs.Empty);
     }
 
     #endregion
@@ -1008,8 +1009,8 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
             // Get the table definition content to find the column's location
             var entityId = new EntityId
             {
-                Cluster = clusterName,
-                Database = databaseName,
+                ClusterName = clusterName,
+                DatabaseName = databaseName,
                 EntityType = entityType,
                 EntityName = entityName
             };
@@ -2216,8 +2217,8 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
             {
                 var entityId = new EntityId()
                 {
-                    Cluster = @params.Cluster,
-                    Database = @params.Database,
+                    ClusterName = @params.Cluster,
+                    DatabaseName = @params.Database,
                     EntityType = entityType,
                     EntityName = @params.EntityName
                 };
@@ -2258,8 +2259,8 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
             {
                 var entityId = new EntityId()
                 {
-                    Cluster = @params.Cluster,
-                    Database = @params.Database,
+                    ClusterName = @params.Cluster,
+                    DatabaseName = @params.Database,
                     EntityType = entityType,
                     EntityName = @params.EntityName
                 };
@@ -2316,8 +2317,8 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
                 {
                     var entityId = new EntityId
                     {
-                        Cluster = cluster,
-                        Database = database,
+                        ClusterName = cluster,
+                        DatabaseName = database,
                         EntityType = parsedEntityType,
                         EntityName = entityName
                     };
@@ -2386,8 +2387,8 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
                         {
                             var entityId = new EntityId()
                             {
-                                Cluster = @params.EntityCluster,
-                                Database = @params.EntityDatabase,
+                                ClusterName = @params.EntityCluster,
+                                DatabaseName = @params.EntityDatabase,
                                 EntityType = entityType,
                                 EntityName = @params.EntityName
                             };
