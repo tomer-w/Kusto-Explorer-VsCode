@@ -23,6 +23,13 @@ public static class DeclarationFinder
     {
         var locations = new List<DeclarationLocation>();
 
+        // is this an entity itself?
+        var db = globals.GetDatabase(symbol);
+        if (db != null)
+        {
+            return [new DeclarationLocation { Entity = symbol }];
+        }
+
         // is it a column of a known table?
         if (symbol is ColumnSymbol column)
         {

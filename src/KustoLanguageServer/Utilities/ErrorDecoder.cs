@@ -44,7 +44,7 @@ public class ErrorDecoder
         return dx;
     }
 
-    public static KustoErrorDetails GetErrorDetails(Exception exception, EditString query)
+    private static KustoErrorDetails GetErrorDetails(Exception exception, EditString query)
     {
         var details = KustoErrorDetails.FromException(exception);
         details = FindLineAndPosition(details, query);
@@ -61,10 +61,15 @@ public class ErrorDecoder
             // ResolveErrorPosition will search for line/position info in message text if it is missing from details
             if (KustoQueryErrorResolver.TryResolveErrorPositions(query.CurrentText, details, out var errorPositions))
             {
-                var position = errorPositions.Select(ep => ep.Position).FirstOrDefault();
-                if (Kusto.Language.Parsing.TextFacts.TryGetLineAndOffset(query.CurrentText, position, out var line, out var lineOffset))
+                var errPos = errorPositions.FirstOrDefault();
+                if (errPos != null)
                 {
-                    details = details.WithLinePosition(line, lineOffset - 1);
+                    Kusto.Language.Parsing.TextFacts.TryGetLineAndOffset(query.CurrentText, errPos.Position, out var line, out var lineOffset);
+                    details = details.WithLinePosition(line, lineOffset);
+                    if (details.Token == null && errPos.TokenLength > 0)
+                    {
+                        details = details.WithToken(query.CurrentText.Substring(errPos.Position, errPos.TokenLength));
+                    }
                 }
             }
         }
@@ -279,158 +284,177 @@ public class ErrorDecoder
                 }
             }
 
-            // Fix error position to according to 'line'
-            int errorLineStartPosition = command.NthIndexOf('\n', lineOffset - 1);
-            if (errorLineStartPosition < 0)
+            if (!Kusto.Language.Parsing.TextFacts.TryGetPosition(command, lineOffset, characterOffset, out var position))
             {
-                errorLineStartPosition = 0;
-            }
-            else
-            {
-                errorLineStartPosition++; // Move right after new line
-            }
-
-            return new ErrorPosition { Position = errorLineStartPosition + characterOffset, TokenLength = tokenLen };
-        }
-    }
-}
-
-public sealed class KustoErrorDetails
-{
-    public const string EmptyClientRequestId = "<empty>";
-
-    /// <summary>
-    /// Id of the client request that caused the error, if available. 
-    /// This is used for correlating errors to specific requests in case of multiple concurrent requests. 
-    /// It may be empty if the error is not associated with a specific request or if the id is not available. 
-    /// </summary>
-    public string? ClientRequestId { get; }
-
-    public string ErrorType { get; }
-    public string ErrorCode { get; }
-    public string Message { get; }
-    public string FullMessage { get; }
-    public string? RecoveryAction { get; }
-    public string? Token { get; }
-    public int? LineOffset { get; }
-    public int? CharacterOffset { get; }
-
-    private KustoErrorDetails(
-        string? clientRequestId,
-        string errorType,
-        string errorCode,
-        string message,
-        string fullMessage,
-        string? recoveryAction,
-        string? token = null,
-        int? lineOffset = null,
-        int? positionOffset = null)
-    {
-        this.ClientRequestId = clientRequestId ?? EmptyClientRequestId;
-        this.ErrorType = errorType;
-        this.ErrorCode = errorCode;
-        this.Message = message;
-        this.FullMessage = fullMessage;
-        this.RecoveryAction = recoveryAction;
-        this.Token = token;
-        this.LineOffset = lineOffset;
-        this.CharacterOffset = positionOffset;
-    }
-
-    public KustoErrorDetails WithLinePosition(int lineOffset, int positionOffset)
-    {
-        return new KustoErrorDetails(
-            clientRequestId: this.ClientRequestId,
-            errorType: this.ErrorType,
-            errorCode: this.ErrorCode,
-            message: this.Message,
-            fullMessage: this.FullMessage,
-            recoveryAction: this.RecoveryAction,
-            token: this.Token,
-            lineOffset: lineOffset,
-            positionOffset: positionOffset);
-    }
-
-    public static KustoErrorDetails FromException(Exception error, string? clientRequestId = null)
-    {
-        var fullMessage = error.MessageEx();
-        var errorType = error.GetType().Name;
-
-        switch (error)
-        {
-            case KustoClientException err:
-                return new KustoErrorDetails(
-                    clientRequestId: err.ClientRequestId ?? clientRequestId,
-                    errorType: errorType,
-                    errorCode: String.Empty,
-                    message: err.ErrorMessage ?? error.Message,
-                    fullMessage: fullMessage,
-                    recoveryAction: GetRecoveryAction(err.IsPermanent)
-                    );
-
-            case RelopSemanticException err:
-                return new KustoErrorDetails(
-                    clientRequestId: err.ClientRequestId ?? clientRequestId,
-                    errorType: errorType,
-                    errorCode: err.ErrorCode,
-                    message: err.ErrorMessage ?? error.Message,
-                    fullMessage: fullMessage,
-                    recoveryAction: "Fix semantic errors by rewriting the query.");
-
-            case SyntaxException err:
-                return new KustoErrorDetails(
-                    clientRequestId: err.ClientRequestId ?? clientRequestId,
-                    errorType: errorType,
-                    errorCode: err.ErrorCode,
-                    message: err.Message,
-                    fullMessage: fullMessage,
-                    recoveryAction: "Fix syntax errors by rewriting the query.",
-                    token: err.Token,
-                    lineOffset: err.Line >= 0 ? err.Line : (int?)null,
-                    positionOffset: err.CharacterPositionInLine >= 0 ? err.CharacterPositionInLine : (int?)null
-                    );
-
-            case KustoBadRequestException err:
-                return new KustoErrorDetails(
-                    clientRequestId: err.ClientRequestId ?? clientRequestId,
-                    errorType: errorType,
-                    errorCode: err.ErrorCode,
-                    message: err.ErrorMessage ?? error.Message,
-                    fullMessage: fullMessage,
-                    recoveryAction: GetRecoveryAction(err.IsPermanent));
-
-            case KustoRequestException err:
-                var message = err.ErrorMessage ?? error.Message;
-
-                if (!string.IsNullOrWhiteSpace(message))
+                // Fix error position to according to 'line'
+                int errorLineStartPosition = command.NthIndexOf('\n', lineOffset - 1);
+                if (errorLineStartPosition < 0)
                 {
-                    try
-                    {
-                        var asJson = Newtonsoft.Json.JsonConvert.DeserializeObject(message) as Newtonsoft.Json.Linq.JObject;
-                        if (asJson != null)
-                        {
-                            message = asJson["error"]!["@message"]!.ToString();
-                        }
-                    }
-                    catch { }
+                    errorLineStartPosition = 0;
+                }
+                else
+                {
+                    errorLineStartPosition++; // Move right after new line
                 }
 
-                return new KustoErrorDetails(
-                    clientRequestId: err.ClientRequestId ?? clientRequestId,
-                    errorType: errorType,
-                    errorCode: err.ErrorCode,
-                    message: message,
-                    fullMessage: fullMessage,
-                    recoveryAction: GetRecoveryAction(err.IsPermanent));
+                position = errorLineStartPosition + characterOffset;
+            }
+ 
+            return new ErrorPosition { Position = position, TokenLength = tokenLen };
+        }
+    }
 
-            case KustoServiceException err:
-                return new KustoErrorDetails(
-                    clientRequestId: err.ClientRequestId ?? clientRequestId,
-                    errorType: errorType,
-                    errorCode: err.ErrorCode,
-                    message: err.ErrorMessage ?? error.Message,
-                    fullMessage: fullMessage,
-                    recoveryAction: GetRecoveryAction(err.IsPermanent));
+
+    public sealed class KustoErrorDetails
+    {
+        public const string EmptyClientRequestId = "<empty>";
+
+        /// <summary>
+        /// Id of the client request that caused the error, if available. 
+        /// This is used for correlating errors to specific requests in case of multiple concurrent requests. 
+        /// It may be empty if the error is not associated with a specific request or if the id is not available. 
+        /// </summary>
+        public string? ClientRequestId { get; }
+
+        public string ErrorType { get; }
+        public string ErrorCode { get; }
+        public string Message { get; }
+        public string FullMessage { get; }
+        public string? RecoveryAction { get; }
+        public string? Token { get; }
+        public int? LineOffset { get; }
+        public int? CharacterOffset { get; }
+
+        private KustoErrorDetails(
+            string? clientRequestId,
+            string errorType,
+            string errorCode,
+            string message,
+            string fullMessage,
+            string? recoveryAction,
+            string? token = null,
+            int? lineOffset = null,
+            int? positionOffset = null)
+        {
+            this.ClientRequestId = clientRequestId ?? EmptyClientRequestId;
+            this.ErrorType = errorType;
+            this.ErrorCode = errorCode;
+            this.Message = message;
+            this.FullMessage = fullMessage;
+            this.RecoveryAction = recoveryAction;
+            this.Token = token;
+            this.LineOffset = lineOffset;
+            this.CharacterOffset = positionOffset;
+        }
+
+        public KustoErrorDetails WithLinePosition(int lineOffset, int positionOffset)
+        {
+            return new KustoErrorDetails(
+                clientRequestId: this.ClientRequestId,
+                errorType: this.ErrorType,
+                errorCode: this.ErrorCode,
+                message: this.Message,
+                fullMessage: this.FullMessage,
+                recoveryAction: this.RecoveryAction,
+                token: this.Token,
+                lineOffset: lineOffset,
+                positionOffset: positionOffset);
+        }
+
+        public KustoErrorDetails WithToken(string text)
+        {
+            return new KustoErrorDetails(
+                clientRequestId: this.ClientRequestId,
+                errorType: this.ErrorType,
+                errorCode: this.ErrorCode,
+                message: this.Message,
+                fullMessage: this.FullMessage,
+                recoveryAction: this.RecoveryAction,
+                token: text,
+                lineOffset: this.LineOffset,
+                positionOffset: this.CharacterOffset);
+        }
+
+        public static KustoErrorDetails FromException(Exception error, string? clientRequestId = null)
+        {
+            var fullMessage = error.MessageEx();
+            var errorType = error.GetType().Name;
+
+            switch (error)
+            {
+                case KustoClientException err:
+                    return new KustoErrorDetails(
+                        clientRequestId: err.ClientRequestId ?? clientRequestId,
+                        errorType: errorType,
+                        errorCode: String.Empty,
+                        message: err.ErrorMessage ?? error.Message,
+                        fullMessage: fullMessage,
+                        recoveryAction: GetRecoveryAction(err.IsPermanent)
+                        );
+
+                case RelopSemanticException err:
+                    return new KustoErrorDetails(
+                        clientRequestId: err.ClientRequestId ?? clientRequestId,
+                        errorType: errorType,
+                        errorCode: err.ErrorCode,
+                        message: err.ErrorMessage ?? error.Message,
+                        fullMessage: fullMessage,
+                        recoveryAction: "Fix semantic errors by rewriting the query.");
+
+                case SyntaxException err:
+                    return new KustoErrorDetails(
+                        clientRequestId: err.ClientRequestId ?? clientRequestId,
+                        errorType: errorType,
+                        errorCode: err.ErrorCode,
+                        message: err.Message,
+                        fullMessage: fullMessage,
+                        recoveryAction: "Fix syntax errors by rewriting the query.",
+                        token: err.Token,
+                        lineOffset: err.Line >= 0 ? err.Line : (int?)null,
+                        positionOffset: err.CharacterPositionInLine >= 0 ? err.CharacterPositionInLine : (int?)null
+                        );
+
+                case KustoBadRequestException err:
+                    return new KustoErrorDetails(
+                        clientRequestId: err.ClientRequestId ?? clientRequestId,
+                        errorType: errorType,
+                        errorCode: err.ErrorCode,
+                        message: err.ErrorMessage ?? error.Message,
+                        fullMessage: fullMessage,
+                        recoveryAction: GetRecoveryAction(err.IsPermanent));
+
+                case KustoRequestException err:
+                    var message = err.ErrorMessage ?? error.Message;
+
+                    if (!string.IsNullOrWhiteSpace(message))
+                    {
+                        try
+                        {
+                            var asJson = Newtonsoft.Json.JsonConvert.DeserializeObject(message) as Newtonsoft.Json.Linq.JObject;
+                            if (asJson != null)
+                            {
+                                message = asJson["error"]!["@message"]!.ToString();
+                            }
+                        }
+                        catch { }
+                    }
+
+                    return new KustoErrorDetails(
+                        clientRequestId: err.ClientRequestId ?? clientRequestId,
+                        errorType: errorType,
+                        errorCode: err.ErrorCode,
+                        message: message,
+                        fullMessage: fullMessage,
+                        recoveryAction: GetRecoveryAction(err.IsPermanent));
+
+                case KustoServiceException err:
+                    return new KustoErrorDetails(
+                        clientRequestId: err.ClientRequestId ?? clientRequestId,
+                        errorType: errorType,
+                        errorCode: err.ErrorCode,
+                        message: err.ErrorMessage ?? error.Message,
+                        fullMessage: fullMessage,
+                        recoveryAction: GetRecoveryAction(err.IsPermanent));
 
 #if false
                 case System.ServiceModel.FaultException<PlatformExceptionDetail> err:
@@ -442,56 +466,58 @@ public sealed class KustoErrorDetails
                         fullMessage: fullMessage,
                         recoveryAction: GetRecoveryAction(err.Detail.IsPermanent));
 #endif
-            default:
-                break;
-        }
-
-        var socketTimedOut = false;
-        var connectFailure = false;
-        foreach (var ex in error.FlattenInnerExceptions())
-        {
-            if (ex is System.Net.Sockets.SocketException sex)
-            {
-                socketTimedOut = sex.SocketErrorCode == System.Net.Sockets.SocketError.TimedOut;
+                default:
+                    break;
             }
-            if (ex is System.Net.WebException wex)
+
+            var socketTimedOut = false;
+            var connectFailure = false;
+            foreach (var ex in error.FlattenInnerExceptions())
             {
-                connectFailure = wex.Status == System.Net.WebExceptionStatus.ConnectFailure;
+                if (ex is System.Net.Sockets.SocketException sex)
+                {
+                    socketTimedOut = sex.SocketErrorCode == System.Net.Sockets.SocketError.TimedOut;
+                }
+                if (ex is System.Net.WebException wex)
+                {
+                    connectFailure = wex.Status == System.Net.WebExceptionStatus.ConnectFailure;
+                }
             }
-        }
 
-        // In .NET Framework, we have: System.Net.Http.HttpRequestException --> System.Net.WebException --> System.Net.Sockets.SocketException.
-        // The WebException is omitted in .NET Core or later, so we don't look for it.
-        connectFailure = true;
+            // In .NET Framework, we have: System.Net.Http.HttpRequestException --> System.Net.WebException --> System.Net.Sockets.SocketException.
+            // The WebException is omitted in .NET Core or later, so we don't look for it.
+            connectFailure = true;
 
-        if (connectFailure && socketTimedOut)
-        {
-            // We failed to connect and the failure is because the remote endpoint is not responding, even not with NAK.
-            // This means that the hostname does resolve to an IP address that nobody is listening or allows us to connect.
+            if (connectFailure && socketTimedOut)
+            {
+                // We failed to connect and the failure is because the remote endpoint is not responding, even not with NAK.
+                // This means that the hostname does resolve to an IP address that nobody is listening or allows us to connect.
+                return new KustoErrorDetails(
+                    clientRequestId: clientRequestId,
+                    errorType: errorType,
+                    errorCode: "FailedToConnect_TimedOut",
+                    message: error.MessageEx(),
+                    fullMessage: error.MessageEx(forceNesting: true), // Nesting allows the user to see the IP address we're trying to connect to
+                    recoveryAction: "Dial any relevant VPN if needed and retry."
+                    );
+            }
+
             return new KustoErrorDetails(
                 clientRequestId: clientRequestId,
                 errorType: errorType,
-                errorCode: "FailedToConnect_TimedOut",
-                message: error.MessageEx(),
-                fullMessage: error.MessageEx(forceNesting: true), // Nesting allows the user to see the IP address we're trying to connect to
-                recoveryAction: "Dial any relevant VPN if needed and retry."
-                );
+                errorCode: String.Empty,
+                message: error.Message,
+                fullMessage: fullMessage,
+                recoveryAction: null);
         }
 
-        return new KustoErrorDetails(
-            clientRequestId: clientRequestId,
-            errorType: errorType,
-            errorCode: String.Empty,
-            message: error.Message,
-            fullMessage: fullMessage,
-            recoveryAction: null);
-    }
-
-    private static string GetRecoveryAction(bool isPermanent)
-    {
-        return isPermanent ?
-            "Error is permanent, retrying will not help" :
-            "Error may be transient, retrying may result in successful request";
+        private static string GetRecoveryAction(bool isPermanent)
+        {
+            return isPermanent ?
+                "Error is permanent, retrying will not help" :
+                "Error may be transient, retrying may result in successful request";
+        }
     }
 }
+
 
