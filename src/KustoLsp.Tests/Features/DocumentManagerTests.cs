@@ -462,7 +462,160 @@ public sealed class DocumentManagerTests
 
     #endregion
 
-    #region Test Helper Class
+    #region RefreshReferencedSymbolsAsync Tests
+
+    [TestMethod]
+    public async Task RefreshReferencedSymbolsAsync_RefreshesDefaultClusterAndDatabase()
+    {
+        var globals = GlobalState.Default
+            .WithClusterList(new ClusterSymbol("mycluster.kusto.windows.net",
+                new DatabaseSymbol("mydb")));
+
+        var symbolManager = new TrackingSymbolManager(globals);
+        var documentManager = new DocumentManager(symbolManager);
+
+        documentManager.AddDocument(TestDocId, "print 1");
+        await documentManager.UpdateConnectionAsync(TestDocId, "mycluster.kusto.windows.net", "mydb", null);
+
+        await documentManager.RefreshReferencedSymbolsAsync(TestDocId, CancellationToken.None);
+
+        Assert.HasCount(1, symbolManager.RefreshCalls);
+        Assert.Contains(("mycluster.kusto.windows.net", "mydb"), symbolManager.RefreshCalls);
+    }
+
+    [TestMethod]
+    public async Task RefreshReferencedSymbolsAsync_RefreshesDatabaseReferences()
+    {
+        var globals = GlobalState.Default
+            .WithClusterList(new ClusterSymbol("mycluster.kusto.windows.net",
+                new DatabaseSymbol("mydb"),
+                new DatabaseSymbol("otherdb")));
+
+        var symbolManager = new TrackingSymbolManager(globals);
+        var documentManager = new DocumentManager(symbolManager);
+
+        // Document with database('otherdb') reference
+        documentManager.AddDocument(TestDocId, "database('otherdb').MyTable");
+        await documentManager.UpdateConnectionAsync(TestDocId, "mycluster.kusto.windows.net", "mydb", null);
+
+        await documentManager.RefreshReferencedSymbolsAsync(TestDocId, CancellationToken.None);
+
+        // Should refresh both the default database and the referenced database
+        Assert.HasCount(2, symbolManager.RefreshCalls);
+        Assert.Contains(("mycluster.kusto.windows.net", "mydb"), symbolManager.RefreshCalls);
+        Assert.Contains(("mycluster.kusto.windows.net", "otherdb"), symbolManager.RefreshCalls);
+    }
+
+    [TestMethod]
+    public async Task RefreshReferencedSymbolsAsync_RefreshesClusterAndDatabaseReferences()
+    {
+        var globals = GlobalState.Default
+            .WithClusterList(
+                new ClusterSymbol("mycluster.kusto.windows.net", new DatabaseSymbol("mydb")),
+                new ClusterSymbol("othercluster.kusto.windows.net", new DatabaseSymbol("otherdb")));
+
+        var symbolManager = new TrackingSymbolManager(globals);
+        var documentManager = new DocumentManager(symbolManager);
+
+        // Document with cluster('othercluster').database('otherdb') reference
+        documentManager.AddDocument(TestDocId, "cluster('othercluster.kusto.windows.net').database('otherdb').MyTable");
+        await documentManager.UpdateConnectionAsync(TestDocId, "mycluster.kusto.windows.net", "mydb", null);
+
+        await documentManager.RefreshReferencedSymbolsAsync(TestDocId, CancellationToken.None);
+
+        // Should refresh the default and the referenced cluster/database
+        Assert.HasCount(2, symbolManager.RefreshCalls);
+        Assert.Contains(("mycluster.kusto.windows.net", "mydb"), symbolManager.RefreshCalls);
+        Assert.Contains(("othercluster.kusto.windows.net", "otherdb"), symbolManager.RefreshCalls);
+    }
+
+    [TestMethod]
+    public async Task RefreshReferencedSymbolsAsync_NoConnectionSet_OnlyRefreshesReferencedDatabases()
+    {
+        var globals = GlobalState.Default
+            .WithClusterList(new ClusterSymbol("somecluster.kusto.windows.net",
+                new DatabaseSymbol("somedb")));
+
+        var symbolManager = new TrackingSymbolManager(globals);
+        var documentManager = new DocumentManager(symbolManager);
+
+        // Document without connection but with explicit database reference
+        documentManager.AddDocument(TestDocId, "cluster('somecluster.kusto.windows.net').database('somedb').MyTable");
+
+        await documentManager.RefreshReferencedSymbolsAsync(TestDocId, CancellationToken.None);
+
+        // Should refresh only the explicitly referenced database
+        Assert.HasCount(1, symbolManager.RefreshCalls);
+        Assert.Contains(("somecluster.kusto.windows.net", "somedb"), symbolManager.RefreshCalls);
+    }
+
+    [TestMethod]
+    public async Task RefreshReferencedSymbolsAsync_NoDuplicateRefreshCalls()
+    {
+        var globals = GlobalState.Default
+            .WithClusterList(new ClusterSymbol("mycluster.kusto.windows.net",
+                new DatabaseSymbol("mydb")));
+
+        var symbolManager = new TrackingSymbolManager(globals);
+        var documentManager = new DocumentManager(symbolManager);
+
+        // Document with duplicate database references
+        documentManager.AddDocument(TestDocId, """
+            database('mydb').Table1
+            | union database('mydb').Table2
+            """);
+        await documentManager.UpdateConnectionAsync(TestDocId, "mycluster.kusto.windows.net", "mydb", null);
+
+        await documentManager.RefreshReferencedSymbolsAsync(TestDocId, CancellationToken.None);
+
+        // Should only refresh once despite multiple references
+        Assert.HasCount(1, symbolManager.RefreshCalls);
+        Assert.Contains(("mycluster.kusto.windows.net", "mydb"), symbolManager.RefreshCalls);
+    }
+
+    [TestMethod]
+    public async Task RefreshReferencedSymbolsAsync_UnknownDocument_DoesNothing()
+    {
+        var symbolManager = new TrackingSymbolManager(GlobalState.Default);
+        var documentManager = new DocumentManager(symbolManager);
+
+        // RefreshReferencedSymbolsAsync on a document that was never added
+        await documentManager.RefreshReferencedSymbolsAsync(TestDocId, CancellationToken.None);
+
+        Assert.IsEmpty(symbolManager.RefreshCalls);
+    }
+
+    [TestMethod]
+    public async Task RefreshReferencedSymbolsAsync_MultipleDatabaseReferences_RefreshesAll()
+    {
+        var globals = GlobalState.Default
+            .WithClusterList(new ClusterSymbol("mycluster.kusto.windows.net",
+                new DatabaseSymbol("db1"),
+                new DatabaseSymbol("db2"),
+                new DatabaseSymbol("db3")));
+
+        var symbolManager = new TrackingSymbolManager(globals);
+        var documentManager = new DocumentManager(symbolManager);
+
+        // Document referencing multiple databases
+        documentManager.AddDocument(TestDocId, """
+            database('db2').TableA
+            | union database('db3').TableB
+            """);
+        await documentManager.UpdateConnectionAsync(TestDocId, "mycluster.kusto.windows.net", "db1", null);
+
+        await documentManager.RefreshReferencedSymbolsAsync(TestDocId, CancellationToken.None);
+
+        // Should refresh all three databases
+        Assert.HasCount(3, symbolManager.RefreshCalls);
+        Assert.Contains(("mycluster.kusto.windows.net", "db1"), symbolManager.RefreshCalls);
+        Assert.Contains(("mycluster.kusto.windows.net", "db2"), symbolManager.RefreshCalls);
+        Assert.Contains(("mycluster.kusto.windows.net", "db3"), symbolManager.RefreshCalls);
+    }
+
+    #endregion
+
+    #region Test Helper Classes
 
     class TestSymbolManager : ISymbolManager
     {
@@ -489,6 +642,41 @@ public sealed class DocumentManagerTests
 
         public Task RefreshAsync(string clusterName, string? databaseName, CancellationToken cancellationToken)
         {
+            return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>
+    /// A test symbol manager that tracks calls to RefreshAsync.
+    /// </summary>
+    class TrackingSymbolManager : ISymbolManager
+    {
+        public TrackingSymbolManager(GlobalState globals)
+        {
+            this.Globals = globals;
+        }
+
+        public GlobalState Globals { get; }
+
+        public List<(string Cluster, string? Database)> RefreshCalls { get; } = [];
+
+#pragma warning disable CS0067
+        public event EventHandler<GlobalState>? GlobalsChanged;
+#pragma warning restore CS0067
+
+        public Task EnsureClustersAsync(ImmutableList<string> clusterNames, string? contextCluster, CancellationToken cancellationToken)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task EnsureDatabaseAsync(string clusterName, string databaseName, string? contextCluster, CancellationToken cancellationToken)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task RefreshAsync(string clusterName, string? databaseName, CancellationToken cancellationToken)
+        {
+            RefreshCalls.Add((clusterName, databaseName));
             return Task.CompletedTask;
         }
     }
