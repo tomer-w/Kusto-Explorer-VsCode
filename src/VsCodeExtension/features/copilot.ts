@@ -5,25 +5,89 @@ import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 import * as conn from './connections';
 import * as server from './server';
+import { ENTITY_DEFINITION_SCHEME } from './entityDefinitionProvider';
 
 const COPILOT_PARTICIPANT_ID = 'kusto';
 const MAX_SCHEMA_CHARS = 30000; // Approximate limit to stay within token limits
+
+let languageClient: LanguageClient;
+
+
+// =============================================================================
+// Tool Handler Infrastructure
+// =============================================================================
+
+/** Resolves the cluster/database from input, falling back to the active connection. */
+async function resolveConnection(input: { cluster?: string; database?: string }): Promise<{ cluster: string; database: string } | undefined> {
+    let cluster = input.cluster;
+    let database = input.database;
+    if (!cluster || !database) {
+        const active = await conn.getActiveDocumentConnection();
+        if (active) {
+            cluster = cluster ?? active.cluster;
+            database = database ?? active.database;
+        }
+    }
+    return cluster ? { cluster, database: database ?? '' } : undefined;
+}
+
+/** Creates a simple text result. */
+function textResult(text: string): vscode.LanguageModelToolResult {
+    return new vscode.LanguageModelToolResult([new vscode.LanguageModelTextPart(text)]);
+}
+
+/**
+ * Register a tool that just takes input and returns a string.
+ * Connection resolution, error wrapping, and prepareInvocation are handled automatically.
+ */
+function registerTool<T>(
+    context: vscode.ExtensionContext,
+    id: string,
+    progressMessage: string,
+    handler: (input: T, token: vscode.CancellationToken) => Promise<string>
+): void {
+    const tool: vscode.LanguageModelTool<T> = {
+        async prepareInvocation() {
+            return { invocationMessage: progressMessage };
+        },
+        async invoke(options, token) {
+            return textResult(await handler(options.input, token));
+        }
+    };
+    context.subscriptions.push(vscode.lm.registerTool(id, tool));
+}
 
 
 // =============================================================================
 // Activation
 // =============================================================================
 
-/**
- * Activates Copilot integration features for Kusto.
- * @param context The extension context
- * @param client The language client for LSP communication
- */
 export function activate(context: vscode.ExtensionContext, client: LanguageClient): void {
-    // Register the Language Model Tool - can be referenced with #kusto_getDatabaseSchema
-    const schemaTool = vscode.lm.registerTool('kusto_getDatabaseSchema', new KustoDatabaseSchemaTool());
-    context.subscriptions.push(schemaTool);
-    
+    languageClient = client;
+
+    // Register tools
+    registerTool(context, 'kusto_getClusters', 'Getting available clusters...', getClusters);
+    registerTool(context, 'kusto_getActiveConnection', 'Getting active connection...', getActiveConnection);
+    registerTool(context, 'kusto_getDatabases', 'Getting databases...', getDatabases);
+    registerTool(context, 'kusto_getTables', 'Getting tables...', getTables);
+    registerTool(context, 'kusto_getTableColumns', 'Getting table columns...', getTableColumns);
+    registerTool(context, 'kusto_getExternalTables', 'Getting external tables...', getExternalTables);
+    registerTool(context, 'kusto_getExternalTableColumns', 'Getting external table columns...', getExternalTableColumns);
+    registerTool(context, 'kusto_getFunctions', 'Getting functions...', getFunctions);
+    registerTool(context, 'kusto_getMaterializedViews', 'Getting materialized views...', getMaterializedViews);
+    registerTool(context, 'kusto_getMaterializedViewColumns', 'Getting materialized view columns...', getMaterializedViewColumns);
+    registerTool(context, 'kusto_getEntityGroups', 'Getting entity groups...', getEntityGroups);
+    registerTool(context, 'kusto_getGraphModels', 'Getting graph models...', getGraphModels);
+    registerTool(context, 'kusto_getTableDefinition', 'Getting table definition...', getTableDefinition);
+    registerTool(context, 'kusto_getExternalTableDefinition', 'Getting external table definition...', getExternalTableDefinition);
+    registerTool(context, 'kusto_getMaterializedViewDefinition', 'Getting materialized view definition...', getMaterializedViewDefinition);
+    registerTool(context, 'kusto_getFunctionDefinition', 'Getting function definition...', getFunctionDefinition);
+    registerTool(context, 'kusto_getEntityGroupDefinition', 'Getting entity group definition...', getEntityGroupDefinition);
+    registerTool(context, 'kusto_getGraphModelDefinition', 'Getting graph model definition...', getGraphModelDefinition);
+    registerTool(context, 'kusto_getCurrentQueryText', 'Getting current query...', getCurrentQuery);
+    registerTool(context, 'kusto_getQueryRanges', 'Getting query ranges...', getQueryRanges);
+    registerTool(context, 'kusto_validateQuery', 'Validating query...', validateQuery);
+
     // Register the Chat Participant - user invokes with @kusto
     const participant = vscode.chat.createChatParticipant(COPILOT_PARTICIPANT_ID, handleChatRequest);
     participant.iconPath = new vscode.ThemeIcon('database');
@@ -32,72 +96,246 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
 
 
 // =============================================================================
-// Language Model Tool - Can be referenced with #kusto_getDatabaseSchema
+// Tool Handlers
 // =============================================================================
 
-/**
- * Tool that provides database schema information to Copilot.
- */
-class KustoDatabaseSchemaTool implements vscode.LanguageModelTool<{ cluster?: string; database?: string }> {
-    
-    async prepareInvocation(
-        options: vscode.LanguageModelToolInvocationPrepareOptions<{ cluster?: string; database?: string }>,
-        token: vscode.CancellationToken
-    ): Promise<vscode.PreparedToolInvocation> {
-        let cluster = options.input.cluster;
-        let database = options.input.database;
-        
-        if (!cluster || !database) {
-            const activeConnection = await conn.getActiveDocumentConnection();
-            if (activeConnection) {
-                cluster = cluster ?? activeConnection.cluster;
-                database = database ?? activeConnection.database;
-            }
-        }
-        
-        const connectionInfo = cluster 
-            ? `${cluster}/${database ?? 'default'}` 
-            : 'active connection';
-            
-        return {
-            invocationMessage: `Getting Kusto database schema from ${connectionInfo}...`
-        };
+async function getClusters(): Promise<string> {
+    const clusters = conn.getConfiguredConnections();
+    if (clusters.length === 0) {
+        return 'No clusters configured. Add a cluster connection first.';
     }
-    
-    async invoke(
-        options: vscode.LanguageModelToolInvocationOptions<{ cluster?: string; database?: string }>,
-        token: vscode.CancellationToken
-    ): Promise<vscode.LanguageModelToolResult> {
-        let cluster = options.input.cluster;
-        let database = options.input.database;
-        
-        if (!cluster || !database) {
-            const activeConnection = await conn.getActiveDocumentConnection();
-            if (activeConnection) {
-                cluster = cluster ?? activeConnection.cluster;
-                database = database ?? activeConnection.database;
-            }
-        }
-        
-        if (!cluster) {
-            return new vscode.LanguageModelToolResult([
-                new vscode.LanguageModelTextPart('No Kusto connection available. Please connect to a cluster and database first.')
-            ]);
-        }
-        
-        const dbSchema = await conn.getDatabaseSchema(cluster, database ?? '');
-        
-        if (!dbSchema) {
-            return new vscode.LanguageModelToolResult([
-                new vscode.LanguageModelTextPart(`Unable to fetch schema for ${cluster}/${database ?? 'unknown'}.`)
-            ]);
-        }
-        
-        const schemaJson = JSON.stringify(dbSchema, null, 2);
-        return new vscode.LanguageModelToolResult([
-            new vscode.LanguageModelTextPart(`Kusto database schema for ${cluster}/${dbSchema.name}:\n${schemaJson}`)
-        ]);
+    return `Available clusters:\n${clusters.join('\n')}`;
+}
+
+async function getActiveConnection(): Promise<string> {
+    const active = await conn.getActiveDocumentConnection();
+    if (!active) {
+        return 'No active connection. Open a .kql file and connect to a database.';
     }
+    return `Active connection: cluster=${active.cluster}, database=${active.database ?? '(none)'}`;
+}
+
+async function getDatabases(input: { cluster?: string }): Promise<string> {
+    let cluster = input.cluster;
+    if (!cluster) {
+        const active = await conn.getActiveDocumentConnection();
+        cluster = active?.cluster;
+    }
+    if (!cluster) {
+        return 'No cluster specified and no active connection.';
+    }
+    const databases = await conn.getDatabasesForCluster(cluster);
+    if (databases.length === 0) {
+        return `No databases found for cluster ${cluster}.`;
+    }
+    return `Databases in ${cluster}:\n${databases.join('\n')}`;
+}
+
+/** Helper to get a resolved schema, returning an error string on failure. */
+async function getResolvedSchema(input: { cluster?: string; database?: string }): Promise<server.DatabaseInfo | string> {
+    const connection = await resolveConnection(input);
+    if (!connection) {
+        return 'No Kusto connection available. Please connect to a cluster and database first.';
+    }
+    const schema = await conn.getDatabaseSchema(connection.cluster, connection.database);
+    if (!schema) {
+        return `Unable to fetch schema for ${connection.cluster}/${connection.database}.`;
+    }
+    return schema;
+}
+
+async function getTables(input: { cluster?: string; database?: string }): Promise<string> {
+    const schema = await getResolvedSchema(input);
+    if (typeof schema === 'string') return schema;
+    const tables = schema.tables ?? [];
+    if (tables.length === 0) return `No tables in ${schema.name}.`;
+    return `Tables in ${schema.name}:\n${tables.map(t => t.name).join('\n')}`;
+}
+
+function formatColumns(entityType: string, name: string, columns?: server.DatabaseColumnInfo[]): string {
+    if (!columns || columns.length === 0) return `No columns in ${entityType} ${name}.`;
+    return `Columns in ${entityType} ${name}:\n${columns.map(c => `${c.name}: ${c.type}`).join('\n')}`;
+}
+
+async function getTableColumns(input: { cluster?: string; database?: string; table: string }): Promise<string> {
+    const schema = await getResolvedSchema(input);
+    if (typeof schema === 'string') return schema;
+    const table = schema.tables?.find(t => t.name === input.table);
+    if (!table) return `Table "${input.table}" not found in ${schema.name}.`;
+    return formatColumns('table', input.table, table.columns);
+}
+
+async function getExternalTableColumns(input: { cluster?: string; database?: string; table: string }): Promise<string> {
+    const schema = await getResolvedSchema(input);
+    if (typeof schema === 'string') return schema;
+    const table = schema.externalTables?.find(t => t.name === input.table);
+    if (!table) return `External table "${input.table}" not found in ${schema.name}.`;
+    return formatColumns('external table', input.table, table.columns);
+}
+
+async function getMaterializedViewColumns(input: { cluster?: string; database?: string; view: string }): Promise<string> {
+    const schema = await getResolvedSchema(input);
+    if (typeof schema === 'string') return schema;
+    const view = schema.materializedViews?.find(v => v.name === input.view);
+    if (!view) return `Materialized view "${input.view}" not found in ${schema.name}.`;
+    return formatColumns('materialized view', input.view, view.columns);
+}
+
+async function getFunctions(input: { cluster?: string; database?: string }): Promise<string> {
+    const schema = await getResolvedSchema(input);
+    if (typeof schema === 'string') return schema;
+    const functions = schema.functions ?? [];
+    if (functions.length === 0) return `No functions in ${schema.name}.`;
+    return `Functions in ${schema.name}:\n${functions.map(f => `${f.name}${f.parameters ?? '()'}`).join('\n')}`;
+}
+
+async function getMaterializedViews(input: { cluster?: string; database?: string }): Promise<string> {
+    const schema = await getResolvedSchema(input);
+    if (typeof schema === 'string') return schema;
+    const views = schema.materializedViews ?? [];
+    if (views.length === 0) return `No materialized views in ${schema.name}.`;
+    return `Materialized views in ${schema.name}:\n${views.map(v => v.name).join('\n')}`;
+}
+
+async function getExternalTables(input: { cluster?: string; database?: string }): Promise<string> {
+    const schema = await getResolvedSchema(input);
+    if (typeof schema === 'string') return schema;
+    const tables = schema.externalTables ?? [];
+    if (tables.length === 0) return `No external tables in ${schema.name}.`;
+    return `External tables in ${schema.name}:\n${tables.map(t => t.name).join('\n')}`;
+}
+
+async function getEntityGroups(input: { cluster?: string; database?: string }): Promise<string> {
+    const schema = await getResolvedSchema(input);
+    if (typeof schema === 'string') return schema;
+    const groups = schema.entityGroups ?? [];
+    if (groups.length === 0) return `No entity groups in ${schema.name}.`;
+    return `Entity groups in ${schema.name}:\n${groups.map(g => g.name).join('\n')}`;
+}
+
+async function getGraphModels(input: { cluster?: string; database?: string }): Promise<string> {
+    const schema = await getResolvedSchema(input);
+    if (typeof schema === 'string') return schema;
+    const models = schema.graphModels ?? [];
+    if (models.length === 0) return `No graph models in ${schema.name}.`;
+    return `Graph models in ${schema.name}:\n${models.map(m => m.name).join('\n')}`;
+}
+
+/** Input type for entity definition handlers that look up a named entity. */
+interface EntityDefinitionInput { cluster?: string; database?: string; name: string }
+
+/** Builds a kusto-entity:// URI and fetches the definition content from the language server. */
+async function getEntityDefinition(input: EntityDefinitionInput, entityType: string): Promise<string> {
+    const connection = await resolveConnection(input);
+    if (!connection) {
+        return 'No Kusto connection available. Please connect to a cluster and database first.';
+    }
+
+    const uri = `${ENTITY_DEFINITION_SCHEME}://${encodeURIComponent(connection.cluster)}/${encodeURIComponent(connection.database)}/${encodeURIComponent(entityType)}/${encodeURIComponent(input.name)}.kql`;
+    const result = await server.getEntityDefinitionContent(languageClient, uri);
+    if (!result) {
+        return `${entityType} "${input.name}" not found in ${connection.cluster}/${connection.database}.`;
+    }
+    return result.content;
+}
+
+async function getTableDefinition(input: EntityDefinitionInput): Promise<string> {
+    return getEntityDefinition(input, 'Table');
+}
+
+async function getExternalTableDefinition(input: EntityDefinitionInput): Promise<string> {
+    return getEntityDefinition(input, 'ExternalTable');
+}
+
+async function getMaterializedViewDefinition(input: EntityDefinitionInput): Promise<string> {
+    return getEntityDefinition(input, 'MaterializedView');
+}
+
+async function getFunctionDefinition(input: EntityDefinitionInput): Promise<string> {
+    return getEntityDefinition(input, 'Function');
+}
+
+async function getEntityGroupDefinition(input: EntityDefinitionInput): Promise<string> {
+    return getEntityDefinition(input, 'EntityGroup');
+}
+
+async function getGraphModelDefinition(input: EntityDefinitionInput): Promise<string> {
+    return getEntityDefinition(input, 'Graph');
+}
+
+async function getCurrentQuery(): Promise<string> {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || editor.document.languageId !== 'kusto') {
+        return 'No active Kusto document. Open a .kql file first.';
+    }
+
+    const uri = editor.document.uri.toString();
+    const cursorPos = editor.selection.active;
+    const queryRange = await server.getQueryRange(
+        languageClient, uri,
+        { line: cursorPos.line, character: cursorPos.character }
+    );
+
+    if (!queryRange) {
+        return 'No query found at the current cursor position.';
+    }
+
+    const range = new vscode.Range(
+        queryRange.start.line, queryRange.start.character,
+        queryRange.end.line, queryRange.end.character
+    );
+    const queryText = editor.document.getText(range);
+
+    return `Current query (lines ${queryRange.start.line + 1}-${queryRange.end.line + 1}):\n${queryText}`;
+}
+
+async function getQueryRanges(): Promise<string> {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor || editor.document.languageId !== 'kusto') {
+        return 'No active Kusto document. Open a .kql file first.';
+    }
+
+    const result = await server.getQueryRanges(languageClient, editor.document.uri.toString());
+    if (!result || result.ranges.length === 0) {
+        return 'No queries found in the active document.';
+    }
+
+    return `Queries in document (${result.ranges.length}):\n${result.ranges.map((r, i) =>
+        `  Query ${i + 1}: lines ${r.start.line + 1}-${r.end.line + 1}`
+    ).join('\n')}`;
+}
+
+async function validateQuery(input: { query: string; cluster?: string; database?: string }): Promise<string> {
+    let cluster = input.cluster;
+    let database = input.database;
+
+    if (!cluster) {
+        const active = await conn.getActiveDocumentConnection();
+        if (active) {
+            cluster = cluster ?? active.cluster;
+            database = database ?? active.database;
+        }
+    }
+
+    if (!cluster) {
+        return 'No cluster specified and no active connection. Cannot validate query without schema context.';
+    }
+
+    const result = await server.validateQuery(languageClient, input.query, cluster, database);
+    if (!result) {
+        return 'Validation failed. The server did not return a result.';
+    }
+
+    if (result.diagnostics.length === 0) {
+        return 'Query is valid. No errors or warnings found.';
+    }
+
+    return `Query has ${result.diagnostics.length} diagnostic(s):\n${result.diagnostics.map(d => {
+        const severity = d.severity === 1 ? 'Error' : d.severity === 2 ? 'Warning' : 'Info';
+        const line = d.range.start.line + 1;
+        const col = d.range.start.character + 1;
+        return `  ${severity} at line ${line}, col ${col}: ${d.message}`;
+    }).join('\n')}`;
 }
 
 // =============================================================================

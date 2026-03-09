@@ -597,3 +597,37 @@ export function ensureDocument(
         { uri, text }
     );
 }
+
+/** A diagnostic from validating a query. */
+export interface ValidateQueryDiagnostic {
+    range: Range;
+    code?: string;
+    message: string;
+    severity: number;
+}
+
+/** Result of validating a query. */
+export interface ValidateQueryResult {
+    diagnostics: ValidateQueryDiagnostic[];
+}
+
+/**
+ * Validates a query and returns any diagnostics.
+ * This can be used to validate queries without opening them as documents.
+ * @param client The language client for LSP communication
+ * @param query The query text to validate
+ * @param cluster The cluster name for schema context
+ * @param database Optional database name for schema context
+ * @returns The validation result with diagnostics, or null if validation failed
+ */
+export function validateQuery(
+    client: LanguageClient,
+    query: string,
+    cluster: string,
+    database?: string
+): Promise<ValidateQueryResult | null> {
+    return client.sendRequest<ValidateQueryResult | null>(
+        'kusto/validateQuery',
+        { query, cluster, database }
+    );
+}

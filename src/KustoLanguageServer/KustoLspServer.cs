@@ -18,6 +18,9 @@ namespace Kusto.Lsp;
 
 public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
 {
+    private readonly ILogger _logger;
+    private readonly ISettingSource _settingSource;
+    private readonly IStorage _storage;
     private readonly IOptionsManager _optionsManager;
     private readonly IConnectionManager _connectionManager;
     private readonly ISchemaManager _schemaManager;
@@ -47,6 +50,9 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
         : base(input, output)
     {
         _args = args.ToImmutableList();
+        _logger = this;
+        _settingSource = this;
+        _storage = this;
         _optionsManager = optionsManager;
         _schemaManager = schemaManager;
         _connectionManager = connectionManager;
@@ -67,18 +73,18 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
         : base(input, output)
     {
         _args = args.ToImmutableList();
-        ILogger logger = this;
-        ISettingSource settingSource = this;
-        IStorage store = this;
-        _optionsManager = new OptionsManager(settingSource);
+        _logger = this;
+        _settingSource = this;
+        _storage = this;
+        _optionsManager = new OptionsManager(_settingSource);
         _connectionManager = new ConnectionManager();
-        var schemaSource = new ServerSchemaSource(_connectionManager, logger);
-        _schemaManager = new SchemaManager(schemaSource, store, logger);
-        _symbolManager = new SymbolManager(_schemaManager, _optionsManager, logger);
-        _documentManager = new DocumentManager(_symbolManager, logger);
+        var schemaSource = new ServerSchemaSource(_connectionManager, _logger);
+        _schemaManager = new SchemaManager(schemaSource, _storage, _logger);
+        _symbolManager = new SymbolManager(_schemaManager, _optionsManager, _logger);
+        _documentManager = new DocumentManager(_symbolManager, _logger);
         _resultsManager = new ResultsManager(_documentManager);
-        _diagnosticsManager = new DiagnosticsManager(_documentManager, logger);
-        _queryManager = new QueryManager(_connectionManager, _documentManager, _optionsManager, logger);
+        _diagnosticsManager = new DiagnosticsManager(_documentManager, _logger);
+        _queryManager = new QueryManager(_connectionManager, _symbolManager, _documentManager, _optionsManager, _logger);
         _chartManager = new PlotlyChartManager();
         _entityManager = new EntityManager(_schemaManager, _optionsManager);
         InitEvents();
@@ -1755,6 +1761,77 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
 
     #endregion
 
+    #region Validate
+
+    [JsonRpcMethod("kusto/validateQuery", UseSingleObjectParameterDeserialization = true)]
+    public async Task<ValidateQueryResult> OnValidateQueryAsync(ValidateQueryParams @params, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var diagnostics = await _queryManager.ValidateQueryAsync(
+                @params.Query,
+                @params.Cluster,
+                @params.Database,
+                cancellationToken)
+                .ConfigureAwait(false);
+
+            var lspDiagnostics = diagnostics.Select(d =>
+                new LSP.Diagnostic
+                {
+                    Range = GetLspRange(@params.Query, new TextRange(d.Start, d.Length)),
+                    Code = d.Code,
+                    Message = d.Message,
+                    Severity = GetSeverity(d.Severity)
+                }).ToArray();
+
+            return new ValidateQueryResult
+            {
+                Diagnostics = lspDiagnostics
+            };
+        }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex);
+            return new ValidateQueryResult
+            {
+                Diagnostics = []
+            };
+        }
+
+        LSP.DiagnosticSeverity GetSeverity(string severity) =>
+            severity switch
+            {
+                DiagnosticSeverity.Error => LSP.DiagnosticSeverity.Error,
+                DiagnosticSeverity.Warning => LSP.DiagnosticSeverity.Warning,
+                DiagnosticSeverity.Suggestion => LSP.DiagnosticSeverity.Hint,
+                DiagnosticSeverity.Information => LSP.DiagnosticSeverity.Information,
+                _ => LSP.DiagnosticSeverity.Information
+            };
+    }
+
+
+    [DataContract]
+    public class ValidateQueryParams
+    {
+        [DataMember(Name = "query")]
+        public required string Query { get; set; }
+
+        [DataMember(Name = "cluster")]
+        public required string Cluster { get; set; }
+
+        [DataMember(Name = "database")]
+        public string? Database { get; set; }
+    }
+
+    [DataContract]
+    public class ValidateQueryResult
+    {
+        [DataMember(Name = "diagnostics")]
+        public required LSP.Diagnostic[] Diagnostics { get; set; }
+    }
+
+    #endregion
+
     #region Run
 
     [JsonRpcMethod("kusto/runQuery", UseSingleObjectParameterDeserialization = true)]
@@ -1775,7 +1852,25 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
             {
                 var range = GetTextRange(document.Text, @params.Selection);
 
-                var runResult = await _queryManager.RunQueryAsync(document, range, queryOptions, queryParameters, cancellationToken).ConfigureAwait(false);
+                // start with query as an edited down section of the whole document
+                var query = new EditString(document.Text).Substring(range.Start, range.Length);
+
+                // get connection info from the document
+                var connectionInfo = _documentManager.GetConnection(document.Id);
+                if (connectionInfo.Cluster == null)
+                {
+                    await this.SendWindowShowMessageAsync("Failed to run: document is not connected to a cluster");
+                    return null;
+                }
+
+                var runResult = await _queryManager.RunQueryAsync(
+                    query, 
+                    connectionInfo.Cluster,
+                    connectionInfo.Database,
+                    queryOptions, 
+                    queryParameters, 
+                    cancellationToken)
+                    .ConfigureAwait(false);
 
                 string? resultId = null;
                 if (runResult?.ExecuteResult != null)

@@ -12,12 +12,22 @@ namespace Kusto.Lsp;
 public interface IQueryManager
 {
     /// <summary>
-    /// Runs the query at the specified position in the script.
+    /// Validates a query and returns any diagnostics.
+    /// </summary>
+    Task<IReadOnlyList<Diagnostic>> ValidateQueryAsync(
+        string query,
+        string clusterName,
+        string? databaseName,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Runs the query text against the specified cluster and database.
     /// </summary>
     Task<RunResult?> RunQueryAsync(
-        IDocument document, 
-        TextRange range, 
-        ImmutableDictionary<string, string> queryOptions, 
+        EditString query,
+        string clusterName,
+        string? databaseName,
+        ImmutableDictionary<string, string> queryOptions,
         ImmutableDictionary<string, string> queryParameters,
         CancellationToken cancellationToken
         );

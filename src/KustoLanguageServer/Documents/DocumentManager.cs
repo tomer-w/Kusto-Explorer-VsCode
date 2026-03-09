@@ -1,8 +1,8 @@
 ﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+using Kusto.Language.Editor;
 using Kusto.Language.Symbols;
-using Microsoft.IdentityModel.Tokens;
 using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
 
