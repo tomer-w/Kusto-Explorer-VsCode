@@ -6,43 +6,93 @@ using Kusto.Data.Common;
 using Kusto.Language;
 using Kusto.Language.Editor;
 using System.Collections.Immutable;
-using System.Diagnostics.CodeAnalysis;
 
 namespace Kusto.Lsp;
 
 public class QueryManager : IQueryManager
 {
     private readonly IConnectionManager _connectionManager;
+    private readonly ISymbolManager _symbolManager;
     private readonly IDocumentManager _documentManager;
     private readonly IOptionsManager _optionsManager;
     private readonly ILogger? _logger;
 
     public QueryManager(
         IConnectionManager connectionManager,
+        ISymbolManager symbolManager,
         IDocumentManager documentManager,
         IOptionsManager optionsManager,
         ILogger? logger = null)
     {
         _connectionManager = connectionManager;
+        _symbolManager = symbolManager;
         _documentManager = documentManager;
         _optionsManager = optionsManager; 
         _logger = logger;
     }
 
+
+    private async Task<GlobalState> GetGlobalsAsync(string? clusterName, string? databaseName, CancellationToken cancellationToken)
+    {
+        var globals = _symbolManager.Globals;
+        if (clusterName != null)
+        {
+            await _symbolManager.EnsureClustersAsync([clusterName], contextCluster: null, cancellationToken).ConfigureAwait(false);
+            if (globals.GetCluster(clusterName) is { } clusterSymbol)
+            {
+                globals = globals.WithCluster(clusterSymbol);
+                if (databaseName != null)
+                {
+                    await _symbolManager.EnsureDatabaseAsync(clusterName, databaseName, contextCluster: null, cancellationToken).ConfigureAwait(false);
+                    if (clusterSymbol.GetDatabase(databaseName) is { } databaseSymbol)
+                    {
+                        globals = globals.WithDatabase(databaseSymbol);
+                    }
+                }
+            }
+        }
+        return globals;
+    }
+
+    /// <summary>
+    /// Validates a query and returns any diagnostics.
+    /// </summary>
+    public async Task<IReadOnlyList<Diagnostic>> ValidateQueryAsync(
+        string query,
+        string clusterName,
+        string? databaseName,
+        CancellationToken cancellationToken)
+    {
+        _logger?.Log($"DocumentManager: Validating query (cluster: {clusterName ?? "<no-cluster>"}, database: {databaseName ?? "<no-database>"})");
+
+        var globals = await GetGlobalsAsync(clusterName, databaseName, cancellationToken).ConfigureAwait(false);
+
+        // Create a temporary document for validation
+        var tempId = new Uri($"kusto://validation/{Guid.NewGuid()}");
+        var document = new SectionedDocument(tempId, query, globals);
+
+        // Get diagnostics
+        var diagnostics = document.GetDiagnostics(waitForAnalysis: true, cancellationToken);
+        var analyzerDiagnostics = document.GetAnalyzerDiagnostics(waitForAnalysis: true, cancellationToken);
+
+        // Combine and filter diagnostics
+        var allDiagnostics = diagnostics
+            .Concat(analyzerDiagnostics)
+            .Where(d => d.Severity == DiagnosticSeverity.Error
+                || d.Severity == DiagnosticSeverity.Warning)
+            .ToImmutableList();
+
+        return allDiagnostics;
+    }
+
     public Task<RunResult?> RunQueryAsync(
-        IDocument document, 
-        TextRange range, 
+        EditString query,
+        string clusterName,
+        string? databaseName,
         ImmutableDictionary<string, string> queryOptions,
         ImmutableDictionary<string, string> queryParameters,
         CancellationToken cancellationToken)
     {
-        // some servers will fails if query starts with a comment.
-        if (document.GetSectionRange(range.Start) is not { } sectionRange)
-            return Task.FromResult<RunResult?>(null);
-
-        // start with query as an edited down section of the whole document
-        var query = new EditString(document.Text).Substring(sectionRange.Start, sectionRange.Length);
-
         var context = new ExecutionContext
         {
             Query = query,
@@ -68,14 +118,12 @@ public class QueryManager : IQueryManager
             while (IsDirective(context.Query));
         }
 
-        if (TryGetConnection(document, out var connection))
-        {
-            // did a directive have an alternate cluster or database?
-            if (context.Cluster != null)
-                connection = connection.WithCluster(context.Cluster);
-            if (context.Database != null)
-                connection = connection.WithDatabase(context.Database);
+        var effectiveCluster = context.Cluster ?? clusterName;
+        var effectiveDatabase = context.Database ?? databaseName;
 
+        if (effectiveCluster != null
+            && _connectionManager.TryGetConnection(effectiveCluster, effectiveDatabase, out var connection))
+        {
             return ExecuteQueryAsync(connection, context, cancellationToken);
         }
         else
@@ -348,18 +396,5 @@ public class QueryManager : IQueryManager
             return context with { Query = directive.AfterDirectiveText, StoredQueryResultName = name };
         }
         return context;
-    }
- 
-    private bool TryGetConnection(IDocument document, [NotNullWhen(true)] out IConnection? connection)
-    {
-        var connectionInfo = _documentManager.GetConnection(document.Id);
-        if (connectionInfo.Cluster != null
-            && _connectionManager.TryGetConnection(connectionInfo.Cluster, connectionInfo.Database, out connection))
-        {
-            return true;
-        }
-
-        connection = null;
-        return false;
     }
 }
