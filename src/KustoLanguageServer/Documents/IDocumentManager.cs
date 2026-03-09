@@ -29,6 +29,11 @@ public interface IDocumentManager
     void RemoveDocument(Uri documentId);
 
     /// <summary>
+    /// Gets the current document for the specified id
+    /// </summary>
+    bool TryGetDocument(Uri id, [NotNullWhen(true)] out IDocument? document);
+
+    /// <summary>
     /// Updates the document's associated connection information.
     /// </summary>
     Task UpdateConnectionAsync(Uri documentId, string? clusterName, string? databaseName, string? serverKind);
@@ -39,9 +44,9 @@ public interface IDocumentManager
     Task UpdateTextAsync(Uri id, string newText);
 
     /// <summary>
-    /// Gets the current document for the specified id
+    /// Refreshes schema for external symbols referenced by the document.
     /// </summary>
-    bool TryGetDocument(Uri id, [NotNullWhen(true)] out IDocument? document);
+    Task RefreshReferencedSymbolsAsync(Uri documentId, CancellationToken cancellationToken);
 
     /// <summary>
     /// An event fired when the document is added.
