@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 using Kusto.Language.Symbols;
+using Microsoft.IdentityModel.Tokens;
 using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
 
@@ -288,6 +289,39 @@ public class DocumentManager : IDocumentManager
                 {
                     await _symbolManager.EnsureDatabaseAsync(dbRef.Cluster, dbRef.Database, contextCluster, cancellationToken).ConfigureAwait(false);
                 }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Refreshes schema for external symbols referenced by the document.
+    /// </summary>
+    public async Task RefreshReferencedSymbolsAsync(Uri documentId, CancellationToken cancellationToken)
+    {
+        if (_idToInfoMap.TryGetValue(documentId, out var info)
+            && this.TryGetDocument(documentId, out var document))
+        {
+            // get list of unique database references in the document
+            var dbRefs = document
+                .GetDatabaseReferences(cancellationToken)
+                .Select(dbr => (Cluster: ConnectionFacts.GetFullHostName(dbr.Cluster, document.Globals.Domain), dbr.Database))
+                .OfType<(string Cluster, string? Database)>()
+                .ToList();
+
+            if (info.Cluster != null)
+            {
+                // add the document's current cluster and database if not already included in the references
+                dbRefs.Add((info.Cluster, info.Database)!);
+            }
+
+            var distinctDbRefs = dbRefs
+                .Distinct()
+                .ToList();
+
+            foreach (var dbRef in distinctDbRefs)
+            {
+                // Refresh the database symbol
+                await _symbolManager.RefreshAsync(dbRef.Cluster, dbRef.Database, cancellationToken).ConfigureAwait(false);
             }
         }
     }

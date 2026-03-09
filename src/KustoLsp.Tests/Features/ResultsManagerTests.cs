@@ -482,6 +482,11 @@ public class ResultsManagerTests
             return false;
         }
 
+        public Task RefreshReferencedSymbolsAsync(Uri documentId, CancellationToken cancellationToken)
+        {
+            return Task.CompletedTask;
+        }
+
         public event EventHandler<Uri>? DocumentAdded;
         public event EventHandler<Uri>? DocumentRemoved;
         public event EventHandler<Uri>? DocumentChanged;

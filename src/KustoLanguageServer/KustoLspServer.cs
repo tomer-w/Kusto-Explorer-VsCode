@@ -1462,16 +1462,6 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
 
             _ = this.SendWindowLogMessageAsync($"RefreshSchema: refreshing schema for cluster: {clusterName}, database: {databaseName ?? "(all)"}");
 
-            if (databaseName != null)
-            {
-                await _schemaManager.ClearCachedDatabaseAsync(clusterName, databaseName, cancellationToken).ConfigureAwait(false);
-            }
-            else
-            {
-                await _schemaManager.ClearCachedClusterAsync(clusterName, cancellationToken).ConfigureAwait(false);
-            }
-
-            // Refresh the symbol cache
             await _symbolManager.RefreshAsync(clusterName, databaseName, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -1498,24 +1488,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
     {
         try
         {
-            if (_documentManager.TryGetDocument(@params.Uri, out var document))
-            {
-                // get list of unique database references in the document
-                var dbRefs = document
-                    .GetDatabaseReferences(cancellationToken)
-                    .Select(dbr => (dbr.Cluster, dbr.Database))
-                    .Distinct()
-                    .ToList();
-
-                foreach (var dbRef in dbRefs)
-                {
-                    // clear the cached databases
-                    await _schemaManager.ClearCachedDatabaseAsync(dbRef.Cluster, dbRef.Database, cancellationToken).ConfigureAwait(false);
-
-                    // Refresh the symbol cache
-                    await _symbolManager.RefreshAsync(dbRef.Cluster, dbRef.Database, cancellationToken).ConfigureAwait(false);
-                }
-            }
+            await _documentManager.RefreshReferencedSymbolsAsync(@params.Uri, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

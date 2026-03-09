@@ -71,38 +71,54 @@ public class SymbolManager : ISymbolManager
 
     public async Task RefreshAsync(string clusterName, string? databaseName, CancellationToken cancellationToken)
     {
-        var clusterSymbol = this.Globals.GetCluster(clusterName);
-        if (clusterSymbol != null)
+        await _taskQueue.Run(cancellationToken, async (useThisCancellationToken) =>
         {
-            if (databaseName == null)
+            var newGlobals = this.Globals;
+
+            var clusterSymbol = newGlobals.GetCluster(clusterName);
+            if (clusterSymbol != null && !clusterSymbol.IsOpen)
             {
-                // replace with new empty/open cluster which should cause it to be reloaded when symbols are resolved
-                SetGlobals(this.Globals.AddOrReplaceCluster(new ClusterSymbol(clusterName, [], isOpen: true)));
-
-                // ensure cluster is reloaded (gets new list of databases)
-                await EnsureClustersAsync([clusterName], null, cancellationToken).ConfigureAwait(false);
-
-                // ensure previously loaded databases are reloaded since documents may depend on them
-                foreach (var db in clusterSymbol.Databases)
+                if (databaseName == null)
                 {
-                    if (!db.IsOpen)
+                    _logger?.Log($"SymbolManager: refreshing symbols for cluster '{clusterName}'");
+
+                    // clear schema so we when re-added the cluster symbol is rebuilt from fresh schema
+                    await _schemaManager.ClearCachedClusterAsync(clusterName, useThisCancellationToken).ConfigureAwait(false);
+
+                    // replace with new empty/open cluster 
+                    newGlobals = this.Globals.AddOrReplaceCluster(new ClusterSymbol(clusterName, [], isOpen: true));
+                    newGlobals = await this.AddClusterAsync(newGlobals, clusterName, contextCluster: null, useThisCancellationToken).ConfigureAwait(false);
+
+                    // re-add previously loaded databases
+                    foreach (var db in clusterSymbol.Databases)
                     {
-                        await EnsureDatabaseAsync(clusterName, db.Name, contextCluster: null, CancellationToken.None).ConfigureAwait(false);
+                        if (!db.IsOpen)
+                        {
+                            newGlobals = await this.AddDatabaseAsync(newGlobals, clusterName, db.Name, contextCluster: null, useThisCancellationToken).ConfigureAwait(false);
+                        }
                     }
                 }
-            }
-            else
-            {
-                var db = clusterSymbol.GetDatabase(databaseName);
-                if (db != null && !db.IsOpen)
+                else
                 {
-                    var newCluster = clusterSymbol.AddOrUpdateDatabase(new DatabaseSymbol(db.Name, db.AlternateName, null, isOpen: true));
-                    SetGlobals(this.Globals.AddOrReplaceCluster(newCluster));
-                }
+                    _logger?.Log($"SymbolManager: refreshing symbols for database '{databaseName}'");
 
-                await EnsureDatabaseAsync(clusterName, databaseName, contextCluster: null, CancellationToken.None).ConfigureAwait(false);
+                    // clear schema so when re-added the database symbol will be built from fresh schema
+                    await _schemaManager.ClearCachedDatabaseAsync(clusterName, databaseName, useThisCancellationToken).ConfigureAwait(false);
+
+                    var db = clusterSymbol.GetDatabase(databaseName);
+                    if (db != null && !db.IsOpen)
+                    {
+                        // reset to open database
+                        var newCluster = clusterSymbol.AddOrUpdateDatabase(new DatabaseSymbol(db.Name, db.AlternateName, null, isOpen: true));
+                        newGlobals = newGlobals.AddOrReplaceCluster(newCluster);
+                    }
+
+                    newGlobals = await this.AddDatabaseAsync(newGlobals, clusterName, databaseName, contextCluster: null, useThisCancellationToken).ConfigureAwait(false);
+                }
             }
-        }
+
+            SetGlobals(newGlobals);
+        });
     }
 
     /// <summary>
@@ -228,121 +244,4 @@ public class SymbolManager : ISymbolManager
             }
         });
     }
-
-#if false
-    /// <summary>
-    /// Adds missing cluster and database symbols referenced in the document.
-    /// </summary>
-    public Task AddReferencedSymbolsAsync(IDocument document, CancellationToken cancellationToken)
-    {
-        return _taskQueue.Run(cancellationToken, async (useThisCancellationToken) =>
-        {
-            _logger?.Log($"SymbolManager: Resolving references for document '{document.Id}'");
-
-            try
-            {
-                // start with the latest clusters
-                document = document.WithGlobals(document.Globals.WithClusterList(this.Globals.Clusters));
-
-                // use current globals
-                var resolvedGlobals = await ResolveReferencesDeepAsync(document, cancellationToken).ConfigureAwait(false);
-                
-                // backfill any changes to the clusters
-                var newGlobals = this.Globals.WithClusterList(resolvedGlobals.Clusters);
-                SetGlobals(newGlobals);
-            }
-            catch (Exception e)
-            {
-                _logger?.Log($"SymbolManager: Error resolving symbols for document '{document.Id}': {e.Message}");
-            }
-        });
-
-        async Task<GlobalState> ResolveReferencesDeepAsync(IDocument document, CancellationToken cancellationToken)
-        {
-            // keep looping until no more changes are made to the globals
-            for (int loopCount = 0; loopCount < MaxLoopCount; loopCount++)
-            {
-                var newGlobals = await ResolveReferencesAsync(document, cancellationToken).ConfigureAwait(false);
-                if (newGlobals == document.Globals)
-                    return newGlobals;
-                document = document.WithGlobals(newGlobals);
-            }
-
-            return document.Globals;
-        }
-
-        async Task<GlobalState> ResolveReferencesAsync(IDocument document, CancellationToken cancellationToken)
-        {
-            var globals = document.Globals;
-
-            var contextCluster = document.Globals.Cluster != ClusterSymbol.Unknown ? document.Globals.Cluster.Name : null;
-
-            // find all explicit cluster('xxx') references
-            var clusterRefs = document.GetClusterReferences(cancellationToken);
-            foreach (var clusterRef in clusterRefs)
-            {
-                var clusterName = ConnectionFacts.GetFullHostName(clusterRef.Cluster, globals.Domain);
-
-                // don't bother with clusters were already resolved or do not exist
-                if (string.IsNullOrEmpty(clusterName)
-                    || _clustersResolvedOrInvalid.ContainsKey(clusterName))
-                    continue;
-
-                _clustersResolvedOrInvalid.Add(clusterName, new HashSet<string>());
-
-                var cluster = globals.GetCluster(clusterName);
-                if (cluster == null || cluster.IsOpen)
-                {
-                    globals = await this.AddClusterAsync(globals, clusterName, contextCluster, cancellationToken).ConfigureAwait(false);
-                }
-            }
-
-            // find all explicit database('xxx') references
-            var dbRefs = document.GetDatabaseReferences(cancellationToken);
-            foreach (DatabaseReference dbRef in dbRefs)
-            {
-                var cluster = string.IsNullOrEmpty(dbRef.Cluster)
-                    ? globals.Cluster
-                    : globals.GetCluster(ConnectionFacts.GetFullHostName(dbRef.Cluster, globals.Domain));
-
-                // don't rely on the user to do the right thing.
-                if (cluster == null
-                    || cluster == ClusterSymbol.Unknown
-                    || string.IsNullOrEmpty(cluster.Name)
-                    || string.IsNullOrEmpty(dbRef.Database))
-                    continue;
-
-                if (!_clustersResolvedOrInvalid.TryGetValue(cluster.Name, out var dbsResolvedOrInvalid))
-                {
-                    dbsResolvedOrInvalid = new HashSet<string>();
-                    _clustersResolvedOrInvalid.Add(cluster.Name, dbsResolvedOrInvalid);
-                }
-
-                // don't bother with databases already resolved no do not exist
-                if (dbsResolvedOrInvalid.Contains(dbRef.Database))
-                    continue;
-
-                dbsResolvedOrInvalid.Add(dbRef.Database);
-
-                var db = cluster.GetDatabase(dbRef.Database);
-                if (db == null || (db != null && db.Members.Count == 0 && db.IsOpen))
-                {
-                    var newGlobals = await this.AddDatabaseAsync(globals, cluster.Name, dbRef.Database, contextCluster, cancellationToken).ConfigureAwait(false);
-                    globals = newGlobals ?? globals;
-                }
-            }
-
-            return globals;
-        }
-    }
-
-    /// <summary>
-    /// Maximum loops allowed when checking for additional references after just adding referenced database schema.
-    /// If this is exceeded then there is probably a bug that keeps updating the globals even when no new found databases are added.
-    /// </summary>
-    private const int MaxLoopCount = 20;
-
-    private readonly Dictionary<string, HashSet<string>> _clustersResolvedOrInvalid
-        = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
-#endif
 }
