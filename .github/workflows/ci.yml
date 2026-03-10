@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test-dotnet:
+    name: Build and Test (.NET)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore src/KustoLsp.Tests/KustoLspTests.csproj
+
+      - name: Build
+        run: dotnet build src/KustoLsp.Tests/KustoLspTests.csproj --no-restore
+
+      - name: Run tests
+        run: dotnet test src/KustoLsp.Tests/KustoLspTests.csproj --no-build --verbosity normal
+
+  lint-typescript:
+    name: Lint and Build (TypeScript)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          cache: 'npm'
+          cache-dependency-path: src/VsCodeExtension/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: src/VsCodeExtension
+
+      - name: Compile TypeScript
+        run: npm run compile
+        working-directory: src/VsCodeExtension
