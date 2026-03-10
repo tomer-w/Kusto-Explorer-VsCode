@@ -66,4 +66,41 @@ public static class KustoCodeServiceExtensions
 
         return null;
     }
+
+    public static Symbol? GetResultType(this CodeService service, int position, CancellationToken cancellationToken)
+    {
+        if (service.TryGetCode(cancellationToken, out var code))
+        {
+            var token = code.GetTokenWithAffinity(position);
+            if (token != null)
+            {
+                var node = token.Parent;
+                while (node != null)
+                {
+                    if (node is Kusto.Language.Syntax.Expression expr)
+                        return expr.ResultType;
+
+                    // if parent has save span as this one, 
+                    // check parent.
+                    if (node.Parent.TextStart == node.TextStart
+                        && node.Parent.Width == node.Width)
+                    {
+                        node = node.Parent;
+                        continue;
+                    }
+                    break;
+                }
+            }
+        }
+        return null;
+    }
+
+    public static Symbol? GetQueryResultType(this CodeService service, int position, CancellationToken cancellationToken)
+    {
+        if (service.TryGetCode(cancellationToken, out var code))
+        {
+            return code.ResultType;
+        }
+        return null;
+    }
 }

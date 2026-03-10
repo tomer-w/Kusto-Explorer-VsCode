@@ -2,8 +2,6 @@
 // Licensed under the MIT license.
 
 using System.Collections.Immutable;
-using System.Data;
-using Kusto.Data.Utils;
 using Kusto.Language;
 using Kusto.Language.Editor;
 
@@ -15,6 +13,16 @@ public interface IQueryManager
     /// Validates a query and returns any diagnostics.
     /// </summary>
     Task<IReadOnlyList<Diagnostic>> ValidateQueryAsync(
+        string query,
+        string clusterName,
+        string? databaseName,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets the result type of a query as a formatted string.
+    /// Returns the schema for tabular results, the type name for scalar results, or null if the query has no result.
+    /// </summary>
+    Task<string?> GetQueryResultTypeAsync(
         string query,
         string clusterName,
         string? databaseName,
