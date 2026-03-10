@@ -76,7 +76,7 @@ public class KqlBuilderTests
         var builder = new KqlBuilder(options);
         builder.WriteCreateTableCommand(info);
         var actual = builder.Text;
-        Assert.AreEqual(expected, actual);
+        TestHelpers.AssertTextEqual(expected, actual);
     }
 
     [TestMethod]
@@ -172,7 +172,7 @@ public class KqlBuilderTests
         var builder = new KqlBuilder(options);
         builder.WriteCreateExternalTableCommand(info);
         var actual = builder.Text;
-        Assert.AreEqual(expected, actual);
+        TestHelpers.AssertTextEqual(expected, actual);
     }
 
     [TestMethod]
@@ -202,7 +202,7 @@ public class KqlBuilderTests
         var builder = new KqlBuilder(options);
         builder.WriteCreateMaterializedViewCommand(info);
         var actual = builder.Text;
-        Assert.AreEqual(expected, actual);
+        TestHelpers.AssertTextEqual(expected, actual);
     }
 
     [TestMethod]
@@ -329,7 +329,7 @@ public class KqlBuilderTests
         var builder = new KqlBuilder(options);
         builder.WriteCreateFunctionCommand(info);
         var actual = builder.Text;
-        Assert.AreEqual(expected, actual);
+        TestHelpers.AssertTextEqual(expected, actual);
     }
 
     [TestMethod]
@@ -361,7 +361,7 @@ public class KqlBuilderTests
         var builder = new KqlBuilder(options);
         builder.WriteCreateEntityGroupCommand(info);
         var actual = builder.Text;
-        Assert.AreEqual(expected, actual);
+        TestHelpers.AssertTextEqual(expected, actual);
     }
 
     [TestMethod]
@@ -436,7 +436,7 @@ public class KqlBuilderTests
         var builder = new KqlBuilder(options);
         builder.WriteCreateGraphModelCommand(info);
         var actual = builder.Text;
-        Assert.AreEqual(expected, actual);
+        TestHelpers.AssertTextEqual(expected, actual);
     }
 
     public static ImmutableList<ColumnInfo> ToInfo(string columns) =>

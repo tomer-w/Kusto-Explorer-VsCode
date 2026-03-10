@@ -8,6 +8,25 @@ using Kusto.Lsp;
 
 public static class TestHelpers
 {
+    /// <summary>
+    /// Normalizes line endings to LF (\n) for cross-platform test consistency.
+    /// </summary>
+    public static string NormalizeLineEndings(string text)
+    {
+        return text.Replace("\r\n", "\n").Replace("\r", "\n");
+    }
+
+    /// <summary>
+    /// Asserts that two strings are equal after normalizing line endings.
+    /// Use this for comparing generated KQL or other multi-line text.
+    /// </summary>
+    public static void AssertTextEqual(string expected, string actual, string? message = null)
+    {
+        var normalizedExpected = NormalizeLineEndings(expected);
+        var normalizedActual = NormalizeLineEndings(actual);
+        Assert.AreEqual(normalizedExpected, normalizedActual, message);
+    }
+
     public static (string queryWithMarker, int position) ExtractPosition(string queryWithMarker, string marker = "$")
     {
         var position = queryWithMarker.IndexOf(marker);
