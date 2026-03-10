@@ -12,6 +12,7 @@ jobs:
   test-dotnet:
     name: Build and Test (.NET)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
 
@@ -30,7 +31,10 @@ jobs:
         run: dotnet build src/KustoLsp.Tests/KustoLspTests.csproj --no-restore
 
       - name: Run tests
-        run: dotnet test src/KustoLsp.Tests/KustoLspTests.csproj --no-build --verbosity normal
+        run: dotnet test src/KustoLsp.Tests/KustoLspTests.csproj --no-build --verbosity normal --logger "console;verbosity=normal" --blame-hang --blame-hang-timeout 60s
+        env:
+          DOTNET_CLI_TELEMETRY_OPTOUT: 1
+          DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
 
   lint-typescript:
     name: Lint and Build (TypeScript)
