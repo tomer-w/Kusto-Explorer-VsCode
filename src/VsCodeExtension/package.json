@@ -35,7 +35,8 @@
         "fullName": "Kusto",
         "name": "kusto",
         "description": "KQL expert assistant that helps write Kusto queries using your connected database schema",
-        "isSticky": true
+        "isSticky": true,
+        "instructions": "./instructions.md"
       }
     ],
   "languages": [
@@ -521,23 +522,23 @@
       },
       {
         "toolId": "kusto_getExternalTableDefinition",
-        "instructions": "Use this tool to get the full KQL definition of a Kusto external table."
+        "instructions": "Use this tool to get the full KQL definition of a Kusto external table in the form of a create command."
       },
       {
         "toolId": "kusto_getMaterializedViewDefinition",
-        "instructions": "Use this tool to get the full KQL definition of a materialized view, including its source table and aggregation query."
+        "instructions": "Use this tool to get the full KQL definition of a materialized view, including its create command, source table, and aggregation query."
       },
       {
         "toolId": "kusto_getFunctionDefinition",
-        "instructions": "Use this tool to get the full KQL definition of a stored function, including its parameters and body. Useful when the user wants to understand, modify, or debug a function."
+        "instructions": "Use this tool to get the full KQL definition of a stored function, including its create command, parameters, and body. Useful when the user wants to understand, modify, or debug a function."
       },
       {
         "toolId": "kusto_getEntityGroupDefinition",
-        "instructions": "Use this tool to get the full definition of an entity group, including its member entities."
+        "instructions": "Use this tool to get the full definition of an entity group in the form of a create command, including its member entities."
       },
       {
         "toolId": "kusto_getGraphModelDefinition",
-        "instructions": "Use this tool to get the full definition of a graph model."
+        "instructions": "Use this tool to get the full definition of a graph model in the form of a create command."
       },
       {
         "toolId": "kusto_getCurrentQueryText",
