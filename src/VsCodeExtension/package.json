@@ -550,6 +550,10 @@
       {
         "toolId": "kusto_validateQuery",
         "instructions": "Use this tool to validate KQL queries for syntax and semantic errors. Always validate queries you generate before presenting them to the user to ensure correctness."
+      },
+      {
+        "toolId": "kusto_runQuery",
+        "instructions": "Use this tool to run a KQL query and return results when the user asks to execute a query or see data, or if you need to know the result of a query to answer a user question. Queries are run in read-only mode for safety. Please limit the output of queries to just the columns necessary and limit the number of rows unless you know you need all rows to answer the request."
       }
     ],
     "languageModelTools": [
@@ -927,6 +931,37 @@
             "database": {
               "type": "string",
               "description": "The database name for schema context. If not provided, uses the active connection."
+            }
+          },
+          "required": [ "query" ]
+        }
+      },
+      {
+        "name": "kusto_runQuery",
+        "displayName": "Run KQL Query",
+        "toolReferenceName": "kustoRunQuery",
+        "canBeReferencedInPrompt": true,
+        "userDescription": "Runs a KQL query and returns the results as markdown.",
+        "tags": [ "kusto", "kql", "query", "run", "execute", "results" ],
+        "modelDescription": "Runs a KQL query in read-only mode and returns results as a markdown table. Use this when the user asks to execute a query or wants to see data from a Kusto database.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "The KQL query text to execute."
+            },
+            "cluster": {
+              "type": "string",
+              "description": "The Kusto cluster hostname. If not provided, uses the active connection."
+            },
+            "database": {
+              "type": "string",
+              "description": "The database name. If not provided, uses the active connection."
+            },
+            "maxRows": {
+              "type": "number",
+              "description": "Maximum number of rows to return. Use this to limit result size."
             }
           },
           "required": [ "query" ]
