@@ -11,18 +11,51 @@ import { LanguageClient } from 'vscode-languageclient/node';
 
 /**
  * Runs a query at the given document URI and selection.
+ * @param client The language client for LSP communication
+ * @param uri The document URI
+ * @param selection The selection range of the query
+ * @param isReadOnly Optional flag to run the query in read-only mode
+ * @param maxRows Optional maximum number of rows to return
  */
 export function runQuery(
     client: LanguageClient,
     uri: string,
-    selection: SelectionRange
+    selection: SelectionRange,
+    isReadOnly?: boolean,
+    maxRows?: number
 ): Promise<RunQueryResult | null> {
     return client.sendRequest<RunQueryResult | null>(
         'kusto/runQuery',
         {
             textDocument: { uri },
-            selection
+            selection,
+            isReadOnly,
+            maxRows
         }
+    );
+}
+
+/**
+ * Runs a query with the given text, cluster, and database, returning results as markdown.
+ * @param client The language client for LSP communication
+ * @param query The query text to execute
+ * @param cluster The cluster name to connect to
+ * @param database Optional database name
+ * @param isReadOnly Optional flag to run the query in read-only mode
+ * @param maxRows Optional maximum number of rows to return
+ * @returns The query results as markdown, or null if the query failed
+ */
+export function runQueryAsMarkdown(
+    client: LanguageClient,
+    query: string,
+    cluster: string,
+    database?: string,
+    isReadOnly?: boolean,
+    maxRows?: number
+): Promise<RunQueryAsMarkdownResult | null> {
+    return client.sendRequest<RunQueryAsMarkdownResult | null>(
+        'kusto/runQueryAsMarkdown',
+        { query, cluster, database, isReadOnly, maxRows }
     );
 }
 
@@ -363,6 +396,14 @@ export interface DatabaseInfo {
 export interface RunQueryResult {
     dataId?: string;
     connection?: string;
+    cluster?: string;
+    database?: string;
+    error?: QueryDiagnostic;
+}
+
+/** Result of running a query and returning results as markdown. */
+export interface RunQueryAsMarkdownResult {
+    markdown?: string;
     cluster?: string;
     database?: string;
     error?: QueryDiagnostic;

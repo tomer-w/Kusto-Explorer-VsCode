@@ -87,6 +87,7 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
     registerTool(context, 'kusto_getCurrentQueryText', 'Getting current query...', getCurrentQuery);
     registerTool(context, 'kusto_getQueryRanges', 'Getting query ranges...', getQueryRanges);
     registerTool(context, 'kusto_validateQuery', 'Validating query...', validateQuery);
+    registerTool(context, 'kusto_runQuery', 'Running query...', runQuery);
 
     // Register the Chat Participant - user invokes with @kusto
     const participant = vscode.chat.createChatParticipant(COPILOT_PARTICIPANT_ID, handleChatRequest);
@@ -336,6 +337,34 @@ async function validateQuery(input: { query: string; cluster?: string; database?
         const col = d.range.start.character + 1;
         return `  ${severity} at line ${line}, col ${col}: ${d.message}`;
     }).join('\n')}`;
+}
+
+async function runQuery(input: { query: string; cluster?: string; database?: string; maxRows?: number }): Promise<string> {
+    let cluster = input.cluster;
+    let database = input.database;
+
+    if (!cluster) {
+        const active = await conn.getActiveDocumentConnection();
+        if (active) {
+            cluster = cluster ?? active.cluster;
+            database = database ?? active.database;
+        }
+    }
+
+    if (!cluster) {
+        return 'No cluster specified and no active connection. Cannot run query.';
+    }
+
+    const result = await server.runQueryAsMarkdown(languageClient, input.query, cluster, database, true, input.maxRows);
+    if (!result) {
+        return 'Query execution failed. The server did not return a result.';
+    }
+
+    if (result.error) {
+        return `Query error: ${result.error.message}${result.error.details ? '\n' + result.error.details : ''}`;
+    }
+
+    return result.markdown ?? 'Query returned no results.';
 }
 
 // =============================================================================

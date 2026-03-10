@@ -1834,6 +1834,23 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
 
     #region Run
 
+    private static ImmutableDictionary<string, string> BuildQueryOptions(bool? isReadOnly, long? maxRows)
+    {
+        var options = ImmutableDictionary<string, string>.Empty;
+
+        if (isReadOnly == true)
+        {
+            options = options.Add(ClientRequestProperties.OptionRequestReadOnly, "true");
+        }
+
+        if (maxRows.HasValue)
+        {
+            options = options.Add(ClientRequestProperties.OptionTakeMaxRecords, maxRows.Value.ToString());
+        }
+
+        return options;
+    }
+
     [JsonRpcMethod("kusto/runQuery", UseSingleObjectParameterDeserialization = true)]
     public async Task<RunQueryResults?> OnRunQueryAsync(RunQueryParams @params, CancellationToken cancellationToken)
     {
@@ -1845,7 +1862,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
                 return null;
             }
 
-            var queryOptions = ImmutableDictionary<string, string>.Empty;
+            var queryOptions = BuildQueryOptions(@params.IsReadOnly, @params.MaxRows);
             var queryParameters = ImmutableDictionary<string, string>.Empty;
 
             if (_documentManager.TryGetDocument(@params.TextDocument.Uri, out var document))
@@ -1915,6 +1932,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
         return null;
     }
 
+    [DataContract]
     public class RunQueryParams
     {
         [DataMember(Name = "textDocument")]
@@ -1922,6 +1940,12 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
          
         [DataMember(Name = "selection")]
         public required LSP.Range Selection { get; init; }
+
+        [DataMember(Name = "isReadOnly")]
+        public bool? IsReadOnly { get; init; }
+
+        [DataMember(Name = "maxRows")]
+        public long? MaxRows { get; init; }
     }
 
     [DataContract]
@@ -1955,6 +1979,108 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
         [DataMember(Name = "range")]
         public LSP.Range? Range { get; init; }
     }
+
+
+    [JsonRpcMethod("kusto/runQueryAsMarkdown", UseSingleObjectParameterDeserialization = true)]
+    public async Task<RunQueryAsMarkdownResult?> OnRunQueryAsMarkdownAsync(RunQueryAsMarkdownParams @params, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var queryOptions = BuildQueryOptions(@params.IsReadOnly, @params.MaxRows);
+            var queryParameters = ImmutableDictionary<string, string>.Empty;
+
+            var runResult = await _queryManager.RunQueryAsync(
+                @params.Query,
+                @params.Cluster,
+                @params.Database,
+                queryOptions,
+                queryParameters,
+                cancellationToken)
+                .ConfigureAwait(false);
+
+            if (runResult?.Error != null)
+            {
+                var errorRange = runResult.Error.HasLocation
+                    ? GetLspRange(@params.Query, new TextRange(runResult.Error.Start, runResult.Error.Length))
+                    : null;
+
+                return new RunQueryAsMarkdownResult
+                {
+                    Error = new RunQueryDiagnostic
+                    {
+                        Message = runResult.Error.Message,
+                        Details = runResult.Error.Description,
+                        Range = errorRange
+                    }
+                };
+            }
+            else if (runResult?.ExecuteResult?.Tables != null && runResult.ExecuteResult.Tables.Count > 0)
+            {
+                var builder = new MarkdownBuilder();
+                foreach (var table in runResult.ExecuteResult.Tables)
+                {
+                    builder.WriteDataTable(table);
+                    builder.WriteLine();
+                }
+
+                return new RunQueryAsMarkdownResult
+                {
+                    Markdown = builder.Text,
+                    Cluster = runResult.Cluster,
+                    Database = runResult.Database
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex.Message);
+            return new RunQueryAsMarkdownResult
+            {
+                Error = new RunQueryDiagnostic
+                {
+                    Message = ex.Message
+                }
+            };
+        }
+
+        return null;
+    }
+
+    [DataContract]
+    public class RunQueryAsMarkdownParams
+    {
+        [DataMember(Name = "query")]
+        public required string Query { get; init; }
+
+        [DataMember(Name = "cluster")]
+        public required string Cluster { get; init; }
+
+        [DataMember(Name = "database")]
+        public string? Database { get; init; }
+
+        [DataMember(Name = "isReadOnly")]
+        public bool? IsReadOnly { get; init; }
+
+        [DataMember(Name = "maxRows")]
+        public long? MaxRows { get; init; }
+    }
+
+    [DataContract]
+    public class RunQueryAsMarkdownResult
+    {
+        [DataMember(Name = "markdown")]
+        public string? Markdown { get; init; }
+
+        [DataMember(Name = "cluster")]
+        public string? Cluster { get; init; }
+
+        [DataMember(Name = "database")]
+        public string? Database { get; init; }
+
+        [DataMember(Name = "error")]
+        public RunQueryDiagnostic? Error { get; init; }
+    }
+
     #endregion
 
     #region Html Query
