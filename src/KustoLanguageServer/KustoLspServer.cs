@@ -1869,6 +1869,16 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
             {
                 var range = GetTextRange(document.Text, @params.Selection);
 
+                // If selection is empty (caret position), expand to the full query range
+                if (range.Length == 0)
+                {
+                    var sectionRange = document.GetSectionRange(range.Start);
+                    if (sectionRange.HasValue)
+                    {
+                        range = sectionRange.Value;
+                    }
+                }
+
                 // start with query as an edited down section of the whole document
                 var query = new EditString(document.Text).Substring(range.Start, range.Length);
 
