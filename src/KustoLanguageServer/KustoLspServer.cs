@@ -1832,6 +1832,143 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
 
     #endregion
 
+    #region Result Type
+
+    [JsonRpcMethod("kusto/getQueryResultType", UseSingleObjectParameterDeserialization = true)]
+    public async Task<GetQueryResultTypeResult?> OnGetQueryResultTypeAsync(GetQueryResultTypeParams @params, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var resultType = await _queryManager.GetQueryResultTypeAsync(
+                @params.Query,
+                @params.Cluster,
+                @params.Database,
+                cancellationToken)
+                .ConfigureAwait(false);
+
+            return new GetQueryResultTypeResult { ResultType = resultType };
+        }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex);
+            return null;
+        }
+    }
+
+    [DataContract]
+    public class GetQueryResultTypeParams
+    {
+        [DataMember(Name = "query")]
+        public required string Query { get; set; }
+
+        [DataMember(Name = "cluster")]
+        public required string Cluster { get; set; }
+
+        [DataMember(Name = "database")]
+        public string? Database { get; set; }
+    }
+
+    [DataContract]
+    public class GetQueryResultTypeResult
+    {
+        [DataMember(Name = "resultType")]
+        public string? ResultType { get; set; }
+    }
+
+    [JsonRpcMethod("kusto/getFunctionResultType", UseSingleObjectParameterDeserialization = true)]
+    public async Task<GetFunctionResultTypeResult?> OnGetFunctionResultTypeAsync(GetFunctionResultTypeParams @params, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Get globals with cluster/database context
+            var globals = _symbolManager.Globals;
+            if (@params.Cluster != null)
+            {
+                await _symbolManager.EnsureClustersAsync([@params.Cluster], contextCluster: null, cancellationToken).ConfigureAwait(false);
+                globals = _symbolManager.Globals;
+                if (globals.GetCluster(@params.Cluster) is { } clusterSymbol)
+                {
+                    globals = globals.WithCluster(clusterSymbol);
+                    if (@params.Database != null)
+                    {
+                        await _symbolManager.EnsureDatabaseAsync(@params.Cluster, @params.Database, contextCluster: null, cancellationToken).ConfigureAwait(false);
+                        globals = _symbolManager.Globals;
+                        clusterSymbol = globals.GetCluster(@params.Cluster);
+                        if (clusterSymbol?.GetDatabase(@params.Database) is { } databaseSymbol)
+                        {
+                            globals = globals.WithCluster(clusterSymbol).WithDatabase(databaseSymbol);
+
+                            // Find the function in the database
+                            var functionSymbol = databaseSymbol.GetFunction(@params.FunctionName);
+                            if (functionSymbol != null)
+                            {
+                                // Get the return type using the globals context
+                                var returnType = functionSymbol.GetReturnType(globals);
+
+                                if (returnType != null)
+                                {
+                                    return new GetFunctionResultTypeResult
+                                    {
+                                        ResultType = FormatResultType(returnType)
+                                    };
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            return new GetFunctionResultTypeResult { ResultType = null };
+        }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex);
+            return null;
+        }
+    }
+
+    private static string? FormatResultType(TypeSymbol resultType)
+    {
+        if (resultType == null)
+        {
+            return null;
+        }
+
+        if (resultType is TableSymbol tableSymbol)
+        {
+            // Format as schema: (col1: type1, col2: type2, ...)
+            var schema = string.Join(", ", tableSymbol.Columns.Select(c => $"{c.Name}: {c.Type.Name}"));
+            return $"({schema})";
+        }
+        else
+        {
+            // Scalar type - just return the name
+            return resultType.Name;
+        }
+    }
+
+    [DataContract]
+    public class GetFunctionResultTypeParams
+    {
+        [DataMember(Name = "cluster")]
+        public required string Cluster { get; set; }
+
+        [DataMember(Name = "database")]
+        public required string Database { get; set; }
+
+        [DataMember(Name = "functionName")]
+        public required string FunctionName { get; set; }
+    }
+
+    [DataContract]
+    public class GetFunctionResultTypeResult
+    {
+        [DataMember(Name = "resultType")]
+        public string? ResultType { get; set; }
+    }
+
+    #endregion
+
     #region Run
 
     private static ImmutableDictionary<string, string> BuildQueryOptions(bool? isReadOnly, long? maxRows)
@@ -2093,7 +2230,8 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
 
     #endregion
 
-    #region Html Query
+
+    #region Html
 
     [JsonRpcMethod("kusto/getQueryAsHtml", UseSingleObjectParameterDeserialization = true)]
     public Task<GetQueryAsHtmlResult?> OnGetQueryAsHtmlAsync(GetQueryAsHtmlParams @params, CancellationToken cancellationToken)

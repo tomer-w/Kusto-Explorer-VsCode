@@ -60,6 +60,46 @@ export function runQueryAsMarkdown(
 }
 
 /**
+ * Gets the result type of a query as a formatted string.
+ * @param client The language client for LSP communication
+ * @param query The query text to analyze
+ * @param cluster The cluster name for context
+ * @param database Optional database name for context
+ * @returns The result type as a schema string for tables, type name for scalars, or null if no result
+ */
+export function getQueryResultType(
+    client: LanguageClient,
+    query: string,
+    cluster: string,
+    database?: string
+): Promise<GetQueryResultTypeResult | null> {
+    return client.sendRequest<GetQueryResultTypeResult | null>(
+        'kusto/getQueryResultType',
+        { query, cluster, database }
+    );
+}
+
+/**
+ * Gets the result type of a database function.
+ * @param client The language client for LSP communication
+ * @param cluster The cluster name
+ * @param database The database name
+ * @param functionName The name of the function
+ * @returns The result type as a schema string for tables, type name for scalars, or null if not found
+ */
+export function getFunctionResultType(
+    client: LanguageClient,
+    cluster: string,
+    database: string,
+    functionName: string
+): Promise<GetFunctionResultTypeResult | null> {
+    return client.sendRequest<GetFunctionResultTypeResult | null>(
+        'kusto/getFunctionResultType',
+        { cluster, database, functionName }
+    );
+}
+
+/**
  * Gets the query ranges (boundaries) for a document.
  */
 export function getQueryRanges(
@@ -407,6 +447,16 @@ export interface RunQueryAsMarkdownResult {
     cluster?: string;
     database?: string;
     error?: QueryDiagnostic;
+}
+
+/** Result of getting the query result type. */
+export interface GetQueryResultTypeResult {
+    resultType?: string;
+}
+
+/** Result of getting a function's result type. */
+export interface GetFunctionResultTypeResult {
+    resultType?: string;
 }
 
 /** Error from running a query. */

@@ -127,6 +127,16 @@ public interface IDocument
     Symbol? GetReferencedSymbol(int position, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Gets the result type of the expression at the location.
+    /// </summary>
+    Symbol? GetResultType(int position, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Gets the result type of the query at the location, if it can be determined.
+    /// </summary>
+    Symbol? GetQueryResultType(int position, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Gets the source or entity declaration locations for the symbol referenced at the position in the document, if available.
     /// </summary>
     ImmutableList<DeclarationLocation> GetDeclarationLocations(int position, CancellationToken cancellationToken);

@@ -5,6 +5,7 @@ using Kusto.Data;
 using Kusto.Data.Common;
 using Kusto.Language;
 using Kusto.Language.Editor;
+using Kusto.Language.Symbols;
 using System.Collections.Immutable;
 
 namespace Kusto.Lsp;
@@ -63,8 +64,6 @@ public class QueryManager : IQueryManager
         string? databaseName,
         CancellationToken cancellationToken)
     {
-        _logger?.Log($"DocumentManager: Validating query (cluster: {clusterName ?? "<no-cluster>"}, database: {databaseName ?? "<no-database>"})");
-
         var globals = await GetGlobalsAsync(clusterName, databaseName, cancellationToken).ConfigureAwait(false);
 
         // Create a temporary document for validation
@@ -83,6 +82,41 @@ public class QueryManager : IQueryManager
             .ToImmutableList();
 
         return allDiagnostics;
+    }
+
+    /// <summary>
+    /// Gets the result type of a query as a formatted string.
+    /// </summary>
+    public async Task<string?> GetQueryResultTypeAsync(
+        string query,
+        string clusterName,
+        string? databaseName,
+        CancellationToken cancellationToken)
+    {
+        var globals = await GetGlobalsAsync(clusterName, databaseName, cancellationToken).ConfigureAwait(false);
+
+        // Create a temporary document for analysis
+        var tempId = new Uri($"kusto://resulttype/{Guid.NewGuid()}");
+        var document = new SectionedDocument(tempId, query, globals);
+
+        // Get the result type using the document API
+        var resultType = document.GetQueryResultType(0, cancellationToken);
+
+        if (resultType is TableSymbol tableSymbol)
+        {
+            // Format as schema: (col1: type1, col2: type2, ...)
+            var schema = string.Join(", ", tableSymbol.Columns.Select(c => $"{KustoFacts.BracketNameIfNecessary(c.Name)}: {c.Type.Name}"));
+            return $"({schema})";
+        }
+        else if (resultType is ScalarSymbol scalarSymbol)
+        {
+            // Scalar type - just return the name
+            return scalarSymbol.Name;
+        }
+        else
+        {
+            return null;
+        }
     }
 
     public Task<RunResult?> RunQueryAsync(

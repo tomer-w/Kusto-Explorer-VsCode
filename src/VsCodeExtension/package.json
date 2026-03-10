@@ -552,6 +552,14 @@
         "instructions": "Use this tool to validate KQL queries for syntax and semantic errors. Always validate queries you generate before presenting them to the user to ensure correctness."
       },
       {
+        "toolId": "kusto_getQueryResultType",
+        "instructions": "Use this tool to determine what kind of data a KQL query returns. It returns the table schema for tabular queries or the scalar type for scalar queries. Use this to understand the output shape of a query."
+      },
+      {
+        "toolId": "kusto_getFunctionResultType",
+        "instructions": "Use this tool to determine what kind of data a database function returns given its name. It returns the table schema for tabular functions or the scalar type for scalar functions. Note that the result may not include all columns if the function has a tabular parameter that contributes to the output. To determine the exact columns for a function that has a tabular parameter, create a mock query that calls the function with arguments that are the correct types and use the kusto_getQueryResultType tool."
+      },
+      {
         "toolId": "kusto_runQuery",
         "instructions": "Use this tool to run a KQL query and return results when the user asks to execute a query or see data, or if you need to know the result of a query to answer a user question. Queries are run in read-only mode for safety. Please limit the output of queries to just the columns necessary and limit the number of rows unless you know you need all rows to answer the request."
       }
@@ -934,6 +942,60 @@
             }
           },
           "required": [ "query" ]
+        }
+      },
+      {
+        "name": "kusto_getQueryResultType",
+        "displayName": "Get KQL Query Result Type",
+        "toolReferenceName": "kustoQueryResultType",
+        "canBeReferencedInPrompt": true,
+        "userDescription": "Gets the result type of a KQL query (table schema or scalar type).",
+        "tags": [ "kusto", "kql", "query", "result", "type", "schema" ],
+        "modelDescription": "Returns the result type of a KQL query. For tabular results, returns the table schema (column names and types). For scalar results, returns the scalar type. Returns null if the query does not produce a tabular or scalar result. Use this to understand what kind of data a query returns.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "The KQL query text to analyze."
+            },
+            "cluster": {
+              "type": "string",
+              "description": "The Kusto cluster hostname for schema context. If not provided, uses the active connection."
+            },
+            "database": {
+              "type": "string",
+              "description": "The database name for schema context. If not provided, uses the active connection."
+            }
+          },
+          "required": [ "query" ]
+        }
+      },
+      {
+        "name": "kusto_getFunctionResultType",
+        "displayName": "Get Function Result Type",
+        "toolReferenceName": "kustoFunctionResultType",
+        "canBeReferencedInPrompt": true,
+        "userDescription": "Gets the result type of a database function (table schema or scalar type).",
+        "tags": [ "kusto", "kql", "function", "result", "type", "schema" ],
+        "modelDescription": "Returns the result type of a named database function. For functions that return tables, returns the table schema (column names and types). For scalar functions, returns the scalar type. Returns null if the function is not found. Note: the result may not include all possible columns if the function has a tabular parameter that contributes to the output.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "The name of the database function."
+            },
+            "cluster": {
+              "type": "string",
+              "description": "The Kusto cluster hostname for schema context. If not provided, uses the active connection."
+            },
+            "database": {
+              "type": "string",
+              "description": "The database name for schema context. If not provided, uses the active connection."
+            }
+          },
+          "required": [ "name" ]
         }
       },
       {

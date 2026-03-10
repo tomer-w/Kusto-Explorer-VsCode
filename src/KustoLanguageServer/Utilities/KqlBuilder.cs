@@ -3,13 +3,10 @@
 
 using Kusto.Language;
 using Kusto.Language.Editor;
-using Kusto.Language.Parsing;
 using Kusto.Language.Symbols;
 using Kusto.Language.Syntax;
 using Newtonsoft.Json.Linq;
-using System;
 using System.Collections.Immutable;
-using static System.Net.Mime.MediaTypeNames;
 
 namespace Kusto.Lsp;
 

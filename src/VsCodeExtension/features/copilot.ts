@@ -87,6 +87,8 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
     registerTool(context, 'kusto_getCurrentQueryText', 'Getting current query...', getCurrentQuery);
     registerTool(context, 'kusto_getQueryRanges', 'Getting query ranges...', getQueryRanges);
     registerTool(context, 'kusto_validateQuery', 'Validating query...', validateQuery);
+    registerTool(context, 'kusto_getQueryResultType', 'Getting query result type...', getQueryResultType);
+    registerTool(context, 'kusto_getFunctionResultType', 'Getting function result type...', getFunctionResultType);
     registerTool(context, 'kusto_runQuery', 'Running query...', runQuery);
 
     // Register the Chat Participant - user invokes with @kusto
@@ -337,6 +339,44 @@ async function validateQuery(input: { query: string; cluster?: string; database?
         const col = d.range.start.character + 1;
         return `  ${severity} at line ${line}, col ${col}: ${d.message}`;
     }).join('\n')}`;
+}
+
+async function getQueryResultType(input: { query: string; cluster?: string; database?: string }): Promise<string> {
+    let cluster = input.cluster;
+    let database = input.database;
+
+    if (!cluster) {
+        const active = await conn.getActiveDocumentConnection();
+        if (active) {
+            cluster = cluster ?? active.cluster;
+            database = database ?? active.database;
+        }
+    }
+
+    if (!cluster) {
+        return 'No cluster specified and no active connection. Cannot determine query result type.';
+    }
+
+    const result = await server.getQueryResultType(languageClient, input.query, cluster, database);
+    if (!result || !result.resultType) {
+        return 'The query does not have a determinable result type (it may not be a tabular or scalar expression).';
+    }
+
+    return result.resultType;
+}
+
+async function getFunctionResultType(input: { cluster?: string; database?: string; name: string }): Promise<string> {
+    const connection = await resolveConnection(input);
+    if (!connection) {
+        return 'No Kusto connection available. Please connect to a cluster and database first.';
+    }
+
+    const result = await server.getFunctionResultType(languageClient, connection.cluster, connection.database, input.name);
+    if (!result || !result.resultType) {
+        return `Function "${input.name}" was not found or does not have a determinable result type.`;
+    }
+
+    return result.resultType;
 }
 
 async function runQuery(input: { query: string; cluster?: string; database?: string; maxRows?: number }): Promise<string> {

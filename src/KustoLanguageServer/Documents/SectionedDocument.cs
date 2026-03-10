@@ -334,6 +334,26 @@ public class SectionedDocument : IDocument
         return null;
     }
 
+    public Symbol? GetResultType(int position, CancellationToken cancellationToken)
+    {
+        var block = _script.GetBlockAtPosition(position);
+        if (block != null)
+        {
+            return block.Service.GetResultType(position - block.Start, cancellationToken);
+        }
+        return null;
+    }
+
+    public Symbol? GetQueryResultType(int position, CancellationToken cancellationToken)
+    {
+        var block = _script.GetBlockAtPosition(position);
+        if (block != null)
+        {
+            return block.Service.GetQueryResultType(position - block.Start, cancellationToken);
+        }
+        return null;
+    }
+
     public ImmutableList<DeclarationLocation> GetDeclarationLocations(int position, CancellationToken cancellationToken)
     {
         var block = _script.GetBlockAtPosition(position);
