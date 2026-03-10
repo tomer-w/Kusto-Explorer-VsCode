@@ -53,6 +53,21 @@ export async function displayChartById(
     displayChart(chartResult?.html);
 }
 
+/** Minimum width (in pixels) for the chart panel before it repositions to the active column. */
+const minChartWidthPx = 800;
+
+/**
+ * Determines the best view column for the chart panel.
+ * If there are already 2+ editor groups, opens as a regular tab to avoid cramping.
+ */
+function getChartViewColumn(): vscode.ViewColumn {
+    const groups = vscode.window.tabGroups.all;
+    if (groups.length >= 2) {
+        return vscode.ViewColumn.Active;
+    }
+    return vscode.ViewColumn.Beside;
+}
+
 /**
  * Displays or hides the chart panel.
  * @param chartHtml The chart HTML to display, or undefined to hide the panel
@@ -61,6 +76,8 @@ function displayChart(chartHtml: string | undefined): void
 {
     if (chartHtml)
     {
+        const viewColumn = getChartViewColumn();
+
         // Create panel only if it doesn't exist
         if (!chartPanel)
         {
@@ -68,7 +85,7 @@ function displayChart(chartHtml: string | undefined): void
                 'kusto',
                 'Chart',
                 {
-                    viewColumn: vscode.ViewColumn.Beside,
+                    viewColumn: viewColumn,
                     preserveFocus: true
                 },
                 {
@@ -88,6 +105,10 @@ function displayChart(chartHtml: string | undefined): void
                 if (message.command === 'copyChartResult' && message.pngDataUrl) {
                     onCopyChartMessage(message.pngDataUrl, message.svgDataUrl);
                 }
+                if (message.command === 'chartTooNarrow' && chartPanel) {
+                    // Chart is too narrow in the beside column; move it to the first column as a regular tab
+                    chartPanel.reveal(vscode.ViewColumn.One, true);
+                }
             });
 
             // Clear reference when user closes it
@@ -101,7 +122,7 @@ function displayChart(chartHtml: string | undefined): void
 
         // Update content and reveal
         chartPanel.webview.html = injectChartMessageHandler(chartHtml);
-        chartPanel.reveal(vscode.ViewColumn.Beside, true);
+        chartPanel.reveal(viewColumn, true);
     }
     else if (chartPanel)
     {
@@ -181,6 +202,22 @@ const chartMessageHandlerScript = `
     (function() {
         const vscodeApi = (typeof acquireVsCodeApi === 'function') ? acquireVsCodeApi() : null;
         if (!vscodeApi) return;
+
+        // Check if the chart panel is too narrow and notify the extension
+        let narrowMessageSent = false;
+        function checkWidth() {
+            if (!narrowMessageSent && document.documentElement.clientWidth < ${minChartWidthPx}) {
+                narrowMessageSent = true;
+                vscodeApi.postMessage({ command: 'chartTooNarrow' });
+            }
+        }
+        // Wait for VS Code to finish laying out the split, then check
+        setTimeout(checkWidth, 500);
+        // Also monitor size changes via ResizeObserver as backup
+        if (typeof ResizeObserver !== 'undefined') {
+            const ro = new ResizeObserver(() => { checkWidth(); });
+            ro.observe(document.documentElement);
+        }
 
         // Light-mode color overrides (dot-notation keys for precise save/restore)
         const lightModeColors = {
