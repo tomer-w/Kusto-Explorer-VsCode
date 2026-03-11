@@ -25,7 +25,7 @@
     "watch": "tsc -watch -p .",
     "build-release-server": "dotnet publish ../KustoLspServer/KustoLspServer.csproj -c Release -o ./server",
     "build-debug-server": "dotnet publish ../KustoLspServer/KustoLspServer.csproj -c Debug -o ./server",
-    "package": "copy ..\\..\\LICENSE . && npm run compile && npm run build-release-server && vsce package",
+    "package": "shx cp ../../LICENSE . && npm run compile && npm run build-release-server && vsce package",
     "publish": "vsce publish"
   },
   "contributes": {
@@ -1084,6 +1084,7 @@
   "devDependencies": {
     "@types/vscode": "^1.90.0",
     "@types/node": "^18.0.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "shx": "^0.3.4"
   }
 }
