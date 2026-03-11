@@ -126,7 +126,7 @@ async function runQuery(client: LanguageClient, queryRange?: server.SelectionRan
         {
             // display error and highlight error range
             await resultsPanel.displayError(runResult.error);
-            await chartPanel.displayChartById(client, undefined);
+            await chartPanel.displayChart(client, undefined);
 
             if (runResult.error.range) {
                 const r = runResult.error.range;
@@ -137,8 +137,8 @@ async function runQuery(client: LanguageClient, queryRange?: server.SelectionRan
         else 
         {
             // display associated result tables and chart
-            await resultsPanel.displayResultsById(client, runResult?.dataId);
-            await chartPanel.displayChartById(client, runResult?.dataId);
+            await resultsPanel.displayResults(client, runResult?.dataId);
+            await chartPanel.displayChart(client, runResult?.dataId);
         }
 
         // Refresh CodeLens to show/hide Results lens
@@ -161,8 +161,8 @@ async function showResults(client: LanguageClient, uri: string, line: number, ch
     try {
         const dataId = await server.getDataId(client, uri, { line, character });
         if (dataId) {
-            await resultsPanel.displayResultsById(client, dataId);
-            await chartPanel.displayChartById(client, dataId);
+            await resultsPanel.displayResults(client, dataId);
+            await chartPanel.displayChart(client, dataId);
         }
     } catch (error) {
         vscode.window.showErrorMessage(`Failed to show results: ${error}`);
