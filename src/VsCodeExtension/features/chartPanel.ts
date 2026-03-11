@@ -7,7 +7,6 @@ import * as server from './server';
 import { isDarkMode, injectChartMessageHandler, handleChartWebviewMessage, registerChartWebview, saveResults } from './results';
 
 let chartPanel: vscode.WebviewPanel | undefined;
-let currentDataId: string | undefined;
 let currentResultData: server.ResultData | undefined;
 let languageClient: LanguageClient;
 
@@ -35,23 +34,17 @@ export function hasChartPanel(): boolean {
 /**
  * Fetches chart HTML from the server and displays it in the chart panel.
  * @param client The language client for LSP communication
- * @param source A data ID string, ResultData object, or undefined to hide the panel
+ * @param resultData The ResultData object, or undefined to hide the panel
  */
 export async function displayChart(
     client: LanguageClient,
-    source?: string | server.ResultData
+    resultData?: server.ResultData
 ): Promise<void> {
-    if (typeof source === 'string') {
-        currentDataId = source;
-        currentResultData = undefined;
-    } else {
-        currentDataId = undefined;
-        currentResultData = source;
-    }
+    currentResultData = resultData;
 
     const darkMode = isDarkMode();
-    const chartResult = source
-        ? await server.getChartAsHtml(client, currentDataId, currentResultData, darkMode)
+    const chartResult = resultData
+        ? await server.getChartAsHtml(client, resultData, darkMode)
         : null;
     showChart(chartResult?.html);
 }
@@ -109,7 +102,6 @@ function showChart(chartHtml: string | undefined): void
             chartPanel.onDidDispose(() =>
             {
                 chartPanel = undefined;
-                currentDataId = undefined;
                 currentResultData = undefined;
                 // Notify that chart panel state changed
                 vscode.commands.executeCommand('kusto.chartPanelStateChanged');
@@ -131,7 +123,6 @@ function showChart(chartHtml: string | undefined): void
             // Ignore disposal errors
         }
         chartPanel = undefined;
-        currentDataId = undefined;
         currentResultData = undefined;
         // Notify that chart panel state changed
         vscode.commands.executeCommand('kusto.chartPanelStateChanged');
@@ -142,23 +133,15 @@ function showChart(chartHtml: string | undefined): void
  * Saves the current chart panel's data to a .kqr file.
  */
 async function saveChartFromPanel(): Promise<void> {
-    let source: { dataId: string } | { data: server.ResultData } | undefined;
-
-    if (currentResultData) {
-        source = { data: currentResultData };
-    } else if (currentDataId) {
-        source = { dataId: currentDataId };
-    }
-
-    if (!source) {
+    if (!currentResultData) {
         vscode.window.showWarningMessage('No chart data available to save.');
         return;
     }
 
-    const savedUri = await saveResults(source);
-    if (savedUri) {
-        // Close the singleton chart panel and open the saved document in the main editor group
+    const result = await saveResults({ data: currentResultData });
+    if (result) {
+        // Close the singleton chart panel and open/reveal the saved document in the main editor group
         chartPanel?.dispose();
-        await vscode.commands.executeCommand('vscode.openWith', savedUri, 'kusto.resultEditor', vscode.ViewColumn.One);
+        await vscode.commands.executeCommand('vscode.openWith', result.uri, 'kusto.resultEditor', vscode.ViewColumn.One);
     }
 }

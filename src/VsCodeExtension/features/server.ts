@@ -10,32 +10,6 @@ import { LanguageClient } from 'vscode-languageclient/node';
  */
 
 /**
- * Runs a query from a document at the given URI and selection.
- * @param client The language client for LSP communication
- * @param uri The document URI
- * @param selection The selection range of the query
- * @param isReadOnly Optional flag to run the query in read-only mode
- * @param maxRows Optional maximum number of rows to return
- */
-export function runDocumentQuery(
-    client: LanguageClient,
-    uri: string,
-    selection: SelectionRange,
-    isReadOnly?: boolean,
-    maxRows?: number
-): Promise<RunDocumentQueryResult | null> {
-    return client.sendRequest<RunDocumentQueryResult | null>(
-        'kusto/runDocumentQuery',
-        {
-            textDocument: { uri },
-            selection,
-            isReadOnly,
-            maxRows
-        }
-    );
-}
-
-/**
  * Runs a query with the given text, cluster, and database, returning results as ResultData.
  * @param client The language client for LSP communication
  * @param query The query text to execute
@@ -123,27 +97,6 @@ export function getQueryRange(
     return client.sendRequest<Range | null>(
         'kusto/getQueryRange',
         { uri, position }
-    );
-}
-
-/**
- * Gets the data ID for the last query result at the given position.
- * @param client The language client for LSP communication
- * @param uri The document URI
- * @param position The position within the document
- * @returns The data ID if results exist at this position, or null
- */
-export function getDataId(
-    client: LanguageClient,
-    uri: string,
-    position: Position
-): Promise<string | null> {
-    return client.sendRequest<string | null>(
-        'kusto/getDataId',
-        {
-            textDocument: { uri },
-            position
-        }
     );
 }
 
@@ -251,49 +204,20 @@ export function getEntityAsExpression(
 }
 
 /**
- * Gets the HTML representation of data from a data ID or result data.
- * Either dataId or data must be provided.
+ * Gets the HTML representation of a chart from result data.
  * @param client The language client for LSP communication
- * @param dataId The data ID from running a query (optional if data is provided)
- * @param data The result data containing tables (optional if dataId is provided)
- * @param tableName Optional name of a specific table to get HTML for (defaults to all tables)
- * @returns The data result with HTML tables and row count, or null if not available
- */
-export function getDataAsHtml(
-    client: LanguageClient,
-    dataId?: string,
-    data?: ResultData,
-    tableName?: string
-): Promise<DataAsHtml | null> {
-    return client.sendRequest<DataAsHtml | null>(
-        'kusto/getDataAsHtml',
-        {
-            dataId,
-            data,
-            tableName
-        }
-    );
-}
-
-/**
- * Gets the HTML representation of a chart from result data or a data ID.
- * Either dataId or data must be provided.
- * @param client The language client for LSP communication
- * @param dataId The data ID from running a query (optional if data is provided)
- * @param data The result data containing tables and chart options (optional if dataId is provided)
+ * @param data The result data containing tables and chart options
  * @param darkMode Whether to render the chart in dark mode
  * @returns The chart as HTML, or null if not available
  */
 export function getChartAsHtml(
     client: LanguageClient,
-    dataId?: string,
-    data?: ResultData,
+    data: ResultData,
     darkMode?: boolean
 ): Promise<ChartAsHtmlResult | null> {
     return client.sendRequest<ChartAsHtmlResult | null>(
         'kusto/getChartAsHtml',
         {
-            dataId,
             data,
             darkMode: darkMode ?? false
         }
@@ -332,43 +256,18 @@ export function getQueryAsHtml(
 /**
  * Gets the query result data as a KQL datatable expression.
  * @param client The language client for LSP communication
- * @param dataId The data ID from running a query
+ * @param data The result data containing tables
  * @param tableName Optional name of a specific table to convert (defaults to first table)
  * @returns The datatable expression as a string, or null if not available
  */
 export function getDataAsExpression(
     client: LanguageClient,
-    dataId?: string,
-    tableName?: string,
-    data?: ResultData
+    data: ResultData,
+    tableName?: string
 ): Promise<DataAsExpression | null> {
     return client.sendRequest<DataAsExpression | null>(
         'kusto/getDataAsExpression',
         {
-            dataId,
-            data,
-            tableName
-        }
-    );
-}
-
-/**
- * Gets the query result data as a markdown table.
- * @param client The language client for LSP communication
- * @param dataId The data ID from running a query
- * @param tableName Optional name of a specific table to convert (defaults to first table)
- * @returns The markdown table as a string, or null if not available
- */
-export function getDataAsMarkdown(
-    client: LanguageClient,
-    dataId?: string,
-    tableName?: string,
-    data?: ResultData
-): Promise<DataAsMarkdown | null> {
-    return client.sendRequest<DataAsMarkdown | null>(
-        'kusto/getDataAsMarkdown',
-        {
-            dataId,
             data,
             tableName
         }
@@ -449,18 +348,10 @@ export interface DatabaseInfo {
     storedQueryResults?: DatabaseStoredQueryResultInfo[];
 }
 
-/** Result of running a document query. */
-export interface RunDocumentQueryResult {
-    dataId?: string;
-    connection?: string;
-    cluster?: string;
-    database?: string;
-    error?: QueryDiagnostic;
-}
-
 /** Result of running a query and returning results as ResultData. */
 export interface RunQueryResult {
     data?: ResultData;
+    connection?: string;
     cluster?: string;
     database?: string;
     error?: QueryDiagnostic;
@@ -483,19 +374,6 @@ export interface QueryDiagnostic {
     range?: Range
 }
 
-/** A single HTML table from the query result. */
-export interface HtmlTable {
-    name: string;
-    html: string;
-    rowCount: number;
-}
-
-/** Result of getting data as html. */
-export interface DataAsHtml {
-    tables: HtmlTable[];
-    hasChart: boolean;
-}
-
 /** Result of getting query as HTML. */
 export interface QueryAsHtmlResult {
     html: string;
@@ -504,32 +382,6 @@ export interface QueryAsHtmlResult {
 /** Result of getting data as a KQL expression. */
 export interface DataAsExpression {
     expression: string;
-}
-
-/** Result of getting data as markdown. */
-export interface DataAsMarkdown {
-    markdown: string;
-}
-
-/**
- * Gets the query result data as JSON.
- * @param client The language client for LSP communication
- * @param dataId The data ID from running a query
- * @param tableName Optional name of a specific table to convert (defaults to all tables)
- * @returns The result data with tables and chart options, or null if not available
- */
-export function getResultData(
-    client: LanguageClient,
-    dataId: string,
-    tableName?: string
-): Promise<ResultData | null> {
-    return client.sendRequest<ResultData | null>(
-        'kusto/getResultData',
-        {
-            dataId,
-            tableName
-        }
-    );
 }
 
 /** Serializable representation of a query execution result. */
@@ -792,5 +644,27 @@ export function validateQuery(
     return client.sendRequest<ValidateQueryResult | null>(
         'kusto/validateQuery',
         { query, cluster, database }
+    );
+}
+
+/** Result of getting a minified query. */
+export interface GetMinifiedQueryResult {
+    minifiedQuery?: string;
+}
+
+/**
+ * Gets the minified form of a query.
+ * This removes unnecessary whitespace and formatting while preserving semantics.
+ * @param client The language client for LSP communication
+ * @param query The query text to minify
+ * @returns The minified query text, or null if minification failed
+ */
+export function getMinifiedQuery(
+    client: LanguageClient,
+    query: string
+): Promise<GetMinifiedQueryResult | null> {
+    return client.sendRequest<GetMinifiedQueryResult | null>(
+        'kusto/getMinifiedQuery',
+        { query }
     );
 }

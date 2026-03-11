@@ -189,12 +189,12 @@
       },
       {
         "command": "kusto.saveChart",
-        "title": "Save Results",
+        "title": "Save As...",
         "icon": "$(save)"
       },
       {
         "command": "kusto.saveResults",
-        "title": "Save Results",
+        "title": "Save As...",
         "icon": "$(save)"
       }
     ],

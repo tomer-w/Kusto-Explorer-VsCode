@@ -29,7 +29,6 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
     private readonly IDiagnosticsManager _diagnosticsManager;
     private readonly IQueryManager _queryManager;
     private readonly IChartManager _chartManager;
-    private readonly IResultsManager _resultsManager;
     private readonly IEntityManager _entityManager;
     private readonly ImmutableList<string> _args;
 
@@ -45,7 +44,6 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
         IDiagnosticsManager diagnosticsManager,
         IQueryManager queryManager,
         IChartManager chartManager,
-        IResultsManager resultsManager,
         IEntityManager entityManager)
         : base(input, output)
     {
@@ -61,7 +59,6 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
         _diagnosticsManager = diagnosticsManager;
         _queryManager = queryManager;
         _chartManager = chartManager;
-        _resultsManager = resultsManager;
         _entityManager = entityManager;
         InitEvents();
     }
@@ -82,7 +79,6 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
         _schemaManager = new SchemaManager(schemaSource, _storage, _logger);
         _symbolManager = new SymbolManager(_schemaManager, _optionsManager, _logger);
         _documentManager = new DocumentManager(_symbolManager, _logger);
-        _resultsManager = new ResultsManager(_documentManager);
         _diagnosticsManager = new DiagnosticsManager(_documentManager, _logger);
         _queryManager = new QueryManager(_connectionManager, _symbolManager, _documentManager, _optionsManager, _logger);
         _chartManager = new PlotlyChartManager();
@@ -1832,6 +1828,48 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
 
     #endregion
 
+    #region Minify
+
+    [JsonRpcMethod("kusto/getMinifiedQuery", UseSingleObjectParameterDeserialization = true)]
+    public Task<GetMinifiedQueryResult?> OnGetMinifiedQueryAsync(GetMinifiedQueryParams @params, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Create a temporary sectioned document with the query text
+            var tempUri = new Uri("temp://minify");
+            var document = new SectionedDocument(tempUri, @params.Query, _symbolManager.Globals);
+
+            // Get the minified text using SingleLine kind (same as ResultsManager.GetKey)
+            var minifiedText = document.GetMinimalText(0, Language.Editor.MinimalTextKind.SingleLine);
+
+            return Task.FromResult<GetMinifiedQueryResult?>(new GetMinifiedQueryResult
+            {
+                MinifiedQuery = minifiedText
+            });
+        }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex);
+            return Task.FromResult<GetMinifiedQueryResult?>(null);
+        }
+    }
+
+    [DataContract]
+    public class GetMinifiedQueryParams
+    {
+        [DataMember(Name = "query")]
+        public required string Query { get; set; }
+    }
+
+    [DataContract]
+    public class GetMinifiedQueryResult
+    {
+        [DataMember(Name = "minifiedQuery")]
+        public string? MinifiedQuery { get; set; }
+    }
+
+    #endregion
+
     #region Result Type
 
     [JsonRpcMethod("kusto/getQueryResultType", UseSingleObjectParameterDeserialization = true)]
@@ -1988,132 +2026,6 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
         return options;
     }
 
-    [JsonRpcMethod("kusto/runDocumentQuery", UseSingleObjectParameterDeserialization = true)]
-    public async Task<RunDocumentQueryResult?> OnRunDocumentQueryAsync(RunDocumentQueryParams @params, CancellationToken cancellationToken)
-    {
-        try
-        {
-            if (@params.Selection == null)
-            {
-                await this.SendWindowShowMessageAsync("Failed to run: no query selected");
-                return null;
-            }
-
-            var queryOptions = BuildQueryOptions(@params.IsReadOnly, @params.MaxRows);
-            var queryParameters = ImmutableDictionary<string, string>.Empty;
-
-            if (_documentManager.TryGetDocument(@params.TextDocument.Uri, out var document))
-            {
-                var range = GetTextRange(document.Text, @params.Selection);
-
-                // If selection is empty (caret position), expand to the full query range
-                if (range.Length == 0)
-                {
-                    var sectionRange = document.GetSectionRange(range.Start);
-                    if (sectionRange.HasValue)
-                    {
-                        range = sectionRange.Value;
-                    }
-                }
-
-                // start with query as an edited down section of the whole document
-                var query = new EditString(document.Text).Substring(range.Start, range.Length);
-
-                // get connection info from the document
-                var connectionInfo = _documentManager.GetConnection(document.Id);
-                if (connectionInfo.Cluster == null)
-                {
-                    await this.SendWindowShowMessageAsync("Failed to run: document is not connected to a cluster");
-                    return null;
-                }
-
-                var runResult = await _queryManager.RunQueryAsync(
-                    query, 
-                    connectionInfo.Cluster,
-                    connectionInfo.Database,
-                    queryOptions, 
-                    queryParameters, 
-                    cancellationToken)
-                    .ConfigureAwait(false);
-
-                string? resultId = null;
-                if (runResult?.ExecuteResult != null)
-                {
-                    // cache results for lookup later
-                    resultId = _resultsManager.CacheResult(document, range.Start, runResult.ExecuteResult);
-                }
-
-                if (runResult?.Error != null)
-                {
-                    var errorRange = runResult.Error.HasLocation
-                        ? GetLspRange(document.Text, new TextRange(runResult.Error.Start, runResult.Error.Length))
-                        : null;
-
-                    return new RunDocumentQueryResult
-                    {
-                        Error = new RunQueryDiagnostic
-                        {
-                            Message = runResult.Error.Message,
-                            Details = runResult.Error.Description,
-                            Range = errorRange
-                        }
-                    };
-                }
-                else
-                {
-                    return new RunDocumentQueryResult
-                    {
-                        DataId = resultId,
-                        Connection = runResult?.Connection,
-                        Cluster = runResult?.Cluster,
-                        Database = runResult?.Database
-                    };
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _ = this.SendWindowLogMessageAsync(ex.Message);
-        }
-
-        return null;
-    }
-
-    [DataContract]
-    public class RunDocumentQueryParams
-    {
-        [DataMember(Name = "textDocument")]
-        public required LSP.TextDocumentIdentifier TextDocument { get; init; }
-         
-        [DataMember(Name = "selection")]
-        public required LSP.Range Selection { get; init; }
-
-        [DataMember(Name = "isReadOnly")]
-        public bool? IsReadOnly { get; init; }
-
-        [DataMember(Name = "maxRows")]
-        public long? MaxRows { get; init; }
-    }
-
-    [DataContract]
-    public class RunDocumentQueryResult
-    {
-        [DataMember(Name = "dataId")]
-        public string? DataId { get; init; }
-
-        [DataMember(Name = "connection")]
-        public string? Connection { get; init; }
-
-        [DataMember(Name = "cluster")]
-        public string? Cluster { get; init; }
-
-        [DataMember(Name = "database")]
-        public string? Database { get; init; }
-
-        [DataMember(Name = "error")]
-        public RunQueryDiagnostic? Error { get; init; }
-    }
-
     [DataContract]
     public class RunQueryDiagnostic
     {
@@ -2126,8 +2038,6 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
         [DataMember(Name = "range")]
         public LSP.Range? Range { get; init; }
     }
-
-
 
     [JsonRpcMethod("kusto/runQuery", UseSingleObjectParameterDeserialization = true)]
     public async Task<RunQueryResult?> OnRunQueryAsync(RunQueryParams @params, CancellationToken cancellationToken)
@@ -2167,6 +2077,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
                 return new RunQueryResult
                 {
                     Data = ResultData.FromExecuteResult(runResult.ExecuteResult),
+                    Connection = runResult.Connection,
                     Cluster = runResult.Cluster,
                     Database = runResult.Database
                 };
@@ -2212,6 +2123,9 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
         [DataMember(Name = "data")]
         public ResultData? Data { get; init; }
 
+        [DataMember(Name = "connection")]
+        public string? Connection { get; init; }
+
         [DataMember(Name = "cluster")]
         public string? Cluster { get; init; }
 
@@ -2224,10 +2138,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
 
     #endregion
 
-
     #region Html
-
-
     [JsonRpcMethod("kusto/getQueryAsHtml", UseSingleObjectParameterDeserialization = true)]
     public Task<GetQueryAsHtmlResult?> OnGetQueryAsHtmlAsync(GetQueryAsHtmlParams @params, CancellationToken cancellationToken)
     {
@@ -2275,142 +2186,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
 
     #endregion
 
-    #region Data (Tables, Charts, etc)
-
-    #region Data ID
-    [JsonRpcMethod("kusto/getDataId", UseSingleObjectParameterDeserialization = true)]
-    public Task<string?> OnGetDataIdAsync(GetDataIdParams @params, CancellationToken cancellationToken)
-    {
-        if (_documentManager.TryGetDocument(@params.TextDocument.Uri, out var document))
-        {
-            var pos = GetTextPosition(document.Text, @params.Position);
-            if (_resultsManager.TryGetLastResultId(document, pos, out var id))
-            {
-                return Task.FromResult<string?>(id);
-            }
-        }
-
-        return Task.FromResult<string?>(null);
-    }
-
-    [DataContract]
-    public class GetDataIdParams
-    {
-        [DataMember(Name = "textDocument")]
-        public required LSP.TextDocumentIdentifier TextDocument { get; init; }
-
-        [DataMember(Name = "position")]
-        public required LSP.Position Position { get; init; }
-    }
-    #endregion
-
-    #region Html Tables
-    [JsonRpcMethod("kusto/getDataAsHtml", UseSingleObjectParameterDeserialization = true)]
-    public Task<GetDataAsHtmlResult?> OnGetDataAsHtmlAsync(GetDataAsHtmlParams @params, CancellationToken cancellationToken)
-    {
-        try
-        {
-            ExecuteResult? executeResult = null;
-
-            // Get execute result from dataId or from provided data
-            if (@params.DataId != null)
-            {
-                if (_resultsManager.TryGetCachedResultById(@params.DataId, out var cachedResults))
-                {
-                    executeResult = cachedResults;
-                }
-            }
-            else if (@params.Data != null)
-            {
-                executeResult = @params.Data.ToExecuteResult();
-            }
-
-            if (executeResult?.Tables != null)
-            {
-                var hasChart = executeResult.ChartOptions != null
-                    && executeResult.ChartOptions.Visualization != Data.Utils.VisualizationKind.None;
-
-                var tables = executeResult.Tables;
-                
-                // Filter to specific table if tableName is provided
-                if (@params.TableName != null)
-                {
-                    tables = tables.Where(t => t.TableName == @params.TableName).ToImmutableList();
-                }
-
-                return Task.FromResult<GetDataAsHtmlResult?>(
-                    new GetDataAsHtmlResult
-                    {
-                        Tables = tables.Select(t => new HtmlTable
-                        {
-                            Html = RenderDataAsHtml(t),
-                            Name = t.TableName,
-                            RowCount = t.Rows.Count
-                        }).ToImmutableList(),
-                        HasChart = hasChart
-                    });
-            }
-        }
-        catch (Exception ex)
-        {
-            _ = this.SendWindowLogMessageAsync(ex.Message);
-        }
-
-        return Task.FromResult<GetDataAsHtmlResult?>(null);
-    }
-
-    [DataContract]
-    public class GetDataAsHtmlParams
-    {
-        [DataMember(Name = "dataId")]
-        public string? DataId { get; init; }
-
-        [DataMember(Name = "data")]
-        public ResultData? Data { get; init; }
-
-        [DataMember(Name = "tableName")]
-        public string? TableName { get; init; }
-    }
-
-    [DataContract]
-    public class GetDataAsHtmlResult
-    {
-        [DataMember(Name = "tables")]
-        public required ImmutableList<HtmlTable> Tables { get; init; }
-
-        [DataMember(Name = "hasChart")]
-        public bool HasChart { get; init; }
-    }
-
-    [DataContract]
-    public class HtmlTable
-    {
-        [DataMember(Name = "name")]
-        public required string Name { get; init; }
-
-        [DataMember(Name = "html")]
-        public required string Html { get; init; }
-
-        [DataMember(Name = "rowCount")]
-        public int RowCount { get; init; }
-    }
-
-    private string RenderDataAsHtml(DataTable data)
-    {
-        var dataBuilder = new HtmlBuilder();
-        dataBuilder.WriteHtml(
-            head: () =>
-            {
-            },
-            body: () =>
-            {
-                dataBuilder.WriteTable(data);
-            }
-        );
-
-        return dataBuilder.Text;
-    }
-    #endregion
+    #region Results
 
     #region Chart As Html
 
@@ -2419,33 +2195,23 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
     {
         try
         {
-            ExecuteResult? executeResult = null;
-
-            // Get execute result from dataId or from provided data
-            if (@params.DataId != null)
+            if (@params.Data != null)
             {
-                if (_resultsManager.TryGetCachedResultById(@params.DataId, out var cachedResults))
+                var executeResult = @params.Data.ToExecuteResult();
+
+                if (executeResult != null
+                    && executeResult.Tables != null
+                    && executeResult.Tables.Count > 0
+                    && executeResult.ChartOptions != null
+                    && executeResult.ChartOptions.Visualization != Data.Utils.VisualizationKind.None)
                 {
-                    executeResult = cachedResults;
+                    var chartHtml = RenderChartAsHtml(executeResult.Tables[0], executeResult.ChartOptions, @params.DarkMode);
+                    return Task.FromResult<GetChartAsHtmlResult?>(
+                        new GetChartAsHtmlResult
+                        {
+                            Html = chartHtml
+                        });
                 }
-            }
-            else if (@params.Data != null)
-            {
-                executeResult = @params.Data.ToExecuteResult();
-            }
-
-            if (executeResult != null
-                && executeResult.Tables != null
-                && executeResult.Tables.Count > 0
-                && executeResult.ChartOptions != null
-                && executeResult.ChartOptions.Visualization != Data.Utils.VisualizationKind.None)
-            {
-                var chartHtml = RenderChartAsHtml(executeResult.Tables[0], executeResult.ChartOptions, @params.DarkMode);
-                return Task.FromResult<GetChartAsHtmlResult?>(
-                    new GetChartAsHtmlResult
-                    {
-                        Html = chartHtml
-                    });
             }
         }
         catch (Exception ex)
@@ -2465,11 +2231,8 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
     [DataContract]
     public class GetChartAsHtmlParams
     {
-        [DataMember(Name = "dataId")]
-        public string? DataId { get; init; }
-
         [DataMember(Name = "data")]
-        public ResultData? Data { get; init; }
+        public required ResultData Data { get; init; }
 
         [DataMember(Name = "darkMode")]
         public bool DarkMode { get; init; }
@@ -2491,32 +2254,22 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
     {
         try
         {
-            ExecuteResult? executeResult = null;
-
-            // Get execute result from dataId or from provided data
-            if (@params.DataId != null)
+            if (@params.Data != null)
             {
-                if (_resultsManager.TryGetCachedResultById(@params.DataId, out var cachedResults))
+                var executeResult = @params.Data.ToExecuteResult();
+
+                if (executeResult?.Tables != null && executeResult.Tables.Count > 0)
                 {
-                    executeResult = cachedResults;
+                    var table = @params.TableName != null ? executeResult.Tables.FirstOrDefault(t => t.TableName == @params.TableName) : null;
+                    if (table == null)
+                        table = executeResult.Tables[0];
+
+                    var statement = KustoGenerator.GenerateDataTableExpression(table);
+
+                    return Task.FromResult<GetDataAsExpressionResult?>(
+                        new GetDataAsExpressionResult { Expression = statement }
+                        );
                 }
-            }
-            else if (@params.Data != null)
-            {
-                executeResult = @params.Data.ToExecuteResult();
-            }
-
-            if (executeResult?.Tables != null && executeResult.Tables.Count > 0)
-            {
-                var table = @params.TableName != null ? executeResult.Tables.FirstOrDefault(t => t.TableName == @params.TableName) : null;
-                if (table == null)
-                    table = executeResult.Tables[0];
-
-                var statement = KustoGenerator.GenerateDataTableExpression(table);
-
-                return Task.FromResult<GetDataAsExpressionResult?>(
-                    new GetDataAsExpressionResult { Expression = statement }
-                    );
             }
         }
         catch (Exception ex)
@@ -2530,11 +2283,8 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
     [DataContract]
     public class GetDataAsExpressionParams
     {
-        [DataMember(Name = "dataId")]
-        public string? DataId { get; init; }
-
         [DataMember(Name = "data")]
-        public ResultData? Data { get; init; }
+        public required ResultData Data { get; init; }
 
         [DataMember(Name = "tableName")]
         public string? TableName { get; init; }
@@ -2545,104 +2295,6 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
     {
         [DataMember(Name = "expression")]
         public required string Expression { get; init; }
-    }
-    #endregion
-
-    #region Markdown
-
-    [JsonRpcMethod("kusto/getDataAsMarkdown", UseSingleObjectParameterDeserialization = true)]
-    public Task<GetDataAsMarkdownResult?> OnGetDataAsMarkdown(GetDataAsMarkdownParams @params, CancellationToken cancellationToken)
-    {
-        try
-        {
-            ExecuteResult? executeResult = null;
-
-            // Get execute result from dataId or from provided data
-            if (@params.DataId != null)
-            {
-                if (_resultsManager.TryGetCachedResultById(@params.DataId, out var cachedResults))
-                {
-                    executeResult = cachedResults;
-                }
-            }
-            else if (@params.Data != null)
-            {
-                executeResult = @params.Data.ToExecuteResult();
-            }
-
-            if (executeResult?.Tables != null && executeResult.Tables.Count > 0)
-            {
-                var table = @params.TableName != null ? executeResult.Tables.FirstOrDefault(t => t.TableName == @params.TableName) : null;
-                if (table == null)
-                    table = executeResult.Tables[0];
-
-                var builder = new MarkdownBuilder();
-                builder.WriteDataTable(table);
-                var markdown = builder.Text;
-
-                return Task.FromResult<GetDataAsMarkdownResult?>(
-                    new GetDataAsMarkdownResult { Markdown = markdown }
-                    );
-            }
-        }
-        catch (Exception ex)
-        {
-            _ = this.SendWindowLogMessageAsync(ex.Message);
-        }
-
-        return Task.FromResult<GetDataAsMarkdownResult?>(null);
-    }
-
-    [DataContract]
-    public class GetDataAsMarkdownParams
-    {
-        [DataMember(Name = "dataId")]
-        public string? DataId { get; init; }
-
-        [DataMember(Name = "data")]
-        public ResultData? Data { get; init; }
-
-        [DataMember(Name = "tableName")]
-        public string? TableName { get; init; }
-    }
-
-    [DataContract]
-    public class GetDataAsMarkdownResult
-    {
-        [DataMember(Name = "markdown")]
-        public required string Markdown { get; init; }
-    }
-    #endregion
-
-    #region Result Data
-    [JsonRpcMethod("kusto/getResultData", UseSingleObjectParameterDeserialization = true)]
-    public Task<ResultData?> OnGetResultData(GetResultDataParams @params, CancellationToken cancellationToken)
-    {
-        try
-        {
-            if (_resultsManager.TryGetCachedResultById(@params.DataId, out var cachedResults)
-                && cachedResults.Tables != null)
-            {
-                var result = ResultData.FromExecuteResult(cachedResults, @params.TableName);
-                return Task.FromResult<ResultData?>(result);
-            }
-        }
-        catch (Exception ex)
-        {
-            _ = this.SendWindowLogMessageAsync(ex.Message);
-        }
-
-        return Task.FromResult<ResultData?>(null);
-    }
-
-    [DataContract]
-    public class GetResultDataParams
-    {
-        [DataMember(Name = "dataId")]
-        public required string DataId { get; init; }
-
-        [DataMember(Name = "tableName")]
-        public string? TableName { get; init; }
     }
     #endregion
 

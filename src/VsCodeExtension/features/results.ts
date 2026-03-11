@@ -5,6 +5,8 @@ import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 import * as server from './server';
 import { copyToClipboard, ClipboardItem, formatCfHtml } from './clipboard';
+import { resultDataToMarkdown } from './markdown';
+import { resultDataToHtml, DataAsHtml, HtmlTable } from './html';
 
 /** The view type used for the custom result editor. */
 const resultEditorViewType = 'kusto.resultEditor';
@@ -131,21 +133,10 @@ function onCopyChartMessage(pngDataUrl: string, svgDataUrl?: string): void {
 
 /**
  * Saves result data to a .kqr file.
- * Accepts either a dataId (fetches ResultData from the server) or ResultData directly.
  * Returns the saved URI, or undefined if cancelled or failed.
  */
-export async function saveResults(source: { dataId: string } | { data: server.ResultData }): Promise<vscode.Uri | undefined> {
-    let resultData: server.ResultData | null;
-
-    if ('data' in source) {
-        resultData = source.data;
-    } else {
-        resultData = await server.getResultData(languageClient, source.dataId);
-        if (!resultData) {
-            vscode.window.showWarningMessage('Failed to retrieve result data.');
-            return undefined;
-        }
-    }
+export async function saveResults(source: { data: server.ResultData }): Promise<{ uri: vscode.Uri; alreadyOpen: boolean } | undefined> {
+    const resultData = source.data;
 
     const saveUri = await vscode.window.showSaveDialog({
         filters: { 'Kusto Query Results': ['kqr'] },
@@ -162,9 +153,27 @@ export async function saveResults(source: { dataId: string } | { data: server.Re
         : saveUri.with({ path: saveUri.path + '.kqr' });
 
     const content = JSON.stringify(resultData, null, 2);
-    await vscode.workspace.fs.writeFile(finalUri, Buffer.from(content, 'utf-8'));
 
-    return finalUri;
+    // If the file is already open in an editor, update its content via WorkspaceEdit
+    // so the custom editor re-renders automatically.
+    const openDoc = vscode.workspace.textDocuments.find(
+        doc => doc.uri.fsPath.toLowerCase() === finalUri.fsPath.toLowerCase()
+    );
+
+    if (openDoc) {
+        const fullRange = new vscode.Range(
+            openDoc.positionAt(0),
+            openDoc.positionAt(openDoc.getText().length)
+        );
+        const edit = new vscode.WorkspaceEdit();
+        edit.replace(openDoc.uri, fullRange, content);
+        await vscode.workspace.applyEdit(edit);
+        await openDoc.save();
+        return { uri: finalUri, alreadyOpen: true };
+    }
+
+    await vscode.workspace.fs.writeFile(finalUri, Buffer.from(content, 'utf-8'));
+    return { uri: finalUri, alreadyOpen: false };
 }
 
 /** Script injected into chart webview HTML to handle copy commands. */
@@ -384,9 +393,9 @@ class ResultEditorProvider implements vscode.CustomTextEditorProvider {
 
         // Fetch both table HTML and chart HTML in parallel
         const [dataResult, chartResult] = await Promise.all([
-            server.getDataAsHtml(languageClient, undefined, resultData, undefined),
+            Promise.resolve(resultDataToHtml(resultData)),
             resultData.chartOptions
-                ? server.getChartAsHtml(languageClient, undefined, resultData, darkMode)
+                ? server.getChartAsHtml(languageClient, resultData, darkMode)
                 : Promise.resolve(null)
         ]);
 
@@ -413,7 +422,7 @@ class ResultEditorProvider implements vscode.CustomTextEditorProvider {
     }
 
     private buildDualViewHtml(
-        dataResult: server.DataAsHtml | null,
+        dataResult: DataAsHtml | null,
         chartHtml: string | undefined,
         hasChart: boolean
     ): string {
@@ -543,7 +552,7 @@ class ResultEditorProvider implements vscode.CustomTextEditorProvider {
 </html>`;
     }
 
-    private buildTabbedTableHtml(tables: server.HtmlTable[]): string {
+    private buildTabbedTableHtml(tables: HtmlTable[]): string {
         if (tables.length === 1) {
             return tables[0]!.html;
         }
@@ -618,13 +627,10 @@ export async function copyDataFromEditor(): Promise<boolean> {
 
     const tableName = getActiveTableName(state);
 
-    const [htmlResult, markdownResult] = await Promise.all([
-        server.getDataAsHtml(languageClient, undefined, state.resultData, tableName),
-        server.getDataAsMarkdown(languageClient, undefined, tableName, state.resultData),
-    ]);
+    const htmlResult = resultDataToHtml(state.resultData, tableName);
 
     const html = htmlResult?.tables[0]?.html;
-    const markdown = markdownResult?.markdown;
+    const markdown = resultDataToMarkdown(state.resultData, tableName);
 
     if (html) {
         copyToClipboard([
@@ -649,7 +655,7 @@ export async function copyTableAsExpressionFromEditor(): Promise<boolean> {
 
     try {
         const tableName = getActiveTableName(state);
-        const result = await server.getDataAsExpression(languageClient, undefined, tableName, state.resultData);
+        const result = await server.getDataAsExpression(languageClient, state.resultData, tableName);
         if (result?.expression) {
             await vscode.env.clipboard.writeText(result.expression);
         }

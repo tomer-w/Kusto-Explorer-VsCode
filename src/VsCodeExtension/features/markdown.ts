@@ -1,7 +1,26 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { ResultTable } from './server';
+import { ResultData, ResultTable } from './server';
+
+/**
+ * Converts a ResultData to markdown table text.
+ * @param data The result data to convert
+ * @param tableName Optional name of a specific table to convert (defaults to first table)
+ * @returns The markdown representation of the table, or empty string if not found
+ */
+export function resultDataToMarkdown(data: ResultData, tableName?: string): string {
+    if (!data.tables || data.tables.length === 0) {
+        return '';
+    }
+    const table = tableName
+        ? data.tables.find(t => t.name === tableName)
+        : data.tables[0];
+    if (!table) {
+        return '';
+    }
+    return resultTableToMarkdown(table);
+}
 
 /**
  * Converts a ResultTable to markdown table text.
