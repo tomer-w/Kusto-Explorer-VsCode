@@ -7,6 +7,8 @@ import * as conn from './connections';
 import * as server from './server';
 import { ENTITY_DEFINITION_SCHEME } from './entityDefinitionProvider';
 import { resultTableToMarkdown } from './markdown';
+import * as resultsPanel from './resultsPanel';
+import * as chartPanel from './chartPanel';
 
 const COPILOT_PARTICIPANT_ID = 'kusto';
 const MAX_SCHEMA_CHARS = 30000; // Approximate limit to stay within token limits
@@ -380,7 +382,7 @@ async function getFunctionResultType(input: { cluster?: string; database?: strin
     return result.resultType;
 }
 
-async function runQuery(input: { query: string; cluster?: string; database?: string; maxRows?: number }): Promise<string> {
+async function runQuery(input: { query: string; cluster?: string; database?: string; maxRows?: number; showResults?: boolean }): Promise<string> {
     let cluster = input.cluster;
     let database = input.database;
 
@@ -407,6 +409,11 @@ async function runQuery(input: { query: string; cluster?: string; database?: str
 
     if (!result.data || result.data.tables.length === 0) {
         return 'Query returned no results.';
+    }
+
+    if (input.showResults) {
+        await resultsPanel.displayResults(languageClient, result.data);
+        await chartPanel.displayChart(languageClient, result.data);
     }
 
     return resultTableToMarkdown(result.data.tables[0]!);
