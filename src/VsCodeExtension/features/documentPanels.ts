@@ -107,7 +107,7 @@ async function runQuery(client: LanguageClient, queryRange?: server.SelectionRan
         };
 
         // run query and get results from the server
-        const runResult = await server.runQuery(client, uri, selection);
+        const runResult = await server.runDocumentQuery(client, uri, selection);
 
         // If the result includes a connection string for an unknown cluster, add it as a server
         if (runResult?.connection || runResult?.cluster) {

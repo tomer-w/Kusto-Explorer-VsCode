@@ -10,22 +10,22 @@ import { LanguageClient } from 'vscode-languageclient/node';
  */
 
 /**
- * Runs a query at the given document URI and selection.
+ * Runs a query from a document at the given URI and selection.
  * @param client The language client for LSP communication
  * @param uri The document URI
  * @param selection The selection range of the query
  * @param isReadOnly Optional flag to run the query in read-only mode
  * @param maxRows Optional maximum number of rows to return
  */
-export function runQuery(
+export function runDocumentQuery(
     client: LanguageClient,
     uri: string,
     selection: SelectionRange,
     isReadOnly?: boolean,
     maxRows?: number
-): Promise<RunQueryResult | null> {
-    return client.sendRequest<RunQueryResult | null>(
-        'kusto/runQuery',
+): Promise<RunDocumentQueryResult | null> {
+    return client.sendRequest<RunDocumentQueryResult | null>(
+        'kusto/runDocumentQuery',
         {
             textDocument: { uri },
             selection,
@@ -36,25 +36,25 @@ export function runQuery(
 }
 
 /**
- * Runs a query with the given text, cluster, and database, returning results as markdown.
+ * Runs a query with the given text, cluster, and database, returning results as ResultData.
  * @param client The language client for LSP communication
  * @param query The query text to execute
  * @param cluster The cluster name to connect to
  * @param database Optional database name
  * @param isReadOnly Optional flag to run the query in read-only mode
  * @param maxRows Optional maximum number of rows to return
- * @returns The query results as markdown, or null if the query failed
+ * @returns The query results as ResultData, or null if the query failed
  */
-export function runQueryAsMarkdown(
+export function runQuery(
     client: LanguageClient,
     query: string,
     cluster: string,
     database?: string,
     isReadOnly?: boolean,
     maxRows?: number
-): Promise<RunQueryAsMarkdownResult | null> {
-    return client.sendRequest<RunQueryAsMarkdownResult | null>(
-        'kusto/runQueryAsMarkdown',
+): Promise<RunQueryResult | null> {
+    return client.sendRequest<RunQueryResult | null>(
+        'kusto/runQuery',
         { query, cluster, database, isReadOnly, maxRows }
     );
 }
@@ -449,8 +449,8 @@ export interface DatabaseInfo {
     storedQueryResults?: DatabaseStoredQueryResultInfo[];
 }
 
-/** Result of running a query. */
-export interface RunQueryResult {
+/** Result of running a document query. */
+export interface RunDocumentQueryResult {
     dataId?: string;
     connection?: string;
     cluster?: string;
@@ -458,9 +458,9 @@ export interface RunQueryResult {
     error?: QueryDiagnostic;
 }
 
-/** Result of running a query and returning results as markdown. */
-export interface RunQueryAsMarkdownResult {
-    markdown?: string;
+/** Result of running a query and returning results as ResultData. */
+export interface RunQueryResult {
+    data?: ResultData;
     cluster?: string;
     database?: string;
     error?: QueryDiagnostic;

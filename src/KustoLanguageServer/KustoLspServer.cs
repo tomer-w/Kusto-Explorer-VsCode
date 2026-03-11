@@ -1988,8 +1988,8 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
         return options;
     }
 
-    [JsonRpcMethod("kusto/runQuery", UseSingleObjectParameterDeserialization = true)]
-    public async Task<RunQueryResults?> OnRunQueryAsync(RunQueryParams @params, CancellationToken cancellationToken)
+    [JsonRpcMethod("kusto/runDocumentQuery", UseSingleObjectParameterDeserialization = true)]
+    public async Task<RunDocumentQueryResult?> OnRunDocumentQueryAsync(RunDocumentQueryParams @params, CancellationToken cancellationToken)
     {
         try
         {
@@ -2049,7 +2049,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
                         ? GetLspRange(document.Text, new TextRange(runResult.Error.Start, runResult.Error.Length))
                         : null;
 
-                    return new RunQueryResults
+                    return new RunDocumentQueryResult
                     {
                         Error = new RunQueryDiagnostic
                         {
@@ -2061,7 +2061,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
                 }
                 else
                 {
-                    return new RunQueryResults
+                    return new RunDocumentQueryResult
                     {
                         DataId = resultId,
                         Connection = runResult?.Connection,
@@ -2080,7 +2080,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
     }
 
     [DataContract]
-    public class RunQueryParams
+    public class RunDocumentQueryParams
     {
         [DataMember(Name = "textDocument")]
         public required LSP.TextDocumentIdentifier TextDocument { get; init; }
@@ -2096,7 +2096,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
     }
 
     [DataContract]
-    public class RunQueryResults
+    public class RunDocumentQueryResult
     {
         [DataMember(Name = "dataId")]
         public string? DataId { get; init; }
@@ -2128,8 +2128,9 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
     }
 
 
-    [JsonRpcMethod("kusto/runQueryAsMarkdown", UseSingleObjectParameterDeserialization = true)]
-    public async Task<RunQueryAsMarkdownResult?> OnRunQueryAsMarkdownAsync(RunQueryAsMarkdownParams @params, CancellationToken cancellationToken)
+
+    [JsonRpcMethod("kusto/runQuery", UseSingleObjectParameterDeserialization = true)]
+    public async Task<RunQueryResult?> OnRunQueryAsync(RunQueryParams @params, CancellationToken cancellationToken)
     {
         try
         {
@@ -2151,7 +2152,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
                     ? GetLspRange(@params.Query, new TextRange(runResult.Error.Start, runResult.Error.Length))
                     : null;
 
-                return new RunQueryAsMarkdownResult
+                return new RunQueryResult
                 {
                     Error = new RunQueryDiagnostic
                     {
@@ -2161,18 +2162,11 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
                     }
                 };
             }
-            else if (runResult?.ExecuteResult?.Tables != null && runResult.ExecuteResult.Tables.Count > 0)
+            else if (runResult?.ExecuteResult != null)
             {
-                var builder = new MarkdownBuilder();
-                foreach (var table in runResult.ExecuteResult.Tables)
+                return new RunQueryResult
                 {
-                    builder.WriteDataTable(table);
-                    builder.WriteLine();
-                }
-
-                return new RunQueryAsMarkdownResult
-                {
-                    Markdown = builder.Text,
+                    Data = ResultData.FromExecuteResult(runResult.ExecuteResult),
                     Cluster = runResult.Cluster,
                     Database = runResult.Database
                 };
@@ -2181,7 +2175,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
         catch (Exception ex)
         {
             _ = this.SendWindowLogMessageAsync(ex.Message);
-            return new RunQueryAsMarkdownResult
+            return new RunQueryResult
             {
                 Error = new RunQueryDiagnostic
                 {
@@ -2194,7 +2188,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
     }
 
     [DataContract]
-    public class RunQueryAsMarkdownParams
+    public class RunQueryParams
     {
         [DataMember(Name = "query")]
         public required string Query { get; init; }
@@ -2213,10 +2207,10 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
     }
 
     [DataContract]
-    public class RunQueryAsMarkdownResult
+    public class RunQueryResult
     {
-        [DataMember(Name = "markdown")]
-        public string? Markdown { get; init; }
+        [DataMember(Name = "data")]
+        public ResultData? Data { get; init; }
 
         [DataMember(Name = "cluster")]
         public string? Cluster { get; init; }
@@ -2232,6 +2226,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
 
 
     #region Html
+
 
     [JsonRpcMethod("kusto/getQueryAsHtml", UseSingleObjectParameterDeserialization = true)]
     public Task<GetQueryAsHtmlResult?> OnGetQueryAsHtmlAsync(GetQueryAsHtmlParams @params, CancellationToken cancellationToken)
