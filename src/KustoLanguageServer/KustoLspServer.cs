@@ -2310,17 +2310,32 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
     #endregion
 
     #region Html Tables
-    [JsonRpcMethod("kusto/getDataAsHtmlTables", UseSingleObjectParameterDeserialization = true)]
-    public Task<GetDataAsHtmlTablesResult?> OnGetDataAsHtmlAsync(GetDataAsHtmlTablesParams @params, CancellationToken cancellationToken)
+    [JsonRpcMethod("kusto/getDataAsHtml", UseSingleObjectParameterDeserialization = true)]
+    public Task<GetDataAsHtmlResult?> OnGetDataAsHtmlAsync(GetDataAsHtmlParams @params, CancellationToken cancellationToken)
     {
-        if (_resultsManager.TryGetCachedResultById(@params.DataId, out var cachedResults))
+        try
         {
-            if (cachedResults?.Tables != null)
-            {
-                var hasChart = cachedResults.ChartOptions != null
-                    && cachedResults.ChartOptions.Visualization != Data.Utils.VisualizationKind.None;
+            ExecuteResult? executeResult = null;
 
-                var tables = cachedResults.Tables;
+            // Get execute result from dataId or from provided data
+            if (@params.DataId != null)
+            {
+                if (_resultsManager.TryGetCachedResultById(@params.DataId, out var cachedResults))
+                {
+                    executeResult = cachedResults;
+                }
+            }
+            else if (@params.Data != null)
+            {
+                executeResult = @params.Data.ToExecuteResult();
+            }
+
+            if (executeResult?.Tables != null)
+            {
+                var hasChart = executeResult.ChartOptions != null
+                    && executeResult.ChartOptions.Visualization != Data.Utils.VisualizationKind.None;
+
+                var tables = executeResult.Tables;
                 
                 // Filter to specific table if tableName is provided
                 if (@params.TableName != null)
@@ -2328,12 +2343,12 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
                     tables = tables.Where(t => t.TableName == @params.TableName).ToImmutableList();
                 }
 
-                return Task.FromResult<GetDataAsHtmlTablesResult?>(
-                    new GetDataAsHtmlTablesResult
+                return Task.FromResult<GetDataAsHtmlResult?>(
+                    new GetDataAsHtmlResult
                     {
                         Tables = tables.Select(t => new HtmlTable
                         {
-                            Html = GetDataAsHtml(t),
+                            Html = RenderDataAsHtml(t),
                             Name = t.TableName,
                             RowCount = t.Rows.Count
                         }).ToImmutableList(),
@@ -2341,22 +2356,29 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
                     });
             }
         }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex.Message);
+        }
 
-        return Task.FromResult<GetDataAsHtmlTablesResult?>(null);
+        return Task.FromResult<GetDataAsHtmlResult?>(null);
     }
 
     [DataContract]
-    public class GetDataAsHtmlTablesParams
+    public class GetDataAsHtmlParams
     {
         [DataMember(Name = "dataId")]
-        public required string DataId { get; init; }
+        public string? DataId { get; init; }
+
+        [DataMember(Name = "data")]
+        public ResultData? Data { get; init; }
 
         [DataMember(Name = "tableName")]
         public string? TableName { get; init; }
     }
 
     [DataContract]
-    public class GetDataAsHtmlTablesResult
+    public class GetDataAsHtmlResult
     {
         [DataMember(Name = "tables")]
         public required ImmutableList<HtmlTable> Tables { get; init; }
@@ -2378,7 +2400,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
         public int RowCount { get; init; }
     }
 
-    private string GetDataAsHtml(DataTable data)
+    private string RenderDataAsHtml(DataTable data)
     {
         var dataBuilder = new HtmlBuilder();
         dataBuilder.WriteHtml(
@@ -2395,21 +2417,37 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
     }
     #endregion
 
-    #region Html Chart
-    [JsonRpcMethod("kusto/getDataAsHtmlChart", UseSingleObjectParameterDeserialization = true)]
-    public Task<GetDataAsHtmlChartResult?> OnGetDataAsHtmlChart(GetDataAsHtmlChartParams @params, CancellationToken cancellationToken)
+    #region Chart As Html
+
+    [JsonRpcMethod("kusto/getChartAsHtml", UseSingleObjectParameterDeserialization = true)]
+    public Task<GetChartAsHtmlResult?> OnGetChartAsHtml(GetChartAsHtmlParams @params, CancellationToken cancellationToken)
     {
         try
         {
-            if (_resultsManager.TryGetCachedResultById(@params.DataId, out var cachedResults)
-                && cachedResults.Tables != null
-                && cachedResults.Tables.Count > 0
-                && cachedResults.ChartOptions != null
-                && cachedResults.ChartOptions.Visualization != Data.Utils.VisualizationKind.None)
+            ExecuteResult? executeResult = null;
+
+            // Get execute result from dataId or from provided data
+            if (@params.DataId != null)
             {
-                var chartHtml = GetChartAsHtml(cachedResults.Tables[0], cachedResults.ChartOptions, @params.DarkMode);
-                return Task.FromResult<GetDataAsHtmlChartResult?>(
-                    new GetDataAsHtmlChartResult
+                if (_resultsManager.TryGetCachedResultById(@params.DataId, out var cachedResults))
+                {
+                    executeResult = cachedResults;
+                }
+            }
+            else if (@params.Data != null)
+            {
+                executeResult = @params.Data.ToExecuteResult();
+            }
+
+            if (executeResult != null
+                && executeResult.Tables != null
+                && executeResult.Tables.Count > 0
+                && executeResult.ChartOptions != null
+                && executeResult.ChartOptions.Visualization != Data.Utils.VisualizationKind.None)
+            {
+                var chartHtml = RenderChartAsHtml(executeResult.Tables[0], executeResult.ChartOptions, @params.DarkMode);
+                return Task.FromResult<GetChartAsHtmlResult?>(
+                    new GetChartAsHtmlResult
                     {
                         Html = chartHtml
                     });
@@ -2420,27 +2458,30 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
             _ = this.SendWindowLogMessageAsync(ex.Message);
         }
 
-        return Task.FromResult<GetDataAsHtmlChartResult?>(null);
+        return Task.FromResult<GetChartAsHtmlResult?>(null);
     }
 
-    private string GetChartAsHtml(DataTable data, Data.Utils.ChartVisualizationOptions chartOptions, bool darkMode = false)
+    private string RenderChartAsHtml(DataTable data, Data.Utils.ChartVisualizationOptions chartOptions, bool darkMode = false)
     {
         return _chartManager.RenderChartToHtmlDocument(data, chartOptions, darkMode)
             ?? "<html>chart style not implemented yet</html>";
     }
 
     [DataContract]
-    public class GetDataAsHtmlChartParams
+    public class GetChartAsHtmlParams
     {
         [DataMember(Name = "dataId")]
-        public required string DataId { get; init; }
+        public string? DataId { get; init; }
+
+        [DataMember(Name = "data")]
+        public ResultData? Data { get; init; }
 
         [DataMember(Name = "darkMode")]
         public bool DarkMode { get; init; }
     }
 
     [DataContract]
-    public class GetDataAsHtmlChartResult
+    public class GetChartAsHtmlResult
     {
         [DataMember(Name = "html")]
         public required string Html { get; init; }
@@ -2455,13 +2496,26 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
     {
         try
         {
-            if (_resultsManager.TryGetCachedResultById(@params.DataId, out var results)
-                && results.Tables != null
-                && results.Tables.Count > 0)
+            ExecuteResult? executeResult = null;
+
+            // Get execute result from dataId or from provided data
+            if (@params.DataId != null)
             {
-                var table = @params.TableName != null ? results.Tables.FirstOrDefault(t => t.TableName == @params.TableName) : null;
+                if (_resultsManager.TryGetCachedResultById(@params.DataId, out var cachedResults))
+                {
+                    executeResult = cachedResults;
+                }
+            }
+            else if (@params.Data != null)
+            {
+                executeResult = @params.Data.ToExecuteResult();
+            }
+
+            if (executeResult?.Tables != null && executeResult.Tables.Count > 0)
+            {
+                var table = @params.TableName != null ? executeResult.Tables.FirstOrDefault(t => t.TableName == @params.TableName) : null;
                 if (table == null)
-                    table = results.Tables[0];
+                    table = executeResult.Tables[0];
 
                 var statement = KustoGenerator.GenerateDataTableExpression(table);
 
@@ -2482,7 +2536,10 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
     public class GetDataAsExpressionParams
     {
         [DataMember(Name = "dataId")]
-        public required string DataId { get; init; }
+        public string? DataId { get; init; }
+
+        [DataMember(Name = "data")]
+        public ResultData? Data { get; init; }
 
         [DataMember(Name = "tableName")]
         public string? TableName { get; init; }
@@ -2503,13 +2560,26 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
     {
         try
         {
-            if (_resultsManager.TryGetCachedResultById(@params.DataId, out var results)
-                && results.Tables != null
-                && results.Tables.Count > 0)
+            ExecuteResult? executeResult = null;
+
+            // Get execute result from dataId or from provided data
+            if (@params.DataId != null)
             {
-                var table = @params.TableName != null ? results.Tables.FirstOrDefault(t => t.TableName == @params.TableName) : null;
+                if (_resultsManager.TryGetCachedResultById(@params.DataId, out var cachedResults))
+                {
+                    executeResult = cachedResults;
+                }
+            }
+            else if (@params.Data != null)
+            {
+                executeResult = @params.Data.ToExecuteResult();
+            }
+
+            if (executeResult?.Tables != null && executeResult.Tables.Count > 0)
+            {
+                var table = @params.TableName != null ? executeResult.Tables.FirstOrDefault(t => t.TableName == @params.TableName) : null;
                 if (table == null)
-                    table = results.Tables[0];
+                    table = executeResult.Tables[0];
 
                 var builder = new MarkdownBuilder();
                 builder.WriteDataTable(table);
@@ -2532,7 +2602,10 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
     public class GetDataAsMarkdownParams
     {
         [DataMember(Name = "dataId")]
-        public required string DataId { get; init; }
+        public string? DataId { get; init; }
+
+        [DataMember(Name = "data")]
+        public ResultData? Data { get; init; }
 
         [DataMember(Name = "tableName")]
         public string? TableName { get; init; }
@@ -2543,6 +2616,38 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
     {
         [DataMember(Name = "markdown")]
         public required string Markdown { get; init; }
+    }
+    #endregion
+
+    #region Result Data
+    [JsonRpcMethod("kusto/getResultData", UseSingleObjectParameterDeserialization = true)]
+    public Task<ResultData?> OnGetResultData(GetResultDataParams @params, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (_resultsManager.TryGetCachedResultById(@params.DataId, out var cachedResults)
+                && cachedResults.Tables != null)
+            {
+                var result = ResultData.FromExecuteResult(cachedResults, @params.TableName);
+                return Task.FromResult<ResultData?>(result);
+            }
+        }
+        catch (Exception ex)
+        {
+            _ = this.SendWindowLogMessageAsync(ex.Message);
+        }
+
+        return Task.FromResult<ResultData?>(null);
+    }
+
+    [DataContract]
+    public class GetResultDataParams
+    {
+        [DataMember(Name = "dataId")]
+        public required string DataId { get; init; }
+
+        [DataMember(Name = "tableName")]
+        public string? TableName { get; init; }
     }
     #endregion
 

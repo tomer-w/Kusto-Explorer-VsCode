@@ -8,6 +8,7 @@ import * as conn from './features/connectionsPanel'
 import * as connections from './features/connections'
 import * as documentPanels from './features/documentPanels'
 import * as chartPanel from './features/chartPanel'
+import * as charts from './features/results'
 import * as copilot from './features/copilot'
 import * as connectionStatusBar from './features/connectionStatusBar'
 import * as clientStorage from './features/clientStorage'
@@ -126,6 +127,9 @@ export async function activate(context: ExtensionContext)
 
     // activate query execution features
     documentPanels.activate(context, client);
+
+    // activate chart file editor (.kchart)
+    charts.activate(context, client);
 
     // activate copilot hooks
     copilot.activate(context, client);

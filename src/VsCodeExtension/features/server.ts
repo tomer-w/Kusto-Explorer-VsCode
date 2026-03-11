@@ -251,45 +251,58 @@ export function getEntityAsExpression(
 }
 
 /**
- * Gets the HTML representation of data from the last run query.
+ * Gets the HTML representation of data from a data ID or result data.
+ * Either dataId or data must be provided.
  * @param client The language client for LSP communication
- * @param dataId The data ID from running a query
+ * @param dataId The data ID from running a query (optional if data is provided)
+ * @param data The result data containing tables (optional if dataId is provided)
  * @param tableName Optional name of a specific table to get HTML for (defaults to all tables)
  * @returns The data result with HTML tables and row count, or null if not available
  */
-export function getDataAsHtmlTables(
+export function getDataAsHtml(
     client: LanguageClient,
-    dataId: string,
+    dataId?: string,
+    data?: ResultData,
     tableName?: string
-): Promise<DataAsHtmlTables | null> {
-    return client.sendRequest<DataAsHtmlTables | null>(
-        'kusto/getDataAsHtmlTables',
+): Promise<DataAsHtml | null> {
+    return client.sendRequest<DataAsHtml | null>(
+        'kusto/getDataAsHtml',
         {
             dataId,
+            data,
             tableName
         }
     );
 }
 
 /**
- * Gets the HTML representation of a chart from the last run query.
+ * Gets the HTML representation of a chart from result data or a data ID.
+ * Either dataId or data must be provided.
  * @param client The language client for LSP communication
- * @param dataId The data ID from running a query
+ * @param dataId The data ID from running a query (optional if data is provided)
+ * @param data The result data containing tables and chart options (optional if dataId is provided)
  * @param darkMode Whether to render the chart in dark mode
- * @returns The chart result with HTML, or null if not available
+ * @returns The chart as HTML, or null if not available
  */
-export function getDataAsHtmlChart(
+export function getChartAsHtml(
     client: LanguageClient,
-    dataId: string,
-    darkMode: boolean = false
-): Promise<DataAsHtmlChart | null> {
-    return client.sendRequest<DataAsHtmlChart | null>(
-        'kusto/getDataAsHtmlChart',
+    dataId?: string,
+    data?: ResultData,
+    darkMode?: boolean
+): Promise<ChartAsHtmlResult | null> {
+    return client.sendRequest<ChartAsHtmlResult | null>(
+        'kusto/getChartAsHtml',
         {
             dataId,
-            darkMode
+            data,
+            darkMode: darkMode ?? false
         }
     );
+}
+
+/** Result of getting chart as HTML. */
+export interface ChartAsHtmlResult {
+    html: string;
 }
 
 /**
@@ -325,13 +338,15 @@ export function getQueryAsHtml(
  */
 export function getDataAsExpression(
     client: LanguageClient,
-    dataId: string,
-    tableName?: string
+    dataId?: string,
+    tableName?: string,
+    data?: ResultData
 ): Promise<DataAsExpression | null> {
     return client.sendRequest<DataAsExpression | null>(
         'kusto/getDataAsExpression',
         {
             dataId,
+            data,
             tableName
         }
     );
@@ -346,13 +361,15 @@ export function getDataAsExpression(
  */
 export function getDataAsMarkdown(
     client: LanguageClient,
-    dataId: string,
-    tableName?: string
+    dataId?: string,
+    tableName?: string,
+    data?: ResultData
 ): Promise<DataAsMarkdown | null> {
     return client.sendRequest<DataAsMarkdown | null>(
         'kusto/getDataAsMarkdown',
         {
             dataId,
+            data,
             tableName
         }
     );
@@ -473,15 +490,10 @@ export interface HtmlTable {
     rowCount: number;
 }
 
-/** Result of getting data as html tables. */
-export interface DataAsHtmlTables {
+/** Result of getting data as html. */
+export interface DataAsHtml {
     tables: HtmlTable[];
     hasChart: boolean;
-}
-
-/** Result of getting data as html chart. */
-export interface DataAsHtmlChart {
-    html: string;
 }
 
 /** Result of getting query as HTML. */
@@ -497,6 +509,66 @@ export interface DataAsExpression {
 /** Result of getting data as markdown. */
 export interface DataAsMarkdown {
     markdown: string;
+}
+
+/**
+ * Gets the query result data as JSON.
+ * @param client The language client for LSP communication
+ * @param dataId The data ID from running a query
+ * @param tableName Optional name of a specific table to convert (defaults to all tables)
+ * @returns The result data with tables and chart options, or null if not available
+ */
+export function getResultData(
+    client: LanguageClient,
+    dataId: string,
+    tableName?: string
+): Promise<ResultData | null> {
+    return client.sendRequest<ResultData | null>(
+        'kusto/getResultData',
+        {
+            dataId,
+            tableName
+        }
+    );
+}
+
+/** Serializable representation of a query execution result. */
+export interface ResultData {
+    tables: ResultTable[];
+    chartOptions?: ChartOptions;
+}
+
+/** Serializable representation of a data table. */
+export interface ResultTable {
+    name: string;
+    columns: ResultColumn[];
+    rows: (unknown | null)[][];
+}
+
+/** Serializable representation of a table column. */
+export interface ResultColumn {
+    name: string;
+    type: string;
+}
+
+/** Serializable representation of chart visualization options. */
+export interface ChartOptions {
+    kind: string;
+    mode?: string;
+    title?: string;
+    xTitle?: string;
+    yTitle?: string;
+    xColumn?: string;
+    yColumns?: string[];
+    series?: string[];
+    legend?: string;
+    xAxis?: string;
+    yAxis?: string;
+    xmin?: unknown;
+    xmax?: unknown;
+    ymin?: unknown;
+    ymax?: unknown;
+    accumulate?: boolean;
 }
 
 /** Position in a document. */
