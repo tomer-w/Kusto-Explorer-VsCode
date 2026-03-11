@@ -3,10 +3,11 @@
 
 import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
-import { setDocumentConnection, ensureServer } from './connections';
+import { setDocumentConnection, ensureServer, getDocumentConnection } from './connections';
 import * as server from './server';
 import * as resultsPanel from './resultsPanel';
 import * as chartPanel from './chartPanel';
+import * as resultsCache from './resultsCache';
 import { getClipboardContext, clearClipboardContext, copyToClipboard } from './clipboard';
 import { ENTITY_DEFINITION_SCHEME } from './entityDefinitionProvider';
 
@@ -106,8 +107,30 @@ async function runQuery(client: LanguageClient, queryRange?: server.SelectionRan
             end: { line: editor.selection.end.line, character: editor.selection.end.character }
         };
 
-        // run query and get results from the server
-        const runResult = await server.runQuery(client, uri, selection);
+        // If the selection is zero-length (cursor position), resolve the enclosing query range
+        const isZeroLength = selection.start.line === selection.end.line && selection.start.character === selection.end.character;
+        const resolvedRange = isZeroLength
+            ? await server.getQueryRange(client, uri, selection.start)
+            : selection;
+        if (!resolvedRange) {
+            return;
+        }
+
+        // Extract the query text from the document
+        const queryText = editor.document.getText(new vscode.Range(
+            resolvedRange.start.line, resolvedRange.start.character,
+            resolvedRange.end.line, resolvedRange.end.character
+        ));
+
+        // Get the document's connection (cluster/database)
+        const connection = await getDocumentConnection(uri);
+        if (!connection?.cluster) {
+            vscode.window.showWarningMessage('No Kusto connection available. Please connect to a cluster first.');
+            return;
+        }
+
+        // Run the query via server.runQuery (text-based, returns ResultData)
+        const runResult = await server.runQuery(client, queryText, connection.cluster, connection.database, true);
 
         // If the result includes a connection string for an unknown cluster, add it as a server
         if (runResult?.connection || runResult?.cluster) {
@@ -134,11 +157,14 @@ async function runQuery(client: LanguageClient, queryRange?: server.SelectionRan
                 editor.setDecorations(errorRangeDecoration, [range]);
             }
         }
-        else 
+        else if (runResult?.data)
         {
-            // display associated result tables and chart
-            await resultsPanel.displayResults(client, runResult?.dataId);
-            await chartPanel.displayChart(client, runResult?.dataId);
+            // Cache the result data on the client side
+            await resultsCache.addToCache(uri, queryText, runResult.data);
+
+            // Display result tables and chart from ResultData
+            await resultsPanel.displayResults(client, runResult.data);
+            await chartPanel.displayChart(client, runResult.data);
         }
 
         // Refresh CodeLens to show/hide Results lens
@@ -159,10 +185,25 @@ async function runQuery(client: LanguageClient, queryRange?: server.SelectionRan
  */
 async function showResults(client: LanguageClient, uri: string, line: number, character: number): Promise<void> {
     try {
-        const dataId = await server.getDataId(client, uri, { line, character });
-        if (dataId) {
-            await resultsPanel.displayResults(client, dataId);
-            await chartPanel.displayChart(client, dataId);
+        // Resolve the query range for this position
+        const queryRange = await server.getQueryRange(client, uri, { line, character });
+        if (!queryRange) {
+            return;
+        }
+
+        // Extract the query text and look up cached result data
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            return;
+        }
+        const queryText = editor.document.getText(new vscode.Range(
+            queryRange.start.line, queryRange.start.character,
+            queryRange.end.line, queryRange.end.character
+        ));
+        const cachedData = await resultsCache.getFromCache(uri, queryText);
+        if (cachedData) {
+            await resultsPanel.displayResults(client, cachedData);
+            await chartPanel.displayChart(client, cachedData);
         }
     } catch (error) {
         vscode.window.showErrorMessage(`Failed to show results: ${error}`);
@@ -444,8 +485,10 @@ class KustoCodeLensProvider implements vscode.CodeLensProvider {
                 range.end.line, range.end.character
             );
 
+            const queryText = document.getText(vsRange);
+
             // Skip empty or whitespace-only query ranges
-            if (document.getText(vsRange).trim().length === 0) {
+            if (queryText.trim().length === 0) {
                 continue;
             }
 
@@ -482,8 +525,7 @@ class KustoCodeLensProvider implements vscode.CodeLensProvider {
                 }));
 
                 // Only show Results lens if there is cached data for this query
-                const dataId = await server.getDataId(this.client, document.uri.toString(), range.start);
-                if (dataId) {
+                if (await resultsCache.hasInCache(document.uri.toString(), queryText)) {
                     lenses.push(new vscode.CodeLens(vsRange, {
                         title: '📊 Results',
                         command: 'kusto.showResults',

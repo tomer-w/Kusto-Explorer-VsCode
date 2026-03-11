@@ -189,12 +189,12 @@
       },
       {
         "command": "kusto.saveChart",
-        "title": "Save Results",
+        "title": "Save As...",
         "icon": "$(save)"
       },
       {
         "command": "kusto.saveResults",
-        "title": "Save Results",
+        "title": "Save As...",
         "icon": "$(save)"
       }
     ],
@@ -595,7 +595,7 @@
       },
       {
         "toolId": "kusto_runQuery",
-        "instructions": "Use this tool to run a KQL query and return results when the user asks to execute a query or see data, or if you need to know the result of a query to answer a user question. Queries are run in read-only mode for safety. Please limit the output of queries to just the columns necessary and limit the number of rows unless you know you need all rows to answer the request."
+        "instructions": "Use this tool to run a KQL query and return results when the user asks to execute a query or see data, or if you need to know the result of a query to answer a user question. Queries are run in read-only mode for safety. Please limit the output of queries to just the columns necessary and limit the number of rows unless you know you need all rows to answer the request. If the user wants to see the results, use the showResults parameter with true and add a render operator to the query to show a visual chart."
       }
     ],
     "languageModelTools": [
@@ -1039,7 +1039,7 @@
         "canBeReferencedInPrompt": true,
         "userDescription": "Runs a KQL query and returns the results as markdown.",
         "tags": [ "kusto", "kql", "query", "run", "execute", "results" ],
-        "modelDescription": "Runs a KQL query in read-only mode and returns results as a markdown table. Use this when the user asks to execute a query or wants to see data from a Kusto database.",
+        "modelDescription": "Runs a KQL query in read-only mode and returns results as a markdown table. Use this when the user asks to execute a query or wants to see data from a Kusto database. When showResults is true, always append a KQL 'render' operator to the query (e.g. '| render columnchart', '| render piechart', '| render timechart', '| render barchart', '| render linechart', etc.) choosing the most appropriate chart type for the data and the user's intent.",
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -1058,6 +1058,10 @@
             "maxRows": {
               "type": "number",
               "description": "Maximum number of rows to return. Use this to limit result size."
+            },
+            "showResults": {
+              "type": "boolean",
+              "description": "If true, displays the results in the results panel and chart panel. Defaults to false. When set to true, the query MUST include a 'render' operator (e.g. '| render columnchart') to specify the chart visualization type."
             }
           },
           "required": [ "query" ]

@@ -13,6 +13,7 @@ import * as copilot from './features/copilot'
 import * as connectionStatusBar from './features/connectionStatusBar'
 import * as clientStorage from './features/clientStorage'
 import * as dotnet from './features/dotnet'
+import * as resultsCache from './features/resultsCache'
 import { registerEntityDefinitionProvider, ENTITY_DEFINITION_SCHEME } from './features/entityDefinitionProvider'
 import
     {
@@ -77,6 +78,9 @@ export async function activate(context: ExtensionContext)
 
     // Activate client storage handlers (server-to-client requests for persistent storage)
     clientStorage.activate(context, client);
+
+    // Initialize results cache with the language client
+    resultsCache.initialize(client);
 
     // Register entity definition provider for "Go to Definition" on database entities
     registerEntityDefinitionProvider(context, client);

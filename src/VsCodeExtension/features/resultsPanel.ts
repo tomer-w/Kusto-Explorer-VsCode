@@ -7,9 +7,10 @@ import * as server from './server';
 import { copyToClipboard, formatCfHtml } from './clipboard';
 import { saveResults, copyCellFromEditor, copyDataFromEditor, copyTableAsExpressionFromEditor } from './results';
 import * as chartPanel from './chartPanel';
+import { resultDataToMarkdown } from './markdown';
+import { resultDataToHtml, HtmlTable } from './html';
 
 let resultsView: vscode.WebviewView | undefined;
-let lastDataId: string | undefined;
 let lastResultData: server.ResultData | undefined;
 let lastTableNames: string[] = [];
 let activeTabIndex = 0;
@@ -74,27 +75,17 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
 /**
  * Fetches data HTML from the server and displays it in the results view.
  * @param client The language client for LSP communication
- * @param source A data ID string, ResultData object, or undefined to clear
+ * @param resultData The ResultData object, or undefined to clear
  */
 export async function displayResults(
     client: LanguageClient,
-    source?: string | server.ResultData
+    resultData?: server.ResultData
 ): Promise<void>
 {
-    let dataId: string | undefined;
-    let resultData: server.ResultData | undefined;
-
-    if (typeof source === 'string') {
-        dataId = source;
-    } else {
-        resultData = source;
-    }
-
-    const data = source
-        ? await server.getDataAsHtml(client, dataId, resultData, undefined)
+    const data = resultData
+        ? resultDataToHtml(resultData)
         : null;
     if (data && data.tables.length > 0) {
-        lastDataId = dataId;
         lastResultData = resultData;
         lastTableNames = data.tables.map(t => t.name);
         activeTabIndex = 0;
@@ -113,25 +104,17 @@ export async function displayResults(
  * closes any open chart panel, and opens the saved file.
  */
 async function saveResultsFromPanel(client: LanguageClient): Promise<void> {
-    let source: { dataId: string } | { data: server.ResultData } | undefined;
-
-    if (lastResultData) {
-        source = { data: lastResultData };
-    } else if (lastDataId) {
-        source = { dataId: lastDataId };
-    }
-
-    if (!source) {
+    if (!lastResultData) {
         vscode.window.showWarningMessage('No result data available to save.');
         return;
     }
 
-    const savedUri = await saveResults(source);
-    if (savedUri) {
+    const result = await saveResults({ data: lastResultData });
+    if (result) {
         // Close the chart panel if open
         await chartPanel.displayChart(client, undefined);
-        // Open the saved file in the main editor group
-        await vscode.commands.executeCommand('vscode.openWith', savedUri, 'kusto.resultEditor', vscode.ViewColumn.One);
+        // Open/reveal the saved file in the main editor group
+        await vscode.commands.executeCommand('vscode.openWith', result.uri, 'kusto.resultEditor', vscode.ViewColumn.One);
     }
 }
 
@@ -196,7 +179,7 @@ const tabStyles = `
  * Wraps multiple HTML table strings in a tabbed layout.
  * If there is only one table, returns it without tabs.
  */
-function buildTabbedHtml(tables: server.HtmlTable[]): string {
+function buildTabbedHtml(tables: HtmlTable[]): string {
     if (tables.length === 0) {
         return '<html><body>no results</body></html>';
     }
@@ -340,13 +323,13 @@ async function copyTableAsExpression(client: LanguageClient): Promise<void> {
         return;
     }
 
-    if (!lastDataId) {
+    if (!lastResultData) {
         return;
     }
 
     try {
         const tableName = lastTableNames[activeTabIndex];
-        const result = await server.getDataAsExpression(client, lastDataId, tableName);
+        const result = await server.getDataAsExpression(client, lastResultData, tableName);
         if (result?.expression) {
             await vscode.env.clipboard.writeText(result.expression);
         }
@@ -357,26 +340,23 @@ async function copyTableAsExpression(client: LanguageClient): Promise<void> {
 
 /**
  * Copies the results view content (as rich HTML + markdown) to the clipboard.
- * Requests both HTML and markdown directly from the server using the data ID.
+ * Uses the cached ResultData.
  */
 async function copyData(): Promise<void> {
     if (await copyDataFromEditor()) {
         return;
     }
 
-    if (!languageClient || !lastDataId) {
+    if (!languageClient || !lastResultData) {
         return;
     }
 
     const tableName = lastTableNames[activeTabIndex];
 
-    const [htmlResult, markdownResult] = await Promise.all([
-        server.getDataAsHtml(languageClient, lastDataId, undefined, tableName),
-        server.getDataAsMarkdown(languageClient, lastDataId, tableName),
-    ]);
+    const htmlResult = resultDataToHtml(lastResultData, tableName);
 
     const html = htmlResult?.tables[0]?.html;
-    const markdown = markdownResult?.markdown;
+    const markdown = resultDataToMarkdown(lastResultData, tableName);
 
     if (html) {
         copyToClipboard([
@@ -461,12 +441,12 @@ const webviewMessageHandlerScript = `
  * to the webview so it is available immediately on dragstart.
  */
 async function sendExpressionToWebview(): Promise<void> {
-    if (!resultsView || !languageClient || !lastDataId) {
+    if (!resultsView || !languageClient || !lastResultData) {
         return;
     }
     try {
         const tableName = lastTableNames[activeTabIndex];
-        const result = await server.getDataAsExpression(languageClient, lastDataId, tableName);
+        const result = await server.getDataAsExpression(languageClient, lastResultData, tableName);
         if (result?.expression && resultsView) {
             resultsView.webview.postMessage({ command: 'setExpression', expression: result.expression });
         }

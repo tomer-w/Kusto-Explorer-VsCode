@@ -6,6 +6,9 @@ import { LanguageClient } from 'vscode-languageclient/node';
 import * as conn from './connections';
 import * as server from './server';
 import { ENTITY_DEFINITION_SCHEME } from './entityDefinitionProvider';
+import { resultTableToMarkdown } from './markdown';
+import * as resultsPanel from './resultsPanel';
+import * as chartPanel from './chartPanel';
 
 const COPILOT_PARTICIPANT_ID = 'kusto';
 const MAX_SCHEMA_CHARS = 30000; // Approximate limit to stay within token limits
@@ -379,7 +382,7 @@ async function getFunctionResultType(input: { cluster?: string; database?: strin
     return result.resultType;
 }
 
-async function runQuery(input: { query: string; cluster?: string; database?: string; maxRows?: number }): Promise<string> {
+async function runQuery(input: { query: string; cluster?: string; database?: string; maxRows?: number; showResults?: boolean }): Promise<string> {
     let cluster = input.cluster;
     let database = input.database;
 
@@ -395,7 +398,7 @@ async function runQuery(input: { query: string; cluster?: string; database?: str
         return 'No cluster specified and no active connection. Cannot run query.';
     }
 
-    const result = await server.runQueryAsMarkdown(languageClient, input.query, cluster, database, true, input.maxRows);
+    const result = await server.runQuery(languageClient, input.query, cluster, database, true, input.maxRows);
     if (!result) {
         return 'Query execution failed. The server did not return a result.';
     }
@@ -404,7 +407,16 @@ async function runQuery(input: { query: string; cluster?: string; database?: str
         return `Query error: ${result.error.message}${result.error.details ? '\n' + result.error.details : ''}`;
     }
 
-    return result.markdown ?? 'Query returned no results.';
+    if (!result.data || result.data.tables.length === 0) {
+        return 'Query returned no results.';
+    }
+
+    if (input.showResults) {
+        await resultsPanel.displayResults(languageClient, result.data);
+        await chartPanel.displayChart(languageClient, result.data);
+    }
+
+    return resultTableToMarkdown(result.data.tables[0]!);
 }
 
 // =============================================================================
