@@ -56,3 +56,43 @@ jobs:
       - name: Compile TypeScript
         run: npm run compile
         working-directory: src/VsCodeExtension
+
+  package-vsix:
+    name: Build VSIX Package
+    runs-on: ubuntu-latest
+    needs: [test-dotnet, lint-typescript]
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          cache: 'npm'
+          cache-dependency-path: src/VsCodeExtension/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: src/VsCodeExtension
+
+      - name: Install vsce
+        run: npm install -g @vscode/vsce
+
+      - name: Build VSIX package
+        run: npm run package
+        working-directory: src/VsCodeExtension
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kusto-explorer-vsix
+          path: src/VsCodeExtension/*.vsix
+          retention-days: 30
