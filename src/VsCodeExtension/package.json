@@ -164,13 +164,13 @@
         "icon": "$(go-to-file)"
       },
       {
-        "command": "kusto.copyChart",
-        "title": "Copy Chart (As Is)",
+        "command": "kusto.copyChartLight",
+        "title": "Copy (Light)",
         "icon": "$(file-media)"
       },
       {
-        "command": "kusto.copyChartTransparent",
-        "title": "Copy Chart",
+        "command": "kusto.copyChartDark",
+        "title": "Copy (Dark)",
         "icon": "$(file-media)"
       },
       {
@@ -300,9 +300,14 @@
           "group": "navigation@2"
         },
         {
-          "command": "kusto.copyChartTransparent",
+          "command": "kusto.copyChartLight",
           "when": "activeWebviewPanelId == kusto || activeWebviewPanelId == kusto.resultEditor",
           "group": "navigation@1"
+        },
+        {
+          "command": "kusto.copyChartDark",
+          "when": "activeWebviewPanelId == kusto || activeWebviewPanelId == kusto.resultEditor",
+          "group": "navigation@2"
         }
       ],
       "editor/context": [
@@ -348,7 +353,11 @@
           "when": "webviewId == 'kusto.resultsView'"
         },
         {
-          "command": "kusto.copyChartTransparent",
+          "command": "kusto.copyChartLight",
+          "when": "webviewId == 'kusto' || (webviewId == 'kusto.resultEditor' && chartVisible)"
+        },
+        {
+          "command": "kusto.copyChartDark",
           "when": "webviewId == 'kusto' || (webviewId == 'kusto.resultEditor' && chartVisible)"
         },
         {
