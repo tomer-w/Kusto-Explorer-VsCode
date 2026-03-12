@@ -4,6 +4,8 @@ features/**/*.ts
 tsconfig.json
 
 # Build artifacts not needed in package
+out/**
+node_modules/**
 **/*.map
 .vscode/**
 .vscode-test/**
@@ -16,7 +18,12 @@ server/**/*.pdb
 .gitignore
 .git/**
 **/*.bat
+settings.txt
+eslint.config.js
+Client.esproj
+obj/**
 
-# Documentation (keep README.md)
+# Documentation (keep README.md and instructions.md)
 *.md
 !README.md
+!instructions.md
