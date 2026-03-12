@@ -7,8 +7,7 @@ import { workspace, ExtensionContext, window } from 'vscode';
 import * as conn from './features/connectionsPanel'
 import * as connections from './features/connections'
 import * as documentPanels from './features/documentPanels'
-import * as chartPanel from './features/chartPanel'
-import * as charts from './features/resultsViewer'
+import * as resultsViewer from './features/resultsViewer'
 import * as copilot from './features/copilot'
 import * as connectionStatusBar from './features/connectionStatusBar'
 import * as clientStorage from './features/clientStorage'
@@ -36,7 +35,7 @@ export async function activate(context: ExtensionContext)
         return;
     }
 
-    const serverDll = path.join(context.extensionPath, 'server', 'KustoLspServer.dll');
+    const serverDll = path.join(context.extensionPath, 'server', 'Server.dll');
     const serverExecutable: Executable = {
         command: dotnetPath,
         args: [serverDll, "vscode"]
@@ -94,8 +93,10 @@ export async function activate(context: ExtensionContext)
     const updateKustoContext = () => {
         // Check if any Kusto documents are open OR if chart panel exists
         const hasKustoDocument = vscode.workspace.textDocuments.some(doc => doc.languageId === 'kusto');
-        const isKustoActive = hasKustoDocument || chartPanel.hasChartPanel();
+        const hasChartPanel = resultsViewer.hasChartPanel();
+        const isKustoActive = hasKustoDocument || hasChartPanel;
         vscode.commands.executeCommand('setContext', 'kusto.hasActiveDocument', isKustoActive);
+        vscode.commands.executeCommand('setContext', 'kusto.hasChartPanel', hasChartPanel);
 
         // Track whether the active editor is showing a read-only entity definition
         const activeEditor = vscode.window.activeTextEditor;
@@ -133,7 +134,7 @@ export async function activate(context: ExtensionContext)
     documentPanels.activate(context, client);
 
     // activate chart file editor (.kchart)
-    charts.activate(context, client);
+    resultsViewer.activate(context, client);
 
     // activate copilot hooks
     copilot.activate(context, client);

@@ -101,7 +101,9 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
         }),
         vscode.commands.registerCommand('kusto.toggleChartEditor', () => {
             activeChartWebview?.webview.postMessage({ command: 'toggleEditPanel' });
-        })
+        }),
+        vscode.commands.registerCommand('kusto.saveChart', () => saveChartFromPanel()),
+        vscode.commands.registerCommand('kusto.moveChartToMain', () => moveChartToMain())
     );
 }
 
@@ -376,7 +378,7 @@ export function injectChartMessageHandler(html: string): string {
  * The file contains ResultData JSON (tables + chart options).
  * Shows both data tables and chart with a toggle tab bar.
  */
-class ResultEditorProvider implements vscode.CustomTextEditorProvider {
+export class ResultEditorProvider implements vscode.CustomTextEditorProvider {
 
     async resolveCustomTextEditor(
         document: vscode.TextDocument,
@@ -541,7 +543,7 @@ class ResultEditorProvider implements vscode.CustomTextEditorProvider {
         }
     }
 
-    private buildDualViewHtml(
+    buildDualViewHtml(
         dataResult: DataAsHtml | null,
         chartHtml: string | undefined,
         hasChart: boolean,
@@ -843,6 +845,7 @@ class ResultEditorProvider implements vscode.CustomTextEditorProvider {
             removeBtn.onclick = function() { removeColumnItem(removeBtn); };
             li.appendChild(removeBtn);
             list.appendChild(li);
+            picker.selectedIndex = 0;
             onChartOptionChanged();
         }
 
@@ -868,6 +871,12 @@ class ResultEditorProvider implements vscode.CustomTextEditorProvider {
             if (!panel) return;
             editPanelUserVisible = !editPanelUserVisible;
             panel.classList.toggle('visible', editPanelUserVisible);
+
+            // Notify extension host so it can move the panel if needed
+            if (window._vscodeApi) {
+                window._vscodeApi.postMessage({ command: 'editPanelToggled', visible: editPanelUserVisible });
+            }
+
             // Resize chart when panel toggles
             setTimeout(function() {
                 var plotDiv = document.querySelector('#chart .js-plotly-plot') || document.querySelector('#chart .plotly-graph-div');
@@ -951,7 +960,7 @@ class ResultEditorProvider implements vscode.CustomTextEditorProvider {
 </html>`;
     }
 
-    private buildEditPanelHtml(chartOptions: server.ChartOptions | undefined, columnNames: string[]): string {
+    buildEditPanelHtml(chartOptions: server.ChartOptions | undefined, columnNames: string[]): string {
         const opts = chartOptions ?? { kind: 'ColumnChart' };
 
         // Ensure the current kind is always present in the dropdown
@@ -985,7 +994,7 @@ class ResultEditorProvider implements vscode.CustomTextEditorProvider {
             `<option value="${a}"${a === currentYAxis ? ' selected' : ''}>${a || '(default)'}</option>`
         ).join('');
 
-        const allColOptions = columnNames.map(c =>
+        const allColOptions = `<option value="" disabled selected>Pick a column</option>` + columnNames.map(c =>
             `<option value="${this.escapeHtml(c)}">${this.escapeHtml(c)}</option>`
         ).join('');
 
@@ -1074,7 +1083,7 @@ class ResultEditorProvider implements vscode.CustomTextEditorProvider {
         </div>`;
     }
 
-    private buildTabbedTableHtml(tables: HtmlTable[]): string {
+    buildTabbedTableHtml(tables: HtmlTable[]): string {
         if (tables.length === 1) {
             return tables[0]!.html;
         }
@@ -1087,18 +1096,211 @@ class ResultEditorProvider implements vscode.CustomTextEditorProvider {
         return `<div class="table-tabs">${tabs}</div>${contents}`;
     }
 
-    private extractBody(html: string): string {
+    extractBody(html: string): string {
         const match = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
         return match?.[1] ?? html;
     }
 
-    private extractHead(html: string): string {
+    extractHead(html: string): string {
         const match = html.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
         return match?.[1] ?? '';
     }
 
-    private escapeHtml(text: string): string {
+    escapeHtml(text: string): string {
         return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+}
+
+// ─── Singleton chart panel (displayed beside the editor for live query results) ─────────
+
+/** Shared instance for HTML generation (methods are stateless). */
+const htmlBuilder = new ResultEditorProvider();
+
+/** The singleton chart panel, if open. */
+let singletonPanel: vscode.WebviewPanel | undefined;
+
+/** The result data currently shown in the singleton panel. */
+let singletonResultData: server.ResultData | undefined;
+
+/** Chart options overridden via the edit panel (not persisted to file). */
+let singletonChartOptionsOverride: server.ChartOptions | undefined;
+
+/** Debounce timer for singleton chart option changes. */
+let singletonChartOptionsTimer: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * Returns whether a singleton chart panel currently exists.
+ */
+export function hasChartPanel(): boolean {
+    return singletonPanel !== undefined;
+}
+
+/**
+ * Fetches chart and table HTML, then displays the full dual-view in the singleton chart panel.
+ * Pass undefined to close the panel.
+ */
+export async function displayChart(
+    client: LanguageClient,
+    resultData?: server.ResultData
+): Promise<void> {
+    if (!resultData?.tables?.length) {
+        disposeSingletonPanel();
+        return;
+    }
+
+    // Only open/update the singleton panel if there are chart options (render command).
+    // If no chart options and the panel is already open, close it.
+    if (!resultData.chartOptions) {
+        disposeSingletonPanel();
+        return;
+    }
+
+    singletonResultData = resultData;
+    singletonChartOptionsOverride = undefined;
+
+    const darkMode = isDarkMode();
+    const chartOptions = resultData.chartOptions;
+
+    // Fetch table HTML and chart HTML in parallel
+    const [dataResult, chartResult] = await Promise.all([
+        Promise.resolve(resultDataToHtml(resultData)),
+        chartOptions
+            ? server.getChartAsHtml(client, resultData, darkMode)
+            : Promise.resolve(null)
+    ]);
+
+    const hasChart = !!chartResult?.html;
+    const columnNames = resultData.tables[0]?.columns?.map(c => c.name) ?? [];
+    const html = htmlBuilder.buildDualViewHtml(dataResult, chartResult?.html, hasChart, chartOptions, columnNames);
+
+    showSingletonPanel(injectChartMessageHandler(html), resultData, (dataResult?.tables ?? []).map(t => t.name));
+}
+
+function getChartViewColumn(): vscode.ViewColumn {
+    return vscode.ViewColumn.Beside;
+}
+
+function moveChartToMain(): void {
+    if (singletonPanel) {
+        const isMain = singletonPanel.viewColumn === vscode.ViewColumn.One;
+        singletonPanel.reveal(isMain ? vscode.ViewColumn.Beside : vscode.ViewColumn.One, false);
+    }
+}
+
+function showSingletonPanel(html: string, resultData: server.ResultData, tableNames: string[]): void {
+    const viewColumn = getChartViewColumn();
+
+    if (!singletonPanel) {
+        singletonPanel = vscode.window.createWebviewPanel(
+            'kusto',
+            'Chart',
+            { viewColumn, preserveFocus: true },
+            { enableScripts: true, retainContextWhenHidden: true }
+        );
+
+        vscode.commands.executeCommand('kusto.chartPanelStateChanged');
+        registerChartWebview(singletonPanel);
+
+        singletonPanel.onDidChangeViewState(() => {
+            if (singletonPanel?.active) {
+                const hasChart = !!editorStates.get(singletonPanel)?.resultData?.chartOptions;
+                vscode.commands.executeCommand('setContext', 'kusto.resultEditorHasChart', hasChart);
+            }
+        });
+
+        singletonPanel.webview.onDidReceiveMessage(async (message) => {
+            if (message.command === 'viewChanged' && typeof message.viewId === 'string') {
+                const state = editorStates.get(singletonPanel!);
+                if (state) { state.activeView = message.viewId; }
+                return;
+            }
+            if (message.command === 'copyText' && typeof message.text === 'string') {
+                vscode.env.clipboard.writeText(message.text);
+                return;
+            }
+            if (message.command === 'chartOptionsChanged' && message.chartOptions) {
+                singletonChartOptionsOverride = message.chartOptions as server.ChartOptions;
+                if (singletonChartOptionsTimer) { clearTimeout(singletonChartOptionsTimer); }
+                singletonChartOptionsTimer = setTimeout(() => updateSingletonChart(), 600);
+                return;
+            }
+            if (message.command === 'editPanelToggled' && typeof message.visible === 'boolean') {
+                if (message.visible) {
+                    singletonPanel?.reveal(vscode.ViewColumn.One, false);
+                } else {
+                    singletonPanel?.reveal(getChartViewColumn(), false);
+                }
+                return;
+            }
+            handleChartWebviewMessage(message);
+        });
+
+        singletonPanel.onDidDispose(() => {
+            if (singletonChartOptionsTimer) { clearTimeout(singletonChartOptionsTimer); }
+            editorStates.delete(singletonPanel!);
+            singletonPanel = undefined;
+            singletonResultData = undefined;
+            singletonChartOptionsOverride = undefined;
+            vscode.commands.executeCommand('setContext', 'kusto.resultEditorHasChart', false);
+            vscode.commands.executeCommand('kusto.chartPanelStateChanged');
+        });
+    }
+
+    // Track state for copy commands
+    const hasChart = !!resultData.chartOptions;
+    editorStates.set(singletonPanel, {
+        resultData,
+        tableNames,
+        activeView: hasChart ? 'chart' : 'table-0'
+    });
+
+    singletonPanel.webview.html = html;
+    singletonPanel.reveal(viewColumn, true);
+}
+
+async function updateSingletonChart(): Promise<void> {
+    if (!singletonPanel || !singletonResultData) { return; }
+    const chartOptions = singletonChartOptionsOverride ?? singletonResultData.chartOptions;
+    if (!chartOptions) { return; }
+
+    const state = editorStates.get(singletonPanel);
+    if (state && singletonChartOptionsOverride) { state.chartOptionsOverride = singletonChartOptionsOverride; }
+
+    const modifiedData: server.ResultData = { ...singletonResultData, chartOptions };
+    const darkMode = isDarkMode();
+    const chartResult = await server.getChartAsHtml(languageClient, modifiedData, darkMode);
+    if (chartResult?.html) {
+        singletonPanel.webview.postMessage({
+            command: 'updateChart',
+            chartBodyHtml: htmlBuilder.extractBody(chartResult.html)
+        });
+    }
+}
+
+function disposeSingletonPanel(): void {
+    if (singletonPanel) {
+        try { singletonPanel.dispose(); } catch { /* ignore */ }
+        singletonPanel = undefined;
+        singletonResultData = undefined;
+        singletonChartOptionsOverride = undefined;
+        vscode.commands.executeCommand('kusto.chartPanelStateChanged');
+    }
+}
+
+async function saveChartFromPanel(): Promise<void> {
+    if (!singletonResultData) {
+        vscode.window.showWarningMessage('No chart data available to save.');
+        return;
+    }
+
+    const dataToSave = singletonChartOptionsOverride
+        ? { ...singletonResultData, chartOptions: singletonChartOptionsOverride }
+        : singletonResultData;
+
+    const result = await saveResults({ data: dataToSave });
+    if (result) {
+        singletonPanel?.dispose();
+        await vscode.commands.executeCommand('vscode.openWith', result.uri, 'kusto.resultEditor', vscode.ViewColumn.One);
     }
 }
 

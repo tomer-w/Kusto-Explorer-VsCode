@@ -6,7 +6,7 @@ import { LanguageClient } from 'vscode-languageclient/node';
 import { setDocumentConnection, ensureServer, getDocumentConnection } from './connections';
 import * as server from './server';
 import * as resultsPanel from './resultsPanel';
-import * as chartPanel from './chartPanel';
+import { displayChart } from './resultsViewer';
 import * as resultsCache from './resultsCache';
 import { getClipboardContext, clearClipboardContext, copyToClipboard } from './clipboard';
 import { ENTITY_DEFINITION_SCHEME } from './entityDefinitionProvider';
@@ -29,9 +29,8 @@ let codeLensProvider: KustoCodeLensProvider;
  */
 export function activate(context: vscode.ExtensionContext, client: LanguageClient): void {
 
-    // Activate results panel and chart panel
+    // Activate results panel
     resultsPanel.activate(context, client);
-    chartPanel.activate(context, client);
 
     // Register query-related commands
     context.subscriptions.push(
@@ -145,7 +144,7 @@ async function runQuery(client: LanguageClient, queryRange?: server.SelectionRan
         {
             // display error and highlight error range
             await resultsPanel.displayError(runResult.error);
-            await chartPanel.displayChart(client, undefined);
+            await displayChart(client, undefined);
 
             if (runResult.error.range) {
                 const r = runResult.error.range;
@@ -160,7 +159,7 @@ async function runQuery(client: LanguageClient, queryRange?: server.SelectionRan
 
             // Display result tables and chart from ResultData
             await resultsPanel.displayResults(client, runResult.data);
-            await chartPanel.displayChart(client, runResult.data);
+            await displayChart(client, runResult.data);
         }
 
         // Refresh CodeLens to show/hide Results lens
@@ -199,7 +198,7 @@ async function showResults(client: LanguageClient, uri: string, line: number, ch
         const cachedData = await resultsCache.getFromCache(uri, queryText);
         if (cachedData) {
             await resultsPanel.displayResults(client, cachedData);
-            await chartPanel.displayChart(client, cachedData);
+            await displayChart(client, cachedData);
         }
     } catch (error) {
         vscode.window.showErrorMessage(`Failed to show results: ${error}`);
