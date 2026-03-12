@@ -65,7 +65,7 @@ This will create a `.vsix` file that can be installed in VS Code.
 
 ## Reporting Issues
 
-Please use [GitHub Issues](https://github.com/microsoft/Kusto-Language-Server/issues) to report bugs or request features.
+Please use [GitHub Issues](https://github.com/microsoft/Kusto-Explorer-VsCode/issues) to report bugs or request features.
 
 When reporting a bug, please include:
 - VS Code version

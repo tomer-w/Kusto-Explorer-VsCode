@@ -9,7 +9,7 @@
   "icon": "images/kusto_explorer.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/microsoft/Kusto-Language-Server"
+    "url": "https://github.com/microsoft/Kusto-Explorer-VsCode"
   },
   "engines": {
     "vscode": "^1.90.0"
