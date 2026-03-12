@@ -9,7 +9,7 @@ import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 import * as server from './server';
 import { copyToClipboard, formatCfHtml } from './clipboard';
-import { saveResults, copyCellFromEditor, copyDataFromEditor, copyTableAsExpressionFromEditor } from './resultsEditor';
+import { saveResults, copyCellFromEditor, copyDataFromEditor, copyTableAsExpressionFromEditor } from './resultsViewer';
 import * as chartPanel from './chartPanel';
 import { resultDataToMarkdown } from './markdown';
 import { resultDataToHtml, HtmlTable } from './html';

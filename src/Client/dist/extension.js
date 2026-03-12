@@ -20150,7 +20150,7 @@ var vscode9 = __toESM(require("vscode"));
 // features/resultsPanel.ts
 var vscode7 = __toESM(require("vscode"));
 
-// features/resultsEditor.ts
+// features/resultsViewer.ts
 var vscode5 = __toESM(require("vscode"));
 
 // features/markdown.ts
@@ -20246,7 +20246,7 @@ function escapeHtml(text) {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-// features/resultsEditor.ts
+// features/resultsViewer.ts
 var resultEditorViewType = "kusto.resultEditor";
 var languageClient3;
 var chartWebviews = /* @__PURE__ */ new Set();
