@@ -418,8 +418,8 @@ FodyWeavers.xsd
 *.msp
 
 # VS Code extension build output - exclude compiled server files
-src/VsCodeExtension/server/
-src/VsCodeExtension/out/
-src/VsCodeExtension/LICENSE
-src/VsCodeExtension/PATH.TXT
+src/Client/server/
+src/Client/out/
+src/Client/LICENSE
+src/Client/PATH.TXT
 

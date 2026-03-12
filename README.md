@@ -1,4 +1,4 @@
-﻿# Kusto Language Server
+﻿# Kusto Explorer for VS Code
 
 A VS Code extension for the Kusto Query Language (KQL)
 
@@ -108,7 +108,7 @@ A VS Code extension for the Kusto Query Language (KQL)
 ## Creating the VSIX installer
 
 1. Must have vsce installed (npm install -g @vscode/vsce)
-2. run `npm run package` on command line within VsCodeExtension folder to build the .vsix file
+2. run `npm run package` on command line within `src/Client` folder to build the .vsix file
 
 ## Installing the VSIX manually
 
@@ -120,7 +120,7 @@ Run `code --uninstall-extension Microsoft.kusto-explorer-vscode` on command line
 
 ## Launching in VS Code debug mode (without installing VSIX)
 
-1. Open VsCodeExtension folder in VS Code.
+1. Open `src\Client` folder in VS Code.
 2. Build the client side using `compile` command in explorer panel `NPM SCRIPTS`
 3. Build the server side using `build-debug-server` in explorer panel `NPM SCRIPTS`
 4. Press F5 to launch the extension in a new VS Code window with debugging enabled.

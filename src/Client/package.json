@@ -1,0 +1,1110 @@
+{
+  "name": "kusto-explorer-vscode",
+  "displayName": "Kusto Explorer",
+  "description": "Edit, run and chart Kusto queries (KQL).",
+  "version": "0.1.1",
+  "publisher": "Microsoft",
+  "author": "Microsoft",
+  "license": "MIT",
+  "icon": "images/kusto_explorer.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/microsoft/Kusto-Language-Server"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [ "Programming Languages" ],
+  "activationEvents": [ "onLanguage:kusto", "onLanguageModelTool:kusto_getClusters", "onChatParticipant:kusto" ],
+  "extensionDependencies": [
+    "ms-dotnettools.vscode-dotnet-runtime"
+  ],
+  "main": "./out/extension.js",
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -watch -p .",
+    "build-release-server": "dotnet publish ../Server/Server.csproj -c Release -o ./server",
+    "build-debug-server": "dotnet publish ../Server/Server.csproj -c Debug -o ./server",
+    "package": "shx cp ../../LICENSE . && npm run compile && npm run build-release-server && vsce package",
+    "publish": "vsce publish"
+  },
+  "contributes": {
+    "chatParticipants": [
+      {
+        "id": "kusto",
+        "fullName": "Kusto",
+        "name": "kusto",
+        "description": "KQL expert assistant that helps write Kusto queries using your connected database schema",
+        "isSticky": true,
+        "instructions": "./instructions.md"
+      }
+    ],
+  "languages": [
+      {
+        "id": "kusto",
+        "extensions": [ ".kql", ".csl", ".kusto" ],
+        "aliases": [ "Kql", "kql", "KQL", "Kusto", "kusto" ]
+      }
+    ],
+    "grammars": [
+      {
+        "language": "kusto",
+        "scopeName": "source.kusto",
+        "path": "./syntaxes/kusto.tmLanguage.json"
+      }
+    ],
+    "configurationDefaults": {
+      "[kusto]": {
+        "editor.semanticHighlighting.enabled": true
+      }
+    },
+    "customEditors": [
+      {
+        "viewType": "kusto.resultEditor",
+        "displayName": "Kusto Results",
+        "selector": [
+          { "filenamePattern": "*.kqr" }
+        ],
+        "priority": "default"
+      }
+    ],
+    "commands": [
+      {
+        "command": "kusto.runQuery",
+        "title": "Run Query",
+        "icon": "$(play)"
+      },
+      {
+        "command": "kusto.addServer",
+        "title": "Add Connection",
+        "icon": "$(add)"
+      },
+      {
+        "command": "kusto.addServerToGroup",
+        "title": "Add Connection to Group",
+        "icon": "$(add)"
+      },
+      {
+        "command": "kusto.addServerGroup",
+        "title": "Add Group",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "kusto.removeServer",
+        "title": "Remove",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "kusto.removeServerGroup",
+        "title": "Remove Group",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "kusto.moveServer",
+        "title": "Move...",
+        "icon": "$(move)"
+      },
+      {
+        "command": "kusto.editServer",
+        "title": "Edit...",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "kusto.renameServer",
+        "title": "Rename",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "kusto.renameServerGroup",
+        "title": "Rename",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "kusto.refreshServer",
+        "title": "Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "kusto.refreshDatabase",
+        "title": "Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "kusto.copyQuery",
+        "title": "Copy Query",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "kusto.copyQueryTransparent",
+        "title": "Copy Query",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "kusto.copyData",
+        "title": "Copy Table",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "kusto.formatQuery",
+        "title": "Format Query"
+      },
+      {
+        "command": "kusto.copyEntityAsCommand",
+        "title": "Copy as Command",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "kusto.copyEntityAsExpression",
+        "title": "Copy as Expression",
+        "icon": "$(symbol-variable)"
+      },
+      {
+        "command": "kusto.viewEntityDefinition",
+        "title": "View Definition",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "kusto.copyChartLight",
+        "title": "Copy (Light)",
+        "icon": "$(file-media)"
+      },
+      {
+        "command": "kusto.copyChartDark",
+        "title": "Copy (Dark)",
+        "icon": "$(file-media)"
+      },
+      {
+        "command": "kusto.copyCell",
+        "title": "Copy Cell"
+      },
+      {
+        "command": "kusto.copyTableAsExpression",
+        "title": "Copy as Expression",
+        "icon": "$(symbol-snippet)"
+      },
+      {
+        "command": "kusto.refreshDocumentSchema",
+        "title": "Refresh Schema",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "kusto.saveChart",
+        "title": "Save As...",
+        "icon": "$(save)"
+      },
+      {
+        "command": "kusto.saveResults",
+        "title": "Save As...",
+        "icon": "$(save)"
+      },
+      {
+        "command": "kusto.moveChartToMain",
+        "title": "Move to Main Editor",
+        "icon": "$(move)"
+      },
+      {
+        "command": "kusto.toggleChartEditor",
+        "title": "Edit Chart Options",
+        "icon": "$(edit)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "kusto.addServer",
+          "when": "view == kusto.connections",
+          "group": "navigation@1"
+        },
+        {
+          "command": "kusto.addServerGroup",
+          "when": "view == kusto.connections",
+          "group": "navigation@2"
+        },
+        {
+          "command": "kusto.copyData",
+          "when": "view == kusto.resultsView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "kusto.saveResults",
+          "when": "view == kusto.resultsView",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "kusto.addServerToGroup",
+          "when": "view == kusto.connections && viewItem == serverGroup",
+          "group": "inline"
+        },
+        {
+          "command": "kusto.removeServer",
+          "when": "view == kusto.connections && viewItem == server",
+          "group": "9_cutcopypaste"
+        },
+        {
+          "command": "kusto.removeServerGroup",
+          "when": "view == kusto.connections && viewItem == serverGroup",
+          "group": "9_cutcopypaste"
+        },
+        {
+          "command": "kusto.moveServer",
+          "when": "view == kusto.connections && viewItem == server",
+          "group": "7_modification"
+        },
+        {
+          "command": "kusto.editServer",
+          "when": "view == kusto.connections && viewItem == server",
+          "group": "7_modification"
+        },
+        {
+          "command": "kusto.renameServer",
+          "when": "view == kusto.connections && viewItem == server",
+          "group": "7_modification"
+        },
+        {
+          "command": "kusto.renameServerGroup",
+          "when": "view == kusto.connections && viewItem == serverGroup",
+          "group": "7_modification"
+        },
+        {
+          "command": "kusto.refreshServer",
+          "when": "view == kusto.connections && viewItem == server",
+          "group": "inline"
+        },
+        {
+          "command": "kusto.refreshServer",
+          "when": "view == kusto.connections && viewItem == server",
+          "group": "navigation"
+        },
+        {
+          "command": "kusto.refreshDatabase",
+          "when": "view == kusto.connections && viewItem == database",
+          "group": "inline"
+        },
+        {
+          "command": "kusto.refreshDatabase",
+          "when": "view == kusto.connections && viewItem == database",
+          "group": "navigation"
+        },
+        {
+          "command": "kusto.viewEntityDefinition",
+          "when": "view == kusto.connections && viewItem =~ /^(table|externalTable|materializedView|function|entityGroup|graphModel)$/",
+          "group": "navigation"
+        },
+        {
+          "command": "kusto.copyEntityAsExpression",
+          "when": "view == kusto.connections && viewItem =~ /^(server|database|table|externalTable|materializedView|function|entityGroup|graphModel)$/",
+          "group": "9_cutcopypaste"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "kusto.runQuery",
+          "when": "editorLangId == kusto && !kusto.isEntityDefinition",
+          "group": "navigation@1"
+        },
+        {
+          "command": "kusto.refreshDocumentSchema",
+          "when": "editorLangId == kusto && !kusto.isEntityDefinition",
+          "group": "navigation@2"
+        },
+        {
+          "command": "kusto.copyChartLight",
+          "when": "activeWebviewPanelId == kusto || activeWebviewPanelId == kusto.resultEditor",
+          "group": "navigation@1"
+        },
+        {
+          "command": "kusto.copyChartDark",
+          "when": "activeWebviewPanelId == kusto || activeWebviewPanelId == kusto.resultEditor",
+          "group": "navigation@2"
+        },
+        {
+          "command": "kusto.moveChartToMain",
+          "when": "activeWebviewPanelId == kusto",
+          "group": "navigation@3"
+        },
+        {
+          "command": "kusto.toggleChartEditor",
+          "when": "activeWebviewPanelId == kusto.resultEditor && kusto.resultEditorHasChart",
+          "group": "navigation@3"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "kusto.copyQueryTransparent",
+          "when": "editorLangId == kusto && !kusto.isEntityDefinition",
+          "group": "0_kusto@1"
+        },
+        {
+          "command": "kusto.formatQuery",
+          "when": "editorLangId == kusto && !kusto.isEntityDefinition",
+          "group": "0_kusto@2"
+        },
+        {
+          "command": "kusto.runQuery",
+          "when": "editorLangId == kusto && !kusto.isEntityDefinition",
+          "group": "0_kusto@3"
+        },
+        {
+          "command": "kusto.refreshDocumentSchema",
+          "when": "editorLangId == kusto && !kusto.isEntityDefinition",
+          "group": "0_kusto@4"
+        }
+      ],
+      "webview/context": [
+        {
+          "command": "kusto.copyCell",
+          "when": "webviewId == 'kusto.resultsView' || (webviewId == 'kusto.resultEditor' && !chartVisible)",
+          "group": "9_cutcopypaste@1"
+        },
+        {
+          "command": "kusto.copyData",
+          "when": "webviewId == 'kusto.resultsView' || (webviewId == 'kusto.resultEditor' && !chartVisible)",
+          "group": "9_cutcopypaste@2"
+        },
+        {
+          "command": "kusto.copyTableAsExpression",
+          "when": "webviewId == 'kusto.resultsView' || (webviewId == 'kusto.resultEditor' && !chartVisible)",
+          "group": "9_cutcopypaste@3"
+        },
+        {
+          "command": "kusto.saveResults",
+          "when": "webviewId == 'kusto.resultsView'"
+        },
+        {
+          "command": "kusto.copyChartLight",
+          "when": "webviewId == 'kusto' || (webviewId == 'kusto.resultEditor' && chartVisible)"
+        },
+        {
+          "command": "kusto.copyChartDark",
+          "when": "webviewId == 'kusto' || (webviewId == 'kusto.resultEditor' && chartVisible)"
+        },
+        {
+          "command": "kusto.saveChart",
+          "when": "webviewId == 'kusto'"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "kusto.runQuery",
+        "key": "F5",
+        "when": "editorLangId == kusto && !kusto.isEntityDefinition"
+      },
+
+      {
+        "command": "editor.action.triggerSuggest",
+        "key": "ctrl+space",
+        "when": "editorLangId == kusto"
+      }
+    ],
+    "viewsContainers": {
+      "panel": [
+        {
+          "id": "kusto-panel",
+          "title": "Results",
+          "icon": "$(database)"
+        }
+      ]
+    },
+    "views": {
+      "kusto-panel": [
+        {
+          "type": "webview",
+          "id": "kusto.resultsView",
+          "name": "Results",
+          "icon": "$(table)",
+          "when": "kusto.hasActiveDocument"
+        }
+      ],
+      "explorer": [
+        {
+          "id": "kusto.connections",
+          "name": "Connections",
+          "icon": "$(database)",
+          "when": "kusto.hasActiveDocument"
+        }
+      ]
+    },
+    "configuration": [
+      {
+        "title": "Connections",
+        "properties": {
+          "kusto.defaultDomain": {
+            "type": "string",
+            "default": ".kusto.windows.net",
+            "description": "The domain appended to abbreviated cluster names in cluster() expressions."
+          }
+        }
+      },
+      {
+        "title": "Editor",
+        "properties": {
+          "kusto.editor.showQuerySeparators": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show query separator lines (---) in the editor."
+          }
+        }
+      },
+      {
+        "title": "Runtime",
+        "properties": {
+          "kusto.runtime.useSystemDotnet": {
+            "type": "boolean",
+            "default": true,
+            "description": "Use system-installed .NET runtime if available. Set to false to always use the VS Code runtime acquisition extension."
+          }
+        }
+      },
+      {
+        "title": "Formatting",
+        "properties": {
+          "kusto.format.insertMissingTokens": {
+            "type": "boolean",
+            "default": false,
+            "description": "Automatically add missing tokens (e.g., semicolons) when formatting"
+          },
+          "kusto.format.bracketStyle": {
+            "type": "string",
+            "enum": [ "none", "vertical", "diagonal" ],
+            "default": "vertical",
+            "description": "How brackets are styled when formatting"
+          },
+          "kusto.format.schemaBracketStyle": {
+            "type": "string",
+            "enum": [ "none", "vertical", "diagonal" ],
+            "default": "vertical",
+            "description": "How schema brackets are styled when formatting"
+          },
+          "kusto.format.dataTableBracketStyle": {
+            "type": "string",
+            "enum": [ "none", "vertical", "diagonal" ],
+            "default": "vertical",
+            "description": "How data table brackets are styled when formatting"
+          },
+          "kusto.format.functionBodyBracketStyle": {
+            "type": "string",
+            "enum": [ "none", "vertical", "diagonal" ],
+            "default": "vertical",
+            "description": "How function body braces are styled when formatting"
+          },
+          "kusto.format.functionParameterBracketStyle": {
+            "type": "string",
+            "enum": [ "none", "vertical", "diagonal" ],
+            "default": "none",
+            "description": "How parameter list parentheses are styled when formatting"
+          },
+          "kusto.format.functionArgumentBracketStyle": {
+            "type": "string",
+            "enum": [ "none", "vertical", "diagonal" ],
+            "default": "none",
+            "description": "How argument list parentheses are styled when formatting"
+          },
+          "kusto.format.pipeOperatorPlacementStyle": {
+            "type": "string",
+            "enum": [ "none", "newLine", "smart" ],
+            "default": "smart",
+            "description": "How query pipe operators (|) are placed when formatting"
+          },
+          "kusto.format.expressionListPlacementStyle": {
+            "type": "string",
+            "enum": [ "none", "newLine", "smart" ],
+            "default": "smart",
+            "description": "How expressions in a list are placed when formatting"
+          },
+          "kusto.format.statementListPlacementStyle": {
+            "type": "string",
+            "enum": [ "none", "newLine", "smart" ],
+            "default": "smart",
+            "description": "How statements in a list are placed when formatting"
+          },
+          "kusto.format.semicolonPlacementStyle": {
+            "type": "string",
+            "enum": [ "none", "newLine", "smart" ],
+            "default": "none",
+            "description": "How semicolons are placed when formatting"
+          }
+        }
+      }
+    ],
+    "languageModelToolReferencingInstructions": [
+      {
+        "toolId": "kusto_getClusters",
+        "instructions": "Use this tool to discover which Kusto (Azure Data Explorer) clusters the user has configured."
+      },
+      {
+        "toolId": "kusto_getActiveConnection",
+        "instructions": "Use this tool to find out which Kusto cluster and database the user is currently connected to in their active editor."
+      },
+      {
+        "toolId": "kusto_getDatabases",
+        "instructions": "Use this tool to list the databases available in a Kusto cluster when the user asks about databases or needs to choose one."
+      },
+      {
+        "toolId": "kusto_getTables",
+        "instructions": "Use this tool to list the tables in a Kusto database when the user asks what data is available or needs table names for writing KQL queries."
+      },
+      {
+        "toolId": "kusto_getTableColumns",
+        "instructions": "Use this tool to get the columns and their types for a specific Kusto table. Essential for writing correct KQL queries with the right column names."
+      },
+      {
+        "toolId": "kusto_getExternalTables",
+        "instructions": "Use this tool to list external tables in a Kusto database when the user needs to query external data sources."
+      },
+      {
+        "toolId": "kusto_getExternalTableColumns",
+        "instructions": "Use this tool to get the columns and their types for a specific Kusto external table."
+      },
+      {
+        "toolId": "kusto_getFunctions",
+        "instructions": "Use this tool to list stored functions in a Kusto database when the user needs to call or reference existing functions in KQL queries."
+      },
+      {
+        "toolId": "kusto_getMaterializedViews",
+        "instructions": "Use this tool to list materialized views in a Kusto database when the user asks about pre-aggregated or cached query results."
+      },
+      {
+        "toolId": "kusto_getMaterializedViewColumns",
+        "instructions": "Use this tool to get the columns and their types for a specific Kusto materialized view."
+      },
+      {
+        "toolId": "kusto_getEntityGroups",
+        "instructions": "Use this tool to list entity groups in a Kusto database."
+      },
+      {
+        "toolId": "kusto_getGraphModels",
+        "instructions": "Use this tool to list graph models in a Kusto database when the user works with graph-related queries."
+      },
+      {
+        "toolId": "kusto_getTableDefinition",
+        "instructions": "Use this tool to get the full KQL definition of a Kusto table, including its create command. Useful when the user wants to understand or replicate a table's structure."
+      },
+      {
+        "toolId": "kusto_getExternalTableDefinition",
+        "instructions": "Use this tool to get the full KQL definition of a Kusto external table in the form of a create command."
+      },
+      {
+        "toolId": "kusto_getMaterializedViewDefinition",
+        "instructions": "Use this tool to get the full KQL definition of a materialized view, including its create command, source table, and aggregation query."
+      },
+      {
+        "toolId": "kusto_getFunctionDefinition",
+        "instructions": "Use this tool to get the full KQL definition of a stored function, including its create command, parameters, and body. Useful when the user wants to understand, modify, or debug a function."
+      },
+      {
+        "toolId": "kusto_getEntityGroupDefinition",
+        "instructions": "Use this tool to get the full definition of an entity group in the form of a create command, including its member entities."
+      },
+      {
+        "toolId": "kusto_getGraphModelDefinition",
+        "instructions": "Use this tool to get the full definition of a graph model in the form of a create command."
+      },
+      {
+        "toolId": "kusto_getCurrentQueryText",
+        "instructions": "Use this tool to get the KQL query the user is currently working on in their editor. Use it when the user says 'this query', 'my query', 'the current query', or asks for help with what they're editing."
+      },
+      {
+        "toolId": "kusto_getQueryRanges",
+        "instructions": "Use this tool to get the line ranges of all queries in the user's active KQL document. Useful for understanding the document structure or when the user refers to multiple queries."
+      },
+      {
+        "toolId": "kusto_validateQuery",
+        "instructions": "Use this tool to validate KQL queries for syntax and semantic errors. Always validate queries you generate before presenting them to the user to ensure correctness."
+      },
+      {
+        "toolId": "kusto_getQueryResultType",
+        "instructions": "Use this tool to determine what kind of data a KQL query returns. It returns the table schema for tabular queries or the scalar type for scalar queries. Use this to understand the output shape of a query."
+      },
+      {
+        "toolId": "kusto_getFunctionResultType",
+        "instructions": "Use this tool to determine what kind of data a database function returns given its name. It returns the table schema for tabular functions or the scalar type for scalar functions. Note that the result may not include all columns if the function has a tabular parameter that contributes to the output. To determine the exact columns for a function that has a tabular parameter, create a mock query that calls the function with arguments that are the correct types and use the kusto_getQueryResultType tool."
+      },
+      {
+        "toolId": "kusto_runQuery",
+        "instructions": "Use this tool to run a KQL query and return results when the user asks to execute a query or see data, or if you need to know the result of a query to answer a user question. Queries are run in read-only mode for safety. Please limit the output of queries to just the columns necessary and limit the number of rows unless you know you need all rows to answer the request. If the user wants to see the results, use the showResults parameter with true and add a render operator to the query to show a visual chart."
+      }
+    ],
+    "languageModelTools": [
+      {
+        "name": "kusto_getClusters",
+        "displayName": "Get Kusto Clusters",
+        "toolReferenceName": "kustoClusters",
+        "canBeReferencedInPrompt": true,
+        "userDescription": "Lists the configured Kusto clusters.",
+        "tags": [ "kusto", "clusters", "connections" ],
+        "modelDescription": "Returns the list of configured Kusto cluster connections. Use this to discover which clusters are available.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "kusto_getActiveConnection",
+        "displayName": "Get Active Kusto Connection",
+        "toolReferenceName": "kustoActiveConnection",
+        "canBeReferencedInPrompt": true,
+        "userDescription": "Gets the cluster and database of the active document's connection.",
+        "tags": [ "kusto", "connection", "active" ],
+        "modelDescription": "Returns the active document's Kusto connection (cluster and database). Use this to find out what the user is currently connected to.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "kusto_getDatabases",
+        "displayName": "Get Kusto Databases",
+        "toolReferenceName": "kustoDatabases",
+        "canBeReferencedInPrompt": true,
+        "userDescription": "Lists the databases in a Kusto cluster.",
+        "tags": [ "kusto", "databases", "cluster" ],
+        "modelDescription": "Returns the list of database names for a Kusto cluster. If no cluster is specified, uses the active connection's cluster.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "cluster": {
+              "type": "string",
+              "description": "The Kusto cluster hostname. If not provided, uses the active document's connection."
+            }
+          }
+        }
+      },
+      {
+        "name": "kusto_getTables",
+        "displayName": "Get Kusto Tables",
+        "toolReferenceName": "kustoTables",
+        "canBeReferencedInPrompt": true,
+        "userDescription": "Lists the tables in a Kusto database.",
+        "tags": [ "kusto", "tables", "database" ],
+        "modelDescription": "Returns the list of table names in a Kusto database. If cluster/database are not specified, uses the active connection.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "cluster": {
+              "type": "string",
+              "description": "The Kusto cluster hostname. If not provided, uses the active document's connection."
+            },
+            "database": {
+              "type": "string",
+              "description": "The database name. If not provided, uses the active document's connection."
+            }
+          }
+        }
+      },
+      {
+        "name": "kusto_getTableColumns",
+        "displayName": "Get Table Columns",
+        "toolReferenceName": "kustoTableColumns",
+        "canBeReferencedInPrompt": true,
+        "userDescription": "Lists the columns of a Kusto table.",
+        "tags": [ "kusto", "columns", "table" ],
+        "modelDescription": "Returns the column names and types for a specific table. Requires the table name.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "cluster": { "type": "string", "description": "The Kusto cluster hostname. If not provided, uses the active connection." },
+            "database": { "type": "string", "description": "The database name. If not provided, uses the active connection." },
+            "table": { "type": "string", "description": "The name of the table." }
+          },
+          "required": [ "table" ]
+        }
+      },
+      {
+        "name": "kusto_getExternalTableColumns",
+        "displayName": "Get External Table Columns",
+        "toolReferenceName": "kustoExternalTableColumns",
+        "canBeReferencedInPrompt": true,
+        "userDescription": "Lists the columns of a Kusto external table.",
+        "tags": [ "kusto", "columns", "external table" ],
+        "modelDescription": "Returns the column names and types for a specific external table. Requires the table name.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "cluster": { "type": "string", "description": "The Kusto cluster hostname. If not provided, uses the active connection." },
+            "database": { "type": "string", "description": "The database name. If not provided, uses the active connection." },
+            "table": { "type": "string", "description": "The name of the external table." }
+          },
+          "required": [ "table" ]
+        }
+      },
+      {
+        "name": "kusto_getMaterializedViewColumns",
+        "displayName": "Get Materialized View Columns",
+        "toolReferenceName": "kustoMaterializedViewColumns",
+        "canBeReferencedInPrompt": true,
+        "userDescription": "Lists the columns of a Kusto materialized view.",
+        "tags": [ "kusto", "columns", "materialized view" ],
+        "modelDescription": "Returns the column names and types for a specific materialized view. Requires the view name.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "cluster": { "type": "string", "description": "The Kusto cluster hostname. If not provided, uses the active connection." },
+            "database": { "type": "string", "description": "The database name. If not provided, uses the active connection." },
+            "view": { "type": "string", "description": "The name of the materialized view." }
+          },
+          "required": [ "view" ]
+        }
+      },
+      {
+        "name": "kusto_getFunctions",
+        "displayName": "Get Kusto Functions",
+        "toolReferenceName": "kustoFunctions",
+        "canBeReferencedInPrompt": true,
+        "userDescription": "Lists the stored functions in a Kusto database.",
+        "tags": [ "kusto", "functions", "database" ],
+        "modelDescription": "Returns the list of stored functions with their parameter signatures in a Kusto database.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "cluster": {
+              "type": "string",
+              "description": "The Kusto cluster hostname. If not provided, uses the active document's connection."
+            },
+            "database": {
+              "type": "string",
+              "description": "The database name. If not provided, uses the active document's connection."
+            }
+          }
+        }
+      },
+      {
+        "name": "kusto_getMaterializedViews",
+        "displayName": "Get Materialized Views",
+        "toolReferenceName": "kustoMaterializedViews",
+        "canBeReferencedInPrompt": true,
+        "userDescription": "Lists the materialized views in a Kusto database.",
+        "tags": [ "kusto", "materialized views", "database" ],
+        "modelDescription": "Returns the list of materialized view names in a Kusto database.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "cluster": {
+              "type": "string",
+              "description": "The Kusto cluster hostname. If not provided, uses the active document's connection."
+            },
+            "database": {
+              "type": "string",
+              "description": "The database name. If not provided, uses the active document's connection."
+            }
+          }
+        }
+      },
+      {
+        "name": "kusto_getExternalTables",
+        "displayName": "Get External Tables",
+        "toolReferenceName": "kustoExternalTables",
+        "canBeReferencedInPrompt": true,
+        "userDescription": "Lists the external tables in a Kusto database.",
+        "tags": [ "kusto", "external tables", "database" ],
+        "modelDescription": "Returns the list of external table names in a Kusto database.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "cluster": {
+              "type": "string",
+              "description": "The Kusto cluster hostname. If not provided, uses the active document's connection."
+            },
+            "database": {
+              "type": "string",
+              "description": "The database name. If not provided, uses the active document's connection."
+            }
+          }
+        }
+      },
+      {
+        "name": "kusto_getEntityGroups",
+        "displayName": "Get Entity Groups",
+        "toolReferenceName": "kustoEntityGroups",
+        "canBeReferencedInPrompt": true,
+        "userDescription": "Lists the entity groups in a Kusto database.",
+        "tags": [ "kusto", "entity groups", "database" ],
+        "modelDescription": "Returns the list of entity group names in a Kusto database.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "cluster": {
+              "type": "string",
+              "description": "The Kusto cluster hostname. If not provided, uses the active document's connection."
+            },
+            "database": {
+              "type": "string",
+              "description": "The database name. If not provided, uses the active document's connection."
+            }
+          }
+        }
+      },
+      {
+        "name": "kusto_getGraphModels",
+        "displayName": "Get Graph Models",
+        "toolReferenceName": "kustoGraphModels",
+        "canBeReferencedInPrompt": true,
+        "userDescription": "Lists the graph models in a Kusto database.",
+        "tags": [ "kusto", "graph models", "database" ],
+        "modelDescription": "Returns the list of graph model names in a Kusto database.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "cluster": {
+              "type": "string",
+              "description": "The Kusto cluster hostname. If not provided, uses the active document's connection."
+            },
+            "database": {
+              "type": "string",
+              "description": "The database name. If not provided, uses the active document's connection."
+            }
+          }
+        }
+      },
+      {
+        "name": "kusto_getTableDefinition",
+        "displayName": "Get Table Definition",
+        "toolReferenceName": "kustoTableDef",
+        "canBeReferencedInPrompt": true,
+        "userDescription": "Gets the full definition of a Kusto table including all columns, types, and description.",
+        "tags": [ "kusto", "table", "definition", "columns" ],
+        "modelDescription": "Returns the full definition of a named table including all columns with their types and descriptions. Requires the table name.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "cluster": { "type": "string", "description": "The Kusto cluster hostname. If not provided, uses the active connection." },
+            "database": { "type": "string", "description": "The database name. If not provided, uses the active connection." },
+            "name": { "type": "string", "description": "The name of the table." }
+          },
+          "required": [ "name" ]
+        }
+      },
+      {
+        "name": "kusto_getExternalTableDefinition",
+        "displayName": "Get External Table Definition",
+        "toolReferenceName": "kustoExternalTableDef",
+        "canBeReferencedInPrompt": true,
+        "userDescription": "Gets the full definition of a Kusto external table including all columns, types, and description.",
+        "tags": [ "kusto", "external table", "definition" ],
+        "modelDescription": "Returns the full definition of a named external table including all columns with their types. Requires the external table name.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "cluster": { "type": "string", "description": "The Kusto cluster hostname. If not provided, uses the active connection." },
+            "database": { "type": "string", "description": "The database name. If not provided, uses the active connection." },
+            "name": { "type": "string", "description": "The name of the external table." }
+          },
+          "required": [ "name" ]
+        }
+      },
+      {
+        "name": "kusto_getMaterializedViewDefinition",
+        "displayName": "Get Materialized View Definition",
+        "toolReferenceName": "kustoMaterializedViewDef",
+        "canBeReferencedInPrompt": true,
+        "userDescription": "Gets the full definition of a materialized view including its source table, query, columns, and description.",
+        "tags": [ "kusto", "materialized view", "definition" ],
+        "modelDescription": "Returns the full definition of a named materialized view including source table, query, columns, and description. Requires the view name.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "cluster": { "type": "string", "description": "The Kusto cluster hostname. If not provided, uses the active connection." },
+            "database": { "type": "string", "description": "The database name. If not provided, uses the active connection." },
+            "name": { "type": "string", "description": "The name of the materialized view." }
+          },
+          "required": [ "name" ]
+        }
+      },
+      {
+        "name": "kusto_getFunctionDefinition",
+        "displayName": "Get Function Definition",
+        "toolReferenceName": "kustoFunctionDef",
+        "canBeReferencedInPrompt": true,
+        "userDescription": "Gets the full definition of a stored function including its parameters, body, and description.",
+        "tags": [ "kusto", "function", "definition" ],
+        "modelDescription": "Returns the full definition of a named stored function including parameters, body (KQL source), and description. Requires the function name.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "cluster": { "type": "string", "description": "The Kusto cluster hostname. If not provided, uses the active connection." },
+            "database": { "type": "string", "description": "The database name. If not provided, uses the active connection." },
+            "name": { "type": "string", "description": "The name of the function." }
+          },
+          "required": [ "name" ]
+        }
+      },
+      {
+        "name": "kusto_getEntityGroupDefinition",
+        "displayName": "Get Entity Group Definition",
+        "toolReferenceName": "kustoEntityGroupDef",
+        "canBeReferencedInPrompt": true,
+        "userDescription": "Gets the full definition of an entity group including its member entities.",
+        "tags": [ "kusto", "entity group", "definition" ],
+        "modelDescription": "Returns the full definition of a named entity group including its member entities. Requires the entity group name.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "cluster": { "type": "string", "description": "The Kusto cluster hostname. If not provided, uses the active connection." },
+            "database": { "type": "string", "description": "The database name. If not provided, uses the active connection." },
+            "name": { "type": "string", "description": "The name of the entity group." }
+          },
+          "required": [ "name" ]
+        }
+      },
+      {
+        "name": "kusto_getGraphModelDefinition",
+        "displayName": "Get Graph Model Definition",
+        "toolReferenceName": "kustoGraphModelDef",
+        "canBeReferencedInPrompt": true,
+        "userDescription": "Gets the full definition of a graph model including its model definition and snapshots.",
+        "tags": [ "kusto", "graph model", "definition" ],
+        "modelDescription": "Returns the full definition of a named graph model including model definition and snapshots. Requires the graph model name.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "cluster": { "type": "string", "description": "The Kusto cluster hostname. If not provided, uses the active connection." },
+            "database": { "type": "string", "description": "The database name. If not provided, uses the active connection." },
+            "name": { "type": "string", "description": "The name of the graph model." }
+          },
+          "required": [ "name" ]
+        }
+      },
+      {
+        "name": "kusto_getCurrentQueryText",
+        "displayName": "Get Current KQL Query",
+        "toolReferenceName": "kustoCurrentQuery",
+        "canBeReferencedInPrompt": true,
+        "userDescription": "Gets the KQL query at the current cursor position in the active editor.",
+        "tags": [ "kusto", "kql", "query", "current", "editor" ],
+        "modelDescription": "Returns the KQL query text at the current cursor position in the active .kql editor, along with its line range in the document. Use this when the user asks about, refers to, or wants help with their current query.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "kusto_getQueryRanges",
+        "displayName": "Get KQL Query Ranges",
+        "toolReferenceName": "kustoQueryRanges",
+        "canBeReferencedInPrompt": true,
+        "userDescription": "Gets the line ranges of all queries in the active KQL document.",
+        "tags": [ "kusto", "kql", "query", "ranges", "document" ],
+        "modelDescription": "Returns the line ranges of all queries in the active .kql document. Each query's start and end line numbers are listed. Use this to understand the structure and boundaries of queries in the document.",
+        "inputSchema": { "type": "object", "properties": {} }
+      },
+      {
+        "name": "kusto_validateQuery",
+        "displayName": "Validate KQL Query",
+        "toolReferenceName": "kustoValidateQuery",
+        "canBeReferencedInPrompt": true,
+        "userDescription": "Validates a KQL query and returns any errors or warnings.",
+        "tags": [ "kusto", "kql", "query", "validate", "diagnostics" ],
+        "modelDescription": "Validates a KQL query against the database schema and returns diagnostics (errors, warnings). Use this to check if a generated or edited KQL query is syntactically and semantically correct. Always validate queries you generate before presenting them to the user.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "The KQL query text to validate."
+            },
+            "cluster": {
+              "type": "string",
+              "description": "The Kusto cluster hostname for schema context. If not provided, uses the active connection."
+            },
+            "database": {
+              "type": "string",
+              "description": "The database name for schema context. If not provided, uses the active connection."
+            }
+          },
+          "required": [ "query" ]
+        }
+      },
+      {
+        "name": "kusto_getQueryResultType",
+        "displayName": "Get KQL Query Result Type",
+        "toolReferenceName": "kustoQueryResultType",
+        "canBeReferencedInPrompt": true,
+        "userDescription": "Gets the result type of a KQL query (table schema or scalar type).",
+        "tags": [ "kusto", "kql", "query", "result", "type", "schema" ],
+        "modelDescription": "Returns the result type of a KQL query. For tabular results, returns the table schema (column names and types). For scalar results, returns the scalar type. Returns null if the query does not produce a tabular or scalar result. Use this to understand what kind of data a query returns.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "The KQL query text to analyze."
+            },
+            "cluster": {
+              "type": "string",
+              "description": "The Kusto cluster hostname for schema context. If not provided, uses the active connection."
+            },
+            "database": {
+              "type": "string",
+              "description": "The database name for schema context. If not provided, uses the active connection."
+            }
+          },
+          "required": [ "query" ]
+        }
+      },
+      {
+        "name": "kusto_getFunctionResultType",
+        "displayName": "Get Function Result Type",
+        "toolReferenceName": "kustoFunctionResultType",
+        "canBeReferencedInPrompt": true,
+        "userDescription": "Gets the result type of a database function (table schema or scalar type).",
+        "tags": [ "kusto", "kql", "function", "result", "type", "schema" ],
+        "modelDescription": "Returns the result type of a named database function. For functions that return tables, returns the table schema (column names and types). For scalar functions, returns the scalar type. Returns null if the function is not found. Note: the result may not include all possible columns if the function has a tabular parameter that contributes to the output.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "The name of the database function."
+            },
+            "cluster": {
+              "type": "string",
+              "description": "The Kusto cluster hostname for schema context. If not provided, uses the active connection."
+            },
+            "database": {
+              "type": "string",
+              "description": "The database name for schema context. If not provided, uses the active connection."
+            }
+          },
+          "required": [ "name" ]
+        }
+      },
+      {
+        "name": "kusto_runQuery",
+        "displayName": "Run KQL Query",
+        "toolReferenceName": "kustoRunQuery",
+        "canBeReferencedInPrompt": true,
+        "userDescription": "Runs a KQL query and returns the results as markdown.",
+        "tags": [ "kusto", "kql", "query", "run", "execute", "results" ],
+        "modelDescription": "Runs a KQL query in read-only mode and returns results as a markdown table. Use this when the user asks to execute a query or wants to see data from a Kusto database. When showResults is true, always append a KQL 'render' operator to the query (e.g. '| render columnchart', '| render piechart', '| render timechart', '| render barchart', '| render linechart', etc.) choosing the most appropriate chart type for the data and the user's intent.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "The KQL query text to execute."
+            },
+            "cluster": {
+              "type": "string",
+              "description": "The Kusto cluster hostname. If not provided, uses the active connection."
+            },
+            "database": {
+              "type": "string",
+              "description": "The database name. If not provided, uses the active connection."
+            },
+            "maxRows": {
+              "type": "number",
+              "description": "Maximum number of rows to return. Use this to limit result size."
+            },
+            "showResults": {
+              "type": "boolean",
+              "description": "If true, displays the results in the results panel and chart panel. Defaults to false. When set to true, the query MUST include a 'render' operator (e.g. '| render columnchart') to specify the chart visualization type."
+            }
+          },
+          "required": [ "query" ]
+        }
+      }
+    ]
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.0"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.90.0",
+    "@types/node": "^18.0.0",
+    "typescript": "^5.0.0",
+    "shx": "^0.3.4"
+  }
+}
