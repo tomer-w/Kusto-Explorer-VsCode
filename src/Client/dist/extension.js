@@ -6682,8 +6682,8 @@ var require_protocolCodeAction = __commonJS({
   "node_modules/vscode-languageclient/lib/common/protocolCodeAction.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    var vscode14 = require("vscode");
-    var ProtocolCodeAction = class extends vscode14.CodeAction {
+    var vscode13 = require("vscode");
+    var ProtocolCodeAction = class extends vscode13.CodeAction {
       constructor(title, data) {
         super(title);
         this.data = data;
@@ -6699,7 +6699,7 @@ var require_protocolDiagnostic = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.ProtocolDiagnostic = exports2.DiagnosticCode = void 0;
-    var vscode14 = require("vscode");
+    var vscode13 = require("vscode");
     var Is = require_is();
     var DiagnosticCode;
     (function(DiagnosticCode2) {
@@ -6709,7 +6709,7 @@ var require_protocolDiagnostic = __commonJS({
       }
       DiagnosticCode2.is = is;
     })(DiagnosticCode || (exports2.DiagnosticCode = DiagnosticCode = {}));
-    var ProtocolDiagnostic = class extends vscode14.Diagnostic {
+    var ProtocolDiagnostic = class extends vscode13.Diagnostic {
       constructor(range, message, severity, data) {
         super(range, message, severity);
         this.data = data;
@@ -10713,7 +10713,7 @@ var require_notebook = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.NotebookDocumentSyncFeature = void 0;
-    var vscode14 = require("vscode");
+    var vscode13 = require("vscode");
     var minimatch = require_minimatch();
     var proto = require_main3();
     var UUID = require_uuid();
@@ -10768,9 +10768,9 @@ var require_notebook = __commonJS({
         c2p2.asNotebookCell = asNotebookCell;
         function asNotebookCellKind(kind) {
           switch (kind) {
-            case vscode14.NotebookCellKind.Markup:
+            case vscode13.NotebookCellKind.Markup:
               return proto.NotebookCellKind.Markup;
-            case vscode14.NotebookCellKind.Code:
+            case vscode13.NotebookCellKind.Code:
               return proto.NotebookCellKind.Code;
           }
         }
@@ -11021,25 +11021,25 @@ var require_notebook = __commonJS({
         this.notebookDidOpen = /* @__PURE__ */ new Set();
         this.disposables = [];
         this.selector = client2.protocol2CodeConverter.asDocumentSelector($NotebookDocumentSyncOptions.asDocumentSelector(options));
-        vscode14.workspace.onDidOpenNotebookDocument((notebookDocument) => {
+        vscode13.workspace.onDidOpenNotebookDocument((notebookDocument) => {
           this.notebookDidOpen.add(notebookDocument.uri.toString());
           this.didOpen(notebookDocument);
         }, void 0, this.disposables);
-        for (const notebookDocument of vscode14.workspace.notebookDocuments) {
+        for (const notebookDocument of vscode13.workspace.notebookDocuments) {
           this.notebookDidOpen.add(notebookDocument.uri.toString());
           this.didOpen(notebookDocument);
         }
-        vscode14.workspace.onDidChangeNotebookDocument((event) => this.didChangeNotebookDocument(event), void 0, this.disposables);
+        vscode13.workspace.onDidChangeNotebookDocument((event) => this.didChangeNotebookDocument(event), void 0, this.disposables);
         if (this.options.save === true) {
-          vscode14.workspace.onDidSaveNotebookDocument((notebookDocument) => this.didSave(notebookDocument), void 0, this.disposables);
+          vscode13.workspace.onDidSaveNotebookDocument((notebookDocument) => this.didSave(notebookDocument), void 0, this.disposables);
         }
-        vscode14.workspace.onDidCloseNotebookDocument((notebookDocument) => {
+        vscode13.workspace.onDidCloseNotebookDocument((notebookDocument) => {
           this.didClose(notebookDocument);
           this.notebookDidOpen.delete(notebookDocument.uri.toString());
         }, void 0, this.disposables);
       }
       getState() {
-        for (const notebook of vscode14.workspace.notebookDocuments) {
+        for (const notebook of vscode13.workspace.notebookDocuments) {
           const matchingCells = this.getMatchingCells(notebook);
           if (matchingCells !== void 0) {
             return { kind: "document", id: "$internal", registrations: true, matches: true };
@@ -11051,10 +11051,10 @@ var require_notebook = __commonJS({
         return "notebook";
       }
       handles(textDocument) {
-        return vscode14.languages.match(this.selector, textDocument) > 0;
+        return vscode13.languages.match(this.selector, textDocument) > 0;
       }
       didOpenNotebookCellTextDocument(notebookDocument, cell) {
-        if (vscode14.languages.match(this.selector, cell.document) === 0) {
+        if (vscode13.languages.match(this.selector, cell.document) === 0) {
           return;
         }
         if (!this.notebookDidOpen.has(notebookDocument.uri.toString())) {
@@ -11085,7 +11085,7 @@ var require_notebook = __commonJS({
         }
       }
       didChangeNotebookCellTextDocument(notebookDocument, event) {
-        if (vscode14.languages.match(this.selector, event.document) === 0) {
+        if (vscode13.languages.match(this.selector, event.document) === 0) {
           return;
         }
         this.doSendChange({
@@ -11358,7 +11358,7 @@ var require_notebook = __commonJS({
         this.client = client2;
         this.registrations = /* @__PURE__ */ new Map();
         this.registrationType = proto.NotebookDocumentSyncRegistrationType.type;
-        vscode14.workspace.onDidOpenTextDocument((textDocument) => {
+        vscode13.workspace.onDidOpenTextDocument((textDocument) => {
           if (textDocument.uri.scheme !== _NotebookDocumentSyncFeature.CellScheme) {
             return;
           }
@@ -11372,7 +11372,7 @@ var require_notebook = __commonJS({
             }
           }
         });
-        vscode14.workspace.onDidChangeTextDocument((event) => {
+        vscode13.workspace.onDidChangeTextDocument((event) => {
           if (event.contentChanges.length === 0) {
             return;
           }
@@ -11390,7 +11390,7 @@ var require_notebook = __commonJS({
             }
           }
         });
-        vscode14.workspace.onDidCloseTextDocument((textDocument) => {
+        vscode13.workspace.onDidCloseTextDocument((textDocument) => {
           if (textDocument.uri.scheme !== _NotebookDocumentSyncFeature.CellScheme) {
             return;
           }
@@ -11455,7 +11455,7 @@ var require_notebook = __commonJS({
         if (textDocument.uri.scheme !== _NotebookDocumentSyncFeature.CellScheme) {
           return false;
         }
-        if (this.dedicatedChannel !== void 0 && vscode14.languages.match(this.dedicatedChannel, textDocument) > 0) {
+        if (this.dedicatedChannel !== void 0 && vscode13.languages.match(this.dedicatedChannel, textDocument) > 0) {
           return true;
         }
         for (const provider of this.registrations.values()) {
@@ -11475,7 +11475,7 @@ var require_notebook = __commonJS({
       }
       findNotebookDocumentAndCell(textDocument) {
         const uri = textDocument.uri.toString();
-        for (const notebookDocument of vscode14.workspace.notebookDocuments) {
+        for (const notebookDocument of vscode13.workspace.notebookDocuments) {
           for (const cell of notebookDocument.getCells()) {
             if (cell.document.uri.toString() === uri) {
               return [notebookDocument, cell];
@@ -13991,7 +13991,7 @@ var require_semanticTokens = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.SemanticTokensFeature = void 0;
-    var vscode14 = require("vscode");
+    var vscode13 = require("vscode");
     var vscode_languageserver_protocol_1 = require_main3();
     var features_1 = require_features();
     var Is = require_is();
@@ -14069,7 +14069,7 @@ var require_semanticTokens = __commonJS({
         const selector = options.documentSelector;
         const fullProvider = Is.boolean(options.full) ? options.full : options.full !== void 0;
         const hasEditProvider = options.full !== void 0 && typeof options.full !== "boolean" && options.full.delta === true;
-        const eventEmitter = new vscode14.EventEmitter();
+        const eventEmitter = new vscode13.EventEmitter();
         const documentProvider = fullProvider ? {
           onDidChangeSemanticTokens: eventEmitter.event,
           provideDocumentSemanticTokens: (document, token) => {
@@ -14141,12 +14141,12 @@ var require_semanticTokens = __commonJS({
         const legend = client2.protocol2CodeConverter.asSemanticTokensLegend(options.legend);
         const documentSelector = client2.protocol2CodeConverter.asDocumentSelector(selector);
         if (documentProvider !== void 0) {
-          disposables.push(vscode14.languages.registerDocumentSemanticTokensProvider(documentSelector, documentProvider, legend));
+          disposables.push(vscode13.languages.registerDocumentSemanticTokensProvider(documentSelector, documentProvider, legend));
         }
         if (rangeProvider !== void 0) {
-          disposables.push(vscode14.languages.registerDocumentRangeSemanticTokensProvider(documentSelector, rangeProvider, legend));
+          disposables.push(vscode13.languages.registerDocumentRangeSemanticTokensProvider(documentSelector, rangeProvider, legend));
         }
-        return [new vscode14.Disposable(() => disposables.forEach((item) => item.dispose())), { range: rangeProvider, full: documentProvider, onDidChangeSemanticTokensEmitter: eventEmitter }];
+        return [new vscode13.Disposable(() => disposables.forEach((item) => item.dispose())), { range: rangeProvider, full: documentProvider, onDidChangeSemanticTokensEmitter: eventEmitter }];
       }
     };
     exports2.SemanticTokensFeature = SemanticTokensFeature;
@@ -18008,12 +18008,12 @@ var require_node3 = __commonJS({
 // extension.ts
 var extension_exports = {};
 __export(extension_exports, {
-  activate: () => activate11,
+  activate: () => activate10,
   deactivate: () => deactivate
 });
 module.exports = __toCommonJS(extension_exports);
 var path = __toESM(require("path"));
-var vscode13 = __toESM(require("vscode"));
+var vscode12 = __toESM(require("vscode"));
 var import_vscode = require("vscode");
 
 // features/connectionsPanel.ts
@@ -20145,12 +20145,12 @@ async function updateTreeSelectionForActiveDocument() {
 }
 
 // features/documentPanels.ts
-var vscode9 = __toESM(require("vscode"));
+var vscode8 = __toESM(require("vscode"));
 
 // features/resultsPanel.ts
-var vscode7 = __toESM(require("vscode"));
+var vscode6 = __toESM(require("vscode"));
 
-// features/resultsEditor.ts
+// features/resultsViewer.ts
 var vscode5 = __toESM(require("vscode"));
 
 // features/markdown.ts
@@ -20246,7 +20246,7 @@ function escapeHtml(text) {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-// features/resultsEditor.ts
+// features/resultsViewer.ts
 var resultEditorViewType = "kusto.resultEditor";
 var languageClient3;
 var chartWebviews = /* @__PURE__ */ new Set();
@@ -20307,7 +20307,9 @@ function activate3(context, client2) {
     }),
     vscode5.commands.registerCommand("kusto.toggleChartEditor", () => {
       activeChartWebview?.webview.postMessage({ command: "toggleEditPanel" });
-    })
+    }),
+    vscode5.commands.registerCommand("kusto.saveChart", () => saveChartFromPanel()),
+    vscode5.commands.registerCommand("kusto.moveChartToMain", () => moveChartToMain())
   );
 }
 function isDarkMode() {
@@ -20942,6 +20944,7 @@ var ResultEditorProvider = class {
             removeBtn.onclick = function() { removeColumnItem(removeBtn); };
             li.appendChild(removeBtn);
             list.appendChild(li);
+            picker.selectedIndex = 0;
             onChartOptionChanged();
         }
 
@@ -20967,6 +20970,12 @@ var ResultEditorProvider = class {
             if (!panel) return;
             editPanelUserVisible = !editPanelUserVisible;
             panel.classList.toggle('visible', editPanelUserVisible);
+
+            // Notify extension host so it can move the panel if needed
+            if (window._vscodeApi) {
+                window._vscodeApi.postMessage({ command: 'editPanelToggled', visible: editPanelUserVisible });
+            }
+
             // Resize chart when panel toggles
             setTimeout(function() {
                 var plotDiv = document.querySelector('#chart .js-plotly-plot') || document.querySelector('#chart .plotly-graph-div');
@@ -21074,7 +21083,7 @@ var ResultEditorProvider = class {
     const yAxisOptions = ["", ...allYAxisTypes].map(
       (a) => `<option value="${a}"${a === currentYAxis ? " selected" : ""}>${a || "(default)"}</option>`
     ).join("");
-    const allColOptions = columnNames.map(
+    const allColOptions = `<option value="" disabled selected>Pick a column</option>` + columnNames.map(
       (c) => `<option value="${this.escapeHtml(c)}">${this.escapeHtml(c)}</option>`
     ).join("");
     const yColumnsItems = (opts.yColumns ?? []).map(
@@ -21183,6 +21192,159 @@ var ResultEditorProvider = class {
     return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 };
+var htmlBuilder = new ResultEditorProvider();
+var singletonPanel;
+var singletonResultData;
+var singletonChartOptionsOverride;
+var singletonChartOptionsTimer;
+function hasChartPanel() {
+  return singletonPanel !== void 0;
+}
+async function displayChart(client2, resultData) {
+  if (!resultData?.tables?.length) {
+    disposeSingletonPanel();
+    return;
+  }
+  if (!resultData.chartOptions) {
+    disposeSingletonPanel();
+    return;
+  }
+  singletonResultData = resultData;
+  singletonChartOptionsOverride = void 0;
+  const darkMode = isDarkMode();
+  const chartOptions = resultData.chartOptions;
+  const [dataResult, chartResult] = await Promise.all([
+    Promise.resolve(resultDataToHtml(resultData)),
+    chartOptions ? getChartAsHtml(client2, resultData, darkMode) : Promise.resolve(null)
+  ]);
+  const hasChart = !!chartResult?.html;
+  const columnNames = resultData.tables[0]?.columns?.map((c) => c.name) ?? [];
+  const html = htmlBuilder.buildDualViewHtml(dataResult, chartResult?.html, hasChart, chartOptions, columnNames);
+  showSingletonPanel(injectChartMessageHandler(html), resultData, (dataResult?.tables ?? []).map((t) => t.name));
+}
+function getChartViewColumn() {
+  return vscode5.ViewColumn.Beside;
+}
+function moveChartToMain() {
+  if (singletonPanel) {
+    const isMain = singletonPanel.viewColumn === vscode5.ViewColumn.One;
+    singletonPanel.reveal(isMain ? vscode5.ViewColumn.Beside : vscode5.ViewColumn.One, false);
+  }
+}
+function showSingletonPanel(html, resultData, tableNames) {
+  const viewColumn = getChartViewColumn();
+  if (!singletonPanel) {
+    singletonPanel = vscode5.window.createWebviewPanel(
+      "kusto",
+      "Chart",
+      { viewColumn, preserveFocus: true },
+      { enableScripts: true, retainContextWhenHidden: true }
+    );
+    vscode5.commands.executeCommand("kusto.chartPanelStateChanged");
+    registerChartWebview(singletonPanel);
+    singletonPanel.onDidChangeViewState(() => {
+      if (singletonPanel?.active) {
+        const hasChart2 = !!editorStates.get(singletonPanel)?.resultData?.chartOptions;
+        vscode5.commands.executeCommand("setContext", "kusto.resultEditorHasChart", hasChart2);
+      }
+    });
+    singletonPanel.webview.onDidReceiveMessage(async (message) => {
+      if (message.command === "viewChanged" && typeof message.viewId === "string") {
+        const state = editorStates.get(singletonPanel);
+        if (state) {
+          state.activeView = message.viewId;
+        }
+        return;
+      }
+      if (message.command === "copyText" && typeof message.text === "string") {
+        vscode5.env.clipboard.writeText(message.text);
+        return;
+      }
+      if (message.command === "chartOptionsChanged" && message.chartOptions) {
+        singletonChartOptionsOverride = message.chartOptions;
+        if (singletonChartOptionsTimer) {
+          clearTimeout(singletonChartOptionsTimer);
+        }
+        singletonChartOptionsTimer = setTimeout(() => updateSingletonChart(), 600);
+        return;
+      }
+      if (message.command === "editPanelToggled" && typeof message.visible === "boolean") {
+        if (message.visible) {
+          singletonPanel?.reveal(vscode5.ViewColumn.One, false);
+        } else {
+          singletonPanel?.reveal(getChartViewColumn(), false);
+        }
+        return;
+      }
+      handleChartWebviewMessage(message);
+    });
+    singletonPanel.onDidDispose(() => {
+      if (singletonChartOptionsTimer) {
+        clearTimeout(singletonChartOptionsTimer);
+      }
+      editorStates.delete(singletonPanel);
+      singletonPanel = void 0;
+      singletonResultData = void 0;
+      singletonChartOptionsOverride = void 0;
+      vscode5.commands.executeCommand("setContext", "kusto.resultEditorHasChart", false);
+      vscode5.commands.executeCommand("kusto.chartPanelStateChanged");
+    });
+  }
+  const hasChart = !!resultData.chartOptions;
+  editorStates.set(singletonPanel, {
+    resultData,
+    tableNames,
+    activeView: hasChart ? "chart" : "table-0"
+  });
+  singletonPanel.webview.html = html;
+  singletonPanel.reveal(viewColumn, true);
+}
+async function updateSingletonChart() {
+  if (!singletonPanel || !singletonResultData) {
+    return;
+  }
+  const chartOptions = singletonChartOptionsOverride ?? singletonResultData.chartOptions;
+  if (!chartOptions) {
+    return;
+  }
+  const state = editorStates.get(singletonPanel);
+  if (state && singletonChartOptionsOverride) {
+    state.chartOptionsOverride = singletonChartOptionsOverride;
+  }
+  const modifiedData = { ...singletonResultData, chartOptions };
+  const darkMode = isDarkMode();
+  const chartResult = await getChartAsHtml(languageClient3, modifiedData, darkMode);
+  if (chartResult?.html) {
+    singletonPanel.webview.postMessage({
+      command: "updateChart",
+      chartBodyHtml: htmlBuilder.extractBody(chartResult.html)
+    });
+  }
+}
+function disposeSingletonPanel() {
+  if (singletonPanel) {
+    try {
+      singletonPanel.dispose();
+    } catch {
+    }
+    singletonPanel = void 0;
+    singletonResultData = void 0;
+    singletonChartOptionsOverride = void 0;
+    vscode5.commands.executeCommand("kusto.chartPanelStateChanged");
+  }
+}
+async function saveChartFromPanel() {
+  if (!singletonResultData) {
+    vscode5.window.showWarningMessage("No chart data available to save.");
+    return;
+  }
+  const dataToSave = singletonChartOptionsOverride ? { ...singletonResultData, chartOptions: singletonChartOptionsOverride } : singletonResultData;
+  const result = await saveResults({ data: dataToSave });
+  if (result) {
+    singletonPanel?.dispose();
+    await vscode5.commands.executeCommand("vscode.openWith", result.uri, "kusto.resultEditor", vscode5.ViewColumn.One);
+  }
+}
 function getActiveEditorState() {
   if (!activeChartWebview?.active) {
     return void 0;
@@ -21241,96 +21403,15 @@ async function copyTableAsExpressionFromEditor() {
   return true;
 }
 
-// features/chartPanel.ts
-var vscode6 = __toESM(require("vscode"));
-var chartPanel;
-var currentResultData;
-var languageClient4;
-function activate4(context, client2) {
-  languageClient4 = client2;
-  context.subscriptions.push(
-    vscode6.commands.registerCommand("kusto.saveChart", () => saveChartFromPanel()),
-    vscode6.commands.registerCommand("kusto.moveChartToMain", () => moveChartToMain())
-  );
-}
-function hasChartPanel() {
-  return chartPanel !== void 0;
-}
-async function displayChart(client2, resultData) {
-  currentResultData = resultData;
-  const darkMode = isDarkMode();
-  const chartResult = resultData ? await getChartAsHtml(client2, resultData, darkMode) : null;
-  showChart(chartResult?.html);
-}
-function getChartViewColumn() {
-  return vscode6.ViewColumn.Beside;
-}
-function moveChartToMain() {
-  if (chartPanel) {
-    const isMain = chartPanel.viewColumn === vscode6.ViewColumn.One;
-    chartPanel.reveal(isMain ? vscode6.ViewColumn.Beside : vscode6.ViewColumn.One, false);
-  }
-}
-function showChart(chartHtml) {
-  if (chartHtml) {
-    const viewColumn = getChartViewColumn();
-    if (!chartPanel) {
-      chartPanel = vscode6.window.createWebviewPanel(
-        "kusto",
-        "Chart",
-        {
-          viewColumn,
-          preserveFocus: true
-        },
-        {
-          enableScripts: true,
-          retainContextWhenHidden: true
-        }
-      );
-      vscode6.commands.executeCommand("kusto.chartPanelStateChanged");
-      registerChartWebview(chartPanel);
-      chartPanel.webview.onDidReceiveMessage(async (message) => {
-        handleChartWebviewMessage(message);
-      });
-      chartPanel.onDidDispose(() => {
-        chartPanel = void 0;
-        currentResultData = void 0;
-        vscode6.commands.executeCommand("kusto.chartPanelStateChanged");
-      });
-    }
-    chartPanel.webview.html = injectChartMessageHandler(chartHtml);
-    chartPanel.reveal(viewColumn, true);
-  } else if (chartPanel) {
-    try {
-      chartPanel.dispose();
-    } catch {
-    }
-    chartPanel = void 0;
-    currentResultData = void 0;
-    vscode6.commands.executeCommand("kusto.chartPanelStateChanged");
-  }
-}
-async function saveChartFromPanel() {
-  if (!currentResultData) {
-    vscode6.window.showWarningMessage("No chart data available to save.");
-    return;
-  }
-  const result = await saveResults({ data: currentResultData });
-  if (result) {
-    chartPanel?.dispose();
-    await vscode6.commands.executeCommand("vscode.openWith", result.uri, "kusto.resultEditor", vscode6.ViewColumn.One);
-  }
-}
-
 // features/resultsPanel.ts
 var resultsView;
 var lastResultData;
 var lastTableNames = [];
 var activeTabIndex = 0;
-var languageClient5;
-function activate5(context, client2) {
-  languageClient5 = client2;
-  vscode7.window.registerWebviewViewProvider("kusto.resultsView", {
+var languageClient4;
+function activate4(context, client2) {
+  languageClient4 = client2;
+  vscode6.window.registerWebviewViewProvider("kusto.resultsView", {
     resolveWebviewView(webviewView) {
       resultsView = webviewView;
       webviewView.webview.options = {
@@ -21350,7 +21431,7 @@ function activate5(context, client2) {
           sendExpressionToWebview();
         }
         if (message.command === "copyText" && typeof message.text === "string") {
-          vscode7.env.clipboard.writeText(message.text);
+          vscode6.env.clipboard.writeText(message.text);
         }
       });
       webviewView.webview.html = "<html>no results</html>";
@@ -21361,12 +21442,13 @@ function activate5(context, client2) {
       // Keep the view alive even when hidden
     }
   });
-  vscode7.commands.executeCommand("kusto.resultsView.focus");
+  vscode6.commands.executeCommand("kusto.resultsView.focus");
   context.subscriptions.push(
-    vscode7.commands.registerCommand("kusto.copyData", () => copyData()),
-    vscode7.commands.registerCommand("kusto.copyCell", () => copyCell()),
-    vscode7.commands.registerCommand("kusto.copyTableAsExpression", () => copyTableAsExpression(client2)),
-    vscode7.commands.registerCommand("kusto.saveResults", () => saveResultsFromPanel(client2))
+    vscode6.commands.registerCommand("kusto.copyData", () => copyData()),
+    vscode6.commands.registerCommand("kusto.copyCell", () => copyCell()),
+    vscode6.commands.registerCommand("kusto.copyTableAsExpression", () => copyTableAsExpression(client2)),
+    vscode6.commands.registerCommand("kusto.saveResults", () => saveResultsFromPanel(client2)),
+    vscode6.commands.registerCommand("kusto.chartResults", () => chartResults(client2))
   );
 }
 async function displayResults(client2, resultData) {
@@ -21385,14 +21467,25 @@ async function displayResults(client2, resultData) {
 }
 async function saveResultsFromPanel(client2) {
   if (!lastResultData) {
-    vscode7.window.showWarningMessage("No result data available to save.");
+    vscode6.window.showWarningMessage("No result data available to save.");
     return;
   }
   const result = await saveResults({ data: lastResultData });
   if (result) {
     await displayChart(client2, void 0);
-    await vscode7.commands.executeCommand("vscode.openWith", result.uri, "kusto.resultEditor", vscode7.ViewColumn.One);
+    await vscode6.commands.executeCommand("vscode.openWith", result.uri, "kusto.resultEditor", vscode6.ViewColumn.One);
   }
+}
+async function chartResults(client2) {
+  if (!lastResultData) {
+    vscode6.window.showWarningMessage("No result data available to chart.");
+    return;
+  }
+  const chartData = {
+    ...lastResultData,
+    chartOptions: lastResultData.chartOptions ?? { kind: "ColumnChart" }
+  };
+  await displayChart(client2, chartData);
 }
 async function displayError(error) {
   var htmlMessage = `<html><body><table><tr><td>\u274C</td><td><pre>${escapeHtml2(error.message)}</pre></td></tr></tr><td></td><td><pre>${escapeHtml2(error.details || "")}</pre></td></tr></table></body></html>`;
@@ -21475,7 +21568,7 @@ function escapeHtml2(text) {
 }
 async function showResultsHtml(dataHtml, rowCount, hasChart, hasError) {
   if (!resultsView) {
-    await vscode7.commands.executeCommand("kusto.resultsView.focus");
+    await vscode6.commands.executeCommand("kusto.resultsView.focus");
   }
   if (!resultsView) {
     return;
@@ -21499,7 +21592,7 @@ async function showResultsHtml(dataHtml, rowCount, hasChart, hasError) {
       resultsView.show(true);
     }
   } catch (error) {
-    await vscode7.commands.executeCommand("kusto.resultsView.focus");
+    await vscode6.commands.executeCommand("kusto.resultsView.focus");
     if (resultsView) {
       try {
         resultsView.webview.html = injectMessageHandler(dataHtml);
@@ -21513,7 +21606,7 @@ async function showResultsHtml(dataHtml, rowCount, hasChart, hasError) {
           resultsView.show(true);
         }
       } catch (retryError) {
-        vscode7.window.showErrorMessage(`Failed to display results: ${retryError}`);
+        vscode6.window.showErrorMessage(`Failed to display results: ${retryError}`);
       }
     }
   }
@@ -21538,17 +21631,17 @@ async function copyTableAsExpression(client2) {
     const tableName = lastTableNames[activeTabIndex];
     const result = await getDataAsExpression(client2, lastResultData, tableName);
     if (result?.expression) {
-      await vscode7.env.clipboard.writeText(result.expression);
+      await vscode6.env.clipboard.writeText(result.expression);
     }
   } catch (error) {
-    vscode7.window.showErrorMessage(`Failed to copy as expression: ${error}`);
+    vscode6.window.showErrorMessage(`Failed to copy as expression: ${error}`);
   }
 }
 async function copyData() {
   if (await copyDataFromEditor()) {
     return;
   }
-  if (!languageClient5 || !lastResultData) {
+  if (!languageClient4 || !lastResultData) {
     return;
   }
   const tableName = lastTableNames[activeTabIndex];
@@ -21561,7 +21654,7 @@ async function copyData() {
       { format: "Text", data: markdown || html, encoding: "text" }
     ]);
   } else if (markdown) {
-    vscode7.env.clipboard.writeText(markdown);
+    vscode6.env.clipboard.writeText(markdown);
   }
 }
 var webviewMessageHandlerScript = `
@@ -21631,12 +21724,12 @@ var webviewMessageHandlerScript = `
     });
 </script>`;
 async function sendExpressionToWebview() {
-  if (!resultsView || !languageClient5 || !lastResultData) {
+  if (!resultsView || !languageClient4 || !lastResultData) {
     return;
   }
   try {
     const tableName = lastTableNames[activeTabIndex];
-    const result = await getDataAsExpression(languageClient5, lastResultData, tableName);
+    const result = await getDataAsExpression(languageClient4, lastResultData, tableName);
     if (result?.expression && resultsView) {
       resultsView.webview.postMessage({ command: "setExpression", expression: result.expression });
     }
@@ -21664,22 +21757,22 @@ function injectMessageHandler(html) {
 }
 
 // features/resultsCache.ts
-var vscode8 = __toESM(require("vscode"));
-var languageClient6 = null;
+var vscode7 = __toESM(require("vscode"));
+var languageClient5 = null;
 var documentCache = /* @__PURE__ */ new Map();
 function initialize(client2) {
-  languageClient6 = client2;
-  vscode8.workspace.onDidCloseTextDocument((document) => {
+  languageClient5 = client2;
+  vscode7.workspace.onDidCloseTextDocument((document) => {
     if (document.languageId === "kusto") {
       documentCache.delete(document.uri.toString());
     }
   });
 }
 async function getMinifiedKey(query) {
-  if (!languageClient6) {
+  if (!languageClient5) {
     return query.replace(/\s+/g, " ").trim();
   }
-  const result = await getMinifiedQuery(languageClient6, query);
+  const result = await getMinifiedQuery(languageClient5, query);
   return result?.minifiedQuery ?? query.replace(/\s+/g, " ").trim();
 }
 async function addToCache(uri, queryText, data) {
@@ -21709,35 +21802,34 @@ async function hasInCache(uri, queryText) {
 }
 
 // features/documentPanels.ts
-var PASTE_KIND = vscode9.DocumentDropOrPasteEditKind.Text.append("kusto");
-var errorRangeDecoration = vscode9.window.createTextEditorDecorationType({
+var PASTE_KIND = vscode8.DocumentDropOrPasteEditKind.Text.append("kusto");
+var errorRangeDecoration = vscode8.window.createTextEditorDecorationType({
   before: {
     contentText: "\u274C",
     margin: "0 4px 0 0"
   }
 });
 var codeLensProvider;
-function activate6(context, client2) {
-  activate5(context, client2);
+function activate5(context, client2) {
   activate4(context, client2);
   context.subscriptions.push(
-    vscode9.commands.registerCommand("kusto.runQuery", (startLine, startChar, endLine, endChar) => runQuery2(client2, rangeFromArgs(startLine, startChar, endLine, endChar))),
-    vscode9.commands.registerCommand("kusto.copyQuery", () => copyQuery(client2)),
-    vscode9.commands.registerCommand("kusto.copyQueryTransparent", (startLine, startChar, endLine, endChar) => copyQueryTransparent(client2, rangeFromArgs(startLine, startChar, endLine, endChar))),
-    vscode9.commands.registerCommand("kusto.formatQuery", (startLine, startChar, endLine, endChar) => formatQuery(client2, rangeFromArgs(startLine, startChar, endLine, endChar))),
-    vscode9.commands.registerCommand("kusto.selectQuery", (startLine, startChar, endLine, endChar) => selectQuery(startLine, startChar, endLine, endChar)),
-    vscode9.commands.registerCommand("kusto.showResults", (uri, line, character) => showResults(client2, uri, line, character)),
-    vscode9.commands.registerCommand("kusto.refreshDocumentSchema", () => refreshDocumentSchema2(client2))
+    vscode8.commands.registerCommand("kusto.runQuery", (startLine, startChar, endLine, endChar) => runQuery2(client2, rangeFromArgs(startLine, startChar, endLine, endChar))),
+    vscode8.commands.registerCommand("kusto.copyQuery", () => copyQuery(client2)),
+    vscode8.commands.registerCommand("kusto.copyQueryTransparent", (startLine, startChar, endLine, endChar) => copyQueryTransparent(client2, rangeFromArgs(startLine, startChar, endLine, endChar))),
+    vscode8.commands.registerCommand("kusto.formatQuery", (startLine, startChar, endLine, endChar) => formatQuery(client2, rangeFromArgs(startLine, startChar, endLine, endChar))),
+    vscode8.commands.registerCommand("kusto.selectQuery", (startLine, startChar, endLine, endChar) => selectQuery(startLine, startChar, endLine, endChar)),
+    vscode8.commands.registerCommand("kusto.showResults", (uri, line, character) => showResults(client2, uri, line, character)),
+    vscode8.commands.registerCommand("kusto.refreshDocumentSchema", () => refreshDocumentSchema2(client2))
   );
   codeLensProvider = new KustoCodeLensProvider(client2);
   context.subscriptions.push(
-    vscode9.languages.registerCodeLensProvider(
+    vscode8.languages.registerCodeLensProvider(
       { language: "kusto" },
       codeLensProvider
     )
   );
   context.subscriptions.push(
-    vscode9.languages.registerDocumentPasteEditProvider(
+    vscode8.languages.registerDocumentPasteEditProvider(
       { language: "kusto" },
       new KustoPasteEditProvider(client2),
       {
@@ -21756,7 +21848,7 @@ function rangeFromArgs(startLine, startChar, endLine, endChar) {
   return void 0;
 }
 async function runQuery2(client2, queryRange) {
-  const editor = vscode9.window.activeTextEditor;
+  const editor = vscode8.window.activeTextEditor;
   if (!editor || editor.document.languageId !== "kusto") {
     return;
   }
@@ -21774,7 +21866,7 @@ async function runQuery2(client2, queryRange) {
     if (!resolvedRange) {
       return;
     }
-    const queryText = editor.document.getText(new vscode9.Range(
+    const queryText = editor.document.getText(new vscode8.Range(
       resolvedRange.start.line,
       resolvedRange.start.character,
       resolvedRange.end.line,
@@ -21794,7 +21886,7 @@ async function runQuery2(client2, queryRange) {
       await displayChart(client2, void 0);
       if (runResult.error.range) {
         const r = runResult.error.range;
-        const range = new vscode9.Range(r.start.line, r.start.character, r.end.line, r.end.character);
+        const range = new vscode8.Range(r.start.line, r.start.character, r.end.line, r.end.character);
         editor.setDecorations(errorRangeDecoration, [range]);
       }
     } else if (runResult?.data) {
@@ -21804,7 +21896,7 @@ async function runQuery2(client2, queryRange) {
     }
     codeLensProvider.refresh();
   } catch (error) {
-    vscode9.window.showErrorMessage(`Failed to execute query: ${error}`);
+    vscode8.window.showErrorMessage(`Failed to execute query: ${error}`);
   }
 }
 async function showResults(client2, uri, line, character) {
@@ -21813,11 +21905,11 @@ async function showResults(client2, uri, line, character) {
     if (!queryRange) {
       return;
     }
-    const editor = vscode9.window.activeTextEditor;
+    const editor = vscode8.window.activeTextEditor;
     if (!editor) {
       return;
     }
-    const queryText = editor.document.getText(new vscode9.Range(
+    const queryText = editor.document.getText(new vscode8.Range(
       queryRange.start.line,
       queryRange.start.character,
       queryRange.end.line,
@@ -21829,24 +21921,24 @@ async function showResults(client2, uri, line, character) {
       await displayChart(client2, cachedData);
     }
   } catch (error) {
-    vscode9.window.showErrorMessage(`Failed to show results: ${error}`);
+    vscode8.window.showErrorMessage(`Failed to show results: ${error}`);
   }
 }
 function selectQuery(startLine, startChar, endLine, endChar) {
-  const editor = vscode9.window.activeTextEditor;
+  const editor = vscode8.window.activeTextEditor;
   if (!editor || editor.document.languageId !== "kusto") {
     return;
   }
-  const start = new vscode9.Position(startLine, startChar);
-  let end = new vscode9.Position(endLine, endChar);
+  const start = new vscode8.Position(startLine, startChar);
+  let end = new vscode8.Position(endLine, endChar);
   if (endLine > startLine && endChar === 0) {
     end = editor.document.lineAt(endLine - 1).range.end;
   }
-  editor.selection = new vscode9.Selection(start, end);
-  editor.revealRange(new vscode9.Range(start, end));
+  editor.selection = new vscode8.Selection(start, end);
+  editor.revealRange(new vscode8.Range(start, end));
 }
 async function copyQuery(client2) {
-  const editor = vscode9.window.activeTextEditor;
+  const editor = vscode8.window.activeTextEditor;
   if (!editor || editor.document.languageId !== "kusto") {
     return;
   }
@@ -21861,21 +21953,21 @@ async function copyQuery(client2) {
       return;
     }
     const previousSelection = editor.selection;
-    const range = new vscode9.Range(
+    const range = new vscode8.Range(
       queryRange.start.line,
       queryRange.start.character,
       queryRange.end.line,
       queryRange.end.character
     );
-    editor.selection = new vscode9.Selection(range.start, range.end);
-    await vscode9.commands.executeCommand("editor.action.clipboardCopyWithSyntaxHighlightingAction");
+    editor.selection = new vscode8.Selection(range.start, range.end);
+    await vscode8.commands.executeCommand("editor.action.clipboardCopyWithSyntaxHighlightingAction");
     editor.selection = previousSelection;
   } catch (error) {
-    vscode9.window.showErrorMessage(`Failed to copy query: ${error}`);
+    vscode8.window.showErrorMessage(`Failed to copy query: ${error}`);
   }
 }
 async function copyQueryTransparent(client2, codeLensRange) {
-  const editor = vscode9.window.activeTextEditor;
+  const editor = vscode8.window.activeTextEditor;
   if (!editor || editor.document.languageId !== "kusto") {
     return;
   }
@@ -21901,7 +21993,7 @@ async function copyQueryTransparent(client2, codeLensRange) {
     if (!result?.html) {
       return;
     }
-    const range = new vscode9.Range(
+    const range = new vscode8.Range(
       queryRange.start.line,
       queryRange.start.character,
       queryRange.end.line,
@@ -21914,7 +22006,7 @@ async function copyQueryTransparent(client2, codeLensRange) {
     ];
     await copyToClipboard(items);
   } catch (error) {
-    vscode9.window.showErrorMessage(`Failed to copy query: ${error}`);
+    vscode8.window.showErrorMessage(`Failed to copy query: ${error}`);
   }
 }
 function wrapHtmlForClipboard(html) {
@@ -21937,7 +22029,7 @@ function wrapHtmlForClipboard(html) {
   return full.replace("SSSSSSSSSS", startHtml.toString().padStart(10, "0")).replace("EEEEEEEEEE", endHtml.toString().padStart(10, "0")).replace("FFFFFFFFFF", startFrag.toString().padStart(10, "0")).replace("GGGGGGGGGG", endFrag.toString().padStart(10, "0"));
 }
 async function formatQuery(client2, codeLensRange) {
-  const editor = vscode9.window.activeTextEditor;
+  const editor = vscode8.window.activeTextEditor;
   if (!editor || editor.document.languageId !== "kusto") {
     return;
   }
@@ -21954,13 +22046,13 @@ async function formatQuery(client2, codeLensRange) {
     if (!queryRange) {
       return;
     }
-    const range = new vscode9.Range(
+    const range = new vscode8.Range(
       queryRange.start.line,
       queryRange.start.character,
       queryRange.end.line,
       queryRange.end.character
     );
-    const edits = await vscode9.commands.executeCommand(
+    const edits = await vscode8.commands.executeCommand(
       "vscode.executeFormatRangeProvider",
       editor.document.uri,
       range,
@@ -21974,17 +22066,17 @@ async function formatQuery(client2, codeLensRange) {
       });
     }
   } catch (error) {
-    vscode9.window.showErrorMessage(`Failed to format query: ${error}`);
+    vscode8.window.showErrorMessage(`Failed to format query: ${error}`);
   }
 }
 async function refreshDocumentSchema2(client2) {
-  const editor = vscode9.window.activeTextEditor;
+  const editor = vscode8.window.activeTextEditor;
   if (!editor || editor.document.languageId !== "kusto") {
     return;
   }
-  await vscode9.window.withProgress(
+  await vscode8.window.withProgress(
     {
-      location: vscode9.ProgressLocation.Notification,
+      location: vscode8.ProgressLocation.Notification,
       title: "Refreshing schema for referenced databases...",
       cancellable: false
     },
@@ -21993,14 +22085,14 @@ async function refreshDocumentSchema2(client2) {
         const uri = editor.document.uri.toString();
         await refreshDocumentSchema(client2, uri);
       } catch (error) {
-        vscode9.window.showErrorMessage(`Failed to refresh schema: ${error}`);
+        vscode8.window.showErrorMessage(`Failed to refresh schema: ${error}`);
       }
     }
   );
 }
 var KustoCodeLensProvider = class {
   constructor(client2) {
-    this._onDidChangeCodeLenses = new vscode9.EventEmitter();
+    this._onDidChangeCodeLenses = new vscode8.EventEmitter();
     this.onDidChangeCodeLenses = this._onDidChangeCodeLenses.event;
     this.client = client2;
   }
@@ -22015,7 +22107,7 @@ var KustoCodeLensProvider = class {
     }
     const lenses = [];
     for (const range of result.ranges) {
-      const vsRange = new vscode9.Range(
+      const vsRange = new vscode8.Range(
         range.start.line,
         range.start.character,
         range.end.line,
@@ -22025,35 +22117,35 @@ var KustoCodeLensProvider = class {
       if (queryText.trim().length === 0) {
         continue;
       }
-      lenses.push(new vscode9.CodeLens(vsRange, {
+      lenses.push(new vscode8.CodeLens(vsRange, {
         title: "\u2B1A Select",
         command: "kusto.selectQuery",
         tooltip: "Select this query",
         arguments: [range.start.line, range.start.character, range.end.line, range.end.character]
       }));
       if (!isEntityDefinition) {
-        lenses.push(new vscode9.CodeLens(vsRange, {
+        lenses.push(new vscode8.CodeLens(vsRange, {
           title: "\u25B6 Run",
           command: "kusto.runQuery",
           tooltip: "Run this query",
           arguments: [range.start.line, range.start.character, range.end.line, range.end.character]
         }));
       }
-      lenses.push(new vscode9.CodeLens(vsRange, {
+      lenses.push(new vscode8.CodeLens(vsRange, {
         title: "\u{1F4CB} Copy",
         command: "kusto.copyQueryTransparent",
         tooltip: "Copy this query with syntax highlighting",
         arguments: [range.start.line, range.start.character, range.end.line, range.end.character]
       }));
       if (!isEntityDefinition) {
-        lenses.push(new vscode9.CodeLens(vsRange, {
+        lenses.push(new vscode8.CodeLens(vsRange, {
           title: "\u270E Format",
           command: "kusto.formatQuery",
           tooltip: "Format this query",
           arguments: [range.start.line, range.start.character, range.end.line, range.end.character]
         }));
         if (await hasInCache(document.uri.toString(), queryText)) {
-          lenses.push(new vscode9.CodeLens(vsRange, {
+          lenses.push(new vscode8.CodeLens(vsRange, {
             title: "\u{1F4CA} Results",
             command: "kusto.showResults",
             tooltip: "Show cached results for this query",
@@ -22101,7 +22193,7 @@ var KustoPasteEditProvider = class {
     if (!result || result === clipboardContext2.text) {
       return void 0;
     }
-    const edit = new vscode9.DocumentPasteEdit(
+    const edit = new vscode8.DocumentPasteEdit(
       result,
       "Paste with connection context",
       PASTE_KIND
@@ -22110,7 +22202,7 @@ var KustoPasteEditProvider = class {
   }
 };
 function activateQuerySeparators(context, client2) {
-  const querySeparatorDecoration = vscode9.window.createTextEditorDecorationType({
+  const querySeparatorDecoration = vscode8.window.createTextEditorDecorationType({
     isWholeLine: true,
     borderWidth: "0 0 3px 0",
     borderStyle: "solid",
@@ -22123,17 +22215,17 @@ function activateQuerySeparators(context, client2) {
       if (!result) {
         return;
       }
-      const editors = vscode9.window.visibleTextEditors.filter(
+      const editors = vscode8.window.visibleTextEditors.filter(
         (e) => e.document.uri.toString() === result.uri
       );
-      const config = vscode9.workspace.getConfiguration("kusto");
+      const config = vscode8.workspace.getConfiguration("kusto");
       const enableSeparators = config.get("editor.showQuerySeparators", true);
       const firstEditor = editors[0];
       if (!firstEditor) {
         return;
       }
       const doc = firstEditor.document;
-      const ranges = result.ranges.slice(1, result.ranges.length).filter((r) => doc.getText(new vscode9.Range(r.start.line, 0, r.end.line, 0)).trim().length > 0).filter((r) => r.start.line > 0 && r.start.line < doc.lineCount).map((r) => new vscode9.Range(r.start.line - 1, 0, r.start.line - 1, 0));
+      const ranges = result.ranges.slice(1, result.ranges.length).filter((r) => doc.getText(new vscode8.Range(r.start.line, 0, r.end.line, 0)).trim().length > 0).filter((r) => r.start.line > 0 && r.start.line < doc.lineCount).map((r) => new vscode8.Range(r.start.line - 1, 0, r.start.line - 1, 0));
       for (const editor of editors) {
         editor.setDecorations(querySeparatorDecoration, []);
         if (enableSeparators) {
@@ -22145,16 +22237,16 @@ function activateQuerySeparators(context, client2) {
     }
   }
   context.subscriptions.push(
-    vscode9.workspace.onDidOpenTextDocument(async (document) => {
+    vscode8.workspace.onDidOpenTextDocument(async (document) => {
       if (document.languageId === "kusto") {
         await updateQuerySeparators(document.uri.toString());
       }
     })
   );
   context.subscriptions.push(
-    vscode9.workspace.onDidChangeTextDocument((event) => {
+    vscode8.workspace.onDidChangeTextDocument((event) => {
       if (event.document.languageId === "kusto") {
-        const errorEditor = vscode9.window.visibleTextEditors.find(
+        const errorEditor = vscode8.window.visibleTextEditors.find(
           (e) => e.document.uri.toString() === event.document.uri.toString()
         );
         if (errorEditor) {
@@ -22173,7 +22265,7 @@ function activateQuerySeparators(context, client2) {
       }
     })
   );
-  for (const document of vscode9.workspace.textDocuments) {
+  for (const document of vscode8.workspace.textDocuments) {
     if (document.languageId === "kusto") {
       updateQuerySeparators(document.uri.toString());
     }
@@ -22184,33 +22276,33 @@ function activateSemanticColoring(context, client2) {
   const serverCapabilities = client2.initializeResult?.capabilities;
   if (serverCapabilities?.semanticTokensProvider) {
     setTimeout(() => {
-      vscode9.workspace.textDocuments.forEach((doc) => {
+      vscode8.workspace.textDocuments.forEach((doc) => {
         if (doc.languageId === "kusto") {
-          const editor = vscode9.window.visibleTextEditors.find((e) => e.document === doc);
+          const editor = vscode8.window.visibleTextEditors.find((e) => e.document === doc);
           if (editor) {
-            vscode9.commands.executeCommand("vscode.executeDocumentSemanticTokensProvider", doc.uri);
+            vscode8.commands.executeCommand("vscode.executeDocumentSemanticTokensProvider", doc.uri);
           }
         }
       });
     }, 100);
   }
   context.subscriptions.push(
-    vscode9.workspace.onDidOpenTextDocument((doc) => {
+    vscode8.workspace.onDidOpenTextDocument((doc) => {
       if (doc.languageId === "kusto") {
         setTimeout(() => {
-          vscode9.commands.executeCommand("vscode.executeDocumentSemanticTokensProvider", doc.uri);
+          vscode8.commands.executeCommand("vscode.executeDocumentSemanticTokensProvider", doc.uri);
         }, 100);
       }
     })
   );
 }
 async function forceRefreshSemanticTokens() {
-  for (const editor of vscode9.window.visibleTextEditors) {
+  for (const editor of vscode8.window.visibleTextEditors) {
     if (editor.document.languageId === "kusto") {
       try {
         const lastLine = Math.max(0, editor.document.lineCount - 1);
         const charOffset = editor.document.lineAt(lastLine).text.length;
-        const endPos = new vscode9.Position(lastLine, charOffset);
+        const endPos = new vscode8.Position(lastLine, charOffset);
         await editor.edit((editBuilder) => {
           editBuilder.insert(endPos, " ");
         }, {
@@ -22218,7 +22310,7 @@ async function forceRefreshSemanticTokens() {
           undoStopAfter: false
         });
         await editor.edit((editBuilder) => {
-          editBuilder.delete(new vscode9.Range(endPos, endPos.translate(0, 1)));
+          editBuilder.delete(new vscode8.Range(endPos, endPos.translate(0, 1)));
         }, {
           undoStopBefore: false,
           undoStopAfter: false
@@ -22230,10 +22322,10 @@ async function forceRefreshSemanticTokens() {
 }
 
 // features/copilot.ts
-var vscode10 = __toESM(require("vscode"));
+var vscode9 = __toESM(require("vscode"));
 var COPILOT_PARTICIPANT_ID = "kusto";
 var MAX_SCHEMA_CHARS = 3e4;
-var languageClient7;
+var languageClient6;
 async function resolveConnection(input) {
   let cluster = input.cluster;
   let database = input.database;
@@ -22247,7 +22339,7 @@ async function resolveConnection(input) {
   return cluster ? { cluster, database: database ?? "" } : void 0;
 }
 function textResult(text) {
-  return new vscode10.LanguageModelToolResult([new vscode10.LanguageModelTextPart(text)]);
+  return new vscode9.LanguageModelToolResult([new vscode9.LanguageModelTextPart(text)]);
 }
 function registerTool(context, id, progressMessage, handler) {
   const tool = {
@@ -22258,10 +22350,10 @@ function registerTool(context, id, progressMessage, handler) {
       return textResult(await handler(options.input, token));
     }
   };
-  context.subscriptions.push(vscode10.lm.registerTool(id, tool));
+  context.subscriptions.push(vscode9.lm.registerTool(id, tool));
 }
-function activate7(context, client2) {
-  languageClient7 = client2;
+function activate6(context, client2) {
+  languageClient6 = client2;
   registerTool(context, "kusto_getClusters", "Getting available clusters...", getClusters);
   registerTool(context, "kusto_getActiveConnection", "Getting active connection...", getActiveConnection);
   registerTool(context, "kusto_getDatabases", "Getting databases...", getDatabases);
@@ -22286,8 +22378,8 @@ function activate7(context, client2) {
   registerTool(context, "kusto_getQueryResultType", "Getting query result type...", getQueryResultType2);
   registerTool(context, "kusto_getFunctionResultType", "Getting function result type...", getFunctionResultType2);
   registerTool(context, "kusto_runQuery", "Running query...", runQuery3);
-  const participant = vscode10.chat.createChatParticipant(COPILOT_PARTICIPANT_ID, handleChatRequest);
-  participant.iconPath = new vscode10.ThemeIcon("database");
+  const participant = vscode9.chat.createChatParticipant(COPILOT_PARTICIPANT_ID, handleChatRequest);
+  participant.iconPath = new vscode9.ThemeIcon("database");
   context.subscriptions.push(participant);
 }
 async function getClusters() {
@@ -22412,7 +22504,7 @@ async function getEntityDefinition(input, entityType) {
     return "No Kusto connection available. Please connect to a cluster and database first.";
   }
   const uri = `${ENTITY_DEFINITION_SCHEME}://${encodeURIComponent(connection.cluster)}/${encodeURIComponent(connection.database)}/${encodeURIComponent(entityType)}/${encodeURIComponent(input.name)}.kql`;
-  const result = await getEntityDefinitionContent(languageClient7, uri);
+  const result = await getEntityDefinitionContent(languageClient6, uri);
   if (!result) {
     return `${entityType} "${input.name}" not found in ${connection.cluster}/${connection.database}.`;
   }
@@ -22437,21 +22529,21 @@ async function getGraphModelDefinition(input) {
   return getEntityDefinition(input, "Graph");
 }
 async function getCurrentQuery() {
-  const editor = vscode10.window.activeTextEditor;
+  const editor = vscode9.window.activeTextEditor;
   if (!editor || editor.document.languageId !== "kusto") {
     return "No active Kusto document. Open a .kql file first.";
   }
   const uri = editor.document.uri.toString();
   const cursorPos = editor.selection.active;
   const queryRange = await getQueryRange(
-    languageClient7,
+    languageClient6,
     uri,
     { line: cursorPos.line, character: cursorPos.character }
   );
   if (!queryRange) {
     return "No query found at the current cursor position.";
   }
-  const range = new vscode10.Range(
+  const range = new vscode9.Range(
     queryRange.start.line,
     queryRange.start.character,
     queryRange.end.line,
@@ -22462,11 +22554,11 @@ async function getCurrentQuery() {
 ${queryText}`;
 }
 async function getQueryRanges2() {
-  const editor = vscode10.window.activeTextEditor;
+  const editor = vscode9.window.activeTextEditor;
   if (!editor || editor.document.languageId !== "kusto") {
     return "No active Kusto document. Open a .kql file first.";
   }
-  const result = await getQueryRanges(languageClient7, editor.document.uri.toString());
+  const result = await getQueryRanges(languageClient6, editor.document.uri.toString());
   if (!result || result.ranges.length === 0) {
     return "No queries found in the active document.";
   }
@@ -22488,7 +22580,7 @@ async function validateQuery2(input) {
   if (!cluster) {
     return "No cluster specified and no active connection. Cannot validate query without schema context.";
   }
-  const result = await validateQuery(languageClient7, input.query, cluster, database);
+  const result = await validateQuery(languageClient6, input.query, cluster, database);
   if (!result) {
     return "Validation failed. The server did not return a result.";
   }
@@ -22516,7 +22608,7 @@ async function getQueryResultType2(input) {
   if (!cluster) {
     return "No cluster specified and no active connection. Cannot determine query result type.";
   }
-  const result = await getQueryResultType(languageClient7, input.query, cluster, database);
+  const result = await getQueryResultType(languageClient6, input.query, cluster, database);
   if (!result || !result.resultType) {
     return "The query does not have a determinable result type (it may not be a tabular or scalar expression).";
   }
@@ -22527,7 +22619,7 @@ async function getFunctionResultType2(input) {
   if (!connection) {
     return "No Kusto connection available. Please connect to a cluster and database first.";
   }
-  const result = await getFunctionResultType(languageClient7, connection.cluster, connection.database, input.name);
+  const result = await getFunctionResultType(languageClient6, connection.cluster, connection.database, input.name);
   if (!result || !result.resultType) {
     return `Function "${input.name}" was not found or does not have a determinable result type.`;
   }
@@ -22546,7 +22638,7 @@ async function runQuery3(input) {
   if (!cluster) {
     return "No cluster specified and no active connection. Cannot run query.";
   }
-  const result = await runQuery(languageClient7, input.query, cluster, database, true, input.maxRows);
+  const result = await runQuery(languageClient6, input.query, cluster, database, true, input.maxRows);
   if (!result) {
     return "Query execution failed. The server did not return a result.";
   }
@@ -22557,8 +22649,8 @@ async function runQuery3(input) {
     return "Query returned no results.";
   }
   if (input.showResults) {
-    await displayResults(languageClient7, result.data);
-    await displayChart(languageClient7, result.data);
+    await displayResults(languageClient6, result.data);
+    await displayChart(languageClient6, result.data);
   }
   return resultTableToMarkdown(result.data.tables[0]);
 }
@@ -22615,14 +22707,14 @@ Rules:
 
 User question: ${request.prompt}`;
   try {
-    const models = await vscode10.lm.selectChatModels({});
+    const models = await vscode9.lm.selectChatModels({});
     const model = models?.[0];
     if (model) {
       stream.markdown(`*Using model: ${model.name}*
 
 `);
       const messages = [
-        vscode10.LanguageModelChatMessage.User(combinedPrompt)
+        vscode9.LanguageModelChatMessage.User(combinedPrompt)
       ];
       const chatResponse = await model.sendRequest(messages, {}, token);
       for await (const fragment of chatResponse.text) {
@@ -22632,7 +22724,7 @@ User question: ${request.prompt}`;
       stream.markdown("\u274C No language model available. Please ensure GitHub Copilot is installed and active.");
     }
   } catch (error) {
-    if (error instanceof vscode10.LanguageModelError) {
+    if (error instanceof vscode9.LanguageModelError) {
       stream.markdown(`\u274C Language model error: ${error.message}`);
     } else {
       stream.markdown(`\u274C Unexpected error: ${error}`);
@@ -22683,11 +22775,11 @@ function compressSchema(dbSchema) {
 }
 
 // features/connectionStatusBar.ts
-var vscode11 = __toESM(require("vscode"));
+var vscode10 = __toESM(require("vscode"));
 var connectionStatusBarItem;
-function activate8(context) {
-  connectionStatusBarItem = vscode11.window.createStatusBarItem(
-    vscode11.StatusBarAlignment.Left,
+function activate7(context) {
+  connectionStatusBarItem = vscode10.window.createStatusBarItem(
+    vscode10.StatusBarAlignment.Left,
     0
     // priority (higher = more to the left)
   );
@@ -22695,11 +22787,11 @@ function activate8(context) {
   connectionStatusBarItem.show();
   context.subscriptions.push(connectionStatusBarItem);
   context.subscriptions.push(registerOnDocumentConnectionChanged(async (uri) => {
-    if (vscode11.window.activeTextEditor?.document.uri.toString() === uri) {
+    if (vscode10.window.activeTextEditor?.document.uri.toString() === uri) {
       updateStatusBar();
     }
   }));
-  context.subscriptions.push(vscode11.window.onDidChangeActiveTextEditor(() => {
+  context.subscriptions.push(vscode10.window.onDidChangeActiveTextEditor(() => {
     updateStatusBar();
   }));
   updateStatusBar();
@@ -22721,7 +22813,7 @@ function hide() {
   connectionStatusBarItem?.hide();
 }
 async function updateStatusBar() {
-  const editor = vscode11.window.activeTextEditor;
+  const editor = vscode10.window.activeTextEditor;
   if (!editor || editor.document.languageId !== "kusto") {
     hide();
     return;
@@ -22733,7 +22825,7 @@ async function updateStatusBar() {
 
 // features/clientStorage.ts
 var extensionContext2;
-function activate9(context, client2) {
+function activate8(context, client2) {
   extensionContext2 = context;
   client2.onRequest("kusto/getData", handleGetData);
   client2.onRequest("kusto/setData", handleSetData);
@@ -22753,7 +22845,7 @@ async function handleSetData(params) {
 }
 
 // features/dotnet.ts
-var vscode12 = __toESM(require("vscode"));
+var vscode11 = __toESM(require("vscode"));
 var import_child_process = require("child_process");
 var import_util = require("util");
 var execFileAsync = (0, import_util.promisify)(import_child_process.execFile);
@@ -22780,7 +22872,7 @@ async function findSystemDotnet() {
 }
 async function acquireDotnetFromExtension() {
   try {
-    const dotnetExtension = vscode12.extensions.getExtension("ms-dotnettools.vscode-dotnet-runtime");
+    const dotnetExtension = vscode11.extensions.getExtension("ms-dotnettools.vscode-dotnet-runtime");
     if (!dotnetExtension) {
       log(".NET Runtime acquisition extension not installed");
       return void 0;
@@ -22788,7 +22880,7 @@ async function acquireDotnetFromExtension() {
     if (!dotnetExtension.isActive) {
       await dotnetExtension.activate();
     }
-    const result = await vscode12.commands.executeCommand(
+    const result = await vscode11.commands.executeCommand(
       "dotnet.acquire",
       { version: "10.0", requestingExtensionId: "Microsoft.kusto-explorer-vscode" }
     );
@@ -22803,7 +22895,7 @@ async function acquireDotnetFromExtension() {
   }
 }
 async function getDotnetPath() {
-  const config = vscode12.workspace.getConfiguration("kusto");
+  const config = vscode11.workspace.getConfiguration("kusto");
   const useSystemDotnet = config.get("runtime.useSystemDotnet", true);
   if (useSystemDotnet) {
     const systemDotnet = await findSystemDotnet();
@@ -22819,7 +22911,7 @@ async function getDotnetPath() {
   }
   return void 0;
 }
-async function activate10(channel) {
+async function activate9(channel) {
   outputChannel = channel;
   let dotnetPath;
   try {
@@ -22829,13 +22921,13 @@ async function activate10(channel) {
     dotnetPath = void 0;
   }
   if (!dotnetPath) {
-    const action = await vscode12.window.showErrorMessage(
+    const action = await vscode11.window.showErrorMessage(
       "Kusto Explorer requires .NET Runtime 10.0 or later to be installed.",
       "Download .NET",
       "Dismiss"
     );
     if (action === "Download .NET") {
-      vscode12.env.openExternal(vscode12.Uri.parse("https://dot.net/download"));
+      vscode11.env.openExternal(vscode11.Uri.parse("https://dot.net/download"));
     }
     return void 0;
   }
@@ -22845,13 +22937,13 @@ async function activate10(channel) {
 // extension.ts
 var import_node = __toESM(require_node3());
 var client;
-async function activate11(context) {
+async function activate10(context) {
   const outputChannel2 = import_vscode.window.createOutputChannel("Kusto");
-  const dotnetPath = await activate10(outputChannel2);
+  const dotnetPath = await activate9(outputChannel2);
   if (!dotnetPath) {
     return;
   }
-  const serverDll = path.join(context.extensionPath, "server", "KustoLspServer.dll");
+  const serverDll = path.join(context.extensionPath, "server", "Server.dll");
   const serverExecutable = {
     command: dotnetPath,
     args: [serverDll, "vscode"]
@@ -22884,37 +22976,39 @@ async function activate11(context) {
     clientOptions
   );
   await client.start();
-  activate9(context, client);
+  activate8(context, client);
   initialize(client);
   registerEntityDefinitionProvider(context, client);
   context.subscriptions.push(
-    vscode13.commands.registerCommand("kusto.fixCommitCharDoubling", fixCommitCharDoubling)
+    vscode12.commands.registerCommand("kusto.fixCommitCharDoubling", fixCommitCharDoubling)
   );
   const updateKustoContext = () => {
-    const hasKustoDocument = vscode13.workspace.textDocuments.some((doc) => doc.languageId === "kusto");
-    const isKustoActive = hasKustoDocument || hasChartPanel();
-    vscode13.commands.executeCommand("setContext", "kusto.hasActiveDocument", isKustoActive);
-    const activeEditor = vscode13.window.activeTextEditor;
+    const hasKustoDocument = vscode12.workspace.textDocuments.some((doc) => doc.languageId === "kusto");
+    const hasChartPanel2 = hasChartPanel();
+    const isKustoActive = hasKustoDocument || hasChartPanel2;
+    vscode12.commands.executeCommand("setContext", "kusto.hasActiveDocument", isKustoActive);
+    vscode12.commands.executeCommand("setContext", "kusto.hasChartPanel", hasChartPanel2);
+    const activeEditor = vscode12.window.activeTextEditor;
     const isEntityDef = activeEditor?.document.uri.scheme === ENTITY_DEFINITION_SCHEME;
-    vscode13.commands.executeCommand("setContext", "kusto.isEntityDefinition", isEntityDef);
+    vscode12.commands.executeCommand("setContext", "kusto.isEntityDefinition", isEntityDef);
   };
   context.subscriptions.push(
-    vscode13.commands.registerCommand("kusto.chartPanelStateChanged", () => {
+    vscode12.commands.registerCommand("kusto.chartPanelStateChanged", () => {
       updateKustoContext();
     })
   );
   updateKustoContext();
   context.subscriptions.push(
-    vscode13.workspace.onDidOpenTextDocument(() => updateKustoContext()),
-    vscode13.workspace.onDidCloseTextDocument(() => updateKustoContext()),
-    vscode13.window.onDidChangeActiveTextEditor(() => updateKustoContext())
+    vscode12.workspace.onDidOpenTextDocument(() => updateKustoContext()),
+    vscode12.workspace.onDidCloseTextDocument(() => updateKustoContext()),
+    vscode12.window.onDidChangeActiveTextEditor(() => updateKustoContext())
   );
   activate(context, client);
   await activate2(context, client);
-  activate8(context);
-  activate6(context, client);
+  activate7(context);
+  activate5(context, client);
   activate3(context, client);
-  activate7(context, client);
+  activate6(context, client);
 }
 function deactivate() {
   if (!client) {
@@ -22932,7 +23026,7 @@ function fixCompletionCommit(result, globalCommitChars) {
     if (commitChars.length === 0) {
       continue;
     }
-    const insertText = typeof item.insertText === "string" ? item.insertText : item.insertText instanceof vscode13.SnippetString ? item.insertText.value : void 0;
+    const insertText = typeof item.insertText === "string" ? item.insertText : item.insertText instanceof vscode12.SnippetString ? item.insertText.value : void 0;
     if (!insertText) {
       continue;
     }
@@ -22948,9 +23042,9 @@ function fixCompletionCommit(result, globalCommitChars) {
   return result;
 }
 async function fixCommitCharDoubling(commitChars, originalCommand) {
-  const editor = vscode13.window.activeTextEditor;
+  const editor = vscode12.window.activeTextEditor;
   if (editor && editor.document.languageId === "kusto") {
-    const disposable = vscode13.workspace.onDidChangeTextDocument(async (e) => {
+    const disposable = vscode12.workspace.onDidChangeTextDocument(async (e) => {
       if (e.document !== editor.document) {
         return;
       }
@@ -22960,11 +23054,11 @@ async function fixCommitCharDoubling(commitChars, originalCommand) {
           const insertPos = change.range.start;
           if (insertPos.character >= 1) {
             const charBefore = e.document.getText(
-              new vscode13.Range(insertPos.translate(0, -1), insertPos)
+              new vscode12.Range(insertPos.translate(0, -1), insertPos)
             );
             if (charBefore === change.text) {
               await editor.edit((eb) => {
-                eb.delete(new vscode13.Range(insertPos, insertPos.translate(0, 1)));
+                eb.delete(new vscode12.Range(insertPos, insertPos.translate(0, 1)));
               }, { undoStopBefore: false, undoStopAfter: false });
             }
           }
@@ -22975,7 +23069,7 @@ async function fixCommitCharDoubling(commitChars, originalCommand) {
     setTimeout(() => disposable.dispose(), 1e3);
   }
   if (originalCommand) {
-    await vscode13.commands.executeCommand(originalCommand.command, ...originalCommand.arguments ?? []);
+    await vscode12.commands.executeCommand(originalCommand.command, ...originalCommand.arguments ?? []);
   }
 }
 // Annotate the CommonJS export names for ESM import in node:

@@ -9,8 +9,8 @@ import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 import * as server from './server';
 import { copyToClipboard, formatCfHtml } from './clipboard';
-import { saveResults, copyCellFromEditor, copyDataFromEditor, copyTableAsExpressionFromEditor } from './resultsEditor';
-import * as chartPanel from './chartPanel';
+import { saveResults, copyCellFromEditor, copyDataFromEditor, copyTableAsExpressionFromEditor } from './resultsViewer';
+import { displayChart } from './resultsViewer';
 import { resultDataToMarkdown } from './markdown';
 import { resultDataToHtml, HtmlTable } from './html';
 
@@ -72,7 +72,8 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
         vscode.commands.registerCommand('kusto.copyData', () => copyData()),
         vscode.commands.registerCommand('kusto.copyCell', () => copyCell()),
         vscode.commands.registerCommand('kusto.copyTableAsExpression', () => copyTableAsExpression(client)),
-        vscode.commands.registerCommand('kusto.saveResults', () => saveResultsFromPanel(client))
+        vscode.commands.registerCommand('kusto.saveResults', () => saveResultsFromPanel(client)),
+        vscode.commands.registerCommand('kusto.chartResults', () => chartResults(client))
     );
 }
 
@@ -116,10 +117,22 @@ async function saveResultsFromPanel(client: LanguageClient): Promise<void> {
     const result = await saveResults({ data: lastResultData });
     if (result) {
         // Close the chart panel if open
-        await chartPanel.displayChart(client, undefined);
+        await displayChart(client, undefined);
         // Open/reveal the saved file in the main editor group
         await vscode.commands.executeCommand('vscode.openWith', result.uri, 'kusto.resultEditor', vscode.ViewColumn.One);
     }
+}
+
+async function chartResults(client: LanguageClient): Promise<void> {
+    if (!lastResultData) {
+        vscode.window.showWarningMessage('No result data available to chart.');
+        return;
+    }
+    const chartData: server.ResultData = {
+        ...lastResultData,
+        chartOptions: lastResultData.chartOptions ?? { kind: 'ColumnChart' }
+    };
+    await displayChart(client, chartData);
 }
 
 export async function displayError(error: server.QueryDiagnostic): Promise<void> {

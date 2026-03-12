@@ -217,6 +217,11 @@
         "icon": "$(save)"
       },
       {
+        "command": "kusto.chartResults",
+        "title": "Chart",
+        "icon": "$(graph)"
+      },
+      {
         "command": "kusto.moveChartToMain",
         "title": "Move to Main Editor",
         "icon": "$(move)"
@@ -248,6 +253,11 @@
           "command": "kusto.saveResults",
           "when": "view == kusto.resultsView",
           "group": "navigation@2"
+        },
+        {
+          "command": "kusto.chartResults",
+          "when": "view == kusto.resultsView && !kusto.hasChartPanel",
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [
@@ -345,8 +355,13 @@
         },
         {
           "command": "kusto.toggleChartEditor",
-          "when": "activeWebviewPanelId == kusto.resultEditor && kusto.resultEditorHasChart",
+          "when": "(activeWebviewPanelId == kusto || activeWebviewPanelId == kusto.resultEditor) && kusto.resultEditorHasChart",
           "group": "navigation@3"
+        },
+        {
+          "command": "kusto.saveChart",
+          "when": "activeWebviewPanelId == kusto",
+          "group": "navigation@4"
         }
       ],
       "editor/context": [
@@ -374,21 +389,25 @@
       "webview/context": [
         {
           "command": "kusto.copyCell",
-          "when": "webviewId == 'kusto.resultsView' || (webviewId == 'kusto.resultEditor' && !chartVisible)",
+          "when": "webviewId == 'kusto.resultsView' || (webviewId == 'kusto.resultEditor' && !chartVisible) || (webviewId == 'kusto' && !chartVisible)",
           "group": "9_cutcopypaste@1"
         },
         {
           "command": "kusto.copyData",
-          "when": "webviewId == 'kusto.resultsView' || (webviewId == 'kusto.resultEditor' && !chartVisible)",
+          "when": "webviewId == 'kusto.resultsView' || (webviewId == 'kusto.resultEditor' && !chartVisible) || (webviewId == 'kusto' && !chartVisible)",
           "group": "9_cutcopypaste@2"
         },
         {
           "command": "kusto.copyTableAsExpression",
-          "when": "webviewId == 'kusto.resultsView' || (webviewId == 'kusto.resultEditor' && !chartVisible)",
+          "when": "webviewId == 'kusto.resultsView' || (webviewId == 'kusto.resultEditor' && !chartVisible) || (webviewId == 'kusto' && !chartVisible)",
           "group": "9_cutcopypaste@3"
         },
         {
           "command": "kusto.saveResults",
+          "when": "webviewId == 'kusto.resultsView'"
+        },
+        {
+          "command": "kusto.chartResults",
           "when": "webviewId == 'kusto.resultsView'"
         },
         {

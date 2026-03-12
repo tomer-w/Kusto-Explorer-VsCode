@@ -185,7 +185,7 @@ public class ConnectionManager : IConnectionManager
                 var tables = dataSet != null
                     ? dataSet.Tables.Where(t => t.TableKind == WellKnownDataSet.PrimaryResult).Select(t => (DataTable)t.TableData).ToImmutableList()
                     : null;
-                var chartOptions = mainResult?.VisualizationOptions != null
+                var chartOptions = mainResult?.VisualizationOptions != null && mainResult.VisualizationOptions.Visualization != Data.Utils.VisualizationKind.None
                     ? ChartOptions.FromChartVisualizationOptions(mainResult.VisualizationOptions)
                     : null;
                 return new ExecuteResult
