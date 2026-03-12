@@ -141,7 +141,7 @@ If you believe you have found a security vulnerability in this repository, pleas
 
 Instead, please report them to the Microsoft Security Response Center (MSRC) at [https://msrc.microsoft.com/create-report](https://msrc.microsoft.com/create-report).
 
-For more information, see [SECURITY.md](SECURITY.md) or visit [Microsoft's Security Policy](https://github.com/microsoft/Kusto-Language-Server/security/policy).
+For more information, see [SECURITY.md](SECURITY.md) or visit [Microsoft's Security Policy](https://github.com/microsoft/Kusto-Explorer-VsCode/security/policy).
 
 ## Trademarks
 
