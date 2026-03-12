@@ -4,7 +4,7 @@
 import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 import * as server from './server';
-import { isDarkMode, injectChartMessageHandler, handleChartWebviewMessage, registerChartWebview, saveResults } from './results';
+import { isDarkMode, injectChartMessageHandler, handleChartWebviewMessage, registerChartWebview, saveResults } from './resultsEditor';
 
 let chartPanel: vscode.WebviewPanel | undefined;
 let currentResultData: server.ResultData | undefined;
