@@ -119,9 +119,9 @@ public class QueryManager : IQueryManager
         }
     }
 
-    public Task<RunResult?> RunQueryAsync(
+    public Task<RunResult> RunQueryAsync(
         EditString query,
-        string clusterName,
+        string? clusterName,
         string? databaseName,
         ImmutableDictionary<string, string> queryOptions,
         ImmutableDictionary<string, string> queryParameters,
@@ -155,20 +155,27 @@ public class QueryManager : IQueryManager
         var effectiveCluster = context.Cluster ?? clusterName;
         var effectiveDatabase = context.Database ?? databaseName;
 
-        if (effectiveCluster != null
-            && _connectionManager.TryGetConnection(effectiveCluster, effectiveDatabase, out var connection))
+        if (effectiveCluster == null)
         {
-            return ExecuteQueryAsync(connection, context, cancellationToken);
-        }
-        else
-        {
-            return Task.FromResult<RunResult?>(
+            return Task.FromResult(
                 new RunResult
                 {
                     Query = query,
-                    Error = CreateDiagnostic(query, "Invalid Connection")
+                    Error = CreateDiagnostic(query, "The query cannot be run. There is no server connection.")
                 });
         }
+
+        if (!_connectionManager.TryGetConnection(effectiveCluster, effectiveDatabase, out var connection))
+        {
+            return Task.FromResult(
+                new RunResult
+                {
+                    Query = query,
+                    Error = CreateDiagnostic(query, "The query cannot be run. The server connection is invalid.")
+                });
+        }
+
+        return ExecuteQueryAsync(connection, context, cancellationToken);
     }
 
     private static bool IsDirective(string text)
@@ -223,7 +230,7 @@ public class QueryManager : IQueryManager
         public string? StoredQueryResultName { get; init; }
     }
 
-    private async Task<RunResult?> ExecuteQueryAsync(IConnection connection, ExecutionContext context, CancellationToken cancellationToken)
+    private async Task<RunResult> ExecuteQueryAsync(IConnection connection, ExecutionContext context, CancellationToken cancellationToken)
     {
         // some servers will if there is any comment or whitespace preceeding the first token
         var query = RemoveLeadingTrivia(context.Query);
@@ -243,7 +250,7 @@ public class QueryManager : IQueryManager
             // execute command to execute query and store results on server
             var command = query.ReplaceAt(0, query.Length, CslCommandGenerator.GenerateStoredQueryResultSetOrReplaceCommand(context.StoredQueryResultName, query, previewCount: 0));
             var commandResult = await ExecuteQueryAsync(connection, context with { Query = command, StoredQueryResultName = null }, cancellationToken).ConfigureAwait(false);
-            if (commandResult == null || commandResult.Error != null)
+            if (commandResult.Error != null)
                 return commandResult;
 
             // change query to retrieve the stored result
@@ -272,7 +279,7 @@ public class QueryManager : IQueryManager
         }
     }
 
-    private RunResult? ExecuteDirective(ExecutionContext context)
+    private RunResult ExecuteDirective(ExecutionContext context)
     {
         if (ClientDirective.TryParse(context.Query, out var directive))
         {
@@ -286,8 +293,6 @@ public class QueryManager : IQueryManager
                 case "qp":
                     return ExecuteQueryParameterDirective(directive, context);
                 case "sqr":
-                    // no-op
-                    return null;
                 case "welcome":
                 case "upload":
                 case "download":
@@ -319,7 +324,7 @@ public class QueryManager : IQueryManager
             };
         }
 
-        RunResult? ExecuteConnectOrDatabaseDirective(ClientDirective directive, ExecutionContext context)
+        RunResult ExecuteConnectOrDatabaseDirective(ClientDirective directive, ExecutionContext context)
         {
             if (directive.TryGetConnectionInfo(out var connection, out var clusterName, out var databaseName))
             {
@@ -332,10 +337,14 @@ public class QueryManager : IQueryManager
                 };
             }
 
-            return null;
+            return new RunResult
+            {
+                Query = context.Query,
+                Error = CreateDiagnostic(context.Query, "Invalid connect directive. Expected format: .connect clusterName databaseName")
+            };
         }
 
-        RunResult? ExecuteClientRequestPropertyDirective(ClientDirective directive, ExecutionContext context)
+        RunResult ExecuteClientRequestPropertyDirective(ClientDirective directive, ExecutionContext context)
         {
             var newContext = ApplyClientRequestPropertyDirective(directive, context);
             if (newContext.Options != context.Options)
@@ -346,10 +355,15 @@ public class QueryManager : IQueryManager
                     QueryOptions = newContext.Options
                 };
             }
-            return null;
+
+            return new RunResult
+            {
+                Query = context.Query,
+                Error = CreateDiagnostic(context.Query, "Invalid client request property directive. Expected format: .crp propertyName=propertyValue")
+            };
         }
 
-        RunResult? ExecuteQueryParameterDirective(ClientDirective directive, ExecutionContext context)
+        RunResult ExecuteQueryParameterDirective(ClientDirective directive, ExecutionContext context)
         {
             var newContext = ApplyQueryParameterDirective(directive, context);
             if (newContext.Parameters != context.Parameters)
@@ -360,7 +374,12 @@ public class QueryManager : IQueryManager
                     QueryParameters = context.Parameters
                 };
             }
-            return null;
+
+            return new RunResult
+            {
+                Query = context.Query,
+                Error = CreateDiagnostic(context.Query, "Invalid query parameter directive. Expected format: .qp parameterName=parameterValue")
+            };
         }
     }
 

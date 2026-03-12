@@ -185,10 +185,13 @@ public class ConnectionManager : IConnectionManager
                 var tables = dataSet != null
                     ? dataSet.Tables.Where(t => t.TableKind == WellKnownDataSet.PrimaryResult).Select(t => (DataTable)t.TableData).ToImmutableList()
                     : null;
+                var chartOptions = mainResult?.VisualizationOptions != null
+                    ? ChartOptions.FromChartVisualizationOptions(mainResult.VisualizationOptions)
+                    : null;
                 return new ExecuteResult
                 {
                     Tables = tables,
-                    ChartOptions = mainResult?.VisualizationOptions
+                    ChartOptions = chartOptions
                 };
             }
             catch (Exception ex)

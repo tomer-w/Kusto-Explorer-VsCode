@@ -31,9 +31,9 @@ public interface IQueryManager
     /// <summary>
     /// Runs the query text against the specified cluster and database.
     /// </summary>
-    Task<RunResult?> RunQueryAsync(
+    Task<RunResult> RunQueryAsync(
         EditString query,
-        string clusterName,
+        string? clusterName,
         string? databaseName,
         ImmutableDictionary<string, string> queryOptions,
         ImmutableDictionary<string, string> queryParameters,

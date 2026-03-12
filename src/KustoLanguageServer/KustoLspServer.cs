@@ -2056,7 +2056,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
                 cancellationToken)
                 .ConfigureAwait(false);
 
-            if (runResult?.Error != null)
+            if (runResult.Error != null)
             {
                 var errorRange = runResult.Error.HasLocation
                     ? GetLspRange(@params.Query, new TextRange(runResult.Error.Start, runResult.Error.Length))
@@ -2072,11 +2072,11 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
                     }
                 };
             }
-            else if (runResult?.ExecuteResult != null)
+            else
             {
                 return new RunQueryResult
                 {
-                    Data = ResultData.FromExecuteResult(runResult.ExecuteResult),
+                    Data = runResult.ExecuteResult != null ? ResultData.FromExecuteResult(runResult.ExecuteResult) : null,
                     Connection = runResult.Connection,
                     Cluster = runResult.Cluster,
                     Database = runResult.Database
@@ -2094,8 +2094,6 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
                 }
             };
         }
-
-        return null;
     }
 
     [DataContract]
@@ -2105,7 +2103,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
         public required string Query { get; init; }
 
         [DataMember(Name = "cluster")]
-        public required string Cluster { get; init; }
+        public string? Cluster { get; init; }
 
         [DataMember(Name = "database")]
         public string? Database { get; init; }
@@ -2203,7 +2201,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
                     && executeResult.Tables != null
                     && executeResult.Tables.Count > 0
                     && executeResult.ChartOptions != null
-                    && executeResult.ChartOptions.Visualization != Data.Utils.VisualizationKind.None)
+                    && executeResult.ChartOptions.Kind != ChartKind.None)
                 {
                     var chartHtml = RenderChartAsHtml(executeResult.Tables[0], executeResult.ChartOptions, @params.DarkMode);
                     return Task.FromResult<GetChartAsHtmlResult?>(
@@ -2222,7 +2220,7 @@ public class KustoLspServer : LspServer, ILogger, ISettingSource, IStorage
         return Task.FromResult<GetChartAsHtmlResult?>(null);
     }
 
-    private string RenderChartAsHtml(DataTable data, Data.Utils.ChartVisualizationOptions chartOptions, bool darkMode = false)
+    private string RenderChartAsHtml(DataTable data, ChartOptions chartOptions, bool darkMode = false)
     {
         return _chartManager.RenderChartToHtmlDocument(data, chartOptions, darkMode)
             ?? "<html>chart style not implemented yet</html>";

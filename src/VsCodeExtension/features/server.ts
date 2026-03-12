@@ -22,7 +22,7 @@ import { LanguageClient } from 'vscode-languageclient/node';
 export function runQuery(
     client: LanguageClient,
     query: string,
-    cluster: string,
+    cluster?: string,
     database?: string,
     isReadOnly?: boolean,
     maxRows?: number

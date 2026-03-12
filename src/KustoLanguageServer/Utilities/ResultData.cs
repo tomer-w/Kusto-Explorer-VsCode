@@ -4,7 +4,6 @@
 using System.Collections.Immutable;
 using System.Data;
 using System.Runtime.Serialization;
-using Kusto.Data.Utils;
 
 namespace Kusto.Lsp;
 
@@ -32,7 +31,6 @@ public class ResultData
 
         if (executeResult.Tables != null)
         {
-
             var tables = executeResult.Tables;
 
             // Filter to specific table if tableName is provided
@@ -44,17 +42,10 @@ public class ResultData
             resultTables = tables.Select(t => ResultTable.FromDataTable(t)).ToImmutableList();
         }
 
-        ChartOptions? chartOptions = null;
-        if (executeResult.ChartOptions != null
-            && executeResult.ChartOptions.Visualization != VisualizationKind.None)
-        {
-            chartOptions = ChartOptions.FromChartVisualizationOptions(executeResult.ChartOptions);
-        }
-
         return new ResultData
         {
             Tables = resultTables,
-            ChartOptions = chartOptions
+            ChartOptions = executeResult.ChartOptions
         };
     }
 
@@ -66,16 +57,10 @@ public class ResultData
     {
         var tables = Tables.Select(t => t.ToDataTable()).ToImmutableList();
 
-        ChartVisualizationOptions? chartOptions = null;
-        if (ChartOptions != null)
-        {
-            chartOptions = ChartOptions.ToChartVisualizationOptions();
-        }
-
         return new ExecuteResult
         {
             Tables = tables,
-            ChartOptions = chartOptions
+            ChartOptions = ChartOptions
         };
     }
 }
@@ -207,118 +192,4 @@ public class ResultColumn
 
     [DataMember(Name = "type")]
     public required string Type { get; init; }
-}
-
-/// <summary>
-/// Serializable representation of chart visualization options.
-/// </summary>
-[DataContract]
-public class ChartOptions
-{
-    [DataMember(Name = "kind")]
-    public required string Kind { get; init; }
-
-    [DataMember(Name = "mode")]
-    public string? Mode { get; init; }
-
-    [DataMember(Name = "title")]
-    public string? Title { get; init; }
-
-    [DataMember(Name = "xTitle")]
-    public string? XTitle { get; init; }
-
-    [DataMember(Name = "yTitle")]
-    public string? YTitle { get; init; }
-
-    [DataMember(Name = "xColumn")]
-    public string? XColumn { get; init; }
-
-    [DataMember(Name = "yColumns")]
-    public ImmutableList<string>? YColumns { get; init; }
-
-    [DataMember(Name = "series")]
-    public ImmutableList<string>? Series { get; init; }
-
-    [DataMember(Name = "legend")]
-    public string? Legend { get; init; }
-
-    [DataMember(Name = "xAxis")]
-    public string? XAxis { get; init; }
-
-    [DataMember(Name = "yAxis")]
-    public string? YAxis { get; init; }
-
-    [DataMember(Name = "xmin")]
-    public object? Xmin { get; init; }
-
-    [DataMember(Name = "xmax")]
-    public object? Xmax { get; init; }
-
-    [DataMember(Name = "ymin")]
-    public object? Ymin { get; init; }
-
-    [DataMember(Name = "ymax")]
-    public object? Ymax { get; init; }
-
-    [DataMember(Name = "accumulate")]
-    public bool Accumulate { get; init; }
-
-    /// <summary>
-    /// Converts a <see cref="ChartVisualizationOptions"/> to a <see cref="ChartOptions"/>.
-    /// </summary>
-    public static ChartOptions FromChartVisualizationOptions(ChartVisualizationOptions options)
-    {
-        return new ChartOptions
-        {
-            Kind = options.Visualization.ToString(),
-            Mode = options.Mode.ToString(),
-            Title = options.Title,
-            XTitle = options.XTitle,
-            YTitle = options.YTitle,
-            XColumn = options.XColumn,
-            YColumns = options.YColumns?.ToImmutableList(),
-            Series = options.Series?.ToImmutableList(),
-            Legend = options.Legend.ToString(),
-            XAxis = options.XAxis.ToString(),
-            YAxis = options.YAxis.ToString(),
-            Xmin = options.Xmin,
-            Xmax = options.Xmax,
-            Ymin = options.Ymin,
-            Ymax = options.Ymax,
-            Accumulate = options.Accumulate
-        };
-    }
-
-    /// <summary>
-    /// Converts this <see cref="ChartOptions"/> back to a <see cref="ChartVisualizationOptions"/>.
-    /// </summary>
-    public ChartVisualizationOptions ToChartVisualizationOptions()
-    {
-        return new ChartVisualizationOptions
-        {
-            Visualization = Enum.TryParse<VisualizationKind>(Kind, out var viz) ? viz : VisualizationKind.None,
-            Mode = Enum.TryParse<VisualizationMode>(Mode, out var mode) ? mode : default,
-            Title = Title,
-            XTitle = XTitle,
-            YTitle = YTitle,
-            XColumn = XColumn,
-            YColumns = YColumns?.ToArray(),
-            Series = Series?.ToArray(),
-            Legend = Enum.TryParse<LegendVisualizationMode>(Legend, out var legend) ? legend : default,
-            XAxis = Enum.TryParse<AxisVisualizationMode>(XAxis, out var xAxis) ? xAxis : default,
-            YAxis = Enum.TryParse<AxisVisualizationMode>(YAxis, out var yAxis) ? yAxis : default,
-            Xmin = Xmin,
-            Xmax = Xmax,
-            Ymin = ConvertToDouble(Ymin),
-            Ymax = ConvertToDouble(Ymax),
-            Accumulate = Accumulate
-        };
-    }
-
-    private static double ConvertToDouble(object? value)
-    {
-        if (value == null)
-            return 0;
-        return Convert.ToDouble(value);
-    }
 }
