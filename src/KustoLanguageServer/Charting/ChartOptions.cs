@@ -79,11 +79,25 @@ public class ChartOptions
             Legend = options.Legend.ToString(),
             XAxis = options.XAxis.ToString(),
             YAxis = options.YAxis.ToString(),
-            Xmin = options.Xmin,
-            Xmax = options.Xmax,
-            Ymin = options.Ymin,
-            Ymax = options.Ymax,
+            Xmin = ConvertNanToNull(options.Xmin),
+            Xmax = ConvertNanToNull(options.Xmax),
+            Ymin = ConvertNanToNull(options.Ymin),
+            Ymax = ConvertNanToNull(options.Ymax),
             Accumulate = options.Accumulate
+        };
+    }
+
+    private static object? ConvertNanToNull(object? value)
+    {
+        return value switch
+        {
+            double d when double.IsNaN(d) => null,
+            double d when double.IsPositiveInfinity(d) => double.MaxValue,
+            double d when double.IsNegativeInfinity(d) => double.MinValue,
+            float f when float.IsNaN(f) => null,
+            float f when float.IsPositiveInfinity(f) => float.MaxValue,
+            float f when float.IsNegativeInfinity(f) => float.MinValue,
+            _ => value
         };
     }
 }

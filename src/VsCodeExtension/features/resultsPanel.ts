@@ -1,11 +1,15 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+/*
+    This module manages the results webview, which displays query results in the "Results" tab of "The Panel"
+*/
+
 import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 import * as server from './server';
 import { copyToClipboard, formatCfHtml } from './clipboard';
-import { saveResults, copyCellFromEditor, copyDataFromEditor, copyTableAsExpressionFromEditor } from './results';
+import { saveResults, copyCellFromEditor, copyDataFromEditor, copyTableAsExpressionFromEditor } from './resultsEditor';
 import * as chartPanel from './chartPanel';
 import { resultDataToMarkdown } from './markdown';
 import { resultDataToHtml, HtmlTable } from './html';

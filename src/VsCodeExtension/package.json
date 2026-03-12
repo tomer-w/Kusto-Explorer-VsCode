@@ -201,6 +201,11 @@
         "command": "kusto.moveChartToMain",
         "title": "Move to Main Editor",
         "icon": "$(move)"
+      },
+      {
+        "command": "kusto.toggleChartEditor",
+        "title": "Edit Chart Options",
+        "icon": "$(edit)"
       }
     ],
     "menus": {
@@ -317,6 +322,11 @@
         {
           "command": "kusto.moveChartToMain",
           "when": "activeWebviewPanelId == kusto",
+          "group": "navigation@3"
+        },
+        {
+          "command": "kusto.toggleChartEditor",
+          "when": "activeWebviewPanelId == kusto.resultEditor && kusto.resultEditorHasChart",
           "group": "navigation@3"
         }
       ],
