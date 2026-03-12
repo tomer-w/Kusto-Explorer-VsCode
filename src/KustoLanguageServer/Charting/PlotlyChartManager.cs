@@ -4,7 +4,6 @@
 using System.Data;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Kusto.Data.Utils;
 
 namespace Kusto.Lsp;
 
@@ -16,10 +15,10 @@ public class PlotlyChartManager : IChartManager
     /// <summary>
     /// Renders chart as HTML using Plotly.js.
     /// </summary>
-    public string? RenderChartToHtmlDiv(DataTable data, ChartVisualizationOptions options, bool darkMode = false)
+    public string? RenderChartToHtmlDiv(DataTable data, ChartOptions options, bool darkMode = false)
     {
         // Handle raw Plotly JSON charts specially - they bypass the builder
-        if (options.Visualization == VisualizationKind.Plotly)
+        if (options.Kind == ChartKind.Plotly)
         {
             return RenderRawPlotlyChart(data, darkMode);
         }
@@ -28,7 +27,7 @@ public class PlotlyChartManager : IChartManager
         return builder != null ? builder.ToHtmlDiv() : null;
     }
 
-    public string? RenderChartToHtmlDocument(DataTable data, ChartVisualizationOptions options, bool darkMode = false)
+    public string? RenderChartToHtmlDocument(DataTable data, ChartOptions options, bool darkMode = false)
     {
         var chartDiv = RenderChartToHtmlDiv(data, options, darkMode);
         return chartDiv != null ? PlotlyHtmlHelper.CreateHtmlDocument(chartDiv, darkMode) : null;
@@ -149,28 +148,28 @@ public class PlotlyChartManager : IChartManager
         parent[axisKey] = axis;
     }
 
-    private PlotlyChartBuilder? BuildChart(DataTable data, ChartVisualizationOptions options, bool darkMode)
+    private PlotlyChartBuilder? BuildChart(DataTable data, ChartOptions options, bool darkMode)
     {
-        var builder = options.Visualization switch
+        var builder = options.Kind switch
         {
-            VisualizationKind.BarChart or VisualizationKind.ColumnChart => BuildBarOrColumnChart(data, options),
-            VisualizationKind.LineChart => BuildLineChart(data, options),
-            VisualizationKind.ScatterChart => BuildScatterChart(data, options),
-            VisualizationKind.PieChart => BuildPieChart(data, options),
-            VisualizationKind.AreaChart => BuildAreaChart(data, options),
-            VisualizationKind.StackedAreaChart => BuildStackedAreaChart(data, options),
-            VisualizationKind.Card => BuildCardChart(data, options),
-            VisualizationKind.ThreeDChart => BuildThreeDChart(data, options),
-            VisualizationKind.TreeMap => BuildTreeMapChart(data, options),
-            VisualizationKind.Sankey => BuildSankeyChart(data, options),
+            ChartKind.BarChart or ChartKind.ColumnChart => BuildBarOrColumnChart(data, options),
+            ChartKind.LineChart => BuildLineChart(data, options),
+            ChartKind.ScatterChart => BuildScatterChart(data, options),
+            ChartKind.PieChart => BuildPieChart(data, options),
+            ChartKind.AreaChart => BuildAreaChart(data, options),
+            ChartKind.StackedAreaChart => BuildStackedAreaChart(data, options),
+            ChartKind.Card => BuildCardChart(data, options),
+            ChartKind.ThreeDChart => BuildThreeDChart(data, options),
+            ChartKind.TreeMap => BuildTreeMapChart(data, options),
+            ChartKind.Sankey => BuildSankeyChart(data, options),
             // Plotly is handled specially in RenderChartToHtmlDiv before reaching here
             // The following visualization types are not yet supported
-            VisualizationKind.Graph => null,
-            VisualizationKind.PivotChart => null,
-            VisualizationKind.TimeLadderChart => null,
-            VisualizationKind.TimeLineChart => null,
-            VisualizationKind.TimeLineWithAnomalyChart => null,
-            VisualizationKind.TimePivot => null,
+            ChartKind.Graph => null,
+            ChartKind.PivotChart => null,
+            ChartKind.TimeLadderChart => null,
+            ChartKind.TimeLineChart => null,
+            ChartKind.TimeLineWithAnomalyChart => null,
+            ChartKind.TimePivot => null,
             _ => null
         };
 
@@ -183,7 +182,7 @@ public class PlotlyChartManager : IChartManager
             }
 
             // Disable zoom/pan on 2D charts but keep hover tooltips - 3D charts need full interaction for rotation
-            if (options.Visualization != VisualizationKind.ThreeDChart)
+            if (options.Kind != ChartKind.ThreeDChart)
             {
                 builder = builder.WithFixedRange();
             }
@@ -192,21 +191,21 @@ public class PlotlyChartManager : IChartManager
         return builder;
     }
 
-    private PlotlyChartBuilder? BuildBarOrColumnChart(DataTable data, ChartVisualizationOptions options)
+    private PlotlyChartBuilder? BuildBarOrColumnChart(DataTable data, ChartOptions options)
     {
         var builder = new PlotlyChartBuilder();
-        bool isHorizontal = options.Visualization == VisualizationKind.BarChart;
+        bool isHorizontal = options.Kind == ChartKind.BarChart;
 
         builder = options.Mode switch
         {
-            VisualizationMode.Stacked => builder.SetStacked(),
-            VisualizationMode.Stacked100 => builder.SetStacked(),  // Use regular stack mode with normalized data
-            VisualizationMode.Unstacked => builder.SetGrouped(),
+            ChartMode.Stacked => builder.SetStacked(),
+            ChartMode.Stacked100 => builder.SetStacked(),  // Use regular stack mode with normalized data
+            ChartMode.Unstacked => builder.SetGrouped(),
             _ => builder
         };
 
         // For Stacked100, we need to normalize the data ourselves
-        if (options.Mode == VisualizationMode.Stacked100)
+        if (options.Mode == ChartMode.Stacked100)
         {
             return BuildStacked100BarOrColumnChart(builder, data, options, isHorizontal);
         }
@@ -226,7 +225,7 @@ public class PlotlyChartManager : IChartManager
         }
     }
 
-    private PlotlyChartBuilder? BuildStacked100BarOrColumnChart(PlotlyChartBuilder builder, DataTable data, ChartVisualizationOptions options, bool isHorizontal)
+    private PlotlyChartBuilder? BuildStacked100BarOrColumnChart(PlotlyChartBuilder builder, DataTable data, ChartOptions options, bool isHorizontal)
     {
         var xColumn = Get2dXColumn(data, options);
         if (xColumn == null)
@@ -271,7 +270,7 @@ public class PlotlyChartManager : IChartManager
         if (options.YTitle != null)
             builder = builder.SetYAxisTitle(options.YTitle);
 
-        if (options.Legend != LegendVisualizationMode.Visible)
+        if (options.Legend != ChartLegendMode.Visible)
             builder = builder.HideLegend();
 
         // Set Y-axis range to 0-1 for percentage display
@@ -299,7 +298,7 @@ public class PlotlyChartManager : IChartManager
         return builder;
     }
 
-    private PlotlyChartBuilder? BuildLineChart(DataTable data, ChartVisualizationOptions options)
+    private PlotlyChartBuilder? BuildLineChart(DataTable data, ChartOptions options)
     {
         var builder = new PlotlyChartBuilder();
         return Build2dChart(builder, data, options, 
@@ -307,7 +306,7 @@ public class PlotlyChartManager : IChartManager
             );
     }
 
-    private PlotlyChartBuilder? BuildScatterChart(DataTable data, ChartVisualizationOptions options)
+    private PlotlyChartBuilder? BuildScatterChart(DataTable data, ChartOptions options)
     {
         var builder = new PlotlyChartBuilder();
         return Build2dChart(builder, data, options, 
@@ -315,7 +314,7 @@ public class PlotlyChartManager : IChartManager
             );
     }
 
-    private PlotlyChartBuilder? BuildPieChart(DataTable data, ChartVisualizationOptions options)
+    private PlotlyChartBuilder? BuildPieChart(DataTable data, ChartOptions options)
     {
         var builder = new PlotlyChartBuilder();
 
@@ -323,7 +322,7 @@ public class PlotlyChartManager : IChartManager
         if (options.Title != null)
             builder = builder.WithTitle(options.Title);
 
-        if (options.Legend != LegendVisualizationMode.Visible)
+        if (options.Legend != ChartLegendMode.Visible)
             builder = builder.HideLegend();
 
         // Get label and value columns
@@ -353,7 +352,7 @@ public class PlotlyChartManager : IChartManager
         return builder;
     }
 
-    private PlotlyChartBuilder? BuildAreaChart(DataTable data, ChartVisualizationOptions options)
+    private PlotlyChartBuilder? BuildAreaChart(DataTable data, ChartOptions options)
     {
         var builder = new PlotlyChartBuilder();
         return Build2dChart(builder, data, options, 
@@ -361,7 +360,7 @@ public class PlotlyChartManager : IChartManager
         );
     }
 
-    private PlotlyChartBuilder? BuildStackedAreaChart(DataTable data, ChartVisualizationOptions options)
+    private PlotlyChartBuilder? BuildStackedAreaChart(DataTable data, ChartOptions options)
     {
         var builder = new PlotlyChartBuilder();
         return Build2dChart(builder, data, options, 
@@ -369,7 +368,7 @@ public class PlotlyChartManager : IChartManager
         );
     }
 
-    private PlotlyChartBuilder? BuildCardChart(DataTable data, ChartVisualizationOptions options)
+    private PlotlyChartBuilder? BuildCardChart(DataTable data, ChartOptions options)
     {
         var builder = new PlotlyChartBuilder();
 
@@ -415,7 +414,7 @@ public class PlotlyChartManager : IChartManager
         return builder;
     }
 
-    private PlotlyChartBuilder? BuildThreeDChart(DataTable data, ChartVisualizationOptions options)
+    private PlotlyChartBuilder? BuildThreeDChart(DataTable data, ChartOptions options)
     {
         var builder = new PlotlyChartBuilder();
 
@@ -531,13 +530,13 @@ public class PlotlyChartManager : IChartManager
             builder = builder.WithScene(scene);
         }
 
-        if (options.Legend != LegendVisualizationMode.Visible)
+        if (options.Legend != ChartLegendMode.Visible)
             builder = builder.HideLegend();
 
         return builder;
     }
 
-    private PlotlyChartBuilder? BuildTreeMapChart(DataTable data, ChartVisualizationOptions options)
+    private PlotlyChartBuilder? BuildTreeMapChart(DataTable data, ChartOptions options)
     {
         var builder = new PlotlyChartBuilder();
 
@@ -666,13 +665,13 @@ public class PlotlyChartManager : IChartManager
             branchValues: "total"
         );
 
-        if (options.Legend != LegendVisualizationMode.Visible)
+        if (options.Legend != ChartLegendMode.Visible)
             builder = builder.HideLegend();
 
         return builder;
     }
 
-    private PlotlyChartBuilder? BuildSankeyChart(DataTable data, ChartVisualizationOptions options)
+    private PlotlyChartBuilder? BuildSankeyChart(DataTable data, ChartOptions options)
     {
         var builder = new PlotlyChartBuilder();
 
@@ -784,7 +783,7 @@ public class PlotlyChartManager : IChartManager
             name: valueColumn.ColumnName
         );
 
-        if (options.Legend != LegendVisualizationMode.Visible)
+        if (options.Legend != ChartLegendMode.Visible)
             builder = builder.HideLegend();
 
         return builder;
@@ -796,7 +795,7 @@ public class PlotlyChartManager : IChartManager
     private PlotlyChartBuilder? Build2dChart(
         PlotlyChartBuilder builder,
         DataTable data, 
-        ChartVisualizationOptions options,
+        ChartOptions options,
         Func<PlotlyChartBuilder, object[], double[], string, string?, PlotlyChartBuilder> addTrace)
     {
         var xColumn = Get2dXColumn(data, options);
@@ -815,10 +814,10 @@ public class PlotlyChartManager : IChartManager
         if (options.YTitle != null)
             builder = builder.SetYAxisTitle(options.YTitle);
 
-        if (options.XAxis == AxisVisualizationMode.Log)
+        if (options.XAxis == ChartAxis.Log)
             builder = builder.SetLogX();
 
-        if (options.YAxis == AxisVisualizationMode.Log)
+        if (options.YAxis == ChartAxis.Log)
             builder = builder.SetLogY();
 
         if (TryGetDouble(options.Xmin, out var xMinD)
@@ -829,7 +828,7 @@ public class PlotlyChartManager : IChartManager
             && TryGetDouble(options.Ymax, out var yMaxD))
             builder = builder.SetYAxisRange(yMinD, yMaxD);
 
-        if (options.Legend != LegendVisualizationMode.Visible)
+        if (options.Legend != ChartLegendMode.Visible)
             builder = builder.HideLegend();
 
         // Add traces for each value column
@@ -862,14 +861,14 @@ public class PlotlyChartManager : IChartManager
                 {
                     Overlaying = "y",
                     Side = PlotlyAxisSides.Right,
-                    Type = options.YAxis == AxisVisualizationMode.Log ? PlotlyAxisTypes.Log : null
+                    Type = options.YAxis == ChartAxis.Log ? PlotlyAxisTypes.Log : null
                 });
         }
 
         return builder;
     }
 
-    private static bool TryGetDouble(object value, out double result)
+    private static bool TryGetDouble(object? value, out double result)
     {
         if (value is IConvertible valueC
             && Convert.ToDouble(valueC) is double valueD
@@ -882,7 +881,7 @@ public class PlotlyChartManager : IChartManager
         return false;
     }
 
-    private DataColumn? Get2dXColumn(DataTable data, ChartVisualizationOptions options)
+    private DataColumn? Get2dXColumn(DataTable data, ChartOptions options)
     {
         return options.XColumn != null
             ? data.Columns[options.XColumn]
@@ -891,7 +890,7 @@ public class PlotlyChartManager : IChartManager
                 : data.Columns[0];
     }
 
-    private DataColumn[] Get2dYColumns(DataTable data, ChartVisualizationOptions options, DataColumn keyColumn)
+    private DataColumn[] Get2dYColumns(DataTable data, ChartOptions options, DataColumn keyColumn)
     {
         return options.YColumns != null
             ? data.Columns.OfType<DataColumn>().Where(c => options.YColumns.Contains(c.ColumnName)).ToArray()

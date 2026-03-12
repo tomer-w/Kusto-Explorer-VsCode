@@ -196,6 +196,11 @@
         "command": "kusto.saveResults",
         "title": "Save As...",
         "icon": "$(save)"
+      },
+      {
+        "command": "kusto.moveChartToMain",
+        "title": "Move to Main Editor",
+        "icon": "$(move)"
       }
     ],
     "menus": {
@@ -308,6 +313,11 @@
           "command": "kusto.copyChartDark",
           "when": "activeWebviewPanelId == kusto || activeWebviewPanelId == kusto.resultEditor",
           "group": "navigation@2"
+        },
+        {
+          "command": "kusto.moveChartToMain",
+          "when": "activeWebviewPanelId == kusto",
+          "group": "navigation@3"
         }
       ],
       "editor/context": [

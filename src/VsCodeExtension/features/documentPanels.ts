@@ -124,13 +124,9 @@ async function runQuery(client: LanguageClient, queryRange?: server.SelectionRan
 
         // Get the document's connection (cluster/database)
         const connection = await getDocumentConnection(uri);
-        if (!connection?.cluster) {
-            vscode.window.showWarningMessage('No Kusto connection available. Please connect to a cluster first.');
-            return;
-        }
 
         // Run the query via server.runQuery (text-based, returns ResultData)
-        const runResult = await server.runQuery(client, queryText, connection.cluster, connection.database, true);
+        const runResult = await server.runQuery(client, queryText, connection?.cluster, connection?.database, true);
 
         // If the result includes a connection string for an unknown cluster, add it as a server
         if (runResult?.connection || runResult?.cluster) {

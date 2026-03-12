@@ -20,7 +20,8 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
 
     // Register chart-related commands
     context.subscriptions.push(
-        vscode.commands.registerCommand('kusto.saveChart', () => saveChartFromPanel())
+        vscode.commands.registerCommand('kusto.saveChart', () => saveChartFromPanel()),
+        vscode.commands.registerCommand('kusto.moveChartToMain', () => moveChartToMain())
     );
 }
 
@@ -50,15 +51,20 @@ export async function displayChart(
 }
 
 /**
- * Determines the best view column for the chart panel.
- * If there are already 2+ editor groups, opens as a regular tab to avoid cramping.
+ * Returns the view column for the chart panel.
  */
 function getChartViewColumn(): vscode.ViewColumn {
-    const groups = vscode.window.tabGroups.all;
-    if (groups.length >= 2) {
-        return vscode.ViewColumn.Active;
-    }
     return vscode.ViewColumn.Beside;
+}
+
+/**
+ * Toggles the chart panel between the main editor group and the beside group.
+ */
+function moveChartToMain(): void {
+    if (chartPanel) {
+        const isMain = chartPanel.viewColumn === vscode.ViewColumn.One;
+        chartPanel.reveal(isMain ? vscode.ViewColumn.Beside : vscode.ViewColumn.One, false);
+    }
 }
 
 /**

@@ -4,7 +4,6 @@
 using System.Collections.Immutable;
 using System.Data;
 using Kusto.Data;
-using Kusto.Data.Utils;
 using Kusto.Language;
 using Kusto.Language.Editor;
 
@@ -82,7 +81,7 @@ public record ExecuteResult
     /// <summary>
     /// Any chart visualization options included in the result (due to render operator in query).
     /// </summary>
-    public ChartVisualizationOptions? ChartOptions { get; init; }
+    public ChartOptions? ChartOptions { get; init; }
 
     /// <summary>
     /// Any diagnostics produced during query execution, such as errors or warnings.
