@@ -31,14 +31,14 @@ contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additio
 ### Building the Language Server
 
 ```bash
-cd src/KustoLspServer
+cd src/Server
 dotnet build
 ```
 
 ### Building the VS Code Extension
 
 ```bash
-cd src/VsCodeExtension
+cd src/Client
 npm install
 npm run compile
 ```
@@ -52,7 +52,7 @@ npm run compile
 ### Packaging the Extension
 
 ```bash
-cd src/VsCodeExtension
+cd src/Client
 npm run package
 ```
 
@@ -60,9 +60,8 @@ This will create a `.vsix` file that can be installed in VS Code.
 
 ## Project Structure
 
-- `src/KustoLspServer/` - .NET Language Server Protocol implementation
-- `src/KustoLanguageServer/` - Core language server functionality
-- `src/VsCodeExtension/` - VS Code extension (TypeScript)
+- `src/Server/` - Vs Code extension Server (C#)
+- `src/Client/` - VS Code extension Client (TypeScript)
 
 ## Reporting Issues
 

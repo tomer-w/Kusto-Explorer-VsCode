@@ -25,13 +25,13 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Restore dependencies
-        run: dotnet restore src/KustoLsp.Tests/KustoLspTests.csproj
+        run: dotnet restore src/ServerTests/ServerTests.csproj
 
       - name: Build
-        run: dotnet build src/KustoLsp.Tests/KustoLspTests.csproj --no-restore --configuration Release
+        run: dotnet build src/ServerTests/ServerTests.csproj --no-restore --configuration Release
 
       - name: Run tests
-        run: ./src/KustoLsp.Tests/bin/Release/net10.0/KustoLspTests
+        run: ./src/ServerTests/bin/Release/net10.0/ServerTests
 
   lint-typescript:
     name: Lint and Build (TypeScript)
@@ -47,15 +47,15 @@ jobs:
         with:
           node-version: 'lts/*'
           cache: 'npm'
-          cache-dependency-path: src/VsCodeExtension/package-lock.json
+          cache-dependency-path: src/Client/package-lock.json
 
       - name: Install dependencies
         run: npm ci
-        working-directory: src/VsCodeExtension
+        working-directory: src/Client
 
       - name: Compile TypeScript
         run: npm run compile
-        working-directory: src/VsCodeExtension
+        working-directory: src/Client
 
   package-vsix:
     name: Build VSIX Package
@@ -77,22 +77,22 @@ jobs:
         with:
           node-version: 'lts/*'
           cache: 'npm'
-          cache-dependency-path: src/VsCodeExtension/package-lock.json
+          cache-dependency-path: src/Client/package-lock.json
 
       - name: Install dependencies
         run: npm ci
-        working-directory: src/VsCodeExtension
+        working-directory: src/Client
 
       - name: Install vsce
         run: npm install -g @vscode/vsce
 
       - name: Build VSIX package
         run: npm run package
-        working-directory: src/VsCodeExtension
+        working-directory: src/Client
 
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v4
         with:
           name: kusto-explorer-vsix
-          path: src/VsCodeExtension/*.vsix
+          path: src/Client/*.vsix
           retention-days: 30
