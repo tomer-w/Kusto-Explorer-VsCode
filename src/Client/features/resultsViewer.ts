@@ -406,6 +406,10 @@ export class ResultEditorProvider implements vscode.CustomTextEditorProvider {
         let chartOptionsTimer: ReturnType<typeof setTimeout> | undefined;
         let ignoringSelfEdit = false;
 
+        // Track whether the editor was in beside mode before the edit panel was opened,
+        // so we only move it back when closing the edit panel if it was beside originally.
+        let wasInBesideBeforeEditPanel = false;
+
         // Listen for messages from the webview
         webviewPanel.webview.onDidReceiveMessage(async (message) => {
             if (message.command === 'viewChanged' && typeof message.viewId === 'string') {
@@ -439,6 +443,24 @@ export class ResultEditorProvider implements vscode.CustomTextEditorProvider {
                     await vscode.workspace.applyEdit(edit);
                     ignoringSelfEdit = false;
                 }, 600);
+                return;
+            }
+            if (message.command === 'editPanelToggled' && typeof message.visible === 'boolean') {
+                if (message.visible) {
+                    // Opening edit panel: remember if we were in beside mode, then move to main.
+                    wasInBesideBeforeEditPanel = webviewPanel.viewColumn !== vscode.ViewColumn.One;
+                    if (wasInBesideBeforeEditPanel) {
+                        await vscode.commands.executeCommand('workbench.action.moveEditorToFirstGroup');
+                    }
+                    webviewPanel.webview.postMessage({ command: 'setEditPanelVisible', visible: true });
+                } else {
+                    // Closing edit panel: only move back to beside if it was beside before.
+                    if (wasInBesideBeforeEditPanel) {
+                        await vscode.commands.executeCommand('workbench.action.moveEditorToNextGroup');
+                        webviewPanel.webview.postMessage({ command: 'setEditPanelVisible', visible: false });
+                    }
+                    wasInBesideBeforeEditPanel = false;
+                }
                 return;
             }
             handleChartWebviewMessage(message);
@@ -938,6 +960,14 @@ export class ResultEditorProvider implements vscode.CustomTextEditorProvider {
                 toggleEditPanel();
                 return;
             }
+            if (msg && msg.command === 'setEditPanelVisible') {
+                var panel = document.getElementById('edit-panel');
+                if (panel) {
+                    editPanelUserVisible = msg.visible;
+                    panel.classList.toggle('visible', msg.visible);
+                }
+                return;
+            }
             if (msg && msg.command === 'updateChart' && msg.chartBodyHtml) {
                 var chartDiv = document.getElementById('chart');
                 if (chartDiv) {
@@ -1181,9 +1211,16 @@ function getChartViewColumn(): vscode.ViewColumn {
 }
 
 function moveChartToMain(): void {
-    if (singletonPanel) {
-        const isMain = singletonPanel.viewColumn === vscode.ViewColumn.One;
-        singletonPanel.reveal(isMain ? vscode.ViewColumn.Beside : vscode.ViewColumn.One, false);
+    const panel = activeChartWebview;
+    if (!panel) { return; }
+    const isMain = panel.viewColumn === vscode.ViewColumn.One;
+    if (panel === singletonPanel) {
+        panel.reveal(isMain ? vscode.ViewColumn.Beside : vscode.ViewColumn.One, false);
+    } else {
+        // Custom editors must be moved via workbench commands; reveal() creates duplicates.
+        vscode.commands.executeCommand(
+            isMain ? 'workbench.action.moveEditorToNextGroup' : 'workbench.action.moveEditorToFirstGroup'
+        );
     }
 }
 
@@ -1297,10 +1334,11 @@ async function saveChartFromPanel(): Promise<void> {
         ? { ...singletonResultData, chartOptions: singletonChartOptionsOverride }
         : singletonResultData;
 
+    const viewColumn = singletonPanel?.viewColumn ?? vscode.ViewColumn.One;
     const result = await saveResults({ data: dataToSave });
     if (result) {
         singletonPanel?.dispose();
-        await vscode.commands.executeCommand('vscode.openWith', result.uri, 'kusto.resultEditor', vscode.ViewColumn.One);
+        await vscode.commands.executeCommand('vscode.openWith', result.uri, 'kusto.resultEditor', viewColumn);
     }
 }
 

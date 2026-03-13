@@ -301,6 +301,9 @@ FakesAssemblies/
 .ntvs_analysis.dat
 node_modules/
 
+# VS Code extension build output
+src/Client/dist/
+
 # Visual Studio 6 build log
 *.plg
 
