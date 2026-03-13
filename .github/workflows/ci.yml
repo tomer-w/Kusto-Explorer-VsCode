@@ -5,6 +5,8 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  release:
+    types: [ published ]
   workflow_dispatch:  # Allows manual runs from GitHub Actions tab
 
 
@@ -62,7 +64,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test-dotnet, lint-typescript]
     permissions:
-      contents: read
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -87,7 +89,15 @@ jobs:
         run: npm install -g @vscode/vsce
 
       - name: Build VSIX package
-        run: npm run package
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            # Extract version from release tag (e.g., v1.0.0 -> 1.0.0)
+            VERSION="${{ github.ref_name }}"
+            export VERSION="${VERSION#v}"
+            npm run package:version
+          else
+            npm run package
+          fi
         working-directory: src/Client
 
       - name: Upload VSIX artifact
@@ -96,3 +106,9 @@ jobs:
           name: kusto-explorer-vsix
           path: src/Client/*.vsix
           retention-days: 30
+
+      - name: Upload VSIX to release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: src/Client/*.vsix
