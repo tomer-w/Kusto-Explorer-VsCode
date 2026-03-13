@@ -13,6 +13,20 @@ import { copyToClipboard, ClipboardItem, formatCfHtml } from './clipboard';
 import { resultDataToMarkdown } from './markdown';
 import { resultDataToHtml, DataAsHtml, HtmlTable } from './html';
 
+// ─── Bottom panel WebviewView state ─────────────────────────────────────────
+
+/** The bottom-panel results WebviewView, if resolved. */
+let resultsView: vscode.WebviewView | undefined;
+
+/** Last result data shown in the bottom panel (for copy/save/chart commands). */
+let lastPanelResultData: server.ResultData | undefined;
+
+/** Table names from the last panel result. */
+let lastPanelTableNames: string[] = [];
+
+/** Active tab index in the panel view. */
+let panelActiveTabIndex = 0;
+
 /** The view type used for the custom result editor. */
 const resultEditorViewType = 'kusto.resultEditor';
 
@@ -42,6 +56,14 @@ const legendOptions = ['Visible', 'Hidden'];
 
 /** Known axis type options (must match server-side ChartAxis constants). */
 const axisTypes = ['Linear', 'Log'];
+
+/**
+ * Controls which content sections are shown in a result view.
+ * - 'chart': Only the chart, no tabs.
+ * - 'data': Only data tables. Tabs shown only if multiple tables.
+ * - 'all': Chart, data tables, and query tabs — all visible.
+ */
+export type ResultViewMode = 'chart' | 'data' | 'all';
 
 /** Per-editor state for result editor webview panels. */
 interface ResultEditorState {
@@ -91,7 +113,47 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
         )
     );
 
-    // Register copy commands that target whichever chart webview is active
+    // Register the bottom-panel WebviewView provider
+    vscode.window.registerWebviewViewProvider('kusto.resultsView', {
+        resolveWebviewView(webviewView) {
+            resultsView = webviewView;
+            webviewView.webview.options = {
+                enableScripts: true,
+                enableForms: false
+            };
+            webviewView.onDidDispose(() => {
+                resultsView = undefined;
+            });
+            webviewView.webview.onDidReceiveMessage((message) => {
+                if (message.command === 'viewChanged' && typeof message.viewId === 'string') {
+                    const match = message.viewId.match(/^table-(\d+)$/);
+                    if (match) {
+                        panelActiveTabIndex = parseInt(match[1]!, 10);
+                    }
+                    sendPanelExpression();
+                }
+                if (message.command === 'requestExpression') {
+                    sendPanelExpression();
+                }
+                if (message.command === 'copyText' && typeof message.text === 'string') {
+                    vscode.env.clipboard.writeText(message.text);
+                }
+                handleChartWebviewMessage(message);
+            });
+            webviewView.webview.html = '<html>no results</html>';
+        }
+    }, {
+        webviewOptions: {
+            retainContextWhenHidden: true
+        }
+    });
+
+    // Open the results view on start up when in panel mode
+    if (getResultsDisplay() === 'panel') {
+        vscode.commands.executeCommand('kusto.resultsView.focus');
+    }
+
+    // Register chart copy commands that target whichever chart webview is active
     context.subscriptions.push(
         vscode.commands.registerCommand('kusto.copyChartLight', () => {
             activeChartWebview?.webview.postMessage({ command: 'copyChartLight' });
@@ -104,6 +166,15 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
         }),
         vscode.commands.registerCommand('kusto.saveChart', () => saveChartFromPanel()),
         vscode.commands.registerCommand('kusto.moveChartToMain', () => moveChartToMain())
+    );
+
+    // Register results-related commands (previously in resultsPanel)
+    context.subscriptions.push(
+        vscode.commands.registerCommand('kusto.copyData', () => copyData()),
+        vscode.commands.registerCommand('kusto.copyCell', () => copyCell()),
+        vscode.commands.registerCommand('kusto.copyTableAsExpression', () => copyTableAsExpression()),
+        vscode.commands.registerCommand('kusto.saveResults', () => saveResultsFromSingleton()),
+        vscode.commands.registerCommand('kusto.chartResults', () => chartResultsFromPanel())
     );
 }
 
@@ -561,7 +632,7 @@ export class ResultEditorProvider implements vscode.CustomTextEditorProvider {
 
         const chartOptions = existingState?.chartOptionsOverride ?? resultData.chartOptions;
         const columnNames = resultData.tables[0]?.columns?.map(c => c.name) ?? [];
-        const html = this.buildDualViewHtml(dataResult, chartResult?.html, hasChart, chartOptions, columnNames,
+        const html = this.buildDualViewHtml(dataResult, chartResult?.html, hasChart, 'all', chartOptions, columnNames,
             resultData.query, resultData.cluster, resultData.database);
         webviewPanel.webview.html = injectChartMessageHandler(html);
     }
@@ -587,6 +658,7 @@ export class ResultEditorProvider implements vscode.CustomTextEditorProvider {
         dataResult: DataAsHtml | null,
         chartHtml: string | undefined,
         hasChart: boolean,
+        mode: ResultViewMode,
         chartOptions?: server.ChartOptions,
         columnNames?: string[],
         queryText?: string,
@@ -595,10 +667,23 @@ export class ResultEditorProvider implements vscode.CustomTextEditorProvider {
     ): string {
         const tables = dataResult?.tables ?? [];
 
+        const showChart = hasChart && (mode === 'chart' || mode === 'all');
+        const showTables = mode === 'data' || mode === 'all';
+        const showQuery = !!queryText && mode === 'all';
+
+        // Determine whether to show the tab bar
+        const visibleTabCount =
+            (showChart ? 1 : 0) +
+            (showTables ? tables.length : 0) +
+            (showQuery ? 1 : 0);
+        const showTabs = visibleTabCount > 1;
+
         // Build individual table divs
-        const tableContents = tables.map((t, i) =>
-            `<div id="table-${i}" class="view-content" data-vscode-context='{"chartVisible": false, "queryVisible": false, "preventDefaultContextMenuItems": true}'>${t.html}</div>`
-        ).join('');
+        const tableContents = showTables
+            ? tables.map((t, i) =>
+                `<div id="table-${i}" class="view-content" data-vscode-context='{"chartVisible": false, "queryVisible": false, "preventDefaultContextMenuItems": true}'>${t.html}</div>`
+            ).join('')
+            : '';
 
         // Extract the chart body content from the full HTML
         const chartContent = chartHtml
@@ -606,33 +691,43 @@ export class ResultEditorProvider implements vscode.CustomTextEditorProvider {
             : '';
 
         // Extract chart head content (scripts like Plotly)
-        const chartHead = chartHtml
+        const chartHead = chartHtml && showChart
             ? this.extractHead(chartHtml)
             : '';
 
-        // Build the toggle buttons
-        const chartButton = hasChart
-            ? `<button class="active" data-view="chart" onclick="switchView('chart')">Chart</button>`
-            : '';
+        // Determine first active view
+        const firstActiveView = showChart ? 'chart' : 'table-0';
 
-        let tableButtons: string;
-        if (tables.length === 1) {
-            tableButtons = `<button${hasChart ? '' : ' class="active"'} data-view="table-0" onclick="switchView('table-0')">Data</button>`;
-        } else {
-            tableButtons = tables.map((t, i) =>
-                `<button${!hasChart && i === 0 ? ' class="active"' : ''} data-view="table-${i}" onclick="switchView('table-${i}')">${this.escapeHtml(t.name)} (${t.rowCount})</button>`
-            ).join('');
+        // Build the toggle buttons (only used when showTabs is true)
+        let tabButtons = '';
+        if (showTabs) {
+            const chartButton = showChart
+                ? `<button class="active" data-view="chart" onclick="switchView('chart')">Chart</button>`
+                : '';
+
+            let tableButtonsHtml = '';
+            if (showTables) {
+                if (tables.length === 1) {
+                    tableButtonsHtml = `<button${showChart ? '' : ' class="active"'} data-view="table-0" onclick="switchView('table-0')">Data</button>`;
+                } else {
+                    tableButtonsHtml = tables.map((t, i) =>
+                        `<button${!showChart && i === 0 ? ' class="active"' : ''} data-view="table-${i}" onclick="switchView('table-${i}')">${this.escapeHtml(t.name)} (${t.rowCount})</button>`
+                    ).join('');
+                }
+            }
+
+            const queryButton = showQuery
+                ? `<button data-view="query" onclick="switchView('query')">Query</button>`
+                : '';
+
+            tabButtons = chartButton + tableButtonsHtml + queryButton;
         }
 
-        const hasQuery = !!queryText;
-        const queryButton = hasQuery
-            ? `<button data-view="query" onclick="switchView('query')">Query</button>`
-            : '';
-
-        const firstActiveView = hasChart ? 'chart' : 'table-0';
-
         // Build chart options edit panel
-        const editPanelHtml = hasChart ? this.buildEditPanelHtml(chartOptions, columnNames ?? []) : '';
+        const editPanelHtml = showChart ? this.buildEditPanelHtml(chartOptions, columnNames ?? []) : '';
+
+        // When only a single item is visible, mark it active and use full height
+        const mainAreaHeight = showTabs ? 'calc(100vh - 33px)' : '100vh';
 
         return `<!DOCTYPE html>
 <html>
@@ -677,7 +772,7 @@ export class ResultEditorProvider implements vscode.CustomTextEditorProvider {
         .view-toggle .spacer { flex: 1; }
         .main-area {
             display: flex;
-            height: calc(100vh - 33px);
+            height: ${mainAreaHeight};
         }
         .content-area {
             flex: 1;
@@ -842,16 +937,14 @@ export class ResultEditorProvider implements vscode.CustomTextEditorProvider {
     </style>
 </head>
 <body>
-    <div class="view-toggle">
-        ${chartButton}
-        ${tableButtons}
-        ${queryButton}
-    </div>
+    ${showTabs ? `<div class="view-toggle">
+        ${tabButtons}
+    </div>` : ''}
     <div class="main-area">
         <div class="content-area">
-            ${hasChart ? `<div id="chart" class="view-content${firstActiveView === 'chart' ? ' active' : ''}" data-vscode-context='{"chartVisible": true, "queryVisible": false, "preventDefaultContextMenuItems": true}'>${chartContent}</div>` : ''}
+            ${showChart ? `<div id="chart" class="view-content${firstActiveView === 'chart' ? ' active' : ''}" data-vscode-context='{"chartVisible": true, "queryVisible": false, "preventDefaultContextMenuItems": true}'>${chartContent}</div>` : ''}
             ${tableContents}
-            ${hasQuery ? `<div id="query" class="view-content" data-vscode-context='{"chartVisible": false, "queryVisible": true, "preventDefaultContextMenuItems": true}'>
+            ${showQuery ? `<div id="query" class="view-content" data-vscode-context='{"chartVisible": false, "queryVisible": true, "preventDefaultContextMenuItems": true}'>
                 <div class="query-info">
                     ${cluster ? `<span class="query-meta"><strong>Cluster:</strong> ${this.escapeHtml(cluster)}</span>` : ''}
                     ${database ? `<span class="query-meta"><strong>Database:</strong> ${this.escapeHtml(database)}</span>` : ''}
@@ -1257,21 +1350,186 @@ export function hasChartPanel(): boolean {
 }
 
 /**
- * Fetches chart and table HTML, then displays the full dual-view in the singleton chart panel.
- * Pass undefined to close the panel.
+ * Returns the configured results display mode.
  */
-export async function displayChart(
+function getResultsDisplay(): 'panel' | 'beside' {
+    return vscode.workspace.getConfiguration('kusto.results').get<string>('display', 'panel') === 'beside'
+        ? 'beside'
+        : 'panel';
+}
+
+/**
+ * Displays query results in the bottom panel view.
+ */
+export async function displayResultsPanel(
     client: LanguageClient,
-    resultData?: server.ResultData
+    resultData: server.ResultData | undefined,
+    mode: ResultViewMode
+): Promise<void> {
+    if (!resultData?.tables?.length) {
+        clearPanelView();
+        return;
+    }
+
+    await displayResultsInPanel(client, resultData, mode);
+}
+
+/**
+ * Displays a query error in the bottom panel and closes any singleton beside panel.
+ */
+export async function displayError(error: server.QueryDiagnostic): Promise<void> {
+    disposeSingletonPanel();
+
+    const htmlMessage = `<html><body><table><tr><td>\u274C</td><td><pre>${escapeHtmlStatic(error.message)}</pre></td></tr><tr><td></td><td><pre>${escapeHtmlStatic(error.details || '')}</pre></td></tr></table></body></html>`;
+
+    await showPanelHtml(htmlMessage, undefined, true);
+}
+
+function escapeHtmlStatic(text: string): string {
+    return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+// \u2500\u2500\u2500 Bottom panel display \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+/**
+ * Displays results in the bottom panel WebviewView using the full dual-view HTML.
+ */
+async function displayResultsInPanel(client: LanguageClient, resultData: server.ResultData, mode: ResultViewMode): Promise<void> {
+    lastPanelResultData = resultData;
+    panelActiveTabIndex = 0;
+
+    const darkMode = isDarkMode();
+
+    const [dataResult, chartResult] = await Promise.all([
+        Promise.resolve(resultDataToHtml(resultData)),
+        (mode === 'chart' || mode === 'all') && resultData.chartOptions
+            ? server.getChartAsHtml(client, resultData, darkMode)
+            : Promise.resolve(null)
+    ]);
+
+    const hasChart = !!chartResult?.html;
+    const hasTable = !!dataResult?.tables?.length;
+    lastPanelTableNames = (dataResult?.tables ?? []).map(t => t.name);
+
+    if (!hasTable && !hasChart) {
+        await showPanelHtml('<html><body>no results</body></html>');
+        return;
+    }
+
+    const chartOptions = resultData.chartOptions;
+    const columnNames = resultData.tables[0]?.columns?.map(c => c.name) ?? [];
+    const html = htmlBuilder.buildDualViewHtml(dataResult, chartResult?.html, hasChart, mode, chartOptions, columnNames,
+        resultData.query, resultData.cluster, resultData.database);
+
+    const totalRows = (dataResult?.tables ?? []).reduce((sum, t) => sum + t.rowCount, 0);
+    await showPanelHtml(injectChartMessageHandler(html), totalRows);
+    sendPanelExpression();
+}
+
+/**
+ * Shows HTML content in the bottom panel WebviewView.
+ * In panel mode, focuses the view. In beside mode, updates silently.
+ */
+async function showPanelHtml(html: string, rowCount?: number, hasError?: boolean): Promise<void> {
+    const isBesideMode = getResultsDisplay() === 'beside';
+
+    if (!resultsView) {
+        // In beside mode, don't force the panel open — just update if it exists
+        if (isBesideMode) {
+            return;
+        }
+        await vscode.commands.executeCommand('kusto.resultsView.focus');
+    }
+
+    if (!resultsView) {
+        return;
+    }
+
+    try {
+        resultsView.webview.html = html;
+
+        if (rowCount) {
+            resultsView.badge = { tooltip: `${rowCount} rows`, value: rowCount };
+        } else if (hasError) {
+            resultsView.badge = { tooltip: 'Error', value: 1 };
+        } else {
+            resultsView.badge = undefined;
+        }
+
+        // Only auto-show the panel in panel mode
+        if (!isBesideMode) {
+            resultsView.show(true);
+        }
+    } catch {
+        if (isBesideMode) {
+            return;
+        }
+        await vscode.commands.executeCommand('kusto.resultsView.focus');
+        if (resultsView) {
+            try {
+                resultsView.webview.html = html;
+                if (rowCount) {
+                    resultsView.badge = { tooltip: `${rowCount} rows`, value: rowCount };
+                }
+                resultsView.show(true);
+            } catch (retryError) {
+                vscode.window.showErrorMessage(`Failed to display results: ${retryError}`);
+            }
+        }
+    }
+}
+
+/** Clears the panel view content. */
+function clearPanelView(): void {
+    if (resultsView) {
+        resultsView.webview.html = '<html>no results</html>';
+        resultsView.badge = undefined;
+    }
+    lastPanelResultData = undefined;
+    lastPanelTableNames = [];
+}
+
+/**
+ * Sends the datatable expression to the bottom panel for drag-and-drop.
+ */
+async function sendPanelExpression(): Promise<void> {
+    if (!resultsView || !languageClient || !lastPanelResultData) {
+        return;
+    }
+    try {
+        const tableName = lastPanelTableNames[panelActiveTabIndex];
+        const result = await server.getDataAsExpression(languageClient, lastPanelResultData, tableName);
+        if (result?.expression && resultsView) {
+            resultsView.webview.postMessage({ command: 'setExpression', expression: result.expression });
+        }
+    } catch {
+        // Ignore
+    }
+}
+
+
+// --- Singleton beside display ----------------------------------------------------------------
+
+/**
+ * Shows/hides the singleton result panel.
+ * @param beside If true, opens in a beside column; if false, opens in the main editor column.
+ */
+export async function displaySingletonResultView(
+    client: LanguageClient,
+    resultData: server.ResultData | undefined,
+    mode: ResultViewMode,
+    beside: boolean
 ): Promise<void> {
     if (!resultData?.tables?.length) {
         disposeSingletonPanel();
         return;
     }
 
-    // Only open/update the singleton panel if there are chart options (render command).
-    // If no chart options and the panel is already open, close it.
-    if (!resultData.chartOptions) {
+    if (mode === 'chart' && !resultData.chartOptions) {
         disposeSingletonPanel();
         return;
     }
@@ -1292,10 +1550,10 @@ export async function displayChart(
 
     const hasChart = !!chartResult?.html;
     const columnNames = resultData.tables[0]?.columns?.map(c => c.name) ?? [];
-    const html = htmlBuilder.buildDualViewHtml(dataResult, chartResult?.html, hasChart, chartOptions, columnNames,
+    const html = htmlBuilder.buildDualViewHtml(dataResult, chartResult?.html, hasChart, mode, chartOptions, columnNames,
         resultData.query, resultData.cluster, resultData.database);
 
-    showSingletonPanel(injectChartMessageHandler(html), resultData, (dataResult?.tables ?? []).map(t => t.name));
+    showSingletonPanel(injectChartMessageHandler(html), resultData, (dataResult?.tables ?? []).map(t => t.name), beside, mode);
 }
 
 function getChartViewColumn(): vscode.ViewColumn {
@@ -1316,13 +1574,22 @@ function moveChartToMain(): void {
     }
 }
 
-function showSingletonPanel(html: string, resultData: server.ResultData, tableNames: string[]): void {
-    const viewColumn = getChartViewColumn();
+function singletonTitleForMode(mode: ResultViewMode): string {
+    switch (mode) {
+        case 'chart': return 'Chart';
+        case 'data': return 'Data';
+        case 'all': return 'Results';
+    }
+}
+
+function showSingletonPanel(html: string, resultData: server.ResultData, tableNames: string[], beside: boolean, mode: ResultViewMode): void {
+    const viewColumn = beside ? vscode.ViewColumn.Beside : vscode.ViewColumn.One;
+    const title = singletonTitleForMode(mode);
 
     if (!singletonPanel) {
         singletonPanel = vscode.window.createWebviewPanel(
             'kusto',
-            'Results',
+            title,
             { viewColumn, preserveFocus: true },
             { enableScripts: true, retainContextWhenHidden: true }
         );
@@ -1396,6 +1663,7 @@ function showSingletonPanel(html: string, resultData: server.ResultData, tableNa
 
     vscode.commands.executeCommand('setContext', 'kusto.resultEditorChartActive', hasChart);
 
+    singletonPanel.title = title;
     singletonPanel.webview.html = html;
     singletonPanel.reveal(viewColumn, true);
     sendExpressionToEditorPanel(singletonPanel);
@@ -1549,4 +1817,102 @@ export async function copyTableAsExpressionFromEditor(): Promise<boolean> {
         vscode.window.showErrorMessage(`Failed to copy as expression: ${error}`);
     }
     return true;
+}
+
+// ─── Results commands (copy/save/chart from either panel or singleton) ──────────
+
+/**
+ * Copies a table cell from the results. Delegates to editor copy if a result editor is active.
+ */
+function copyCell(): void {
+    if (copyCellFromEditor()) {
+        return;
+    }
+    // Panel mode: post message to the bottom panel webview
+    if (resultsView) {
+        resultsView.webview.postMessage({ command: 'copyCell' });
+    }
+}
+
+/**
+ * Copies the active table data as HTML + markdown.
+ */
+async function copyData(): Promise<void> {
+    if (await copyDataFromEditor()) {
+        return;
+    }
+
+    // Fall back to panel data
+    if (!languageClient || !lastPanelResultData) {
+        return;
+    }
+
+    const tableName = lastPanelTableNames[panelActiveTabIndex];
+    const htmlResult = resultDataToHtml(lastPanelResultData, tableName);
+    const html = htmlResult?.tables[0]?.html;
+    const markdown = resultDataToMarkdown(lastPanelResultData, tableName);
+
+    if (html) {
+        copyToClipboard([
+            { format: 'HTML Format', data: formatCfHtml(html), encoding: 'utf8' },
+            { format: 'Text', data: markdown || html, encoding: 'text' },
+        ]);
+    } else if (markdown) {
+        vscode.env.clipboard.writeText(markdown);
+    }
+}
+
+/**
+ * Copies the active table as a KQL datatable expression.
+ */
+async function copyTableAsExpression(): Promise<void> {
+    if (await copyTableAsExpressionFromEditor()) {
+        return;
+    }
+
+    if (!lastPanelResultData) {
+        return;
+    }
+
+    try {
+        const tableName = lastPanelTableNames[panelActiveTabIndex];
+        const result = await server.getDataAsExpression(languageClient, lastPanelResultData, tableName);
+        if (result?.expression) {
+            await vscode.env.clipboard.writeText(result.expression);
+        }
+    } catch (error) {
+        vscode.window.showErrorMessage(`Failed to copy as expression: ${error}`);
+    }
+}
+
+/**
+ * Saves results from the singleton panel or bottom panel to a .kqr file.
+ */
+async function saveResultsFromSingleton(): Promise<void> {
+    const data = singletonResultData ?? lastPanelResultData;
+    if (!data) {
+        vscode.window.showWarningMessage('No result data available to save.');
+        return;
+    }
+
+    const result = await saveResults({ data });
+    if (result) {
+        disposeSingletonPanel();
+        await vscode.commands.executeCommand('vscode.openWith', result.uri, 'kusto.resultEditor', vscode.ViewColumn.One);
+    }
+}
+
+/**
+ * Charts the current results from the bottom panel by opening/updating the beside chart panel.
+ */
+async function chartResultsFromPanel(): Promise<void> {
+    if (!lastPanelResultData) {
+        vscode.window.showWarningMessage('No result data available to chart.');
+        return;
+    }
+    const chartData: server.ResultData = {
+        ...lastPanelResultData,
+        chartOptions: lastPanelResultData.chartOptions ?? { kind: 'ColumnChart' }
+    };
+    await displaySingletonResultView(languageClient, chartData, 'chart', true);
 }
