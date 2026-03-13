@@ -32,7 +32,9 @@
     "type-check": "tsc --noEmit",
     "build-release-server": "dotnet publish ../Server/Server.csproj -c Release -o ./server",
     "build-debug-server": "dotnet publish ../Server/Server.csproj -c Debug -o ./server",
-    "package": "shx cp ../../LICENSE . && npm run compile && npm run build-release-server && vsce package",
+    "prepackage": "shx cp ../../LICENSE . && npm run compile && npm run build-release-server",
+    "package": "npm run prepackage && vsce package",
+    "package:version": "npm run prepackage && vsce package --no-update-package-json $VERSION",
     "publish": "vsce publish"
   },
   "contributes": {
