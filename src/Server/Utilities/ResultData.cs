@@ -13,9 +13,33 @@ namespace Kusto.Vscode;
 [DataContract]
 public class ResultData
 {
+    /// <summary>
+    /// The query that produced the result
+    /// </summary>
+    [DataMember(Name = "query")]
+    public string? Query { get; init; }
+
+    /// <summary>
+    /// The cluster that ran the query
+    /// </summary>
+    [DataMember(Name = "cluster")]
+    public string? Cluster { get; init; }
+
+    /// <summary>
+    /// The default database context for the query
+    /// </summary>
+    [DataMember(Name = "database")]
+    public string? Database { get; init; }
+
+    /// <summary>
+    /// The resulting data tables
+    /// </summary>
     [DataMember(Name = "tables")]
     public required ImmutableList<ResultTable> Tables { get; init; }
 
+    /// <summary>
+    /// The chart options for rendering a chart from the result data
+    /// </summary>
     [DataMember(Name = "chartOptions")]
     public ChartOptions? ChartOptions { get; init; }
 
@@ -23,9 +47,12 @@ public class ResultData
     /// Converts an <see cref="ExecuteResult"/> to a <see cref="ResultData"/>.
     /// </summary>
     /// <param name="executeResult">The query execution result to convert.</param>
+    /// <param name="query">The query text that produced the result.</param>
+    /// <param name="cluster">The cluster where the query was executed.</param>
+    /// <param name="database">The database where the query was executed.</param>
     /// <param name="tableName">Optional table name to filter to a specific table.</param>
     /// <returns>The serializable result, or null if there are no tables.</returns>
-    public static ResultData FromExecuteResult(ExecuteResult executeResult, string? tableName = null)
+    public static ResultData FromExecuteResult(ExecuteResult executeResult, string? query = null, string? cluster = null, string? database = null, string? tableName = null)
     {
         ImmutableList<ResultTable> resultTables = ImmutableList<ResultTable>.Empty;
 
@@ -44,6 +71,9 @@ public class ResultData
 
         return new ResultData
         {
+            Query = query,
+            Cluster = cluster,
+            Database = database,
             Tables = resultTables,
             ChartOptions = executeResult.ChartOptions
         };

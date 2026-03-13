@@ -230,26 +230,24 @@ export interface ChartAsHtmlResult {
 }
 
 /**
- * Gets the HTML representation of a query from the document.
+ * Gets the HTML representation of query text with syntax colorization.
  * @param client The language client for LSP communication
- * @param uri The document URI
- * @param selection The selection range of the query
+ * @param query The query text to colorize
+ * @param cluster Optional cluster name for semantic coloring
+ * @param database Optional database name for semantic coloring
  * @param darkMode Whether to render in dark mode
- * @returns The query as HTML, or null if not available
+ * @returns The colorized query as HTML, or null if not available
  */
 export function getQueryAsHtml(
     client: LanguageClient,
-    uri: string,
-    selection: SelectionRange,
+    query: string,
+    cluster?: string,
+    database?: string,
     darkMode?: boolean
 ): Promise<QueryAsHtmlResult | null> {
     return client.sendRequest<QueryAsHtmlResult | null>(
         'kusto/getQueryAsHtml',
-        {
-            textDocument: { uri },
-            selection,
-            darkMode
-        }
+        { query, cluster, database, darkMode }
     );
 }
 
@@ -386,6 +384,9 @@ export interface DataAsExpression {
 
 /** Serializable representation of a query execution result. */
 export interface ResultData {
+    query?: string;
+    cluster?: string;
+    database?: string;
     tables: ResultTable[];
     chartOptions?: ChartOptions;
 }

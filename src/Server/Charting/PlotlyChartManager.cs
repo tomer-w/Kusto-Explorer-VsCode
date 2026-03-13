@@ -893,8 +893,8 @@ public class PlotlyChartManager : IChartManager
     private DataColumn[] Get2dYColumns(DataTable data, ChartOptions options, DataColumn keyColumn)
     {
         return options.YColumns != null
-            ? data.Columns.OfType<DataColumn>().Where(c => options.YColumns.Contains(c.ColumnName)).ToArray()
-            : data.Columns.OfType<DataColumn>().Where(c => c != keyColumn).ToArray();
+            ? options.YColumns.Select(name => (DataColumn)data.Columns[name]!).Where(c => c != null).ToArray() // the exact columns requested in order
+            : data.Columns.OfType<DataColumn>().Where(c => c != keyColumn).ToArray(); // the first column in table order that is not the key column
     }
 
     private (object[]? x, double[]? y) Get2DChartData(DataColumn xColumn, DataColumn yColumn)

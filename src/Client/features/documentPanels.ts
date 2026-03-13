@@ -304,23 +304,19 @@ async function copyQueryTransparent(client: LanguageClient, codeLensRange?: serv
             return;
         }
 
-        const selection = {
-            start: { line: queryRange.start.line, character: queryRange.start.character },
-            end: { line: queryRange.end.line, character: queryRange.end.character }
-        };
-
-        // Request light-mode HTML from the server (darkMode = false)
-        const result = await server.getQueryAsHtml(client, uri, selection, false);
-        if (!result?.html) {
-            return;
-        }
-
-        // Get plain text of the query for the text format
+        // Get plain text of the query
         const range = new vscode.Range(
             queryRange.start.line, queryRange.start.character,
             queryRange.end.line, queryRange.end.character
         );
         const plainText = editor.document.getText(range);
+
+        // Request light-mode HTML from the server (darkMode = false)
+        const connection = await getDocumentConnection(uri);
+        const result = await server.getQueryAsHtml(client, plainText, connection?.cluster, connection?.database, false);
+        if (!result?.html) {
+            return;
+        }
 
         // Place both HTML and plain text on the clipboard
         const items: import('./clipboard').ClipboardItem[] = [

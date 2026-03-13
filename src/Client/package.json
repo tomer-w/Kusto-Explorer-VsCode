@@ -342,22 +342,22 @@
         },
         {
           "command": "kusto.copyChartLight",
-          "when": "activeWebviewPanelId == kusto || activeWebviewPanelId == kusto.resultEditor",
+          "when": "(activeWebviewPanelId == kusto || activeWebviewPanelId == kusto.resultEditor) && kusto.resultEditorChartActive",
           "group": "navigation@1"
         },
         {
           "command": "kusto.copyChartDark",
-          "when": "activeWebviewPanelId == kusto || activeWebviewPanelId == kusto.resultEditor",
+          "when": "(activeWebviewPanelId == kusto || activeWebviewPanelId == kusto.resultEditor) && kusto.resultEditorChartActive",
           "group": "navigation@2"
         },
         {
           "command": "kusto.moveChartToMain",
-          "when": "activeWebviewPanelId == kusto || activeWebviewPanelId == kusto.resultEditor",
+          "when": "(activeWebviewPanelId == kusto || activeWebviewPanelId == kusto.resultEditor) && kusto.resultEditorChartActive",
           "group": "navigation@3"
         },
         {
           "command": "kusto.toggleChartEditor",
-          "when": "(activeWebviewPanelId == kusto || activeWebviewPanelId == kusto.resultEditor) && kusto.resultEditorHasChart",
+          "when": "(activeWebviewPanelId == kusto || activeWebviewPanelId == kusto.resultEditor) && kusto.resultEditorHasChart && kusto.resultEditorChartActive",
           "group": "navigation@3"
         },
         {
@@ -391,17 +391,17 @@
       "webview/context": [
         {
           "command": "kusto.copyCell",
-          "when": "webviewId == 'kusto.resultsView' || (webviewId == 'kusto.resultEditor' && !chartVisible) || (webviewId == 'kusto' && !chartVisible)",
+          "when": "webviewId == 'kusto.resultsView' || (webviewId == 'kusto.resultEditor' && !chartVisible && !queryVisible) || (webviewId == 'kusto' && !chartVisible)",
           "group": "9_cutcopypaste@1"
         },
         {
           "command": "kusto.copyData",
-          "when": "webviewId == 'kusto.resultsView' || (webviewId == 'kusto.resultEditor' && !chartVisible) || (webviewId == 'kusto' && !chartVisible)",
+          "when": "webviewId == 'kusto.resultsView' || (webviewId == 'kusto.resultEditor' && !chartVisible && !queryVisible) || (webviewId == 'kusto' && !chartVisible)",
           "group": "9_cutcopypaste@2"
         },
         {
           "command": "kusto.copyTableAsExpression",
-          "when": "webviewId == 'kusto.resultsView' || (webviewId == 'kusto.resultEditor' && !chartVisible) || (webviewId == 'kusto' && !chartVisible)",
+          "when": "webviewId == 'kusto.resultsView' || (webviewId == 'kusto.resultEditor' && !chartVisible && !queryVisible) || (webviewId == 'kusto' && !chartVisible)",
           "group": "9_cutcopypaste@3"
         },
         {
