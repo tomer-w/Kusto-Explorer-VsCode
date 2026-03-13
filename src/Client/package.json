@@ -350,7 +350,7 @@
         },
         {
           "command": "kusto.moveChartToMain",
-          "when": "activeWebviewPanelId == kusto",
+          "when": "activeWebviewPanelId == kusto || activeWebviewPanelId == kusto.resultEditor",
           "group": "navigation@3"
         },
         {
