@@ -419,6 +419,13 @@ export class ResultEditorProvider implements vscode.CustomTextEditorProvider {
                     state.activeView = message.viewId;
                 }
                 vscode.commands.executeCommand('setContext', 'kusto.resultEditorChartActive', message.viewId === 'chart');
+                if (message.viewId.startsWith('table-')) {
+                    sendExpressionToEditorPanel(webviewPanel);
+                }
+                return;
+            }
+            if (message.command === 'requestExpression') {
+                sendExpressionToEditorPanel(webviewPanel);
                 return;
             }
             if (message.command === 'copyText' && typeof message.text === 'string') {
@@ -473,6 +480,7 @@ export class ResultEditorProvider implements vscode.CustomTextEditorProvider {
 
         // Render from the document content
         await this.updateWebview(document, webviewPanel);
+        sendExpressionToEditorPanel(webviewPanel);
 
         // Re-render when the document content changes (e.g. external edit)
         const changeSubscription = vscode.workspace.onDidChangeTextDocument(async e => {
@@ -548,7 +556,7 @@ export class ResultEditorProvider implements vscode.CustomTextEditorProvider {
             resultData,
             tableNames,
             activeView: existingState?.activeView ?? firstActiveView,
-            chartOptionsOverride: existingState?.chartOptionsOverride
+            ...(existingState?.chartOptionsOverride && { chartOptionsOverride: existingState.chartOptionsOverride })
         });
 
         const chartOptions = existingState?.chartOptionsOverride ?? resultData.chartOptions;
@@ -863,13 +871,44 @@ export class ResultEditorProvider implements vscode.CustomTextEditorProvider {
         // Track whether the user wants the edit panel open
         var editPanelUserVisible = false;
 
+        // Drag & drop: cache the KQL datatable expression for the active table
+        var cachedExpression = '';
+
+        function makeTablesDraggable() {
+            var activeContent = document.querySelector('.view-content.active');
+            if (activeContent) {
+                activeContent.querySelectorAll('table').forEach(function(tbl) {
+                    tbl.setAttribute('draggable', 'true');
+                });
+            }
+        }
+        makeTablesDraggable();
+
+        document.addEventListener('dragstart', function(e) {
+            var tbl = e.target.closest ? e.target.closest('table') : null;
+            if (!tbl) { return; }
+            if (cachedExpression) {
+                e.dataTransfer.setData('text/plain', cachedExpression);
+                e.dataTransfer.effectAllowed = 'copy';
+            } else {
+                if (window._vscodeApi) {
+                    window._vscodeApi.postMessage({ command: 'requestExpression' });
+                }
+                e.preventDefault();
+            }
+        });
+
         function switchView(viewId) {
+            cachedExpression = '';
             document.querySelectorAll('.view-content').forEach(function(el) { el.classList.remove('active'); });
             document.querySelectorAll('.view-toggle button[data-view]').forEach(function(el) { el.classList.remove('active'); });
             var target = document.getElementById(viewId);
             if (target) target.classList.add('active');
             var btn = document.querySelector('.view-toggle button[data-view="' + viewId + '"]');
             if (btn) btn.classList.add('active');
+            if (viewId.startsWith('table-')) {
+                makeTablesDraggable();
+            }
             // Hide/restore edit panel based on view and user preference
             var editPanel = document.getElementById('edit-panel');
             if (editPanel) {
@@ -1014,6 +1053,10 @@ export class ResultEditorProvider implements vscode.CustomTextEditorProvider {
                     editPanelUserVisible = msg.visible;
                     panel.classList.toggle('visible', msg.visible);
                 }
+                return;
+            }
+            if (msg && msg.command === 'setExpression' && typeof msg.expression === 'string') {
+                cachedExpression = msg.expression;
                 return;
             }
             if (msg && msg.command === 'updateChart' && msg.chartBodyHtml) {
@@ -1301,6 +1344,13 @@ function showSingletonPanel(html: string, resultData: server.ResultData, tableNa
                 const state = editorStates.get(singletonPanel!);
                 if (state) { state.activeView = message.viewId; }
                 vscode.commands.executeCommand('setContext', 'kusto.resultEditorChartActive', message.viewId === 'chart');
+                if (message.viewId.startsWith('table-')) {
+                    sendExpressionToEditorPanel(singletonPanel!);
+                }
+                return;
+            }
+            if (message.command === 'requestExpression') {
+                sendExpressionToEditorPanel(singletonPanel!);
                 return;
             }
             if (message.command === 'copyText' && typeof message.text === 'string') {
@@ -1348,6 +1398,7 @@ function showSingletonPanel(html: string, resultData: server.ResultData, tableNa
 
     singletonPanel.webview.html = html;
     singletonPanel.reveal(viewColumn, true);
+    sendExpressionToEditorPanel(singletonPanel);
 }
 
 async function updateSingletonChart(): Promise<void> {
@@ -1417,6 +1468,24 @@ function getActiveTableName(state: ResultEditorState): string | undefined {
         return state.tableNames[idx];
     }
     return state.tableNames[0];
+}
+
+/**
+ * Fetches the datatable expression for the active table in a result editor
+ * webview and posts it so it is available for drag-and-drop.
+ */
+async function sendExpressionToEditorPanel(panel: vscode.WebviewPanel): Promise<void> {
+    const state = editorStates.get(panel);
+    if (!state) { return; }
+    try {
+        const tableName = getActiveTableName(state);
+        const result = await server.getDataAsExpression(languageClient, state.resultData, tableName);
+        if (result?.expression) {
+            panel.webview.postMessage({ command: 'setExpression', expression: result.expression });
+        }
+    } catch {
+        // Ignore — drag will just not work until expression is available
+    }
 }
 
 /**
