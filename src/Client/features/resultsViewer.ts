@@ -398,6 +398,7 @@ export class ResultEditorProvider implements vscode.CustomTextEditorProvider {
                 const state = editorStates.get(webviewPanel);
                 const hasChart = !!state?.resultData?.chartOptions;
                 vscode.commands.executeCommand('setContext', 'kusto.resultEditorHasChart', hasChart);
+                vscode.commands.executeCommand('setContext', 'kusto.resultEditorChartActive', state?.activeView === 'chart');
             }
         };
         webviewPanel.onDidChangeViewState(() => updateChartContext());
@@ -417,6 +418,7 @@ export class ResultEditorProvider implements vscode.CustomTextEditorProvider {
                 if (state) {
                     state.activeView = message.viewId;
                 }
+                vscode.commands.executeCommand('setContext', 'kusto.resultEditorChartActive', message.viewId === 'chart');
                 return;
             }
             if (message.command === 'copyText' && typeof message.text === 'string') {
@@ -429,19 +431,22 @@ export class ResultEditorProvider implements vscode.CustomTextEditorProvider {
                 state.chartOptionsOverride = message.chartOptions as server.ChartOptions;
                 if (chartOptionsTimer) { clearTimeout(chartOptionsTimer); }
                 chartOptionsTimer = setTimeout(async () => {
-                    await this.updateChartOnly(state, webviewPanel);
-                    // Persist updated chart options to the backing file
-                    const updatedData: server.ResultData = { ...state.resultData, chartOptions: state.chartOptionsOverride! };
-                    const content = JSON.stringify(updatedData, null, 2);
-                    const fullRange = new vscode.Range(
-                        document.positionAt(0),
-                        document.positionAt(document.getText().length)
-                    );
-                    const edit = new vscode.WorkspaceEdit();
-                    edit.replace(document.uri, fullRange, content);
-                    ignoringSelfEdit = true;
-                    await vscode.workspace.applyEdit(edit);
-                    ignoringSelfEdit = false;
+                    try {
+                        await this.updateChartOnly(state, webviewPanel);
+                        // Persist updated chart options to the backing file
+                        const updatedData: server.ResultData = { ...state.resultData, chartOptions: state.chartOptionsOverride! };
+                        const content = JSON.stringify(updatedData, null, 2);
+                        const fullRange = new vscode.Range(
+                            document.positionAt(0),
+                            document.positionAt(document.getText().length)
+                        );
+                        const edit = new vscode.WorkspaceEdit();
+                        edit.replace(document.uri, fullRange, content);
+                        ignoringSelfEdit = true;
+                        await vscode.workspace.applyEdit(edit);
+                    } finally {
+                        ignoringSelfEdit = false;
+                    }
                 }, 600);
                 return;
             }
@@ -488,6 +493,7 @@ export class ResultEditorProvider implements vscode.CustomTextEditorProvider {
             if (chartOptionsTimer) { clearTimeout(chartOptionsTimer); }
             editorStates.delete(webviewPanel);
             vscode.commands.executeCommand('setContext', 'kusto.resultEditorHasChart', false);
+            vscode.commands.executeCommand('setContext', 'kusto.resultEditorChartActive', false);
             changeSubscription.dispose();
             themeSubscription.dispose();
         });
@@ -511,7 +517,7 @@ export class ResultEditorProvider implements vscode.CustomTextEditorProvider {
 
         const darkMode = isDarkMode();
 
-        // Fetch both table HTML and chart HTML in parallel
+        // Fetch table HTML and chart HTML in parallel
         const [dataResult, chartResult] = await Promise.all([
             Promise.resolve(resultDataToHtml(resultData)),
             resultData.chartOptions
@@ -525,6 +531,8 @@ export class ResultEditorProvider implements vscode.CustomTextEditorProvider {
         // Update context key for editor title actions
         if (webviewPanel.active) {
             vscode.commands.executeCommand('setContext', 'kusto.resultEditorHasChart', hasChart);
+            const activeView = editorStates.get(webviewPanel)?.activeView ?? (hasChart ? 'chart' : 'table-0');
+            vscode.commands.executeCommand('setContext', 'kusto.resultEditorChartActive', activeView === 'chart');
         }
 
         if (!hasTable && !hasChart) {
@@ -539,12 +547,14 @@ export class ResultEditorProvider implements vscode.CustomTextEditorProvider {
         editorStates.set(webviewPanel, {
             resultData,
             tableNames,
-            activeView: existingState?.activeView ?? firstActiveView
+            activeView: existingState?.activeView ?? firstActiveView,
+            chartOptionsOverride: existingState?.chartOptionsOverride
         });
 
         const chartOptions = existingState?.chartOptionsOverride ?? resultData.chartOptions;
         const columnNames = resultData.tables[0]?.columns?.map(c => c.name) ?? [];
-        const html = this.buildDualViewHtml(dataResult, chartResult?.html, hasChart, chartOptions, columnNames);
+        const html = this.buildDualViewHtml(dataResult, chartResult?.html, hasChart, chartOptions, columnNames,
+            resultData.query, resultData.cluster, resultData.database);
         webviewPanel.webview.html = injectChartMessageHandler(html);
     }
 
@@ -570,13 +580,16 @@ export class ResultEditorProvider implements vscode.CustomTextEditorProvider {
         chartHtml: string | undefined,
         hasChart: boolean,
         chartOptions?: server.ChartOptions,
-        columnNames?: string[]
+        columnNames?: string[],
+        queryText?: string,
+        cluster?: string,
+        database?: string
     ): string {
         const tables = dataResult?.tables ?? [];
 
         // Build individual table divs
         const tableContents = tables.map((t, i) =>
-            `<div id="table-${i}" class="view-content" data-vscode-context='{"chartVisible": false, "preventDefaultContextMenuItems": true}'>${t.html}</div>`
+            `<div id="table-${i}" class="view-content" data-vscode-context='{"chartVisible": false, "queryVisible": false, "preventDefaultContextMenuItems": true}'>${t.html}</div>`
         ).join('');
 
         // Extract the chart body content from the full HTML
@@ -602,6 +615,11 @@ export class ResultEditorProvider implements vscode.CustomTextEditorProvider {
                 `<button${!hasChart && i === 0 ? ' class="active"' : ''} data-view="table-${i}" onclick="switchView('table-${i}')">${this.escapeHtml(t.name)} (${t.rowCount})</button>`
             ).join('');
         }
+
+        const hasQuery = !!queryText;
+        const queryButton = hasQuery
+            ? `<button data-view="query" onclick="switchView('query')">Query</button>`
+            : '';
 
         const firstActiveView = hasChart ? 'chart' : 'table-0';
 
@@ -777,6 +795,7 @@ export class ResultEditorProvider implements vscode.CustomTextEditorProvider {
             opacity: 1;
         }
         /* Table styles */
+        .view-content table:first-child { margin-top: 4px; }
         table { border-collapse: collapse; width: 100%; }
         th, td {
             padding: 4px 8px;
@@ -791,17 +810,46 @@ export class ResultEditorProvider implements vscode.CustomTextEditorProvider {
             z-index: 1;
             font-weight: 600;
         }
+        /* Query tab styles */
+        .query-info {
+            padding: 8px 12px;
+            display: flex;
+            gap: 16px;
+            border-bottom: 1px solid var(--vscode-panel-border, #444);
+            background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+        }
+        .query-meta {
+            font-size: 12px;
+            color: var(--vscode-descriptionForeground, var(--vscode-foreground));
+        }
+        .query-content {
+            margin: 0;
+            padding: 4px 12px;
+            overflow: auto;
+            font-family: var(--vscode-editor-font-family, 'Consolas', 'Courier New', monospace);
+            font-size: var(--vscode-editor-font-size, 13px);
+            white-space: pre-wrap;
+            color: var(--vscode-descriptionForeground, grey);
+        }
     </style>
 </head>
 <body>
     <div class="view-toggle">
         ${chartButton}
         ${tableButtons}
+        ${queryButton}
     </div>
     <div class="main-area">
         <div class="content-area">
-            ${hasChart ? `<div id="chart" class="view-content${firstActiveView === 'chart' ? ' active' : ''}" data-vscode-context='{"chartVisible": true, "preventDefaultContextMenuItems": true}'>${chartContent}</div>` : ''}
+            ${hasChart ? `<div id="chart" class="view-content${firstActiveView === 'chart' ? ' active' : ''}" data-vscode-context='{"chartVisible": true, "queryVisible": false, "preventDefaultContextMenuItems": true}'>${chartContent}</div>` : ''}
             ${tableContents}
+            ${hasQuery ? `<div id="query" class="view-content" data-vscode-context='{"chartVisible": false, "queryVisible": true, "preventDefaultContextMenuItems": true}'>
+                <div class="query-info">
+                    ${cluster ? `<span class="query-meta"><strong>Cluster:</strong> ${this.escapeHtml(cluster)}</span>` : ''}
+                    ${database ? `<span class="query-meta"><strong>Database:</strong> ${this.escapeHtml(database)}</span>` : ''}
+                </div>
+                <pre class="query-content">${this.escapeHtml(queryText!)}</pre>
+            </div>` : ''}
         </div>
         ${editPanelHtml}
     </div>
@@ -825,7 +873,7 @@ export class ResultEditorProvider implements vscode.CustomTextEditorProvider {
             // Hide/restore edit panel based on view and user preference
             var editPanel = document.getElementById('edit-panel');
             if (editPanel) {
-                if (viewId.startsWith('table-')) {
+                if (viewId.startsWith('table-') || viewId === 'query') {
                     editPanel.classList.remove('visible');
                 } else if (editPanelUserVisible) {
                     editPanel.classList.add('visible');
@@ -1201,7 +1249,8 @@ export async function displayChart(
 
     const hasChart = !!chartResult?.html;
     const columnNames = resultData.tables[0]?.columns?.map(c => c.name) ?? [];
-    const html = htmlBuilder.buildDualViewHtml(dataResult, chartResult?.html, hasChart, chartOptions, columnNames);
+    const html = htmlBuilder.buildDualViewHtml(dataResult, chartResult?.html, hasChart, chartOptions, columnNames,
+        resultData.query, resultData.cluster, resultData.database);
 
     showSingletonPanel(injectChartMessageHandler(html), resultData, (dataResult?.tables ?? []).map(t => t.name));
 }
@@ -1230,7 +1279,7 @@ function showSingletonPanel(html: string, resultData: server.ResultData, tableNa
     if (!singletonPanel) {
         singletonPanel = vscode.window.createWebviewPanel(
             'kusto',
-            'Chart',
+            'Results',
             { viewColumn, preserveFocus: true },
             { enableScripts: true, retainContextWhenHidden: true }
         );
@@ -1240,8 +1289,10 @@ function showSingletonPanel(html: string, resultData: server.ResultData, tableNa
 
         singletonPanel.onDidChangeViewState(() => {
             if (singletonPanel?.active) {
-                const hasChart = !!editorStates.get(singletonPanel)?.resultData?.chartOptions;
+                const state = editorStates.get(singletonPanel);
+                const hasChart = !!state?.resultData?.chartOptions;
                 vscode.commands.executeCommand('setContext', 'kusto.resultEditorHasChart', hasChart);
+                vscode.commands.executeCommand('setContext', 'kusto.resultEditorChartActive', state?.activeView === 'chart');
             }
         });
 
@@ -1249,6 +1300,7 @@ function showSingletonPanel(html: string, resultData: server.ResultData, tableNa
             if (message.command === 'viewChanged' && typeof message.viewId === 'string') {
                 const state = editorStates.get(singletonPanel!);
                 if (state) { state.activeView = message.viewId; }
+                vscode.commands.executeCommand('setContext', 'kusto.resultEditorChartActive', message.viewId === 'chart');
                 return;
             }
             if (message.command === 'copyText' && typeof message.text === 'string') {
@@ -1279,6 +1331,7 @@ function showSingletonPanel(html: string, resultData: server.ResultData, tableNa
             singletonResultData = undefined;
             singletonChartOptionsOverride = undefined;
             vscode.commands.executeCommand('setContext', 'kusto.resultEditorHasChart', false);
+            vscode.commands.executeCommand('setContext', 'kusto.resultEditorChartActive', false);
             vscode.commands.executeCommand('kusto.chartPanelStateChanged');
         });
     }
@@ -1290,6 +1343,8 @@ function showSingletonPanel(html: string, resultData: server.ResultData, tableNa
         tableNames,
         activeView: hasChart ? 'chart' : 'table-0'
     });
+
+    vscode.commands.executeCommand('setContext', 'kusto.resultEditorChartActive', hasChart);
 
     singletonPanel.webview.html = html;
     singletonPanel.reveal(viewColumn, true);

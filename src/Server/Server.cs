@@ -2076,7 +2076,7 @@ public class Server : LspServer, ILogger, ISettingSource, IStorage
             {
                 return new RunQueryResult
                 {
-                    Data = runResult.ExecuteResult != null ? ResultData.FromExecuteResult(runResult.ExecuteResult) : null,
+                    Data = runResult.ExecuteResult != null ? ResultData.FromExecuteResult(runResult.ExecuteResult, @params.Query, runResult.Cluster, runResult.Database) : null,
                     Connection = runResult.Connection,
                     Cluster = runResult.Cluster,
                     Database = runResult.Database
@@ -2138,37 +2138,64 @@ public class Server : LspServer, ILogger, ISettingSource, IStorage
 
     #region Html
     [JsonRpcMethod("kusto/getQueryAsHtml", UseSingleObjectParameterDeserialization = true)]
-    public Task<GetQueryAsHtmlResult?> OnGetQueryAsHtmlAsync(GetQueryAsHtmlParams @params, CancellationToken cancellationToken)
+    public async Task<GetQueryAsHtmlResult?> OnGetQueryAsHtmlAsync(GetQueryAsHtmlParams @params, CancellationToken cancellationToken)
     {
         try
         {
-            if (_documentManager.TryGetDocument(@params.TextDocument.Uri, out var document))
+            // Get globals with cluster/database context for semantic coloring
+            var globals = _symbolManager.Globals;
+            if (@params.Cluster != null)
             {
-                var range = GetTextRange(document.Text, @params.Selection);
-                var queryFragment = document.ToHmtlFragment(range.Start, range.Length, @params.DarkMode == true);
-                return Task.FromResult<GetQueryAsHtmlResult?>(
-                    new GetQueryAsHtmlResult
+                await _symbolManager.EnsureClustersAsync([@params.Cluster], contextCluster: null, cancellationToken).ConfigureAwait(false);
+                globals = _symbolManager.Globals;
+                if (globals.GetCluster(@params.Cluster) is { } clusterSymbol)
+                {
+                    globals = globals.WithCluster(clusterSymbol);
+                    if (@params.Database != null)
                     {
-                        Html = $"<html><body>{queryFragment}</body></html>"
-                    });
+                        await _symbolManager.EnsureDatabaseAsync(@params.Cluster, @params.Database, contextCluster: null, cancellationToken).ConfigureAwait(false);
+                        globals = _symbolManager.Globals;
+                        clusterSymbol = globals.GetCluster(@params.Cluster);
+                        if (clusterSymbol != null)
+                        {
+                            globals = globals.WithCluster(clusterSymbol);
+                            if (clusterSymbol.GetDatabase(@params.Database) is { } databaseSymbol)
+                            {
+                                globals = globals.WithDatabase(databaseSymbol);
+                            }
+                        }
+                    }
+                }
             }
+
+            var tempUri = new Uri("temp://queryAsHtml");
+            var document = new SectionedDocument(tempUri, @params.Query, globals);
+            var queryFragment = document.ToHmtlFragment(0, document.Text.Length, @params.DarkMode == true);
+
+            return new GetQueryAsHtmlResult
+            {
+                Html = $"<html><body>{queryFragment}</body></html>"
+            };
         }
         catch (Exception ex)
         {
             _ = this.SendWindowLogMessageAsync(ex.Message);
         }
 
-        return Task.FromResult<GetQueryAsHtmlResult?>(null);
+        return null;
     }
 
     [DataContract]
     public class GetQueryAsHtmlParams
     {
-        [DataMember(Name = "textDocument")]
-        public required LSP.TextDocumentIdentifier TextDocument { get; init; }
+        [DataMember(Name = "query")]
+        public required string Query { get; init; }
 
-        [DataMember(Name = "selection")]
-        public required LSP.Range Selection { get; init; }
+        [DataMember(Name = "cluster")]
+        public string? Cluster { get; init; }
+
+        [DataMember(Name = "database")]
+        public string? Database { get; init; }
 
         [DataMember(Name = "darkMode")]
         public bool? DarkMode { get; init; }
