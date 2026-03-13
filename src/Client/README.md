@@ -1,7 +1,8 @@
 # Kusto Explorer (VS Code Extension)
 
-Edit, run and chart Kusto queries (KQL).
-Explore databases and query results.
+- Edit, run and chart Kusto queries (KQL)
+- Explore databases and query results
+- Consult copilot to help create, run and diagnose your queries
 
 ## Get Started
 - Open or create a `.kql` file in VS Code
@@ -14,6 +15,11 @@ Explore databases and query results.
 - Add another query to the kql document, rinse and repeat
 - Save your results and charts as a .kqr file to share with others or re-open later
 
+## Kusto Connections (in explorer panel)
+- Keep a list of Kusto servers you use to run queries
+- Select a server and database to be the default database for your query document
+- Explore the entities available in each database
+
 ## Query Editor (.kql documents)
 - Syntax and semantic coloring of query text
 - Autocompletion (Intellisense)
@@ -22,19 +28,25 @@ Explore databases and query results.
 - Goto definition and find all references for functions, tables, columns, and more
 - Code actions and quick fixes for common issues and refactorings
 - Copy colorized query text to the clipboard for pasting into other documents
-- Have mutliple independent queries in the same document, separated by a blank line.
+- Have multiple independent queries in the same document, separated by a blank line.
 
 ## Results Panel (bottom panel)
 - Copy contents of cells or entire table to clipboard
-- Drag and drop a table into your document as a KQL datatable expression
+- Drag and drop a table into your document as a KQL `datatable` expression
 - Chart your data (it will open in a results viewer tab)
+- Save the data as a `.kqr` file (Kusto Query Results)
+
+## Chart Panel (with documents)
+- Edit the chart options to customize the chart type, axes, legend and more
+- Copy the chart as an image to clipboard for either light-mode or dark-mode pasting
+- Save chart and data as a `.kqr` file (Kusto Query Result)
 
 ## Results Viewer (.kqr documents)
-- Shows both result data and chart in the same view
-- Copy the chart as an image to clipboard for either light-mode or dark-mode pasting.
-- Copy the data to clipboard just like results panel.
+- Shows chart, data and query in one view
+- Add a chart if you don't have one yet
 - Edit the chart options to customize the chart type, axes, legend and more
-- Save to a .kqr file to share with others or re-open later
+- Copy the chart as an image to clipboard for either light-mode or dark-mode pasting
+- Copy the data to clipboard just like results panel
 
 ## Requirements
 - VS Code 1.9.0 or higher

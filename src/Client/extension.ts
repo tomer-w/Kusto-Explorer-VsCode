@@ -6,7 +6,7 @@ import * as vscode from 'vscode';
 import { workspace, ExtensionContext, window } from 'vscode';
 import * as conn from './features/connectionsPanel'
 import * as connections from './features/connections'
-import * as documentPanels from './features/documentPanels'
+import * as queryDocuments from './features/queryDocuments'
 import * as resultsViewer from './features/resultsViewer'
 import * as copilot from './features/copilot'
 import * as connectionStatusBar from './features/connectionStatusBar'
@@ -131,7 +131,7 @@ export async function activate(context: ExtensionContext)
     connectionStatusBar.activate(context);
 
     // activate query execution features
-    documentPanels.activate(context, client);
+    queryDocuments.activate(context, client);
 
     // activate chart file editor (.kchart)
     resultsViewer.activate(context, client);

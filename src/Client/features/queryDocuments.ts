@@ -5,8 +5,7 @@ import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 import { setDocumentConnection, ensureServer, getDocumentConnection } from './connections';
 import * as server from './server';
-import * as resultsPanel from './resultsPanel';
-import { displayChart } from './resultsViewer';
+import { displayResultsPanel, displayError, displaySingletonResultView, ResultViewMode } from './resultsViewer';
 import * as resultsCache from './resultsCache';
 import { getClipboardContext, clearClipboardContext, copyToClipboard } from './clipboard';
 import { ENTITY_DEFINITION_SCHEME } from './entityDefinitionProvider';
@@ -28,9 +27,6 @@ let codeLensProvider: KustoCodeLensProvider;
  * @param client The language client for LSP communication
  */
 export function activate(context: vscode.ExtensionContext, client: LanguageClient): void {
-
-    // Activate results panel
-    resultsPanel.activate(context, client);
 
     // Register query-related commands
     context.subscriptions.push(
@@ -143,8 +139,7 @@ async function runQuery(client: LanguageClient, queryRange?: server.SelectionRan
         if (runResult && runResult.error)
         {
             // display error and highlight error range
-            await resultsPanel.displayError(runResult.error);
-            await displayChart(client, undefined);
+            await displayError(runResult.error);
 
             if (runResult.error.range) {
                 const r = runResult.error.range;
@@ -158,8 +153,8 @@ async function runQuery(client: LanguageClient, queryRange?: server.SelectionRan
             await resultsCache.addToCache(uri, queryText, runResult.data);
 
             // Display result tables and chart from ResultData
-            await resultsPanel.displayResults(client, runResult.data);
-            await displayChart(client, runResult.data);
+            await displayResultsPanel(client, runResult.data, 'data');
+            await displaySingletonResultView(client, runResult.data, 'chart', true);
         }
 
         // Refresh CodeLens to show/hide Results lens
@@ -197,8 +192,8 @@ async function showResults(client: LanguageClient, uri: string, line: number, ch
         ));
         const cachedData = await resultsCache.getFromCache(uri, queryText);
         if (cachedData) {
-            await resultsPanel.displayResults(client, cachedData);
-            await displayChart(client, cachedData);
+            await displayResultsPanel(client, cachedData, 'data');
+            await displaySingletonResultView(client, cachedData, 'chart', true);
         }
     } catch (error) {
         vscode.window.showErrorMessage(`Failed to show results: ${error}`);
