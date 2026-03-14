@@ -422,6 +422,13 @@ export interface ChartOptions {
     ymin?: unknown;
     ymax?: unknown;
     accumulate?: boolean;
+    zTitle?: string;
+    showTicks?: string;
+    showGrid?: string;
+    tickAngle?: number;
+    showValues?: string;
+    sort?: string;
+    legendPosition?: string;
 }
 
 /** Position in a document. */

@@ -283,6 +283,18 @@ public sealed record BarTrace : PlotlyTrace
     /// </summary>
     [JsonPropertyName("marker")]
     public PlotlyMarker? Marker { get; init; }
+
+    /// <summary>
+    /// Text values to display on each bar. If null, no text is shown.
+    /// </summary>
+    [JsonPropertyName("text")]
+    public object[]? Text { get; init; }
+
+    /// <summary>
+    /// Position of text on the bars. Use "inside", "outside", "auto", or "none". If null, defaults to "none".
+    /// </summary>
+    [JsonPropertyName("textposition")]
+    public string? TextPosition { get; init; }
 }
 
 /// <summary>
@@ -319,6 +331,13 @@ public sealed record ScatterTrace : PlotlyTrace
     /// </summary>
     [JsonPropertyName("stackgroup")]
     public string? StackGroup { get; init; }
+
+    /// <summary>
+    /// Normalization mode for the stack group. Use "percent" for 100% stacked areas, "fraction" for 0–1 range.
+    /// If null, values are stacked without normalization.
+    /// </summary>
+    [JsonPropertyName("groupnorm")]
+    public string? GroupNorm { get; init; }
 
     /// <summary>
     /// Line styling (color, width, dash style).
@@ -367,6 +386,13 @@ public sealed record PieTrace : PlotlyTrace
     /// </summary>
     [JsonPropertyName("hoverinfo")]
     public string? HoverInfo { get; init; }
+
+    /// <summary>
+    /// Controls which text elements appear on the pie. Use "label", "value", "percent", or combinations like "label+percent".
+    /// If null, defaults to "percent".
+    /// </summary>
+    [JsonPropertyName("textinfo")]
+    public string? TextInfo { get; init; }
 }
 
 /// <summary>

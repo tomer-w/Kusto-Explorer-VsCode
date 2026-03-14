@@ -156,7 +156,9 @@ public class PlotlyChartManager : IChartManager
             ChartKind.LineChart => BuildLineChart(data, options),
             ChartKind.ScatterChart => BuildScatterChart(data, options),
             ChartKind.PieChart => BuildPieChart(data, options),
-            ChartKind.AreaChart => BuildAreaChart(data, options),
+            ChartKind.AreaChart => options.Mode is ChartMode.Stacked or ChartMode.Stacked100
+                ? BuildStackedAreaChart(data, options)
+                : BuildAreaChart(data, options),
             ChartKind.StackedAreaChart => BuildStackedAreaChart(data, options),
             ChartKind.Card => BuildCardChart(data, options),
             ChartKind.ThreeDChart => BuildThreeDChart(data, options),
@@ -211,6 +213,7 @@ public class PlotlyChartManager : IChartManager
         }
         else
         {
+            bool showValues = options.ShowValues == ChartVisibility.Visible;
             return Build2dChart(builder, data, options,
                 (builder, keys, values, name, yAxis) =>
                     builder.Add2DBarTrace(
@@ -219,7 +222,9 @@ public class PlotlyChartManager : IChartManager
                         name: name,
                         horizontal: isHorizontal,
                         yAxis: yAxis,
-                        offsetGroup: null
+                        offsetGroup: null,
+                        text: showValues ? values.Cast<object>().ToArray() : null,
+                        textPosition: showValues ? "auto" : null
                     )
                 );
         }
@@ -277,6 +282,7 @@ public class PlotlyChartManager : IChartManager
         builder = builder.SetYAxisRange(0, 1);
 
         // Add traces with normalized values
+        bool showValues = options.ShowValues == ChartVisibility.Visible;
         foreach (var (keys, values, name) in seriesData)
         {
             var normalizedValues = new double[values.Length];
@@ -291,7 +297,9 @@ public class PlotlyChartManager : IChartManager
                 name: name,
                 horizontal: isHorizontal,
                 yAxis: null,
-                offsetGroup: null
+                offsetGroup: null,
+                text: showValues ? normalizedValues.Cast<object>().ToArray() : null,
+                textPosition: showValues ? "auto" : null
             );
         }
 
@@ -325,6 +333,9 @@ public class PlotlyChartManager : IChartManager
         if (options.Legend != ChartLegendMode.Visible)
             builder = builder.HideLegend();
 
+        // Apply new chart options
+        builder = ApplyCommonOptions(builder, options);
+
         // Get label and value columns
         var labelColumn = this.Get2dXColumn(data, options);
         if (labelColumn == null)
@@ -334,6 +345,8 @@ public class PlotlyChartManager : IChartManager
         
         // For pie charts, we typically use only the first value column
         // Multiple value columns would create multiple pie charts
+        string? textInfo = options.ShowValues == ChartVisibility.Visible ? "label+value+percent" : null;
+
         foreach (var valueColumn in valueColumns)
         {
             var (labels, values) = this.Get2DChartData(labelColumn, valueColumn);
@@ -344,7 +357,8 @@ public class PlotlyChartManager : IChartManager
                     labels: labels,
                     values: values,
                     name: valueColumn.ColumnName,
-                    hole: 0.0  // Can be made configurable via options if needed
+                    hole: 0.0,  // Can be made configurable via options if needed
+                    textInfo: textInfo
                 );
             }
         }
@@ -363,8 +377,9 @@ public class PlotlyChartManager : IChartManager
     private PlotlyChartBuilder? BuildStackedAreaChart(DataTable data, ChartOptions options)
     {
         var builder = new PlotlyChartBuilder();
+        string? groupNorm = options.Mode == ChartMode.Stacked100 ? "percent" : null;
         return Build2dChart(builder, data, options, 
-            (builder, x, y, name, yAxis) => builder.AddAreaChart(x, y, name, stackGroup: "1", yAxis: yAxis)
+            (builder, x, y, name, yAxis) => builder.AddAreaChart(x, y, name, stackGroup: "1", yAxis: yAxis, groupNorm: groupNorm)
         );
     }
 
@@ -522,7 +537,7 @@ public class PlotlyChartManager : IChartManager
 
         // For 3D charts, we could use a "ZTitle" if it existed in options
         // For now, use the column name for Z axis
-        scene = scene with { ZAxis = new PlotlyAxis { Title = new PlotlyTitle { Text = zColumn.ColumnName } } };
+        scene = scene with { ZAxis = new PlotlyAxis { Title = new PlotlyTitle { Text = options.ZTitle ?? zColumn.ColumnName } } };
         hasSceneConfig = true;
 
         if (hasSceneConfig)
@@ -532,6 +547,9 @@ public class PlotlyChartManager : IChartManager
 
         if (options.Legend != ChartLegendMode.Visible)
             builder = builder.HideLegend();
+
+        // Apply new chart options
+        builder = ApplyCommonOptions(builder, options);
 
         return builder;
     }
@@ -668,6 +686,9 @@ public class PlotlyChartManager : IChartManager
         if (options.Legend != ChartLegendMode.Visible)
             builder = builder.HideLegend();
 
+        // Apply new chart options
+        builder = ApplyCommonOptions(builder, options);
+
         return builder;
     }
 
@@ -786,6 +807,9 @@ public class PlotlyChartManager : IChartManager
         if (options.Legend != ChartLegendMode.Visible)
             builder = builder.HideLegend();
 
+        // Apply new chart options
+        builder = ApplyCommonOptions(builder, options);
+
         return builder;
     }
 
@@ -830,6 +854,9 @@ public class PlotlyChartManager : IChartManager
 
         if (options.Legend != ChartLegendMode.Visible)
             builder = builder.HideLegend();
+
+        // Apply new chart options
+        builder = ApplyCommonOptions(builder, options);
 
         // Add traces for each value column
         bool useSecondaryAxis = false;
@@ -974,5 +1001,43 @@ public class PlotlyChartManager : IChartManager
                type == typeof(float) ||
                type == typeof(double) ||
                type == typeof(decimal);
+    }
+
+    /// <summary>
+    /// Applies common chart options (ticks, grid, tick angle, sort, legend position) to the builder.
+    /// Called after chart-specific configuration so these settings layer on top.
+    /// </summary>
+    private static PlotlyChartBuilder ApplyCommonOptions(PlotlyChartBuilder builder, ChartOptions options)
+    {
+        if (options.ShowTicks == ChartVisibility.Visible)
+            builder = builder.SetShowTicks(true);
+        else if (options.ShowTicks == ChartVisibility.Hidden)
+            builder = builder.SetShowTicks(false);
+
+        if (options.ShowGrid == ChartVisibility.Hidden)
+            builder = builder.SetShowGrid(false);
+        else if (options.ShowGrid == ChartVisibility.Visible)
+            builder = builder.SetShowGrid(true);
+
+        if (options.TickAngle.HasValue)
+            builder = builder.SetTickAngle(options.TickAngle.Value);
+
+        if (options.Sort != null && options.Sort != ChartSortOrder.Default)
+        {
+            var order = options.Sort == ChartSortOrder.Ascending
+                ? PlotlyCategoryOrders.TotalAscending
+                : PlotlyCategoryOrders.TotalDescending;
+            builder = builder.SetCategoryOrder(order);
+        }
+
+        if (options.LegendPosition != null)
+        {
+            if (options.LegendPosition == ChartLegendPosition.Hidden)
+                builder = builder.HideLegend();
+            else
+                builder = builder.SetLegendPosition(options.LegendPosition);
+        }
+
+        return builder;
     }
 }

@@ -57,3 +57,33 @@ public static class ChartAxis
     public const string Linear = "Linear";
     public const string Log = "Log";
 }
+
+/// <summary>
+/// Constants for chart visibility options (ticks, grid, values).
+/// </summary>
+public static class ChartVisibility
+{
+    public const string Visible = "Visible";
+    public const string Hidden = "Hidden";
+}
+
+/// <summary>
+/// Constants for chart sort order.
+/// </summary>
+public static class ChartSortOrder
+{
+    public const string Default = "Default";
+    public const string Ascending = "Ascending";
+    public const string Descending = "Descending";
+}
+
+/// <summary>
+/// Constants for chart legend position.
+/// </summary>
+public static class ChartLegendPosition
+{
+    public const string Right = "Right";
+    public const string Bottom = "Bottom";
+    public const string Top = "Top";
+    public const string Hidden = "Hidden";
+}

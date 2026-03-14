@@ -30,7 +30,9 @@ public static class PlotlyChartExtensions
         string? name = null,
         bool horizontal = false,
         string? yAxis = null,
-        string? offsetGroup = null)
+        string? offsetGroup = null,
+        object[]? text = null,
+        string? textPosition = null)
     {
         var trace = new BarTrace
         {
@@ -39,7 +41,9 @@ public static class PlotlyChartExtensions
             Orientation = horizontal ? PlotlyOrientations.Horizontal : PlotlyOrientations.Vertical,
             Name = name,
             YAxis = yAxis,
-            OffsetGroup = offsetGroup
+            OffsetGroup = offsetGroup,
+            Text = text,
+            TextPosition = textPosition
         };
 
         return builder.AddTrace(trace);
@@ -135,7 +139,8 @@ public static class PlotlyChartExtensions
         IEnumerable<TY> y,
         string? name = null,
         string? stackGroup = null,
-        string? yAxis = null)
+        string? yAxis = null,
+        string? groupNorm = null)
     {
         var trace = new ScatterTrace
         {
@@ -144,6 +149,7 @@ public static class PlotlyChartExtensions
             Mode = PlotlyScatterModes.Lines,
             Fill = stackGroup != null ? PlotlyFillModes.ToNextY : PlotlyFillModes.ToZeroY,
             StackGroup = stackGroup,
+            GroupNorm = groupNorm,
             Name = name,
             YAxis = yAxis
         };
@@ -219,14 +225,16 @@ public static class PlotlyChartExtensions
         IEnumerable<TLabel> labels,
         IEnumerable<TValue> values,
         string? name = null,
-        double hole = 0.0)
+        double hole = 0.0,
+        string? textInfo = null)
     {
         var trace = new PieTrace
         {
             Labels = labels.Cast<object>().ToArray(),
             Values = values.Cast<object>().ToArray(),
             Name = name,
-            Hole = hole > 0 ? hole : null
+            Hole = hole > 0 ? hole : null,
+            TextInfo = textInfo
         };
 
         return builder.AddTrace(trace);
@@ -829,6 +837,68 @@ public static class PlotlyChartExtensions
     public static PlotlyChartBuilder SetDarkMode(this PlotlyChartBuilder builder)
     {
         return builder.SetTemplate("plotly_dark");
+    }
+
+    #endregion
+
+    #region Tick and Grid Configuration
+
+    /// <summary>
+    /// Shows or hides tick marks on both axes.
+    /// </summary>
+    public static PlotlyChartBuilder SetShowTicks(this PlotlyChartBuilder builder, bool show)
+    {
+        var ticks = show ? PlotlyTickPositions.Outside : null;
+        var layout = builder.Layout;
+        var xAxis = (layout.XAxis ?? new PlotlyAxis()) with { Ticks = ticks };
+        var yAxis = (layout.YAxis ?? new PlotlyAxis()) with { Ticks = ticks };
+        return builder.WithLayout(layout with { XAxis = xAxis, YAxis = yAxis });
+    }
+
+    /// <summary>
+    /// Shows or hides grid lines on both axes.
+    /// </summary>
+    public static PlotlyChartBuilder SetShowGrid(this PlotlyChartBuilder builder, bool show)
+    {
+        var layout = builder.Layout;
+        var xAxis = (layout.XAxis ?? new PlotlyAxis()) with { ShowGrid = show };
+        var yAxis = (layout.YAxis ?? new PlotlyAxis()) with { ShowGrid = show };
+        return builder.WithLayout(layout with { XAxis = xAxis, YAxis = yAxis });
+    }
+
+    /// <summary>
+    /// Sets the tick label angle on both axes.
+    /// </summary>
+    public static PlotlyChartBuilder SetTickAngle(this PlotlyChartBuilder builder, double angle)
+    {
+        var layout = builder.Layout;
+        var xAxis = (layout.XAxis ?? new PlotlyAxis()) with { TickAngle = angle };
+        var yAxis = (layout.YAxis ?? new PlotlyAxis()) with { TickAngle = angle };
+        return builder.WithLayout(layout with { XAxis = xAxis, YAxis = yAxis });
+    }
+
+    /// <summary>
+    /// Sets the category sort order on the X-axis.
+    /// </summary>
+    public static PlotlyChartBuilder SetCategoryOrder(this PlotlyChartBuilder builder, string order)
+    {
+        var layout = builder.Layout;
+        var xAxis = (layout.XAxis ?? new PlotlyAxis()) with { CategoryOrder = order };
+        return builder.WithLayout(layout with { XAxis = xAxis });
+    }
+
+    /// <summary>
+    /// Sets the legend position.
+    /// </summary>
+    public static PlotlyChartBuilder SetLegendPosition(this PlotlyChartBuilder builder, string position)
+    {
+        var legend = position switch
+        {
+            ChartLegendPosition.Bottom => new PlotlyLegend { Orientation = "h", X = 0.5, Y = -0.2, XAnchor = "center", YAnchor = "top" },
+            ChartLegendPosition.Top => new PlotlyLegend { Orientation = "h", X = 0.5, Y = 1.1, XAnchor = "center", YAnchor = "bottom" },
+            _ => new PlotlyLegend { X = 1.02, Y = 1, XAnchor = "left", YAnchor = "auto" }, // Right (default)
+        };
+        return builder.WithLayout(builder.Layout with { Legend = legend });
     }
 
     #endregion
