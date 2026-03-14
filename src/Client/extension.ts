@@ -91,12 +91,12 @@ export async function activate(context: ExtensionContext)
 
     // Track Kusto session state - keep views visible while in a Kusto session
     const updateKustoContext = () => {
-        // Check if any Kusto documents are open OR if chart panel exists
+        // Check if any Kusto documents are open OR if singleton results view exists
         const hasKustoDocument = vscode.workspace.textDocuments.some(doc => doc.languageId === 'kusto');
-        const hasChartPanel = resultsViewer.hasChartPanel();
-        const isKustoActive = hasKustoDocument || hasChartPanel;
+        const hasSingletonView = resultsViewer.hasSingletonResultsView();
+        const isKustoActive = hasKustoDocument || hasSingletonView;
         vscode.commands.executeCommand('setContext', 'kusto.hasActiveDocument', isKustoActive);
-        vscode.commands.executeCommand('setContext', 'kusto.hasChartPanel', hasChartPanel);
+        vscode.commands.executeCommand('setContext', 'kusto.hasSingletonView', hasSingletonView);
 
         // Track whether the active editor is showing a read-only entity definition
         const activeEditor = vscode.window.activeTextEditor;
@@ -104,9 +104,9 @@ export async function activate(context: ExtensionContext)
         vscode.commands.executeCommand('setContext', 'kusto.isEntityDefinition', isEntityDef);
     };
 
-    // Command to notify when chart panel state changes (triggers context update)
+    // Command to notify when singleton view state changes (triggers context update)
     context.subscriptions.push(
-        vscode.commands.registerCommand('kusto.chartPanelStateChanged', () => {
+        vscode.commands.registerCommand('kusto.singletonViewStateChanged', () => {
             updateKustoContext();
         })
     );
