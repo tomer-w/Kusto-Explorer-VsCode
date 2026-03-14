@@ -923,7 +923,6 @@ public static class PlotlyChartExtensions
         var legend = position switch
         {
             ChartLegendPosition.Bottom => new PlotlyLegend { Orientation = "h", X = 0.5, Y = -0.2, XAnchor = "center", YAnchor = "top" },
-            ChartLegendPosition.Top => new PlotlyLegend { Orientation = "h", X = 0.5, Y = 1.1, XAnchor = "center", YAnchor = "bottom" },
             _ => new PlotlyLegend { X = 1.02, Y = 1, XAnchor = "left", YAnchor = "auto" }, // Right (default)
         };
         return builder.WithLayout(builder.Layout with { Legend = legend });

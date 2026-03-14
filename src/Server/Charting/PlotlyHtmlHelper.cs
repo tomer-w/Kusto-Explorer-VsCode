@@ -21,7 +21,7 @@ public static class PlotlyHtmlHelper
     public static string CreateChartDiv(string dataJson, string layoutJson, string configJson, string divId = "plotly-chart")
     {
         return $$"""
-            <div id="{{divId}}" style="width:100%; height:100%;"></div>
+            <div id="{{divId}}"></div>
             <script>
             try {
               var data = {{dataJson}};

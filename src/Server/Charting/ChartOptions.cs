@@ -188,6 +188,28 @@ public class ChartOptions
     public string? LegendPosition { get; init; }
 
     /// <summary>
+    /// Color mode override. Use <see cref="ChartMode"/> constants: "Light", "Dark".
+    /// If null, the chart uses the darkMode parameter (which reflects the editor theme).
+    /// "Light" or "Dark" overrides the darkMode parameter.
+    /// </summary>
+    [DataMember(Name = "mode")]
+    public string? Mode { get; init; }
+
+    /// <summary>
+    /// Aspect ratio for the chart display area. Use <see cref="ChartAspectRatio"/> constants: "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16".
+    /// If null, the chart fills the available space.
+    /// </summary>
+    [DataMember(Name = "aspectRatio")]
+    public string? AspectRatio { get; init; }
+
+    /// <summary>
+    /// Text size preset for chart titles and axis labels. Use <see cref="ChartTextSize"/> constants: "Small", "Large", "Extra Large".
+    /// If null, font sizes scale dynamically based on chart dimensions.
+    /// </summary>
+    [DataMember(Name = "textSize")]
+    public string? TextSize { get; init; }
+
+    /// <summary>
     /// Converts a <see cref="ChartVisualizationOptions"/> from the Kusto SDK to a <see cref="ChartOptions"/>.
     /// </summary>
     public static ChartOptions FromChartVisualizationOptions(ChartVisualizationOptions options)

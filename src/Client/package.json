@@ -185,13 +185,8 @@
         "icon": "$(go-to-file)"
       },
       {
-        "command": "kusto.copyChartLight",
-        "title": "Copy (Light)",
-        "icon": "$(file-media)"
-      },
-      {
-        "command": "kusto.copyChartDark",
-        "title": "Copy (Dark)",
+        "command": "kusto.copyChart",
+        "title": "Copy Chart",
         "icon": "$(file-media)"
       },
       {
@@ -225,12 +220,12 @@
       },
       {
         "command": "kusto.moveViewToMain",
-        "title": "Move to Main Editor",
+        "title": "Toggle Location",
         "icon": "$(move)"
       },
       {
         "command": "kusto.toggleChartEditor",
-        "title": "Edit Chart Options",
+        "title": "Edit Chart",
         "icon": "$(edit)"
       },
       {
@@ -351,34 +346,29 @@
           "group": "navigation@2"
         },
         {
-          "command": "kusto.copyChartLight",
+          "command": "kusto.copyChart",
           "when": "(activeWebviewPanelId == kusto || activeWebviewPanelId == kusto.resultViewer) && kusto.resultViewerChartActive",
           "group": "navigation@1"
         },
         {
-          "command": "kusto.copyChartDark",
+          "command": "kusto.moveViewToMain",
           "when": "(activeWebviewPanelId == kusto || activeWebviewPanelId == kusto.resultViewer) && kusto.resultViewerChartActive",
           "group": "navigation@2"
         },
         {
-          "command": "kusto.moveViewToMain",
-          "when": "(activeWebviewPanelId == kusto || activeWebviewPanelId == kusto.resultViewer) && kusto.resultViewerChartActive",
-          "group": "navigation@3"
-        },
-        {
           "command": "kusto.toggleChartEditor",
           "when": "(activeWebviewPanelId == kusto || activeWebviewPanelId == kusto.resultViewer) && kusto.resultViewerHasChart && kusto.resultViewerChartActive",
-          "group": "navigation@3"
+          "group": "navigation@2"
         },
         {
           "command": "kusto.saveSingletonResults",
           "when": "activeWebviewPanelId == kusto",
-          "group": "navigation@4"
+          "group": "navigation@3"
         },
         {
           "command": "kusto.toggleSearch",
           "when": "(activeWebviewPanelId == kusto || activeWebviewPanelId == kusto.resultViewer) && !kusto.resultViewerChartActive",
-          "group": "navigation@5"
+          "group": "navigation@4"
         }
       ],
       "editor/context": [
@@ -428,11 +418,7 @@
           "when": "webviewId == 'kusto.resultsView'"
         },
         {
-          "command": "kusto.copyChartLight",
-          "when": "(webviewId == 'kusto' && chartVisible) || (webviewId == 'kusto.resultViewer' && chartVisible)"
-        },
-        {
-          "command": "kusto.copyChartDark",
+          "command": "kusto.copyChart",
           "when": "(webviewId == 'kusto' && chartVisible) || (webviewId == 'kusto.resultViewer' && chartVisible)"
         },
         {
@@ -451,6 +437,21 @@
         "command": "editor.action.triggerSuggest",
         "key": "ctrl+space",
         "when": "editorLangId == kusto"
+      },
+      {
+        "command": "kusto.copyChart",
+        "key": "ctrl+c",
+        "when": "(activeWebviewPanelId == kusto || activeWebviewPanelId == kusto.resultViewer) && kusto.resultViewerChartActive"
+      },
+      {
+        "command": "kusto.saveSingletonResults",
+        "key": "ctrl+s",
+        "when": "activeWebviewPanelId == kusto"
+      },
+      {
+        "command": "kusto.saveSingletonResults",
+        "key": "ctrl+shift+s",
+        "when": "activeWebviewPanelId == kusto"
       }
     ],
     "viewsContainers": {

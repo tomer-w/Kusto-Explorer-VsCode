@@ -66,13 +66,22 @@ const chartTypes = [
 const chartKinds = ['Default', 'Unstacked', 'Stacked', 'Stacked100'];
 
 /** Known legend position options (must match server-side ChartLegendPosition constants). */
-const legendPositions = ['Right', 'Top', 'Bottom', 'Hidden'];
+const legendPositions = ['Right', 'Bottom', 'Hidden'];
 
 /** Known axis type options (must match server-side ChartAxis constants). */
 const axisTypes = ['Linear', 'Log'];
 
 /** Known sort order options (must match server-side ChartSortOrder constants). */
 const sortOrders = ['Default', 'Ascending', 'Descending'];
+
+/** Known color mode options (must match server-side ChartMode constants). */
+const chartModes = ['Light', 'Dark'];
+
+/** Known aspect ratio presets (must match server-side ChartAspectRatio constants). */
+const aspectRatios = ['16:9', '3:2', '4:3', '1:1', '3:4', '2:3', '9:16'];
+
+/** Known text size presets (must match server-side ChartTextSize constants). */
+const textSizes = ['Small', 'Medium', 'Large', 'Extra Large'];
 
 /** Known visibility options (must match server-side ChartVisibility constants). */
 const visibilityOptions = ['Visible', 'Hidden'];
@@ -175,11 +184,8 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
 
     // Register chart copy commands that target whichever chart webview is active
     context.subscriptions.push(
-        vscode.commands.registerCommand('kusto.copyChartLight', () => {
-            activeResultWebview?.webview.postMessage({ command: 'copyChartLight' });
-        }),
-        vscode.commands.registerCommand('kusto.copyChartDark', () => {
-            activeResultWebview?.webview.postMessage({ command: 'copyChartDark' });
+        vscode.commands.registerCommand('kusto.copyChart', () => {
+            activeResultWebview?.webview.postMessage({ command: 'copyChart' });
         }),
         vscode.commands.registerCommand('kusto.toggleChartEditor', () => {
             activeResultWebview?.webview.postMessage({ command: 'toggleEditPanel' });
@@ -353,99 +359,37 @@ const chartCopyScript = `
         const vscodeApi = window._vscodeApi;
         if (!vscodeApi) return;
 
-        // Colors for Copy (Light): dark text/axes on white bg
-        const lightCopyColors = {
-            'font.color': '#333333',
-            'xaxis.color': '#333333',
-            'xaxis.linecolor': '#333333',
-            'xaxis.tickfont.color': '#333333',
-            'xaxis.title.font.color': '#333333',
-            'xaxis.gridcolor': 'rgba(0,0,0,0.15)',
-            'yaxis.color': '#333333',
-            'yaxis.linecolor': '#333333',
-            'yaxis.tickfont.color': '#333333',
-            'yaxis.title.font.color': '#333333',
-            'yaxis.gridcolor': 'rgba(0,0,0,0.15)',
-            'legend.font.color': '#333333'
-        };
-
-        // Colors for Copy (Dark): white text/axes on black bg
-        const darkCopyColors = {
-            'font.color': '#ffffff',
-            'xaxis.color': '#ffffff',
-            'xaxis.linecolor': '#ffffff',
-            'xaxis.tickfont.color': '#ffffff',
-            'xaxis.title.font.color': '#ffffff',
-            'xaxis.gridcolor': 'rgba(255,255,255,0.15)',
-            'yaxis.color': '#ffffff',
-            'yaxis.linecolor': '#ffffff',
-            'yaxis.tickfont.color': '#ffffff',
-            'yaxis.title.font.color': '#ffffff',
-            'yaxis.gridcolor': 'rgba(255,255,255,0.15)',
-            'legend.font.color': '#ffffff'
-        };
-
-        // Transparent background for SVG
-        const transparentBg = {
-            paper_bgcolor: 'rgba(0,0,0,0)',
-            plot_bgcolor: 'rgba(0,0,0,0)'
-        };
-
-        // Solid backgrounds for bitmap
-        const whiteBg = {
-            paper_bgcolor: '#ffffff',
-            plot_bgcolor: '#ffffff'
-        };
-
-        const blackBg = {
-            paper_bgcolor: '#000000',
-            plot_bgcolor: '#000000'
-        };
-
         window.addEventListener('message', async event => {
             const message = event.data;
 
-            if (message.command === 'copyChartLight' || message.command === 'copyChartDark') {
+            if (message.command === 'copyChart') {
                 try {
-                    const dark = message.command === 'copyChartDark';
-                    const colors = dark ? darkCopyColors : lightCopyColors;
-                    const solidBg = dark ? blackBg : whiteBg;
-
                     // Find the Plotly chart div
                     const plotDiv = document.querySelector('.js-plotly-plot') || document.querySelector('.plotly-graph-div');
                     if (plotDiv && typeof Plotly !== 'undefined') {
-                        const width = plotDiv.offsetWidth;
-                        const height = plotDiv.offsetHeight;
+                        // Use aspect ratio for consistent copy dimensions if set
+                        const chartDiv = document.getElementById('chart');
+                        const arValue = chartDiv ? getComputedStyle(chartDiv).getPropertyValue('--chart-aspect-ratio').trim() : '';
+                        let width = plotDiv.offsetWidth;
+                        let height = plotDiv.offsetHeight;
+                        if (arValue) {
+                            const parts = arValue.split('/').map(Number);
+                            if (parts.length === 2 && parts[0] > 0 && parts[1] > 0) {
+                                width = 800;
+                                height = Math.round(800 * parts[1] / parts[0]);
+                            }
+                        }
                         const layout = plotDiv.layout || {};
 
-                        // Save original layout properties before any changes
-                        const savedLayout = {
-                            paper_bgcolor: layout.paper_bgcolor,
-                            plot_bgcolor: layout.plot_bgcolor,
-                            'font.color': layout.font?.color ?? null,
-                            'xaxis.color': layout.xaxis?.color ?? null,
-                            'xaxis.linecolor': layout.xaxis?.linecolor ?? null,
-                            'xaxis.tickfont.color': layout.xaxis?.tickfont?.color ?? null,
-                            'xaxis.title.font.color': layout.xaxis?.title?.font?.color ?? null,
-                            'xaxis.gridcolor': layout.xaxis?.gridcolor ?? null,
-                            'yaxis.color': layout.yaxis?.color ?? null,
-                            'yaxis.linecolor': layout.yaxis?.linecolor ?? null,
-                            'yaxis.tickfont.color': layout.yaxis?.tickfont?.color ?? null,
-                            'yaxis.title.font.color': layout.yaxis?.title?.font?.color ?? null,
-                            'yaxis.gridcolor': layout.yaxis?.gridcolor ?? null,
-                            'legend.font.color': layout.legend?.font?.color ?? null
-                        };
-
-                        // SVG: transparent background with appropriate text colors
-                        await Plotly.relayout(plotDiv, { ...transparentBg, ...colors });
-                        const svgDataUrl = await Plotly.toImage(plotDiv, { format: 'svg', width: width, height: height });
-
-                        // PNG: solid background with matching text colors (scale 2x for readability)
-                        await Plotly.relayout(plotDiv, solidBg);
+                        // PNG: copy as-is (scale 2x for readability)
                         const pngDataUrl = await Plotly.toImage(plotDiv, { format: 'png', width: width, height: height, scale: 2 });
 
-                        // Restore original layout
-                        await Plotly.relayout(plotDiv, savedLayout);
+                        // SVG: use transparent background so it layers well in documents
+                        var savedPaperBg = layout.paper_bgcolor || '#fff';
+                        var savedPlotBg = layout.plot_bgcolor || '#fff';
+                        await Plotly.relayout(plotDiv, { paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)' });
+                        const svgDataUrl = await Plotly.toImage(plotDiv, { format: 'svg', width: width, height: height });
+                        await Plotly.relayout(plotDiv, { paper_bgcolor: savedPaperBg, plot_bgcolor: savedPlotBg });
 
                         vscodeApi.postMessage({ command: 'copyChartResult', pngDataUrl: pngDataUrl, svgDataUrl: svgDataUrl });
                     } else {
@@ -558,24 +502,27 @@ export class ResultsViewProvider implements vscode.CustomTextEditorProvider {
                 const state = viewerStates.get(webviewPanel);
                 if (!state) { return; }
                 state.chartOptionsOverride = message.chartOptions as server.ChartOptions;
+                // Keep resultData in sync so it is always authoritative
+                state.resultData = { ...state.resultData, chartOptions: state.chartOptionsOverride };
+                // Update the document buffer immediately so it survives webview reconstruction
+                const content = JSON.stringify(state.resultData, null, 2);
+                const fullRange = new vscode.Range(
+                    document.positionAt(0),
+                    document.positionAt(document.getText().length)
+                );
+                const edit = new vscode.WorkspaceEdit();
+                edit.replace(document.uri, fullRange, content);
+                ignoringSelfEdit = true;
+                await vscode.workspace.applyEdit(edit);
+                ignoringSelfEdit = false;
+                // Debounce chart re-render and disk save (skip re-render for client-only changes)
                 if (chartOptionsTimer) { clearTimeout(chartOptionsTimer); }
                 chartOptionsTimer = setTimeout(async () => {
-                    try {
+                    if (!message.clientOnly) {
                         await this.updateChartOnly(state, webviewPanel);
-                        // Persist updated chart options to the backing file
-                        const updatedData: server.ResultData = { ...state.resultData, chartOptions: state.chartOptionsOverride! };
-                        const content = JSON.stringify(updatedData, null, 2);
-                        const fullRange = new vscode.Range(
-                            document.positionAt(0),
-                            document.positionAt(document.getText().length)
-                        );
-                        const edit = new vscode.WorkspaceEdit();
-                        edit.replace(document.uri, fullRange, content);
-                        ignoringSelfEdit = true;
-                        await vscode.workspace.applyEdit(edit);
-                    } finally {
-                        ignoringSelfEdit = false;
                     }
+                    ignoringSelfEdit = true;
+                    try { await document.save(); } finally { ignoringSelfEdit = false; }
                 }, 600);
                 return;
             }
@@ -787,6 +734,15 @@ export class ResultsViewProvider implements vscode.CustomTextEditorProvider {
         // Build chart options edit panel
         const editPanelHtml = showChart ? this.buildEditPanelHtml(chartOptions, columnNames ?? []) : '';
 
+        // Aspect ratio support
+        const aspectRatio = chartOptions?.aspectRatio;
+        const chartAspectClass = aspectRatio ? ' has-aspect-ratio' : '';
+        const textSize = chartOptions?.textSize ?? '';
+        const chartStyleParts: string[] = [];
+        if (aspectRatio) { chartStyleParts.push(`--chart-aspect-ratio: ${aspectRatio.replace(':', '/')}`); }
+        const chartStyle = chartStyleParts.length ? ` style="${chartStyleParts.join('; ')}"` : '';
+        const chartDataAttrs = textSize ? ` data-text-size="${textSize}"` : '';
+
         // When only a single item is visible, mark it active and use full height
         const mainAreaHeight = showTabs ? 'calc(100vh - 33px)' : '100vh';
 
@@ -842,8 +798,11 @@ export class ResultsViewProvider implements vscode.CustomTextEditorProvider {
             overflow: hidden;
             min-width: 0;
         }
-        .view-content { display: none; height: 100%; overflow: auto; }
+        .view-content { display: none; height: 100%; overflow: hidden; }
         .view-content.active { display: flex; flex-direction: column; }
+        #chart.has-aspect-ratio.active {
+            position: relative;
+        }
         #chart-view { padding: 0; }
         /* Edit panel */
         .edit-panel {
@@ -1132,7 +1091,7 @@ export class ResultsViewProvider implements vscode.CustomTextEditorProvider {
     </div>` : ''}
     <div class="main-area">
         <div class="content-area">
-            ${showChart ? `<div id="chart" class="view-content${firstActiveView === 'chart' ? ' active' : ''}" data-vscode-context='{"chartVisible": true, "queryVisible": false, "preventDefaultContextMenuItems": true}'>${chartContent}</div>` : ''}
+            ${showChart ? `<div id="chart" class="view-content${chartAspectClass}${firstActiveView === 'chart' ? ' active' : ''}"${chartStyle}${chartDataAttrs} data-vscode-context='{"chartVisible": true, "queryVisible": false, "preventDefaultContextMenuItems": true}'>${chartContent}</div>` : ''}
             ${tableContents}
             ${showQuery ? `<div id="query" class="view-content" data-vscode-context='{"chartVisible": false, "queryVisible": true, "preventDefaultContextMenuItems": true}'>
                 <div class="query-info">
@@ -1252,6 +1211,126 @@ export class ResultsViewProvider implements vscode.CustomTextEditorProvider {
             }
         });
 
+        // Compute font sizes based on chart dimensions and text size preset
+        function computeFontSizes(chartW, chartH, preset) {
+            var scale = preset === 'Small' ? 0.75 : preset === 'Large' ? 1.5 : preset === 'Extra Large' ? 2.0 : 1.0;
+            var base = Math.min(chartW, chartH);
+            var titleSize = Math.round(Math.max(10, Math.min(36, base * 0.04)) * scale);
+            var axisSize = Math.round(Math.max(8, Math.min(24, base * 0.028)) * scale);
+            var tickSize = Math.round(Math.max(7, Math.min(16, base * 0.018)) * scale);
+            return { titleSize: titleSize, axisSize: axisSize, tickSize: tickSize };
+        }
+
+        // Apply font size overrides to a layout object
+        function applyFontOverrides(layout, w, h, preset) {
+            var fonts = computeFontSizes(w, h, preset);
+            var overrides = {};
+            var titleObj = layout.title;
+            if (titleObj && typeof titleObj === 'object') {
+                overrides.title = Object.assign({}, titleObj, { font: Object.assign({}, titleObj.font || {}, { size: fonts.titleSize }) });
+            } else if (typeof titleObj === 'string') {
+                overrides.title = { text: titleObj, font: { size: fonts.titleSize } };
+            }
+            var xaxis = layout.xaxis;
+            if (xaxis) {
+                overrides.xaxis = Object.assign({}, xaxis, {
+                    automargin: true,
+                    title: Object.assign({}, xaxis.title || {}, { font: Object.assign({}, (xaxis.title && xaxis.title.font) || {}, { size: fonts.axisSize }), standoff: fonts.tickSize }),
+                    tickfont: Object.assign({}, xaxis.tickfont || {}, { size: fonts.tickSize })
+                });
+            }
+            var yaxis = layout.yaxis;
+            if (yaxis) {
+                overrides.yaxis = Object.assign({}, yaxis, {
+                    automargin: true,
+                    title: Object.assign({}, yaxis.title || {}, { font: Object.assign({}, (yaxis.title && yaxis.title.font) || {}, { size: fonts.axisSize }), standoff: fonts.tickSize }),
+                    tickfont: Object.assign({}, yaxis.tickfont || {}, { size: fonts.tickSize })
+                });
+            }
+            var legend = layout.legend || {};
+            overrides.legend = Object.assign({}, legend, {
+                font: Object.assign({}, legend.font || {}, { size: fonts.tickSize })
+            });
+            return overrides;
+        }
+
+        // Resize chart to fit aspect ratio within available space
+        function resizeChartToAspectRatio() {
+            var chartDiv = document.getElementById('chart');
+            if (!chartDiv) return;
+            var plotDiv = chartDiv.querySelector('.js-plotly-plot') || chartDiv.querySelector('.plotly-graph-div');
+            if (!plotDiv || typeof Plotly === 'undefined') return;
+            // Find the wrapper div (e.g. #plotly-chart) — immediate child of #chart
+            var wrapperDiv = chartDiv.firstElementChild;
+            if (!wrapperDiv) return;
+            var arValue = getComputedStyle(chartDiv).getPropertyValue('--chart-aspect-ratio').trim();
+            var availW = chartDiv.clientWidth;
+            var availH = chartDiv.clientHeight;
+            var preset = chartDiv.getAttribute('data-text-size') || '';
+
+            function buildLayoutOverrides(w, h) {
+                var overrides = { width: w, height: h };
+                if (plotDiv.layout) {
+                    Object.assign(overrides, applyFontOverrides(plotDiv.layout, w, h, preset));
+                }
+                return overrides;
+            }
+
+            if (!arValue) {
+                // No aspect ratio — fill the available space
+                wrapperDiv.style.position = '';
+                wrapperDiv.style.left = '';
+                wrapperDiv.style.top = '';
+                wrapperDiv.style.width = availW + 'px';
+                wrapperDiv.style.height = availH + 'px';
+                lastAppliedW = chartDiv.clientWidth;
+                lastAppliedH = chartDiv.clientHeight;
+                Plotly.newPlot(plotDiv, plotDiv.data, Object.assign({}, plotDiv.layout, buildLayoutOverrides(availW, availH)), plotDiv._context);
+                return;
+            }
+            var parts = arValue.split('/').map(Number);
+            if (parts.length !== 2 || parts[0] <= 0 || parts[1] <= 0) {
+                Plotly.Plots.resize(plotDiv);
+                return;
+            }
+            var ratio = parts[0] / parts[1];
+            var w, h;
+            if (availW / availH > ratio) {
+                h = availH;
+                w = Math.round(h * ratio);
+            } else {
+                w = availW;
+                h = Math.round(w / ratio);
+            }
+            // Center the wrapper using absolute positioning
+            wrapperDiv.style.position = 'absolute';
+            wrapperDiv.style.left = Math.round((availW - w) / 2) + 'px';
+            wrapperDiv.style.top = Math.round((availH - h) / 2) + 'px';
+            wrapperDiv.style.width = w + 'px';
+            wrapperDiv.style.height = h + 'px';
+            wrapperDiv.style.margin = '';
+            lastAppliedW = chartDiv.clientWidth;
+            lastAppliedH = chartDiv.clientHeight;
+            Plotly.newPlot(plotDiv, plotDiv.data, Object.assign({}, plotDiv.layout, buildLayoutOverrides(w, h)), plotDiv._context);
+        }
+
+        // Track last applied dimensions to avoid redundant redraws
+        var lastAppliedW = 0;
+        var lastAppliedH = 0;
+        var resizeTimer = null;
+
+        // Observe chart container resizes to enforce aspect ratio
+        var chartContainer = document.getElementById('chart');
+        if (chartContainer) {
+            new ResizeObserver(function() {
+                var w = chartContainer.clientWidth;
+                var h = chartContainer.clientHeight;
+                if (w === lastAppliedW && h === lastAppliedH) return;
+                if (resizeTimer) clearTimeout(resizeTimer);
+                resizeTimer = setTimeout(function() { resizeChartToAspectRatio(); }, 30);
+            }).observe(chartContainer);
+        }
+
         function switchView(viewId) {
             cachedExpression = '';
             document.querySelectorAll('.view-content').forEach(function(el) { el.classList.remove('active'); });
@@ -1275,10 +1354,7 @@ export class ResultsViewProvider implements vscode.CustomTextEditorProvider {
             // Trigger Plotly resize when switching to chart
             if (viewId === 'chart') {
                 setTimeout(function() {
-                    var plotDiv = document.querySelector('#chart .js-plotly-plot') || document.querySelector('#chart .plotly-graph-div');
-                    if (plotDiv && typeof Plotly !== 'undefined') {
-                        Plotly.Plots.resize(plotDiv);
-                    }
+                    resizeChartToAspectRatio();
                 }, 50);
             }
         }
@@ -1348,10 +1424,7 @@ export class ResultsViewProvider implements vscode.CustomTextEditorProvider {
 
             // Resize chart when panel toggles
             setTimeout(function() {
-                var plotDiv = document.querySelector('#chart .js-plotly-plot') || document.querySelector('#chart .plotly-graph-div');
-                if (plotDiv && typeof Plotly !== 'undefined') {
-                    Plotly.Plots.resize(plotDiv);
-                }
+                resizeChartToAspectRatio();
             }, 50);
         }
 
@@ -1369,6 +1442,12 @@ export class ResultsViewProvider implements vscode.CustomTextEditorProvider {
             }
             var sort = document.getElementById('opt-sort');
             if (sort && sort.value) opts.sort = sort.value;
+            var mode = document.getElementById('opt-mode');
+            if (mode && mode.value) opts.mode = mode.value;
+            var aspectRatio = document.getElementById('opt-aspectRatio');
+            if (aspectRatio && aspectRatio.value) opts.aspectRatio = aspectRatio.value;
+            var textSize = document.getElementById('opt-textSize');
+            if (textSize && textSize.value) opts.textSize = textSize.value;
             var showValues = document.getElementById('opt-showValues');
             if (showValues) opts.showValues = showValues.checked ? 'Visible' : 'Hidden';
             var title = document.getElementById('opt-title');
@@ -1416,8 +1495,41 @@ export class ResultsViewProvider implements vscode.CustomTextEditorProvider {
 
         // Notify extension when any chart option changes
         function onChartOptionChanged() {
+            applyClientSideOptions();
             if (window._vscodeApi) {
                 window._vscodeApi.postMessage({ command: 'chartOptionsChanged', chartOptions: collectChartOptions() });
+            }
+        }
+
+        // Handle client-only option changes (text size, aspect ratio) without server round-trip
+        function onClientOnlyOptionChanged() {
+            applyClientSideOptions();
+            // Still persist the option value but skip chart re-render from server
+            if (window._vscodeApi) {
+                window._vscodeApi.postMessage({ command: 'chartOptionsChanged', chartOptions: collectChartOptions(), clientOnly: true });
+            }
+        }
+
+        function applyClientSideOptions() {
+            var chartDiv = document.getElementById('chart');
+            var arSelect = document.getElementById('opt-aspectRatio');
+            var tsSelect = document.getElementById('opt-textSize');
+            if (chartDiv) {
+                var arValue = arSelect ? arSelect.value : '';
+                if (arValue) {
+                    chartDiv.classList.add('has-aspect-ratio');
+                    chartDiv.style.setProperty('--chart-aspect-ratio', arValue.replace(':', '/'));
+                } else {
+                    chartDiv.classList.remove('has-aspect-ratio');
+                    chartDiv.style.removeProperty('--chart-aspect-ratio');
+                }
+                // Store text size preset
+                chartDiv.setAttribute('data-text-size', tsSelect ? tsSelect.value : '');
+                // Trigger aspect-ratio-aware resize
+                lastAppliedW = 0; lastAppliedH = 0; // force redraw
+                setTimeout(function() {
+                    resizeChartToAspectRatio();
+                }, 50);
             }
         }
 
@@ -1447,8 +1559,61 @@ export class ResultsViewProvider implements vscode.CustomTextEditorProvider {
             if (msg && msg.command === 'updateChart' && msg.chartBodyHtml) {
                 var chartDiv = document.getElementById('chart');
                 if (chartDiv) {
+                    // Compute target dimensions for the new chart
+                    var arValue = getComputedStyle(chartDiv).getPropertyValue('--chart-aspect-ratio').trim();
+                    var availW = chartDiv.clientWidth;
+                    var availH = chartDiv.clientHeight;
+                    var preset = chartDiv.getAttribute('data-text-size') || '';
+                    var targetW = availW, targetH = availH;
+                    var centerLeft = null, centerTop = null;
+                    if (arValue) {
+                        var parts = arValue.split('/').map(Number);
+                        if (parts.length === 2 && parts[0] > 0 && parts[1] > 0) {
+                            var ratio = parts[0] / parts[1];
+                            if (availW / availH > ratio) {
+                                targetH = availH;
+                                targetW = Math.round(targetH * ratio);
+                            } else {
+                                targetW = availW;
+                                targetH = Math.round(targetW / ratio);
+                            }
+                            centerLeft = Math.round((availW - targetW) / 2);
+                            centerTop = Math.round((availH - targetH) / 2);
+                        }
+                    }
+
+                    // Monkey-patch Plotly.newPlot to inject font/size overrides into the first call
+                    var origNewPlot = Plotly.newPlot;
+                    Plotly.newPlot = function(div, data, layout, config) {
+                        Plotly.newPlot = origNewPlot; // restore immediately
+                        var merged = Object.assign({}, layout, { width: targetW, height: targetH }, applyFontOverrides(layout || {}, targetW, targetH, preset));
+                        return origNewPlot.call(Plotly, div, data, merged, config);
+                    };
+
                     chartDiv.innerHTML = msg.chartBodyHtml;
-                    // Re-execute any script tags in the new content
+
+                    // Position the wrapper div for aspect ratio centering
+                    var wrapperDiv = chartDiv.firstElementChild;
+                    if (wrapperDiv) {
+                        if (centerLeft !== null) {
+                            wrapperDiv.style.position = 'absolute';
+                            wrapperDiv.style.left = centerLeft + 'px';
+                            wrapperDiv.style.top = centerTop + 'px';
+                            wrapperDiv.style.width = targetW + 'px';
+                            wrapperDiv.style.height = targetH + 'px';
+                            wrapperDiv.style.margin = '';
+                        } else {
+                            wrapperDiv.style.position = '';
+                            wrapperDiv.style.left = '';
+                            wrapperDiv.style.top = '';
+                            wrapperDiv.style.width = availW + 'px';
+                            wrapperDiv.style.height = availH + 'px';
+                        }
+                    }
+                    lastAppliedW = availW;
+                    lastAppliedH = availH;
+
+                    // Re-execute any script tags in the new content (Plotly.newPlot is patched)
                     chartDiv.querySelectorAll('script').forEach(function(oldScript) {
                         var newScript = document.createElement('script');
                         if (oldScript.src) {
@@ -1458,6 +1623,9 @@ export class ResultsViewProvider implements vscode.CustomTextEditorProvider {
                         }
                         oldScript.parentNode.replaceChild(newScript, oldScript);
                     });
+
+                    // Restore in case the script didn't call Plotly.newPlot
+                    Plotly.newPlot = origNewPlot;
                 }
             }
         });
@@ -1492,6 +1660,24 @@ export class ResultsViewProvider implements vscode.CustomTextEditorProvider {
         const currentSort = opts.sort ?? '';
         const sortOptions = ['', ...sortOrders].map(s =>
             `<option value="${s}"${s === currentSort ? ' selected' : ''}>${s || '(default)'}</option>`
+        ).join('');
+
+        // Color mode
+        const currentMode = opts.mode ?? '';
+        const modeOptions = ['', ...chartModes].map(m =>
+            `<option value="${m}"${m === currentMode ? ' selected' : ''}>${m || '(auto)'}</option>`
+        ).join('');
+
+        // Aspect ratio
+        const currentAspectRatio = opts.aspectRatio ?? '';
+        const aspectRatioOptions = ['', ...aspectRatios].map(r =>
+            `<option value="${r}"${r === currentAspectRatio ? ' selected' : ''}>${r || '(fill)'}</option>`
+        ).join('');
+
+        // Text size
+        const currentTextSize = opts.textSize ?? '';
+        const textSizeOptions = ['', ...textSizes].map(s =>
+            `<option value="${s}"${s === currentTextSize ? ' selected' : ''}>${s || '(medium)'}</option>`
         ).join('');
 
         // Show values
@@ -1557,6 +1743,18 @@ export class ResultsViewProvider implements vscode.CustomTextEditorProvider {
                 <div class="field">
                     <label for="opt-sort">Sort</label>
                     <select id="opt-sort" onchange="onChartOptionChanged()">${sortOptions}</select>
+                </div>
+                <div class="field">
+                    <label for="opt-mode">Mode</label>
+                    <select id="opt-mode" onchange="onChartOptionChanged()">${modeOptions}</select>
+                </div>
+                <div class="field">
+                    <label for="opt-aspectRatio">Aspect Ratio</label>
+                    <select id="opt-aspectRatio" onchange="onClientOnlyOptionChanged()">${aspectRatioOptions}</select>
+                </div>
+                <div class="field">
+                    <label for="opt-textSize">Text Size</label>
+                    <select id="opt-textSize" onchange="onClientOnlyOptionChanged()">${textSizeOptions}</select>
                 </div>
                 <div class="field checkbox-field">
                     <input type="checkbox" id="opt-showValues"${showValuesChecked} onchange="onChartOptionChanged()">
@@ -2002,8 +2200,19 @@ function showSingletonView(html: string, resultData: server.ResultData, tableNam
             }
             if (message.command === 'chartOptionsChanged' && message.chartOptions) {
                 singletonChartOptionsOverride = message.chartOptions as server.ChartOptions;
+                // Keep singletonResultData in sync so it is always authoritative
+                if (singletonResultData) {
+                    singletonResultData = { ...singletonResultData, chartOptions: singletonChartOptionsOverride };
+                }
+                const state = viewerStates.get(singletonView!);
+                if (state) {
+                    state.chartOptionsOverride = singletonChartOptionsOverride;
+                    state.resultData = singletonResultData ?? state.resultData;
+                }
                 if (singletonChartOptionsTimer) { clearTimeout(singletonChartOptionsTimer); }
-                singletonChartOptionsTimer = setTimeout(() => updateChartInSingletonView(), 600);
+                if (!message.clientOnly) {
+                    singletonChartOptionsTimer = setTimeout(() => updateChartInSingletonView(), 600);
+                }
                 return;
             }
             if (message.command === 'editPanelToggled' && typeof message.visible === 'boolean') {
@@ -2050,10 +2259,15 @@ async function updateChartInSingletonView(): Promise<void> {
     const chartOptions = singletonChartOptionsOverride ?? singletonResultData.chartOptions;
     if (!chartOptions) { return; }
 
-    const state = viewerStates.get(singletonView);
+    const state = viewerStates.get(singletonView);6
     if (state && singletonChartOptionsOverride) { state.chartOptionsOverride = singletonChartOptionsOverride; }
 
-    const modifiedData: server.ResultData = { ...singletonResultData, chartOptions };
+    // Persist the override into the backing data so that if the webview is
+    // reconstructed (e.g. on column change), it uses the latest options.
+    singletonResultData = { ...singletonResultData, chartOptions };
+    if (state) { state.resultData = singletonResultData; }
+
+    const modifiedData = singletonResultData;
     const darkMode = isDarkMode();
     const chartResult = await server.getChartAsHtml(languageClient, modifiedData, darkMode);
     if (chartResult?.html) {

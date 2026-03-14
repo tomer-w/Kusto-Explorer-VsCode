@@ -1443,6 +1443,58 @@ public sealed record PlotlyTitle
     /// </summary>
     [JsonPropertyName("font")]
     public PlotlyFont? Font { get; init; }
+
+    /// <summary>
+    /// Horizontal position as fraction (0–1). If null, defaults to 0.5 (centered).
+    /// </summary>
+    [JsonPropertyName("x")]
+    public double? X { get; init; }
+
+    /// <summary>
+    /// Vertical position as fraction (0–1). If null, Plotly auto-positions above the plot area.
+    /// </summary>
+    [JsonPropertyName("y")]
+    public double? Y { get; init; }
+
+    /// <summary>
+    /// Vertical anchor point. Use "top", "middle", "bottom", or "auto". If null, defaults to "auto".
+    /// </summary>
+    [JsonPropertyName("yanchor")]
+    public string? YAnchor { get; init; }
+
+    /// <summary>
+    /// Reference for y positioning. Use "container" or "paper". If null, defaults to "container".
+    /// </summary>
+    [JsonPropertyName("yref")]
+    public string? YRef { get; init; }
+
+    /// <summary>
+    /// Padding between the title and the plot area or container edges.
+    /// </summary>
+    [JsonPropertyName("pad")]
+    public PlotlyTitlePad? Pad { get; init; }
+}
+
+/// <summary>
+/// Padding for title positioning.
+/// </summary>
+public sealed record PlotlyTitlePad
+{
+    /// <summary>Bottom padding in pixels.</summary>
+    [JsonPropertyName("b")]
+    public double? Bottom { get; init; }
+
+    /// <summary>Left padding in pixels.</summary>
+    [JsonPropertyName("l")]
+    public double? Left { get; init; }
+
+    /// <summary>Right padding in pixels.</summary>
+    [JsonPropertyName("r")]
+    public double? Right { get; init; }
+
+    /// <summary>Top padding in pixels.</summary>
+    [JsonPropertyName("t")]
+    public double? Top { get; init; }
 }
 
 /// <summary>
@@ -1844,6 +1896,14 @@ public sealed record PlotlyLegend
     /// <summary>Vertical position as fraction of plot area (0–1). If null, defaults to 1 (top).</summary>
     [JsonPropertyName("y")]
     public double? Y { get; init; }
+
+    /// <summary>Reference for x positioning. If null, defaults to "paper". Use "container" for full-container coordinates.</summary>
+    [JsonPropertyName("xref")]
+    public string? XRef { get; init; }
+
+    /// <summary>Reference for y positioning. If null, defaults to "paper". Use "container" for full-container coordinates.</summary>
+    [JsonPropertyName("yref")]
+    public string? YRef { get; init; }
 
     /// <summary>Horizontal anchor point. If null, defaults to "left". Use "left", "center", or "right".</summary>
     [JsonPropertyName("xanchor")]

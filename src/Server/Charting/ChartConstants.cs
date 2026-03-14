@@ -84,6 +84,39 @@ public static class ChartLegendPosition
 {
     public const string Right = "Right";
     public const string Bottom = "Bottom";
-    public const string Top = "Top";
     public const string Hidden = "Hidden";
+}
+
+/// <summary>
+/// Constants for chart color mode (light/dark).
+/// </summary>
+public static class ChartMode
+{
+    public const string Light = "Light";
+    public const string Dark = "Dark";
+}
+
+/// <summary>
+/// Constants for chart text size presets.
+/// </summary>
+public static class ChartTextSize
+{
+    public const string Small = "Small";
+    public const string Medium = "Medium";
+    public const string Large = "Large";
+    public const string ExtraLarge = "Extra Large";
+}
+
+/// <summary>
+/// Constants for chart aspect ratio presets.
+/// </summary>
+public static class ChartAspectRatio
+{
+    public const string Ratio16x9 = "16:9";
+    public const string Ratio3x2 = "3:2";
+    public const string Ratio4x3 = "4:3";
+    public const string Ratio1x1 = "1:1";
+    public const string Ratio3x4 = "3:4";
+    public const string Ratio2x3 = "2:3";
+    public const string Ratio9x16 = "9:16";
 }
