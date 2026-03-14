@@ -2228,7 +2228,7 @@ public class Server : LspServer, ILogger, ISettingSource, IStorage
                     && executeResult.Tables != null
                     && executeResult.Tables.Count > 0
                     && executeResult.ChartOptions != null
-                    && executeResult.ChartOptions.Kind != ChartKind.None)
+                    && executeResult.ChartOptions.Type != ChartType.None)
                 {
                     var chartHtml = RenderChartAsHtml(executeResult.Tables[0], executeResult.ChartOptions, @params.DarkMode);
                     return Task.FromResult<GetChartAsHtmlResult?>(
