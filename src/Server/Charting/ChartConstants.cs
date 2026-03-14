@@ -87,3 +87,12 @@ public static class ChartLegendPosition
     public const string Top = "Top";
     public const string Hidden = "Hidden";
 }
+
+/// <summary>
+/// Constants for chart color mode (light/dark).
+/// </summary>
+public static class ChartMode
+{
+    public const string Light = "Light";
+    public const string Dark = "Dark";
+}

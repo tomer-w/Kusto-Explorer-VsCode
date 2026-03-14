@@ -74,6 +74,9 @@ const axisTypes = ['Linear', 'Log'];
 /** Known sort order options (must match server-side ChartSortOrder constants). */
 const sortOrders = ['Default', 'Ascending', 'Descending'];
 
+/** Known color mode options (must match server-side ChartMode constants). */
+const chartModes = ['Light', 'Dark'];
+
 /** Known visibility options (must match server-side ChartVisibility constants). */
 const visibilityOptions = ['Visible', 'Hidden'];
 
@@ -1369,6 +1372,8 @@ export class ResultsViewProvider implements vscode.CustomTextEditorProvider {
             }
             var sort = document.getElementById('opt-sort');
             if (sort && sort.value) opts.sort = sort.value;
+            var mode = document.getElementById('opt-mode');
+            if (mode && mode.value) opts.mode = mode.value;
             var showValues = document.getElementById('opt-showValues');
             if (showValues) opts.showValues = showValues.checked ? 'Visible' : 'Hidden';
             var title = document.getElementById('opt-title');
@@ -1494,6 +1499,12 @@ export class ResultsViewProvider implements vscode.CustomTextEditorProvider {
             `<option value="${s}"${s === currentSort ? ' selected' : ''}>${s || '(default)'}</option>`
         ).join('');
 
+        // Color mode
+        const currentMode = opts.mode ?? '';
+        const modeOptions = ['', ...chartModes].map(m =>
+            `<option value="${m}"${m === currentMode ? ' selected' : ''}>${m || '(auto)'}</option>`
+        ).join('');
+
         // Show values
         const showValuesChecked = opts.showValues === 'Visible' ? ' checked' : '';
 
@@ -1557,6 +1568,10 @@ export class ResultsViewProvider implements vscode.CustomTextEditorProvider {
                 <div class="field">
                     <label for="opt-sort">Sort</label>
                     <select id="opt-sort" onchange="onChartOptionChanged()">${sortOptions}</select>
+                </div>
+                <div class="field">
+                    <label for="opt-mode">Mode</label>
+                    <select id="opt-mode" onchange="onChartOptionChanged()">${modeOptions}</select>
                 </div>
                 <div class="field checkbox-field">
                     <input type="checkbox" id="opt-showValues"${showValuesChecked} onchange="onChartOptionChanged()">

@@ -432,6 +432,7 @@ export interface ChartOptions {
     showValues?: string;
     sort?: string;
     legendPosition?: string;
+    mode?: string;
 }
 
 /** Position in a document. */

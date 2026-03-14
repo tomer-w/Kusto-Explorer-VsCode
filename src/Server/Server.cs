@@ -2230,7 +2230,13 @@ public class Server : LspServer, ILogger, ISettingSource, IStorage
                     && executeResult.ChartOptions != null
                     && executeResult.ChartOptions.Type != ChartType.None)
                 {
-                    var chartHtml = RenderChartAsHtml(executeResult.Tables[0], executeResult.ChartOptions, @params.DarkMode);
+                    var effectiveDarkMode = executeResult.ChartOptions.Mode switch
+                    {
+                        ChartMode.Light => false,
+                        ChartMode.Dark => true,
+                        _ => @params.DarkMode
+                    };
+                    var chartHtml = RenderChartAsHtml(executeResult.Tables[0], executeResult.ChartOptions, effectiveDarkMode);
                     return Task.FromResult<GetChartAsHtmlResult?>(
                         new GetChartAsHtmlResult
                         {

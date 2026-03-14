@@ -188,6 +188,14 @@ public class ChartOptions
     public string? LegendPosition { get; init; }
 
     /// <summary>
+    /// Color mode override. Use <see cref="ChartMode"/> constants: "Light", "Dark".
+    /// If null, the chart uses the darkMode parameter (which reflects the editor theme).
+    /// "Light" or "Dark" overrides the darkMode parameter.
+    /// </summary>
+    [DataMember(Name = "mode")]
+    public string? Mode { get; init; }
+
+    /// <summary>
     /// Converts a <see cref="ChartVisualizationOptions"/> from the Kusto SDK to a <see cref="ChartOptions"/>.
     /// </summary>
     public static ChartOptions FromChartVisualizationOptions(ChartVisualizationOptions options)
