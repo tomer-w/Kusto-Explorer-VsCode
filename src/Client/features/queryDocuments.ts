@@ -5,7 +5,7 @@ import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 import { setDocumentConnection, ensureServer, getDocumentConnection } from './connections';
 import * as server from './server';
-import { displayResultsPanel, displayError, displaySingletonResultView, ResultViewMode } from './resultsViewer';
+import { displayResultsInPanel, displayErrorInPanel, displayResultsInSingletonView, ResultViewMode } from './resultsViewer';
 import * as resultsCache from './resultsCache';
 import { getClipboardContext, clearClipboardContext, copyToClipboard } from './clipboard';
 import { ENTITY_DEFINITION_SCHEME } from './entityDefinitionProvider';
@@ -139,7 +139,7 @@ async function runQuery(client: LanguageClient, queryRange?: server.SelectionRan
         if (runResult && runResult.error)
         {
             // display error and highlight error range
-            await displayError(runResult.error);
+            await displayErrorInPanel(runResult.error);
 
             if (runResult.error.range) {
                 const r = runResult.error.range;
@@ -153,8 +153,8 @@ async function runQuery(client: LanguageClient, queryRange?: server.SelectionRan
             await resultsCache.addToCache(uri, queryText, runResult.data);
 
             // Display result tables and chart from ResultData
-            await displayResultsPanel(client, runResult.data, 'data');
-            await displaySingletonResultView(client, runResult.data, 'chart', true);
+            await displayResultsInPanel(client, runResult.data, 'data');
+            await displayResultsInSingletonView(client, runResult.data, 'chart', true);
         }
 
         // Refresh CodeLens to show/hide Results lens
@@ -192,8 +192,8 @@ async function showResults(client: LanguageClient, uri: string, line: number, ch
         ));
         const cachedData = await resultsCache.getFromCache(uri, queryText);
         if (cachedData) {
-            await displayResultsPanel(client, cachedData, 'data');
-            await displaySingletonResultView(client, cachedData, 'chart', true);
+            await displayResultsInPanel(client, cachedData, 'data');
+            await displayResultsInSingletonView(client, cachedData, 'chart', true);
         }
     } catch (error) {
         vscode.window.showErrorMessage(`Failed to show results: ${error}`);

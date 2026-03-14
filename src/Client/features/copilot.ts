@@ -7,7 +7,7 @@ import * as conn from './connections';
 import * as server from './server';
 import { ENTITY_DEFINITION_SCHEME } from './entityDefinitionProvider';
 import { resultTableToMarkdown } from './markdown';
-import { displayResultsPanel, displaySingletonResultView, ResultViewMode } from './resultsViewer';
+import { displayResultsInPanel, displayResultsInSingletonView, ResultViewMode } from './resultsViewer';
 
 const COPILOT_PARTICIPANT_ID = 'kusto';
 const MAX_SCHEMA_CHARS = 30000; // Approximate limit to stay within token limits
@@ -411,7 +411,7 @@ async function runQuery(input: { query: string; cluster?: string; database?: str
     }
 
     if (input.showResults) {
-        await displaySingletonResultView(languageClient, result.data, 'all', true);
+        await displayResultsInSingletonView(languageClient, result.data, 'all', true);
     }
 
     return resultTableToMarkdown(result.data.tables[0]!);
