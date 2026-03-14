@@ -1234,14 +1234,16 @@ export class ResultsViewProvider implements vscode.CustomTextEditorProvider {
             var xaxis = layout.xaxis;
             if (xaxis) {
                 overrides.xaxis = Object.assign({}, xaxis, {
-                    title: Object.assign({}, xaxis.title || {}, { font: Object.assign({}, (xaxis.title && xaxis.title.font) || {}, { size: fonts.axisSize }) }),
+                    automargin: true,
+                    title: Object.assign({}, xaxis.title || {}, { font: Object.assign({}, (xaxis.title && xaxis.title.font) || {}, { size: fonts.axisSize }), standoff: fonts.tickSize }),
                     tickfont: Object.assign({}, xaxis.tickfont || {}, { size: fonts.tickSize })
                 });
             }
             var yaxis = layout.yaxis;
             if (yaxis) {
                 overrides.yaxis = Object.assign({}, yaxis, {
-                    title: Object.assign({}, yaxis.title || {}, { font: Object.assign({}, (yaxis.title && yaxis.title.font) || {}, { size: fonts.axisSize }) }),
+                    automargin: true,
+                    title: Object.assign({}, yaxis.title || {}, { font: Object.assign({}, (yaxis.title && yaxis.title.font) || {}, { size: fonts.axisSize }), standoff: fonts.tickSize }),
                     tickfont: Object.assign({}, yaxis.tickfont || {}, { size: fonts.tickSize })
                 });
             }
