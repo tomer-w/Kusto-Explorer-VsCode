@@ -433,6 +433,7 @@ export interface ChartOptions {
     sort?: string;
     legendPosition?: string;
     mode?: string;
+    aspectRatio?: string;
 }
 
 /** Position in a document. */

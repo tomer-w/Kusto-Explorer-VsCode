@@ -96,3 +96,14 @@ public static class ChartMode
     public const string Light = "Light";
     public const string Dark = "Dark";
 }
+
+/// <summary>
+/// Constants for chart aspect ratio presets.
+/// </summary>
+public static class ChartAspectRatio
+{
+    public const string Ratio16x9 = "16:9";
+    public const string Ratio4x3 = "4:3";
+    public const string Ratio1x1 = "1:1";
+    public const string Ratio3x2 = "3:2";
+}

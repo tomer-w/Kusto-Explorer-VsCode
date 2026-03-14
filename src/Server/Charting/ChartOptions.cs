@@ -196,6 +196,13 @@ public class ChartOptions
     public string? Mode { get; init; }
 
     /// <summary>
+    /// Aspect ratio for the chart display area. Use <see cref="ChartAspectRatio"/> constants: "16:9", "4:3", "1:1", "3:2".
+    /// If null, the chart fills the available space.
+    /// </summary>
+    [DataMember(Name = "aspectRatio")]
+    public string? AspectRatio { get; init; }
+
+    /// <summary>
     /// Converts a <see cref="ChartVisualizationOptions"/> from the Kusto SDK to a <see cref="ChartOptions"/>.
     /// </summary>
     public static ChartOptions FromChartVisualizationOptions(ChartVisualizationOptions options)
