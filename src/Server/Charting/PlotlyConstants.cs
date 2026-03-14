@@ -142,6 +142,168 @@ public static class PlotlyAxisTypes
 }
 
 /// <summary>
+/// Drag interaction modes for Plotly charts.
+/// </summary>
+public static class PlotlyDragModes
+{
+    /// <summary>Drag to zoom into a rectangular area.</summary>
+    public const string Zoom = "zoom";
+
+    /// <summary>Drag to pan the chart.</summary>
+    public const string Pan = "pan";
+
+    /// <summary>Drag to select data points in a rectangle.</summary>
+    public const string Select = "select";
+
+    /// <summary>Drag to select data points with a freeform lasso.</summary>
+    public const string Lasso = "lasso";
+
+    /// <summary>Drag to draw a line.</summary>
+    public const string DrawLine = "drawline";
+
+    /// <summary>Drag to draw a rectangle.</summary>
+    public const string DrawRect = "drawrect";
+
+    /// <summary>Drag to draw a circle.</summary>
+    public const string DrawCircle = "drawcircle";
+
+    /// <summary>Orbit mode for 3D charts.</summary>
+    public const string Orbit = "orbit";
+
+    /// <summary>Turntable rotation for 3D charts.</summary>
+    public const string Turntable = "turntable";
+}
+
+/// <summary>
+/// Shape type constants for PlotlyShape.
+/// </summary>
+public static class PlotlyShapeTypes
+{
+    /// <summary>A straight line between two points.</summary>
+    public const string Line = "line";
+
+    /// <summary>A rectangle.</summary>
+    public const string Rect = "rect";
+
+    /// <summary>A circle (defined by bounding box).</summary>
+    public const string Circle = "circle";
+
+    /// <summary>An arbitrary SVG path.</summary>
+    public const string Path = "path";
+}
+
+/// <summary>
+/// Layer positioning for shapes and annotations.
+/// </summary>
+public static class PlotlyLayers
+{
+    /// <summary>Draw below the traces.</summary>
+    public const string Below = "below";
+
+    /// <summary>Draw above the traces.</summary>
+    public const string Above = "above";
+}
+
+/// <summary>
+/// Category ordering modes for Plotly axes.
+/// </summary>
+public static class PlotlyCategoryOrders
+{
+    /// <summary>Categories are ordered by their order of appearance in the trace data.</summary>
+    public const string Trace = "trace";
+
+    /// <summary>Categories are sorted alphabetically ascending.</summary>
+    public const string CategoryAscending = "category ascending";
+
+    /// <summary>Categories are sorted alphabetically descending.</summary>
+    public const string CategoryDescending = "category descending";
+
+    /// <summary>Categories are sorted by total value ascending.</summary>
+    public const string TotalAscending = "total ascending";
+
+    /// <summary>Categories are sorted by total value descending.</summary>
+    public const string TotalDescending = "total descending";
+
+    /// <summary>Categories are ordered by an explicit array (use CategoryArray).</summary>
+    public const string Array = "array";
+}
+
+/// <summary>
+/// Exponent display formats for Plotly axis tick labels.
+/// </summary>
+public static class PlotlyExponentFormats
+{
+    /// <summary>No exponent notation (always show full number).</summary>
+    public const string None = "none";
+
+    /// <summary>Lowercase "e" notation (e.g., 1e+6).</summary>
+    public const string LowercaseE = "e";
+
+    /// <summary>Uppercase "E" notation (e.g., 1E+6).</summary>
+    public const string UppercaseE = "E";
+
+    /// <summary>Superscript power notation (e.g., 10^6).</summary>
+    public const string Power = "power";
+
+    /// <summary>SI prefix notation (e.g., 1M, 1k).</summary>
+    public const string SI = "SI";
+
+    /// <summary>Abbreviation notation (e.g., 1B, 1T).</summary>
+    public const string B = "B";
+}
+
+/// <summary>
+/// Spike line drawing modes for Plotly axes.
+/// </summary>
+public static class PlotlySpikeModes
+{
+    /// <summary>Draw a spike line to the axis.</summary>
+    public const string ToAxis = "toaxis";
+
+    /// <summary>Draw a spike line across the full plot area.</summary>
+    public const string Across = "across";
+
+    /// <summary>Place a marker at the data point.</summary>
+    public const string Marker = "marker";
+
+    /// <summary>Draw spike line to the axis and place a marker.</summary>
+    public const string ToAxisAndMarker = "toaxis+marker";
+
+    /// <summary>Draw spike line across and place a marker.</summary>
+    public const string AcrossAndMarker = "across+marker";
+}
+
+/// <summary>
+/// Tick placement modes for Plotly axes.
+/// </summary>
+public static class PlotlyTickModes
+{
+    /// <summary>Plotly determines the number and placement of ticks automatically.</summary>
+    public const string Auto = "auto";
+
+    /// <summary>Ticks are placed at regular intervals defined by Tick0 and DTick.</summary>
+    public const string Linear = "linear";
+
+    /// <summary>Ticks are placed at explicit positions defined by TickValues/TickText.</summary>
+    public const string Array = "array";
+}
+
+/// <summary>
+/// Tick mark drawing positions for Plotly axes.
+/// </summary>
+public static class PlotlyTickPositions
+{
+    /// <summary>Draw tick marks outside the plot area.</summary>
+    public const string Outside = "outside";
+
+    /// <summary>Draw tick marks inside the plot area.</summary>
+    public const string Inside = "inside";
+
+    /// <summary>Do not draw tick marks.</summary>
+    public const string None = "";
+}
+
+/// <summary>
 /// Axis position options for Plotly charts.
 /// </summary>
 public static class PlotlyAxisSides
