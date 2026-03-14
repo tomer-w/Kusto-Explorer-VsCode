@@ -97,6 +97,17 @@ public static class ChartMode
 }
 
 /// <summary>
+/// Constants for chart text size presets.
+/// </summary>
+public static class ChartTextSize
+{
+    public const string Small = "Small";
+    public const string Medium = "Medium";
+    public const string Large = "Large";
+    public const string ExtraLarge = "Extra Large";
+}
+
+/// <summary>
 /// Constants for chart aspect ratio presets.
 /// </summary>
 public static class ChartAspectRatio

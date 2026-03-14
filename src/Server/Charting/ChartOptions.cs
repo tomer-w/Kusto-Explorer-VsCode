@@ -203,6 +203,13 @@ public class ChartOptions
     public string? AspectRatio { get; init; }
 
     /// <summary>
+    /// Text size preset for chart titles and axis labels. Use <see cref="ChartTextSize"/> constants: "Small", "Large", "Extra Large".
+    /// If null, font sizes scale dynamically based on chart dimensions.
+    /// </summary>
+    [DataMember(Name = "textSize")]
+    public string? TextSize { get; init; }
+
+    /// <summary>
     /// Converts a <see cref="ChartVisualizationOptions"/> from the Kusto SDK to a <see cref="ChartOptions"/>.
     /// </summary>
     public static ChartOptions FromChartVisualizationOptions(ChartVisualizationOptions options)
