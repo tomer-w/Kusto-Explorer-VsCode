@@ -78,7 +78,7 @@ const sortOrders = ['Default', 'Ascending', 'Descending'];
 const chartModes = ['Light', 'Dark'];
 
 /** Known aspect ratio presets (must match server-side ChartAspectRatio constants). */
-const aspectRatios = ['16:9', '4:3', '1:1', '3:2'];
+const aspectRatios = ['16:9', '3:2', '4:3', '1:1', '3:4', '2:3', '9:16'];
 
 /** Known text size presets (must match server-side ChartTextSize constants). */
 const textSizes = ['Small', 'Medium', 'Large', 'Extra Large'];

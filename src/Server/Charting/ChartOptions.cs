@@ -196,7 +196,7 @@ public class ChartOptions
     public string? Mode { get; init; }
 
     /// <summary>
-    /// Aspect ratio for the chart display area. Use <see cref="ChartAspectRatio"/> constants: "16:9", "4:3", "1:1", "3:2".
+    /// Aspect ratio for the chart display area. Use <see cref="ChartAspectRatio"/> constants: "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16".
     /// If null, the chart fills the available space.
     /// </summary>
     [DataMember(Name = "aspectRatio")]

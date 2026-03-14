@@ -113,7 +113,10 @@ public static class ChartTextSize
 public static class ChartAspectRatio
 {
     public const string Ratio16x9 = "16:9";
+    public const string Ratio3x2 = "3:2";
     public const string Ratio4x3 = "4:3";
     public const string Ratio1x1 = "1:1";
-    public const string Ratio3x2 = "3:2";
+    public const string Ratio3x4 = "3:4";
+    public const string Ratio2x3 = "2:3";
+    public const string Ratio9x16 = "9:16";
 }
