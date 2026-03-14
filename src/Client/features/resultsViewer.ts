@@ -178,11 +178,8 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
 
     // Register chart copy commands that target whichever chart webview is active
     context.subscriptions.push(
-        vscode.commands.registerCommand('kusto.copyChartLight', () => {
-            activeResultWebview?.webview.postMessage({ command: 'copyChartLight' });
-        }),
-        vscode.commands.registerCommand('kusto.copyChartDark', () => {
-            activeResultWebview?.webview.postMessage({ command: 'copyChartDark' });
+        vscode.commands.registerCommand('kusto.copyChart', () => {
+            activeResultWebview?.webview.postMessage({ command: 'copyChart' });
         }),
         vscode.commands.registerCommand('kusto.toggleChartEditor', () => {
             activeResultWebview?.webview.postMessage({ command: 'toggleEditPanel' });
@@ -356,64 +353,11 @@ const chartCopyScript = `
         const vscodeApi = window._vscodeApi;
         if (!vscodeApi) return;
 
-        // Colors for Copy (Light): dark text/axes on white bg
-        const lightCopyColors = {
-            'font.color': '#333333',
-            'xaxis.color': '#333333',
-            'xaxis.linecolor': '#333333',
-            'xaxis.tickfont.color': '#333333',
-            'xaxis.title.font.color': '#333333',
-            'xaxis.gridcolor': 'rgba(0,0,0,0.15)',
-            'yaxis.color': '#333333',
-            'yaxis.linecolor': '#333333',
-            'yaxis.tickfont.color': '#333333',
-            'yaxis.title.font.color': '#333333',
-            'yaxis.gridcolor': 'rgba(0,0,0,0.15)',
-            'legend.font.color': '#333333'
-        };
-
-        // Colors for Copy (Dark): white text/axes on black bg
-        const darkCopyColors = {
-            'font.color': '#ffffff',
-            'xaxis.color': '#ffffff',
-            'xaxis.linecolor': '#ffffff',
-            'xaxis.tickfont.color': '#ffffff',
-            'xaxis.title.font.color': '#ffffff',
-            'xaxis.gridcolor': 'rgba(255,255,255,0.15)',
-            'yaxis.color': '#ffffff',
-            'yaxis.linecolor': '#ffffff',
-            'yaxis.tickfont.color': '#ffffff',
-            'yaxis.title.font.color': '#ffffff',
-            'yaxis.gridcolor': 'rgba(255,255,255,0.15)',
-            'legend.font.color': '#ffffff'
-        };
-
-        // Transparent background for SVG
-        const transparentBg = {
-            paper_bgcolor: 'rgba(0,0,0,0)',
-            plot_bgcolor: 'rgba(0,0,0,0)'
-        };
-
-        // Solid backgrounds for bitmap
-        const whiteBg = {
-            paper_bgcolor: '#ffffff',
-            plot_bgcolor: '#ffffff'
-        };
-
-        const blackBg = {
-            paper_bgcolor: '#000000',
-            plot_bgcolor: '#000000'
-        };
-
         window.addEventListener('message', async event => {
             const message = event.data;
 
-            if (message.command === 'copyChartLight' || message.command === 'copyChartDark') {
+            if (message.command === 'copyChart') {
                 try {
-                    const dark = message.command === 'copyChartDark';
-                    const colors = dark ? darkCopyColors : lightCopyColors;
-                    const solidBg = dark ? blackBg : whiteBg;
-
                     // Find the Plotly chart div
                     const plotDiv = document.querySelector('.js-plotly-plot') || document.querySelector('.plotly-graph-div');
                     if (plotDiv && typeof Plotly !== 'undefined') {
@@ -421,34 +365,15 @@ const chartCopyScript = `
                         const height = plotDiv.offsetHeight;
                         const layout = plotDiv.layout || {};
 
-                        // Save original layout properties before any changes
-                        const savedLayout = {
-                            paper_bgcolor: layout.paper_bgcolor,
-                            plot_bgcolor: layout.plot_bgcolor,
-                            'font.color': layout.font?.color ?? null,
-                            'xaxis.color': layout.xaxis?.color ?? null,
-                            'xaxis.linecolor': layout.xaxis?.linecolor ?? null,
-                            'xaxis.tickfont.color': layout.xaxis?.tickfont?.color ?? null,
-                            'xaxis.title.font.color': layout.xaxis?.title?.font?.color ?? null,
-                            'xaxis.gridcolor': layout.xaxis?.gridcolor ?? null,
-                            'yaxis.color': layout.yaxis?.color ?? null,
-                            'yaxis.linecolor': layout.yaxis?.linecolor ?? null,
-                            'yaxis.tickfont.color': layout.yaxis?.tickfont?.color ?? null,
-                            'yaxis.title.font.color': layout.yaxis?.title?.font?.color ?? null,
-                            'yaxis.gridcolor': layout.yaxis?.gridcolor ?? null,
-                            'legend.font.color': layout.legend?.font?.color ?? null
-                        };
-
-                        // SVG: transparent background with appropriate text colors
-                        await Plotly.relayout(plotDiv, { ...transparentBg, ...colors });
-                        const svgDataUrl = await Plotly.toImage(plotDiv, { format: 'svg', width: width, height: height });
-
-                        // PNG: solid background with matching text colors (scale 2x for readability)
-                        await Plotly.relayout(plotDiv, solidBg);
+                        // PNG: copy as-is (scale 2x for readability)
                         const pngDataUrl = await Plotly.toImage(plotDiv, { format: 'png', width: width, height: height, scale: 2 });
 
-                        // Restore original layout
-                        await Plotly.relayout(plotDiv, savedLayout);
+                        // SVG: use transparent background so it layers well in documents
+                        var savedPaperBg = layout.paper_bgcolor || '#fff';
+                        var savedPlotBg = layout.plot_bgcolor || '#fff';
+                        await Plotly.relayout(plotDiv, { paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)' });
+                        const svgDataUrl = await Plotly.toImage(plotDiv, { format: 'svg', width: width, height: height });
+                        await Plotly.relayout(plotDiv, { paper_bgcolor: savedPaperBg, plot_bgcolor: savedPlotBg });
 
                         vscodeApi.postMessage({ command: 'copyChartResult', pngDataUrl: pngDataUrl, svgDataUrl: svgDataUrl });
                     } else {
