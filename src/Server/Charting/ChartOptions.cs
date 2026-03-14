@@ -14,17 +14,17 @@ namespace Kusto.Vscode;
 public class ChartOptions
 {
     /// <summary>
-    /// Chart type. Use <see cref="ChartKind"/> constants (e.g., "LineChart", "BarChart", "PieChart", "ScatterChart").
+    /// Chart type. Use <see cref="ChartType"/> constants (e.g., "LineChart", "BarChart", "PieChart", "ScatterChart").
     /// </summary>
-    [DataMember(Name = "kind")]
-    public required string Kind { get; init; }
+    [DataMember(Name = "type")]
+    public required string Type { get; init; }
 
     /// <summary>
-    /// Chart display mode. Use <see cref="ChartMode"/> constants: "Default", "Stacked", "Stacked100", "Unstacked".
+    /// Chart kind. Use <see cref="ChartKind"/> constants: "Default", "Stacked", "Stacked100", "Unstacked".
     /// If null, defaults to "Default". Only applies to bar/column charts.
     /// </summary>
-    [DataMember(Name = "mode")]
-    public string? Mode { get; init; }
+    [DataMember(Name = "kind")]
+    public string? Kind { get; init; }
 
     /// <summary>
     /// Chart title text displayed above the chart. If null, no title is shown.
@@ -125,25 +125,46 @@ public class ChartOptions
     public string? ZTitle { get; init; }
 
     /// <summary>
-    /// Tick mark visibility on both axes. Use <see cref="ChartVisibility"/> constants: "Visible", "Hidden".
+    /// Tick mark visibility on the X-axis. Use <see cref="ChartVisibility"/> constants: "Visible", "Hidden".
     /// If null, ticks are hidden by default.
     /// </summary>
-    [DataMember(Name = "showTicks")]
-    public string? ShowTicks { get; init; }
+    [DataMember(Name = "xShowTicks")]
+    public string? XShowTicks { get; init; }
 
     /// <summary>
-    /// Grid line visibility on both axes. Use <see cref="ChartVisibility"/> constants: "Visible", "Hidden".
+    /// Tick mark visibility on the Y-axis. Use <see cref="ChartVisibility"/> constants: "Visible", "Hidden".
+    /// If null, ticks are hidden by default.
+    /// </summary>
+    [DataMember(Name = "yShowTicks")]
+    public string? YShowTicks { get; init; }
+
+    /// <summary>
+    /// Grid line visibility on the X-axis. Use <see cref="ChartVisibility"/> constants: "Visible", "Hidden".
     /// If null, grid lines are shown by default.
     /// </summary>
-    [DataMember(Name = "showGrid")]
-    public string? ShowGrid { get; init; }
+    [DataMember(Name = "xShowGrid")]
+    public string? XShowGrid { get; init; }
 
     /// <summary>
-    /// Rotation angle for tick labels on both axes, in degrees (e.g., -45, 90).
+    /// Grid line visibility on the Y-axis. Use <see cref="ChartVisibility"/> constants: "Visible", "Hidden".
+    /// If null, grid lines are shown by default.
+    /// </summary>
+    [DataMember(Name = "yShowGrid")]
+    public string? YShowGrid { get; init; }
+
+    /// <summary>
+    /// Rotation angle for tick labels on the X-axis, in degrees (e.g., -45, 90).
     /// If null, labels auto-rotate to avoid overlap.
     /// </summary>
-    [DataMember(Name = "tickAngle")]
-    public double? TickAngle { get; init; }
+    [DataMember(Name = "xTickAngle")]
+    public double? XTickAngle { get; init; }
+
+    /// <summary>
+    /// Rotation angle for tick labels on the Y-axis, in degrees (e.g., -45, 90).
+    /// If null, labels auto-rotate to avoid overlap.
+    /// </summary>
+    [DataMember(Name = "yTickAngle")]
+    public double? YTickAngle { get; init; }
 
     /// <summary>
     /// Data value label visibility. Use <see cref="ChartVisibility"/> constants: "Visible", "Hidden".
@@ -173,8 +194,8 @@ public class ChartOptions
     {
         return new ChartOptions
         {
-            Kind = options.Visualization.ToString(),
-            Mode = options.Mode.ToString(),
+            Type = options.Visualization.ToString(),
+            Kind = options.Mode.ToString(),
             Title = options.Title,
             XTitle = options.XTitle,
             YTitle = options.YTitle,

@@ -53,8 +53,8 @@ const resultWebviews = new Set<vscode.WebviewPanel>();
 /** The most recently focused result webview. */
 let activeResultWebview: vscode.WebviewPanel | undefined;
 
-/** Known chart kinds for the edit panel dropdown (must match server-side ChartKind constants). */
-const chartKinds = [
+/** Known chart types for the edit panel dropdown (must match server-side ChartType constants). */
+const chartTypes = [
     'AreaChart', 'BarChart', 'Card', 'ColumnChart', 'Graph',
     'LineChart', 'PieChart', 'PivotChart', 'Plotly', 'Sankey',
     'ScatterChart', 'StackedAreaChart', '3DChart',
@@ -62,14 +62,20 @@ const chartKinds = [
     'TimePivot', 'TreeMap'
 ];
 
-/** Known chart modes (must match server-side ChartMode constants). */
-const chartModes = ['Default', 'Unstacked', 'Stacked', 'Stacked100'];
+/** Known chart kinds (must match server-side ChartKind constants). */
+const chartKinds = ['Default', 'Unstacked', 'Stacked', 'Stacked100'];
 
-/** Known legend options (must match server-side ChartLegendMode constants). */
-const legendOptions = ['Visible', 'Hidden'];
+/** Known legend position options (must match server-side ChartLegendPosition constants). */
+const legendPositions = ['Right', 'Top', 'Bottom', 'Hidden'];
 
 /** Known axis type options (must match server-side ChartAxis constants). */
 const axisTypes = ['Linear', 'Log'];
+
+/** Known sort order options (must match server-side ChartSortOrder constants). */
+const sortOrders = ['Default', 'Ascending', 'Descending'];
+
+/** Known visibility options (must match server-side ChartVisibility constants). */
+const visibilityOptions = ['Visible', 'Hidden'];
 
 /**
  * Controls which content sections are shown in a result view.
@@ -847,20 +853,66 @@ export class ResultsViewProvider implements vscode.CustomTextEditorProvider {
             border-left: 1px solid var(--vscode-panel-border, #444);
             background: var(--vscode-sideBar-background, var(--vscode-editor-background));
             overflow-y: auto;
-            padding: 12px;
+            padding: 0;
             box-sizing: border-box;
         }
         .edit-panel.visible { display: block; }
         .edit-panel h3 {
-            margin: 0 0 12px 0;
+            margin: 0;
+            padding: 8px 12px;
             font-size: 13px;
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.5px;
             color: var(--vscode-foreground);
             opacity: 0.8;
+            border-bottom: 1px solid var(--vscode-panel-border, #444);
+        }
+        .edit-panel .section-header {
+            display: flex;
+            align-items: center;
+            padding: 6px 12px;
+            cursor: pointer;
+            user-select: none;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            color: var(--vscode-foreground);
+            background: var(--vscode-sideBarSectionHeader-background, transparent);
+            border-bottom: 1px solid var(--vscode-panel-border, #444);
+        }
+        .edit-panel .section-header:hover {
+            background: var(--vscode-list-hoverBackground, #2a2d2e);
+        }
+        .edit-panel .section-header .chevron {
+            margin-right: 6px;
+            font-size: 10px;
+            transition: transform 0.15s;
+            display: inline-block;
+            width: 10px;
+        }
+        .edit-panel .section-header.collapsed .chevron {
+            transform: rotate(-90deg);
+        }
+        .edit-panel .section-body {
+            padding: 8px 12px;
+            border-bottom: 1px solid var(--vscode-panel-border, #444);
+        }
+        .edit-panel .section-body.collapsed {
+            display: none;
         }
         .edit-panel .field { margin-bottom: 10px; }
+        .edit-panel .field:last-child { margin-bottom: 0; }
+        .edit-panel .field-row {
+            display: flex;
+            gap: 8px;
+        }
+        .edit-panel .field-row .field {
+            flex: 1;
+            min-width: 0;
+            margin-bottom: 10px;
+        }
         .edit-panel label {
             display: block;
             margin-bottom: 3px;
@@ -868,7 +920,8 @@ export class ResultsViewProvider implements vscode.CustomTextEditorProvider {
             color: var(--vscode-descriptionForeground, var(--vscode-foreground));
         }
         .edit-panel select,
-        .edit-panel input[type="text"] {
+        .edit-panel input[type="text"],
+        .edit-panel input[type="number"] {
             width: 100%;
             padding: 4px 6px;
             background: var(--vscode-input-background, #3c3c3c);
@@ -880,7 +933,8 @@ export class ResultsViewProvider implements vscode.CustomTextEditorProvider {
             box-sizing: border-box;
         }
         .edit-panel select:focus,
-        .edit-panel input[type="text"]:focus {
+        .edit-panel input[type="text"]:focus,
+        .edit-panel input[type="number"]:focus {
             outline: 1px solid var(--vscode-focusBorder, #007acc);
             outline-offset: -1px;
         }
@@ -1275,6 +1329,12 @@ export class ResultsViewProvider implements vscode.CustomTextEditorProvider {
             onChartOptionChanged();
         }
 
+        function toggleSection(headerEl) {
+            headerEl.classList.toggle('collapsed');
+            var body = headerEl.nextElementSibling;
+            if (body) body.classList.toggle('collapsed');
+        }
+
         function toggleEditPanel() {
             var panel = document.getElementById('edit-panel');
             if (!panel) return;
@@ -1298,24 +1358,35 @@ export class ResultsViewProvider implements vscode.CustomTextEditorProvider {
         // Collect current chart options from the edit panel form
         function collectChartOptions() {
             var opts = {};
+            var chartType = document.getElementById('opt-type');
+            if (chartType) opts.type = chartType.value;
             var kind = document.getElementById('opt-kind');
-            if (kind) opts.kind = kind.value;
-            var mode = document.getElementById('opt-mode');
-            if (mode && mode.value) opts.mode = mode.value;
-            var legend = document.getElementById('opt-legend');
-            if (legend) opts.legend = legend.checked ? 'Visible' : 'Hidden';
+            if (kind && kind.value) opts.kind = kind.value;
+            var legendPos = document.getElementById('opt-legendPosition');
+            if (legendPos && legendPos.value) {
+                if (legendPos.value === 'Hidden') { opts.legend = 'Hidden'; }
+                else { opts.legend = 'Visible'; opts.legendPosition = legendPos.value; }
+            }
+            var sort = document.getElementById('opt-sort');
+            if (sort && sort.value) opts.sort = sort.value;
+            var showValues = document.getElementById('opt-showValues');
+            if (showValues) opts.showValues = showValues.checked ? 'Visible' : 'Hidden';
             var title = document.getElementById('opt-title');
             if (title && title.value) opts.title = title.value;
             var xTitle = document.getElementById('opt-xTitle');
             if (xTitle && xTitle.value) opts.xTitle = xTitle.value;
             var yTitle = document.getElementById('opt-yTitle');
             if (yTitle && yTitle.value) opts.yTitle = yTitle.value;
+            var zTitle = document.getElementById('opt-zTitle');
+            if (zTitle && zTitle.value) opts.zTitle = zTitle.value;
             var xColumn = document.getElementById('opt-xColumn');
             if (xColumn && xColumn.value) opts.xColumn = xColumn.value;
             var yColList = document.getElementById('opt-yColumns-list');
             if (yColList) { var items = Array.from(yColList.querySelectorAll('li span')).map(function(s) { return s.textContent; }); if (items.length) opts.yColumns = items; }
             var seriesList = document.getElementById('opt-series-list');
             if (seriesList) { var si = Array.from(seriesList.querySelectorAll('li span')).map(function(s) { return s.textContent; }); if (si.length) opts.series = si; }
+            var accumulate = document.getElementById('opt-accumulate');
+            if (accumulate) opts.accumulate = accumulate.checked;
             var xAxis = document.getElementById('opt-xAxis');
             if (xAxis && xAxis.value) opts.xAxis = xAxis.value;
             var yAxis = document.getElementById('opt-yAxis');
@@ -1328,8 +1399,18 @@ export class ResultsViewProvider implements vscode.CustomTextEditorProvider {
             if (ymin && ymin.value) opts.ymin = ymin.value;
             var ymax = document.getElementById('opt-ymax');
             if (ymax && ymax.value) opts.ymax = ymax.value;
-            var accumulate = document.getElementById('opt-accumulate');
-            if (accumulate) opts.accumulate = accumulate.checked;
+            var xShowTicks = document.getElementById('opt-xShowTicks');
+            if (xShowTicks) opts.xShowTicks = xShowTicks.checked ? 'Visible' : 'Hidden';
+            var yShowTicks = document.getElementById('opt-yShowTicks');
+            if (yShowTicks) opts.yShowTicks = yShowTicks.checked ? 'Visible' : 'Hidden';
+            var xShowGrid = document.getElementById('opt-xShowGrid');
+            if (xShowGrid) opts.xShowGrid = xShowGrid.checked ? 'Visible' : 'Hidden';
+            var yShowGrid = document.getElementById('opt-yShowGrid');
+            if (yShowGrid) opts.yShowGrid = yShowGrid.checked ? 'Visible' : 'Hidden';
+            var xTickAngle = document.getElementById('opt-xTickAngle');
+            if (xTickAngle && xTickAngle.value !== '') opts.xTickAngle = Number(xTickAngle.value);
+            var yTickAngle = document.getElementById('opt-yTickAngle');
+            if (yTickAngle && yTickAngle.value !== '') opts.yTickAngle = Number(yTickAngle.value);
             return opts;
         }
 
@@ -1386,37 +1467,39 @@ export class ResultsViewProvider implements vscode.CustomTextEditorProvider {
     }
 
     buildEditPanelHtml(chartOptions: server.ChartOptions | undefined, columnNames: string[]): string {
-        const opts = chartOptions ?? { kind: 'ColumnChart' };
+        const opts = chartOptions ?? { type: 'ColumnChart' };
+
+        // Ensure the current type is always present in the dropdown
+        const allTypes = chartTypes.includes(opts.type) ? chartTypes : [opts.type, ...chartTypes];
+        const typeOptions = allTypes.map(t =>
+            `<option value="${t}"${t === opts.type ? ' selected' : ''}>${this.escapeHtml(t)}</option>`
+        ).join('');
 
         // Ensure the current kind is always present in the dropdown
-        const allKinds = chartKinds.includes(opts.kind) ? chartKinds : [opts.kind, ...chartKinds];
-        const kindOptions = allKinds.map(k =>
-            `<option value="${k}"${k === opts.kind ? ' selected' : ''}>${this.escapeHtml(k)}</option>`
+        const currentKind = opts.kind ?? '';
+        const allKinds = !currentKind || chartKinds.includes(currentKind) ? chartKinds : [currentKind, ...chartKinds];
+        const kindOptions = ['', ...allKinds].map(k =>
+            `<option value="${k}"${k === currentKind ? ' selected' : ''}>${k || '(default)'}</option>`
         ).join('');
 
-        // Ensure the current mode is always present in the dropdown
-        const currentMode = opts.mode ?? '';
-        const allModes = !currentMode || chartModes.includes(currentMode) ? chartModes : [currentMode, ...chartModes];
-        const modeOptions = ['', ...allModes].map(m =>
-            `<option value="${m}"${m === currentMode ? ' selected' : ''}>${m || '(default)'}</option>`
+        // Combined legend: map legacy legend + legendPosition into one value
+        const currentLegend = (opts.legend === 'Hidden') ? 'Hidden' : (opts.legendPosition ?? '');
+        const legendPosOptions = ['', ...legendPositions].map(p =>
+            `<option value="${p}"${p === currentLegend ? ' selected' : ''}>${p || '(default)'}</option>`
         ).join('');
 
-        const legendChecked = (opts.legend ?? 'Visible') !== 'Hidden' ? ' checked' : '';
+        // Sort order
+        const currentSort = opts.sort ?? '';
+        const sortOptions = ['', ...sortOrders].map(s =>
+            `<option value="${s}"${s === currentSort ? ' selected' : ''}>${s || '(default)'}</option>`
+        ).join('');
 
+        // Show values
+        const showValuesChecked = opts.showValues === 'Visible' ? ' checked' : '';
+
+        // Column pickers
         const xColOptions = ['', ...columnNames].map(c =>
             `<option value="${this.escapeHtml(c)}"${c === (opts.xColumn ?? '') ? ' selected' : ''}>${c || '(auto)'}</option>`
-        ).join('');
-
-        const currentXAxis = opts.xAxis ?? '';
-        const allAxisTypes = currentXAxis && !axisTypes.includes(currentXAxis) ? [currentXAxis, ...axisTypes] : axisTypes;
-        const xAxisOptions = ['', ...allAxisTypes].map(a =>
-            `<option value="${a}"${a === currentXAxis ? ' selected' : ''}>${a || '(default)'}</option>`
-        ).join('');
-
-        const currentYAxis = opts.yAxis ?? '';
-        const allYAxisTypes = currentYAxis && !axisTypes.includes(currentYAxis) ? [currentYAxis, ...axisTypes] : axisTypes;
-        const yAxisOptions = ['', ...allYAxisTypes].map(a =>
-            `<option value="${a}"${a === currentYAxis ? ' selected' : ''}>${a || '(default)'}</option>`
         ).join('');
 
         const allColOptions = `<option value="" disabled selected>Pick a column</option>` + columnNames.map(c =>
@@ -1431,79 +1514,170 @@ export class ResultsViewProvider implements vscode.CustomTextEditorProvider {
             `<li><span>${this.escapeHtml(c)}</span><button onclick="moveColumnItem(this,-1)" title="Move up">&uarr;</button><button onclick="moveColumnItem(this,1)" title="Move down">&darr;</button><button onclick="removeColumnItem(this)" title="Remove">&times;</button></li>`
         ).join('');
 
+        // Axis types
+        const currentXAxis = opts.xAxis ?? '';
+        const allAxisTypes = currentXAxis && !axisTypes.includes(currentXAxis) ? [currentXAxis, ...axisTypes] : axisTypes;
+        const xAxisOptions = ['', ...allAxisTypes].map(a =>
+            `<option value="${a}"${a === currentXAxis ? ' selected' : ''}>${a || '(default)'}</option>`
+        ).join('');
+
+        const currentYAxis = opts.yAxis ?? '';
+        const allYAxisTypes = currentYAxis && !axisTypes.includes(currentYAxis) ? [currentYAxis, ...axisTypes] : axisTypes;
+        const yAxisOptions = ['', ...allYAxisTypes].map(a =>
+            `<option value="${a}"${a === currentYAxis ? ' selected' : ''}>${a || '(default)'}</option>`
+        ).join('');
+
+        // Per-axis display options
+        const xShowTicksChecked = opts.xShowTicks === 'Visible' ? ' checked' : '';
+        const yShowTicksChecked = opts.yShowTicks === 'Visible' ? ' checked' : '';
+        const xShowGridChecked = opts.xShowGrid === 'Hidden' ? '' : ' checked';
+        const yShowGridChecked = opts.yShowGrid === 'Hidden' ? '' : ' checked';
+        const xTickAngleValue = opts.xTickAngle != null ? String(opts.xTickAngle) : '';
+        const yTickAngleValue = opts.yTickAngle != null ? String(opts.yTickAngle) : '';
+
         return `<div id="edit-panel" class="edit-panel">
             <h3>Chart Options</h3>
-            <div class="field">
-                <label for="opt-kind">Chart Type</label>
-                <select id="opt-kind" onchange="onChartOptionChanged()">${kindOptions}</select>
+
+            <div class="section-header" onclick="toggleSection(this)">
+                <span class="chevron">&#9662;</span>General
             </div>
-            <div class="field">
-                <label for="opt-mode">Mode</label>
-                <select id="opt-mode" onchange="onChartOptionChanged()">${modeOptions}</select>
-            </div>
-            <div class="field checkbox-field">
-                <input type="checkbox" id="opt-legend"${legendChecked} onchange="onChartOptionChanged()">
-                <label for="opt-legend">Show Legend</label>
-            </div>
-            <div class="field">
-                <label for="opt-title">Title</label>
-                <input type="text" id="opt-title" value="${this.escapeHtml(opts.title ?? '')}" oninput="onChartOptionChanged()">
-            </div>
-            <div class="field">
-                <label for="opt-xColumn">X Column</label>
-                <select id="opt-xColumn" onchange="onChartOptionChanged()">${xColOptions}</select>
-            </div>
-            <div class="field">
-                <label>Y Columns</label>
-                <div class="column-picker">
-                    <select id="opt-yColumns-picker">${allColOptions}</select>
-                    <button onclick="addColumnItem('opt-yColumns-picker','opt-yColumns-list')">Add</button>
+            <div class="section-body">
+                <div class="field">
+                    <label for="opt-type">Type</label>
+                    <select id="opt-type" onchange="onChartOptionChanged()">${typeOptions}</select>
                 </div>
-                <ul id="opt-yColumns-list" class="column-list">${yColumnsItems}</ul>
-            </div>
-            <div class="field">
-                <label>Series</label>
-                <div class="column-picker">
-                    <select id="opt-series-picker">${allColOptions}</select>
-                    <button onclick="addColumnItem('opt-series-picker','opt-series-list')">Add</button>
+                <div class="field">
+                    <label for="opt-kind">Kind</label>
+                    <select id="opt-kind" onchange="onChartOptionChanged()">${kindOptions}</select>
                 </div>
-                <ul id="opt-series-list" class="column-list">${seriesItems}</ul>
+                <div class="field">
+                    <label for="opt-legendPosition">Legend</label>
+                    <select id="opt-legendPosition" onchange="onChartOptionChanged()">${legendPosOptions}</select>
+                </div>
+                <div class="field">
+                    <label for="opt-sort">Sort</label>
+                    <select id="opt-sort" onchange="onChartOptionChanged()">${sortOptions}</select>
+                </div>
+                <div class="field checkbox-field">
+                    <input type="checkbox" id="opt-showValues"${showValuesChecked} onchange="onChartOptionChanged()">
+                    <label for="opt-showValues">Show Values</label>
+                </div>
             </div>
-            <div class="field">
-                <label for="opt-xTitle">X-Axis Title</label>
-                <input type="text" id="opt-xTitle" value="${this.escapeHtml(opts.xTitle ?? '')}" oninput="onChartOptionChanged()">
+
+            <div class="section-header collapsed" onclick="toggleSection(this)">
+                <span class="chevron">&#9662;</span>Data
             </div>
-            <div class="field">
-                <label for="opt-yTitle">Y-Axis Title</label>
-                <input type="text" id="opt-yTitle" value="${this.escapeHtml(opts.yTitle ?? '')}" oninput="onChartOptionChanged()">
+            <div class="section-body collapsed">
+                <div class="field">
+                    <label for="opt-xColumn">X Column</label>
+                    <select id="opt-xColumn" onchange="onChartOptionChanged()">${xColOptions}</select>
+                </div>
+                <div class="field">
+                    <label>Y Columns</label>
+                    <div class="column-picker">
+                        <select id="opt-yColumns-picker">${allColOptions}</select>
+                        <button onclick="addColumnItem('opt-yColumns-picker','opt-yColumns-list')">Add</button>
+                    </div>
+                    <ul id="opt-yColumns-list" class="column-list">${yColumnsItems}</ul>
+                </div>
+                <div class="field">
+                    <label>Series</label>
+                    <div class="column-picker">
+                        <select id="opt-series-picker">${allColOptions}</select>
+                        <button onclick="addColumnItem('opt-series-picker','opt-series-list')">Add</button>
+                    </div>
+                    <ul id="opt-series-list" class="column-list">${seriesItems}</ul>
+                </div>
+                <div class="field checkbox-field">
+                    <input type="checkbox" id="opt-accumulate"${opts.accumulate ? ' checked' : ''} onchange="onChartOptionChanged()">
+                    <label for="opt-accumulate">Accumulate</label>
+                </div>
             </div>
-            <div class="field">
-                <label for="opt-xAxis">X-Axis Type</label>
-                <select id="opt-xAxis" onchange="onChartOptionChanged()">${xAxisOptions}</select>
+
+            <div class="section-header collapsed" onclick="toggleSection(this)">
+                <span class="chevron">&#9662;</span>Titles
             </div>
-            <div class="field">
-                <label for="opt-yAxis">Y-Axis Type</label>
-                <select id="opt-yAxis" onchange="onChartOptionChanged()">${yAxisOptions}</select>
+            <div class="section-body collapsed">
+                <div class="field">
+                    <label for="opt-title">Title</label>
+                    <input type="text" id="opt-title" value="${this.escapeHtml(opts.title ?? '')}" oninput="onChartOptionChanged()">
+                </div>
+                <div class="field">
+                    <label for="opt-xTitle">X-Axis Title</label>
+                    <input type="text" id="opt-xTitle" value="${this.escapeHtml(opts.xTitle ?? '')}" oninput="onChartOptionChanged()">
+                </div>
+                <div class="field">
+                    <label for="opt-yTitle">Y-Axis Title</label>
+                    <input type="text" id="opt-yTitle" value="${this.escapeHtml(opts.yTitle ?? '')}" oninput="onChartOptionChanged()">
+                </div>
+                <div class="field">
+                    <label for="opt-zTitle">Z-Axis Title</label>
+                    <input type="text" id="opt-zTitle" value="${this.escapeHtml(opts.zTitle ?? '')}" oninput="onChartOptionChanged()">
+                </div>
             </div>
-            <div class="field">
-                <label for="opt-xmin">X Min</label>
-                <input type="text" id="opt-xmin" value="${this.escapeHtml(String(opts.xmin ?? ''))}" oninput="onChartOptionChanged()">
+
+            <div class="section-header collapsed" onclick="toggleSection(this)">
+                <span class="chevron">&#9662;</span>X Axis
             </div>
-            <div class="field">
-                <label for="opt-xmax">X Max</label>
-                <input type="text" id="opt-xmax" value="${this.escapeHtml(String(opts.xmax ?? ''))}" oninput="onChartOptionChanged()">
+            <div class="section-body collapsed">
+                <div class="field">
+                    <label for="opt-xAxis">Type</label>
+                    <select id="opt-xAxis" onchange="onChartOptionChanged()">${xAxisOptions}</select>
+                </div>
+                <div class="field-row">
+                    <div class="field">
+                        <label for="opt-xmin">Min</label>
+                        <input type="text" id="opt-xmin" value="${this.escapeHtml(String(opts.xmin ?? ''))}" oninput="onChartOptionChanged()">
+                    </div>
+                    <div class="field">
+                        <label for="opt-xmax">Max</label>
+                        <input type="text" id="opt-xmax" value="${this.escapeHtml(String(opts.xmax ?? ''))}" oninput="onChartOptionChanged()">
+                    </div>
+                </div>
+                <div class="field checkbox-field">
+                    <input type="checkbox" id="opt-xShowTicks"${xShowTicksChecked} onchange="onChartOptionChanged()">
+                    <label for="opt-xShowTicks">Show Tick Marks</label>
+                </div>
+                <div class="field checkbox-field">
+                    <input type="checkbox" id="opt-xShowGrid"${xShowGridChecked} onchange="onChartOptionChanged()">
+                    <label for="opt-xShowGrid">Show Grid Lines</label>
+                </div>
+                <div class="field">
+                    <label for="opt-xTickAngle">Tick Label Angle</label>
+                    <input type="number" id="opt-xTickAngle" value="${this.escapeHtml(xTickAngleValue)}" placeholder="auto" oninput="onChartOptionChanged()">
+                </div>
             </div>
-            <div class="field">
-                <label for="opt-ymin">Y Min</label>
-                <input type="text" id="opt-ymin" value="${this.escapeHtml(String(opts.ymin ?? ''))}" oninput="onChartOptionChanged()">
+
+            <div class="section-header collapsed" onclick="toggleSection(this)">
+                <span class="chevron">&#9662;</span>Y Axis
             </div>
-            <div class="field">
-                <label for="opt-ymax">Y Max</label>
-                <input type="text" id="opt-ymax" value="${this.escapeHtml(String(opts.ymax ?? ''))}" oninput="onChartOptionChanged()">
-            </div>
-            <div class="field checkbox-field">
-                <input type="checkbox" id="opt-accumulate"${opts.accumulate ? ' checked' : ''} onchange="onChartOptionChanged()">
-                <label for="opt-accumulate">Accumulate</label>
+            <div class="section-body collapsed">
+                <div class="field">
+                    <label for="opt-yAxis">Type</label>
+                    <select id="opt-yAxis" onchange="onChartOptionChanged()">${yAxisOptions}</select>
+                </div>
+                <div class="field-row">
+                    <div class="field">
+                        <label for="opt-ymin">Min</label>
+                        <input type="text" id="opt-ymin" value="${this.escapeHtml(String(opts.ymin ?? ''))}" oninput="onChartOptionChanged()">
+                    </div>
+                    <div class="field">
+                        <label for="opt-ymax">Max</label>
+                        <input type="text" id="opt-ymax" value="${this.escapeHtml(String(opts.ymax ?? ''))}" oninput="onChartOptionChanged()">
+                    </div>
+                </div>
+                <div class="field checkbox-field">
+                    <input type="checkbox" id="opt-yShowTicks"${yShowTicksChecked} onchange="onChartOptionChanged()">
+                    <label for="opt-yShowTicks">Show Tick Marks</label>
+                </div>
+                <div class="field checkbox-field">
+                    <input type="checkbox" id="opt-yShowGrid"${yShowGridChecked} onchange="onChartOptionChanged()">
+                    <label for="opt-yShowGrid">Show Grid Lines</label>
+                </div>
+                <div class="field">
+                    <label for="opt-yTickAngle">Tick Label Angle</label>
+                    <input type="number" id="opt-yTickAngle" value="${this.escapeHtml(yTickAngleValue)}" placeholder="auto" oninput="onChartOptionChanged()">
+                </div>
             </div>
         </div>`;
     }
@@ -2107,7 +2281,7 @@ async function openChartFromResultsPanel(): Promise<void> {
     }
     const chartData: server.ResultData = {
         ...lastPanelResultData,
-        chartOptions: lastPanelResultData.chartOptions ?? { kind: 'ColumnChart' }
+        chartOptions: lastPanelResultData.chartOptions ?? { type: 'ColumnChart' }
     };
     await displayResultsInSingletonView(languageClient, chartData, 'chart', true);
 }

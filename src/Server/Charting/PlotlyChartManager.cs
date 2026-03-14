@@ -18,7 +18,7 @@ public class PlotlyChartManager : IChartManager
     public string? RenderChartToHtmlDiv(DataTable data, ChartOptions options, bool darkMode = false)
     {
         // Handle raw Plotly JSON charts specially - they bypass the builder
-        if (options.Kind == ChartKind.Plotly)
+        if (options.Type == ChartType.Plotly)
         {
             return RenderRawPlotlyChart(data, darkMode);
         }
@@ -150,28 +150,28 @@ public class PlotlyChartManager : IChartManager
 
     private PlotlyChartBuilder? BuildChart(DataTable data, ChartOptions options, bool darkMode)
     {
-        var builder = options.Kind switch
+        var builder = options.Type switch
         {
-            ChartKind.BarChart or ChartKind.ColumnChart => BuildBarOrColumnChart(data, options),
-            ChartKind.LineChart => BuildLineChart(data, options),
-            ChartKind.ScatterChart => BuildScatterChart(data, options),
-            ChartKind.PieChart => BuildPieChart(data, options),
-            ChartKind.AreaChart => options.Mode is ChartMode.Stacked or ChartMode.Stacked100
+            ChartType.BarChart or ChartType.ColumnChart => BuildBarOrColumnChart(data, options),
+            ChartType.LineChart => BuildLineChart(data, options),
+            ChartType.ScatterChart => BuildScatterChart(data, options),
+            ChartType.PieChart => BuildPieChart(data, options),
+            ChartType.AreaChart => options.Kind is ChartKind.Stacked or ChartKind.Stacked100
                 ? BuildStackedAreaChart(data, options)
                 : BuildAreaChart(data, options),
-            ChartKind.StackedAreaChart => BuildStackedAreaChart(data, options),
-            ChartKind.Card => BuildCardChart(data, options),
-            ChartKind.ThreeDChart => BuildThreeDChart(data, options),
-            ChartKind.TreeMap => BuildTreeMapChart(data, options),
-            ChartKind.Sankey => BuildSankeyChart(data, options),
+            ChartType.StackedAreaChart => BuildStackedAreaChart(data, options),
+            ChartType.Card => BuildCardChart(data, options),
+            ChartType.ThreeDChart => BuildThreeDChart(data, options),
+            ChartType.TreeMap => BuildTreeMapChart(data, options),
+            ChartType.Sankey => BuildSankeyChart(data, options),
             // Plotly is handled specially in RenderChartToHtmlDiv before reaching here
             // The following visualization types are not yet supported
-            ChartKind.Graph => null,
-            ChartKind.PivotChart => null,
-            ChartKind.TimeLadderChart => null,
-            ChartKind.TimeLineChart => null,
-            ChartKind.TimeLineWithAnomalyChart => null,
-            ChartKind.TimePivot => null,
+            ChartType.Graph => null,
+            ChartType.PivotChart => null,
+            ChartType.TimeLadderChart => null,
+            ChartType.TimeLineChart => null,
+            ChartType.TimeLineWithAnomalyChart => null,
+            ChartType.TimePivot => null,
             _ => null
         };
 
@@ -184,7 +184,7 @@ public class PlotlyChartManager : IChartManager
             }
 
             // Disable zoom/pan on 2D charts but keep hover tooltips - 3D charts need full interaction for rotation
-            if (options.Kind != ChartKind.ThreeDChart)
+            if (options.Type != ChartType.ThreeDChart)
             {
                 builder = builder.WithFixedRange();
             }
@@ -196,18 +196,18 @@ public class PlotlyChartManager : IChartManager
     private PlotlyChartBuilder? BuildBarOrColumnChart(DataTable data, ChartOptions options)
     {
         var builder = new PlotlyChartBuilder();
-        bool isHorizontal = options.Kind == ChartKind.BarChart;
+        bool isHorizontal = options.Type == ChartType.BarChart;
 
-        builder = options.Mode switch
+        builder = options.Kind switch
         {
-            ChartMode.Stacked => builder.SetStacked(),
-            ChartMode.Stacked100 => builder.SetStacked(),  // Use regular stack mode with normalized data
-            ChartMode.Unstacked => builder.SetGrouped(),
+            ChartKind.Stacked => builder.SetStacked(),
+            ChartKind.Stacked100 => builder.SetStacked(),  // Use regular stack mode with normalized data
+            ChartKind.Unstacked => builder.SetGrouped(),
             _ => builder
         };
 
         // For Stacked100, we need to normalize the data ourselves
-        if (options.Mode == ChartMode.Stacked100)
+        if (options.Kind == ChartKind.Stacked100)
         {
             return BuildStacked100BarOrColumnChart(builder, data, options, isHorizontal);
         }
@@ -275,7 +275,7 @@ public class PlotlyChartManager : IChartManager
         if (options.YTitle != null)
             builder = builder.SetYAxisTitle(options.YTitle);
 
-        if (options.Legend != ChartLegendMode.Visible)
+        if (options.Legend == ChartLegendMode.Hidden)
             builder = builder.HideLegend();
 
         // Set Y-axis range to 0-1 for percentage display
@@ -330,7 +330,7 @@ public class PlotlyChartManager : IChartManager
         if (options.Title != null)
             builder = builder.WithTitle(options.Title);
 
-        if (options.Legend != ChartLegendMode.Visible)
+        if (options.Legend == ChartLegendMode.Hidden)
             builder = builder.HideLegend();
 
         // Apply new chart options
@@ -377,7 +377,7 @@ public class PlotlyChartManager : IChartManager
     private PlotlyChartBuilder? BuildStackedAreaChart(DataTable data, ChartOptions options)
     {
         var builder = new PlotlyChartBuilder();
-        string? groupNorm = options.Mode == ChartMode.Stacked100 ? "percent" : null;
+        string? groupNorm = options.Kind == ChartKind.Stacked100 ? "percent" : null;
         return Build2dChart(builder, data, options, 
             (builder, x, y, name, yAxis) => builder.AddAreaChart(x, y, name, stackGroup: "1", yAxis: yAxis, groupNorm: groupNorm)
         );
@@ -545,7 +545,7 @@ public class PlotlyChartManager : IChartManager
             builder = builder.WithScene(scene);
         }
 
-        if (options.Legend != ChartLegendMode.Visible)
+        if (options.Legend == ChartLegendMode.Hidden)
             builder = builder.HideLegend();
 
         // Apply new chart options
@@ -683,7 +683,7 @@ public class PlotlyChartManager : IChartManager
             branchValues: "total"
         );
 
-        if (options.Legend != ChartLegendMode.Visible)
+        if (options.Legend == ChartLegendMode.Hidden)
             builder = builder.HideLegend();
 
         // Apply new chart options
@@ -804,7 +804,7 @@ public class PlotlyChartManager : IChartManager
             name: valueColumn.ColumnName
         );
 
-        if (options.Legend != ChartLegendMode.Visible)
+        if (options.Legend == ChartLegendMode.Hidden)
             builder = builder.HideLegend();
 
         // Apply new chart options
@@ -852,7 +852,7 @@ public class PlotlyChartManager : IChartManager
             && TryGetDouble(options.Ymax, out var yMaxD))
             builder = builder.SetYAxisRange(yMinD, yMaxD);
 
-        if (options.Legend != ChartLegendMode.Visible)
+        if (options.Legend == ChartLegendMode.Hidden)
             builder = builder.HideLegend();
 
         // Apply new chart options
@@ -1009,18 +1009,31 @@ public class PlotlyChartManager : IChartManager
     /// </summary>
     private static PlotlyChartBuilder ApplyCommonOptions(PlotlyChartBuilder builder, ChartOptions options)
     {
-        if (options.ShowTicks == ChartVisibility.Visible)
-            builder = builder.SetShowTicks(true);
-        else if (options.ShowTicks == ChartVisibility.Hidden)
-            builder = builder.SetShowTicks(false);
+        if (options.XShowTicks == ChartVisibility.Visible)
+            builder = builder.SetXShowTicks(true);
+        else if (options.XShowTicks == ChartVisibility.Hidden)
+            builder = builder.SetXShowTicks(false);
 
-        if (options.ShowGrid == ChartVisibility.Hidden)
-            builder = builder.SetShowGrid(false);
-        else if (options.ShowGrid == ChartVisibility.Visible)
-            builder = builder.SetShowGrid(true);
+        if (options.YShowTicks == ChartVisibility.Visible)
+            builder = builder.SetYShowTicks(true);
+        else if (options.YShowTicks == ChartVisibility.Hidden)
+            builder = builder.SetYShowTicks(false);
 
-        if (options.TickAngle.HasValue)
-            builder = builder.SetTickAngle(options.TickAngle.Value);
+        if (options.XShowGrid == ChartVisibility.Hidden)
+            builder = builder.SetXShowGrid(false);
+        else if (options.XShowGrid == ChartVisibility.Visible)
+            builder = builder.SetXShowGrid(true);
+
+        if (options.YShowGrid == ChartVisibility.Hidden)
+            builder = builder.SetYShowGrid(false);
+        else if (options.YShowGrid == ChartVisibility.Visible)
+            builder = builder.SetYShowGrid(true);
+
+        if (options.XTickAngle.HasValue)
+            builder = builder.SetXTickAngle(options.XTickAngle.Value);
+
+        if (options.YTickAngle.HasValue)
+            builder = builder.SetYTickAngle(options.YTickAngle.Value);
 
         if (options.Sort != null && options.Sort != ChartSortOrder.Default)
         {

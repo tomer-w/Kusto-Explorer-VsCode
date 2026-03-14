@@ -4,9 +4,9 @@
 namespace Kusto.Vscode;
 
 /// <summary>
-/// Constants for chart visualization kinds.
+/// Constants for chart visualization types.
 /// </summary>
-public static class ChartKind
+public static class ChartType
 {
     public const string None = "None";
     public const string AreaChart = "AreaChart";
@@ -30,9 +30,9 @@ public static class ChartKind
 }
 
 /// <summary>
-/// Constants for chart visualization modes.
+/// Constants for chart visualization kinds.
 /// </summary>
-public static class ChartMode
+public static class ChartKind
 {
     public const string Default = "Default";
     public const string Stacked = "Stacked";

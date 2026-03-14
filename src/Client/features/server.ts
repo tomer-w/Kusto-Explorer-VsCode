@@ -406,8 +406,8 @@ export interface ResultColumn {
 
 /** Serializable representation of chart visualization options. */
 export interface ChartOptions {
-    kind: string;
-    mode?: string;
+    type: string;
+    kind?: string;
     title?: string;
     xTitle?: string;
     yTitle?: string;
@@ -423,9 +423,12 @@ export interface ChartOptions {
     ymax?: unknown;
     accumulate?: boolean;
     zTitle?: string;
-    showTicks?: string;
-    showGrid?: string;
-    tickAngle?: number;
+    xShowTicks?: string;
+    yShowTicks?: string;
+    xShowGrid?: string;
+    yShowGrid?: string;
+    xTickAngle?: number;
+    yTickAngle?: number;
     showValues?: string;
     sort?: string;
     legendPosition?: string;

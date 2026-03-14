@@ -844,37 +844,65 @@ public static class PlotlyChartExtensions
     #region Tick and Grid Configuration
 
     /// <summary>
-    /// Shows or hides tick marks on both axes.
+    /// Shows or hides tick marks on the X-axis.
     /// </summary>
-    public static PlotlyChartBuilder SetShowTicks(this PlotlyChartBuilder builder, bool show)
+    public static PlotlyChartBuilder SetXShowTicks(this PlotlyChartBuilder builder, bool show)
     {
         var ticks = show ? PlotlyTickPositions.Outside : null;
         var layout = builder.Layout;
         var xAxis = (layout.XAxis ?? new PlotlyAxis()) with { Ticks = ticks };
-        var yAxis = (layout.YAxis ?? new PlotlyAxis()) with { Ticks = ticks };
-        return builder.WithLayout(layout with { XAxis = xAxis, YAxis = yAxis });
+        return builder.WithLayout(layout with { XAxis = xAxis });
     }
 
     /// <summary>
-    /// Shows or hides grid lines on both axes.
+    /// Shows or hides tick marks on the Y-axis.
     /// </summary>
-    public static PlotlyChartBuilder SetShowGrid(this PlotlyChartBuilder builder, bool show)
+    public static PlotlyChartBuilder SetYShowTicks(this PlotlyChartBuilder builder, bool show)
+    {
+        var ticks = show ? PlotlyTickPositions.Outside : null;
+        var layout = builder.Layout;
+        var yAxis = (layout.YAxis ?? new PlotlyAxis()) with { Ticks = ticks };
+        return builder.WithLayout(layout with { YAxis = yAxis });
+    }
+
+    /// <summary>
+    /// Shows or hides grid lines on the X-axis.
+    /// </summary>
+    public static PlotlyChartBuilder SetXShowGrid(this PlotlyChartBuilder builder, bool show)
     {
         var layout = builder.Layout;
         var xAxis = (layout.XAxis ?? new PlotlyAxis()) with { ShowGrid = show };
-        var yAxis = (layout.YAxis ?? new PlotlyAxis()) with { ShowGrid = show };
-        return builder.WithLayout(layout with { XAxis = xAxis, YAxis = yAxis });
+        return builder.WithLayout(layout with { XAxis = xAxis });
     }
 
     /// <summary>
-    /// Sets the tick label angle on both axes.
+    /// Shows or hides grid lines on the Y-axis.
     /// </summary>
-    public static PlotlyChartBuilder SetTickAngle(this PlotlyChartBuilder builder, double angle)
+    public static PlotlyChartBuilder SetYShowGrid(this PlotlyChartBuilder builder, bool show)
+    {
+        var layout = builder.Layout;
+        var yAxis = (layout.YAxis ?? new PlotlyAxis()) with { ShowGrid = show };
+        return builder.WithLayout(layout with { YAxis = yAxis });
+    }
+
+    /// <summary>
+    /// Sets the tick label angle on the X-axis.
+    /// </summary>
+    public static PlotlyChartBuilder SetXTickAngle(this PlotlyChartBuilder builder, double angle)
     {
         var layout = builder.Layout;
         var xAxis = (layout.XAxis ?? new PlotlyAxis()) with { TickAngle = angle };
+        return builder.WithLayout(layout with { XAxis = xAxis });
+    }
+
+    /// <summary>
+    /// Sets the tick label angle on the Y-axis.
+    /// </summary>
+    public static PlotlyChartBuilder SetYTickAngle(this PlotlyChartBuilder builder, double angle)
+    {
+        var layout = builder.Layout;
         var yAxis = (layout.YAxis ?? new PlotlyAxis()) with { TickAngle = angle };
-        return builder.WithLayout(layout with { XAxis = xAxis, YAxis = yAxis });
+        return builder.WithLayout(layout with { YAxis = yAxis });
     }
 
     /// <summary>
