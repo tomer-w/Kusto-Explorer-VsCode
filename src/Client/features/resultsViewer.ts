@@ -1221,7 +1221,7 @@ export class ResultsViewProvider implements vscode.CustomTextEditorProvider {
                 wrapperDiv.style.top = '';
                 wrapperDiv.style.width = availW + 'px';
                 wrapperDiv.style.height = availH + 'px';
-                Plotly.relayout(plotDiv, { width: availW, height: availH });
+                Plotly.newPlot(plotDiv, plotDiv.data, Object.assign({}, plotDiv.layout, { width: availW, height: availH }), plotDiv._context);
                 return;
             }
             var parts = arValue.split('/').map(Number);
@@ -1245,7 +1245,7 @@ export class ResultsViewProvider implements vscode.CustomTextEditorProvider {
             wrapperDiv.style.width = w + 'px';
             wrapperDiv.style.height = h + 'px';
             wrapperDiv.style.margin = '';
-            Plotly.relayout(plotDiv, { width: w, height: h });
+            Plotly.newPlot(plotDiv, plotDiv.data, Object.assign({}, plotDiv.layout, { width: w, height: h }), plotDiv._context);
         }
 
         // Observe chart container resizes to enforce aspect ratio
