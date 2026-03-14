@@ -84,7 +84,6 @@ public static class ChartLegendPosition
 {
     public const string Right = "Right";
     public const string Bottom = "Bottom";
-    public const string Top = "Top";
     public const string Hidden = "Hidden";
 }
 

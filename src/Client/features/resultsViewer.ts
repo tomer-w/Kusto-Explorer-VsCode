@@ -66,7 +66,7 @@ const chartTypes = [
 const chartKinds = ['Default', 'Unstacked', 'Stacked', 'Stacked100'];
 
 /** Known legend position options (must match server-side ChartLegendPosition constants). */
-const legendPositions = ['Right', 'Top', 'Bottom', 'Hidden'];
+const legendPositions = ['Right', 'Bottom', 'Hidden'];
 
 /** Known axis type options (must match server-side ChartAxis constants). */
 const axisTypes = ['Linear', 'Log'];
