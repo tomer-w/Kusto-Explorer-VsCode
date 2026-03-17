@@ -6,7 +6,7 @@
 
 ## Get Started
 - Open or create a `.kql` file in VS Code
-- Adjust placement of connection panel (it will appear at bottom of list)
+- Open Kusto Explorer connections (icon in activity panel on left)
 - Add a server connection and select a default database for the document
 - Write a Kusto query or consult copilot for help writing one
 - Press F5 to execute the query and view results in the results panel
@@ -15,7 +15,7 @@
 - Add another query to the kql document, rinse and repeat
 - Save your results and charts as a .kqr file to share with others or re-open later
 
-## Kusto Connections (in explorer panel)
+## Kusto Explorer: Connections (icon in activity panel)
 - Keep a list of Kusto servers you use to run queries
 - Select a server and database to be the default database for your query document
 - Explore the entities available in each database

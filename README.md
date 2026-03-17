@@ -18,8 +18,8 @@ A VS Code extension for the Kusto Query Language (KQL)
 
 1. Open or create a `.kql` file
 
-2. Add or open a server in the connections section of the explorer panel
-    ```
+2. Add or open a server in the connections list (icon in activity panel)
+   ```
     CONNECTIONS
     ├── 📁 Production
     │   ├── 🗄️ mycluster.eastus.kusto.windows.net

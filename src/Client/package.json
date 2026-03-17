@@ -455,6 +455,13 @@
       }
     ],
     "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "kusto-explorer",
+          "title": "Kusto Explorer",
+          "icon": "images/kusto_explorer_mono.png"
+        }
+      ],
       "panel": [
         {
           "id": "kusto-panel",
@@ -473,12 +480,11 @@
           "when": "kusto.hasActiveDocument"
         }
       ],
-      "explorer": [
+      "kusto-explorer": [
         {
           "id": "kusto.connections",
-          "name": "Kusto Connections",
-          "icon": "$(database)",
-          "when": "kusto.hasActiveDocument"
+          "name": "Connections",
+          "icon": "$(database)"
         }
       ]
     },
