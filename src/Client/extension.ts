@@ -13,6 +13,8 @@ import * as connectionStatusBar from './features/connectionStatusBar'
 import * as clientStorage from './features/clientStorage'
 import * as dotnet from './features/dotnet'
 import * as resultsCache from './features/resultsCache'
+import * as scratchPad from './features/scratchPad'
+import { SCRATCH_PAD_SCHEME } from './features/scratchPad'
 import { registerEntityDefinitionProvider, ENTITY_DEFINITION_SCHEME } from './features/entityDefinitionProvider'
 import
     {
@@ -49,7 +51,8 @@ export async function activate(context: ExtensionContext)
     const clientOptions: LanguageClientOptions = {
         documentSelector: [
             { scheme: 'file', language: 'kusto' },
-            { scheme: ENTITY_DEFINITION_SCHEME, language: 'kusto' }
+            { scheme: ENTITY_DEFINITION_SCHEME, language: 'kusto' },
+            { scheme: SCRATCH_PAD_SCHEME, language: 'kusto' }
         ],
         synchronize: { 
             fileEvents: workspace.createFileSystemWatcher('**/*.{kql,csl,kusto}')
@@ -102,6 +105,10 @@ export async function activate(context: ExtensionContext)
         const activeEditor = vscode.window.activeTextEditor;
         const isEntityDef = activeEditor?.document.uri.scheme === ENTITY_DEFINITION_SCHEME;
         vscode.commands.executeCommand('setContext', 'kusto.isEntityDefinition', isEntityDef);
+
+        // Track whether the active editor is a scratch pad document
+        const isScratchPad = activeEditor?.document.uri.scheme === SCRATCH_PAD_SCHEME;
+        vscode.commands.executeCommand('setContext', 'kusto.isScratchPad', isScratchPad);
     };
 
     // Command to notify when singleton view state changes (triggers context update)
@@ -132,6 +139,9 @@ export async function activate(context: ExtensionContext)
 
     // activate query execution features
     queryDocuments.activate(context, client);
+
+    // activate scratch pad documents
+    await scratchPad.activate(context);
 
     // activate chart file editor (.kchart)
     resultsViewer.activate(context, client);

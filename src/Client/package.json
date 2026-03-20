@@ -19,6 +19,7 @@
   ],
   "activationEvents": [
     "onLanguage:kusto",
+    "onFileSystem:kusto-scratch",
     "onLanguageModelTool:kusto_getClusters",
     "onChatParticipant:kusto"
   ],
@@ -232,6 +233,26 @@
         "command": "kusto.toggleSearch",
         "title": "Search",
         "icon": "$(search)"
+      },
+      {
+        "command": "kusto.newScratchPad",
+        "title": "New Query",
+        "icon": "$(add)"
+      },
+      {
+        "command": "kusto.deleteScratchPad",
+        "title": "Delete",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "kusto.saveScratchPadAs",
+        "title": "Save As...",
+        "icon": "$(save-as)"
+      },
+      {
+        "command": "kusto.renameScratchPad",
+        "title": "Rename",
+        "icon": "$(edit)"
       }
     ],
     "menus": {
@@ -245,6 +266,11 @@
           "command": "kusto.addServerGroup",
           "when": "view == kusto.connections",
           "group": "navigation@2"
+        },
+        {
+          "command": "kusto.newScratchPad",
+          "when": "view == kusto.scratchPads",
+          "group": "navigation@1"
         },
         {
           "command": "kusto.copyData",
@@ -332,6 +358,21 @@
           "command": "kusto.copyEntityAsExpression",
           "when": "view == kusto.connections && viewItem =~ /^(server|database|table|externalTable|materializedView|function|entityGroup|graphModel)$/",
           "group": "9_cutcopypaste"
+        },
+        {
+          "command": "kusto.deleteScratchPad",
+          "when": "view == kusto.scratchPads && viewItem == scratchPad",
+          "group": "inline"
+        },
+        {
+          "command": "kusto.renameScratchPad",
+          "when": "view == kusto.scratchPads && viewItem == scratchPad",
+          "group": "7_modification"
+        },
+        {
+          "command": "kusto.deleteScratchPad",
+          "when": "view == kusto.scratchPads && viewItem == scratchPad",
+          "group": "9_cutcopypaste"
         }
       ],
       "editor/title": [
@@ -391,6 +432,11 @@
           "command": "kusto.refreshDocumentSchema",
           "when": "editorLangId == kusto && !kusto.isEntityDefinition",
           "group": "0_kusto@4"
+        },
+        {
+          "command": "kusto.saveScratchPadAs",
+          "when": "editorLangId == kusto && kusto.isScratchPad",
+          "group": "0_kusto@5"
         }
       ],
       "webview/context": [
@@ -452,6 +498,11 @@
         "command": "kusto.saveSingletonResults",
         "key": "ctrl+shift+s",
         "when": "activeWebviewPanelId == kusto"
+      },
+      {
+        "command": "kusto.saveScratchPadAs",
+        "key": "ctrl+shift+s",
+        "when": "editorLangId == kusto && kusto.isScratchPad"
       }
     ],
     "viewsContainers": {
@@ -485,6 +536,11 @@
           "id": "kusto.connections",
           "name": "Connections",
           "icon": "$(database)"
+        },
+        {
+          "id": "kusto.scratchPads",
+          "name": "Queries",
+          "icon": "$(note)"
         }
       ]
     },
