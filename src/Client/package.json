@@ -236,7 +236,7 @@
       },
       {
         "command": "kusto.newScratchPad",
-        "title": "New Query",
+        "title": "New Query Set",
         "icon": "$(add)"
       },
       {
@@ -253,6 +253,26 @@
         "command": "kusto.renameScratchPad",
         "title": "Rename",
         "icon": "$(edit)"
+      },
+      {
+        "command": "kusto.openHistoryItem",
+        "title": "Open",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "kusto.deleteHistoryItem",
+        "title": "Delete",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "kusto.clearHistory",
+        "title": "Clear History",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "kusto.removeChart",
+        "title": "Remove Chart",
+        "icon": "$(close)"
       }
     ],
     "menus": {
@@ -273,8 +293,13 @@
           "group": "navigation@1"
         },
         {
+          "command": "kusto.clearHistory",
+          "when": "view == kusto.history",
+          "group": "navigation@1"
+        },
+        {
           "command": "kusto.copyData",
-          "when": "view == kusto.resultsView",
+          "when": "view == kusto.resultsView && kusto.panelShowingData",
           "group": "navigation@1"
         },
         {
@@ -289,7 +314,7 @@
         },
         {
           "command": "kusto.toggleSearch",
-          "when": "view == kusto.resultsView",
+          "when": "view == kusto.resultsView && kusto.panelShowingData",
           "group": "navigation@4"
         }
       ],
@@ -372,6 +397,16 @@
         {
           "command": "kusto.deleteScratchPad",
           "when": "view == kusto.scratchPads && viewItem == scratchPad",
+          "group": "9_cutcopypaste"
+        },
+        {
+          "command": "kusto.deleteHistoryItem",
+          "when": "view == kusto.history && viewItem == historyItem",
+          "group": "inline"
+        },
+        {
+          "command": "kusto.deleteHistoryItem",
+          "when": "view == kusto.history && viewItem == historyItem",
           "group": "9_cutcopypaste"
         }
       ],
@@ -468,6 +503,10 @@
           "when": "(webviewId == 'kusto' && chartVisible) || (webviewId == 'kusto.resultViewer' && chartVisible)"
         },
         {
+          "command": "kusto.removeChart",
+          "when": "(webviewId == 'kusto' && chartVisible) || (webviewId == 'kusto.resultViewer' && chartVisible)"
+        },
+        {
           "command": "kusto.saveSingletonResults",
           "when": "webviewId == 'kusto' && chartVisible"
         }
@@ -539,8 +578,13 @@
         },
         {
           "id": "kusto.scratchPads",
-          "name": "Queries",
+          "name": "Query Sets",
           "icon": "$(note)"
+        },
+        {
+          "id": "kusto.history",
+          "name": "History",
+          "icon": "$(history)"
         }
       ]
     },

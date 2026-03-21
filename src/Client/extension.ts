@@ -14,6 +14,7 @@ import * as clientStorage from './features/clientStorage'
 import * as dotnet from './features/dotnet'
 import * as resultsCache from './features/resultsCache'
 import * as scratchPad from './features/scratchPad'
+import * as history from './features/history'
 import { SCRATCH_PAD_SCHEME } from './features/scratchPad'
 import { registerEntityDefinitionProvider, ENTITY_DEFINITION_SCHEME } from './features/entityDefinitionProvider'
 import
@@ -142,6 +143,9 @@ export async function activate(context: ExtensionContext)
 
     // activate scratch pad documents
     await scratchPad.activate(context);
+
+    // activate query history
+    await history.activate(context);
 
     // activate chart file editor (.kchart)
     resultsViewer.activate(context, client);

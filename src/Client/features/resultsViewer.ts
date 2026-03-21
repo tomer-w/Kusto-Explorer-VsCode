@@ -47,6 +47,9 @@ const resultViewerViewType = 'kusto.resultViewer';
 /** The language client, set during activation. */
 let languageClient: LanguageClient;
 
+/** Function to wait for the results panel to be resolved. Set during activation. */
+let waitForPanelReady: (() => Promise<void>) | undefined;
+
 /** Set of all result webviews (singleton + results viewer tabs). */
 const resultWebviews = new Set<vscode.WebviewPanel>();
 
@@ -92,7 +95,7 @@ const visibilityOptions = ['Visible', 'Hidden'];
  * - 'data': Only data tables. Tabs shown only if multiple tables.
  * - 'all': Chart, data tables, and query tabs — all visible.
  */
-export type ResultViewMode = 'chart' | 'data' | 'all';
+export type ResultViewMode = 'chart' | 'data' | 'detail' | 'all';
 
 /** Per-viewer state for results viewer webviews. */
 interface ResultViewerState {
@@ -143,9 +146,32 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
     );
 
     // Register the bottom-panel WebviewView provider
+    let resolvePanelReady: (() => void) | undefined;
+    let panelReadyPromise: Promise<void> | undefined;
+
+    function createPanelReadyPromise(): Promise<void> {
+        if (!panelReadyPromise) {
+            panelReadyPromise = new Promise<void>(resolve => {
+                resolvePanelReady = resolve;
+            });
+        }
+        return panelReadyPromise;
+    }
+
+    // Expose a function for showPanelHtml to wait on
+    waitForPanelReady = async () => {
+        await vscode.commands.executeCommand('kusto.resultsView.focus');
+        await createPanelReadyPromise();
+    };
+
     vscode.window.registerWebviewViewProvider('kusto.resultsView', {
         resolveWebviewView(webviewView) {
             resultsPanel = webviewView;
+            if (resolvePanelReady) {
+                resolvePanelReady();
+                resolvePanelReady = undefined;
+                panelReadyPromise = undefined;
+            }
             webviewView.webview.options = {
                 enableScripts: true,
                 enableForms: false
@@ -159,6 +185,7 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
                     if (match) {
                         panelActiveTabIndex = parseInt(match[1]!, 10);
                     }
+                    vscode.commands.executeCommand('setContext', 'kusto.panelShowingData', message.viewId !== 'query');
                     sendExpressionToResultsPanel();
                 }
                 if (message.command === 'requestExpression') {
@@ -192,7 +219,8 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
         }),
         vscode.commands.registerCommand('kusto.saveSingletonResults', () => saveCurrentResults('singleton')),
         vscode.commands.registerCommand('kusto.moveViewToMain', () => moveResultViewToMain()),
-        vscode.commands.registerCommand('kusto.toggleSearch', () => toggleSearch())
+        vscode.commands.registerCommand('kusto.toggleSearch', () => toggleSearch()),
+        vscode.commands.registerCommand('kusto.removeChart', () => removeChart())
     );
 
     // Register results-related commands (previously in resultsPanel)
@@ -670,8 +698,8 @@ export class ResultsViewProvider implements vscode.CustomTextEditorProvider {
         const tables = dataResult?.tables ?? [];
 
         const showChart = hasChart && (mode === 'chart' || mode === 'all');
-        const showTables = mode === 'data' || mode === 'all';
-        const showQuery = !!queryText && mode === 'all';
+        const showTables = mode === 'data' || mode === 'detail' || mode === 'all';
+        const showQuery = !!queryText && (mode === 'detail' || mode === 'all');
 
         // Determine whether to show the tab bar
         const visibleTabCount =
@@ -1925,11 +1953,37 @@ let singletonChartOptionsOverride: server.ChartOptions | undefined;
 /** Debounce timer for singleton chart option changes. */
 let singletonChartOptionsTimer: ReturnType<typeof setTimeout> | undefined;
 
+/** Backing file URI for the singleton view (history file or user-saved file). */
+let singletonBackingUri: vscode.Uri | undefined;
+
+/** Debounce timer for writing back to the singleton backing file. */
+let singletonWriteBackTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** The mode the singleton view was last opened with. */
+let singletonMode: ResultViewMode | undefined;
+
 /**
  * Returns whether the singleton result viewer currently exists.
  */
 export function hasSingletonResultsView(): boolean {
     return singletonView !== undefined;
+}
+
+/**
+ * Sets the backing file URI for the singleton view.
+ * Flushes any pending write-back to the previous URI before switching.
+ */
+export function setSingletonBackingUri(uri: vscode.Uri | undefined): void {
+    // Flush pending writes to the OLD backing file before switching
+    flushSingletonWriteBack();
+    singletonBackingUri = uri;
+}
+
+/**
+ * Returns the language client for use by other modules.
+ */
+export function getLanguageClient(): LanguageClient {
+    return languageClient;
 }
 
 /**
@@ -1956,6 +2010,8 @@ export async function displayResultsInPanel(
 
     lastPanelResultData = resultData;
     panelActiveTabIndex = 0;
+    // Default to showing data (first tab is always a data tab, not query)
+    vscode.commands.executeCommand('setContext', 'kusto.panelShowingData', true);
 
     const darkMode = isDarkMode();
 
@@ -2016,7 +2072,11 @@ async function showPanelHtml(html: string, rowCount?: number, hasError?: boolean
         if (isBesideMode) {
             return;
         }
-        await vscode.commands.executeCommand('kusto.resultsView.focus');
+        if (waitForPanelReady) {
+            await waitForPanelReady();
+        } else {
+            await vscode.commands.executeCommand('kusto.resultsView.focus');
+        }
     }
 
     if (!resultsPanel) {
@@ -2098,6 +2158,12 @@ export async function displayResultsInSingletonView(
     mode: ResultViewMode,
     beside: boolean
 ): Promise<void> {
+    // Always update result data before any early-return dispose paths,
+    // so that a write-back in disposeSingletonView won't write stale
+    // data from a previous result to the current backing file.
+    singletonResultData = resultData;
+    singletonChartOptionsOverride = undefined;
+
     if (!resultData?.tables?.length) {
         disposeSingletonView();
         return;
@@ -2107,9 +2173,6 @@ export async function displayResultsInSingletonView(
         disposeSingletonView();
         return;
     }
-
-    singletonResultData = resultData;
-    singletonChartOptionsOverride = undefined;
 
     const darkMode = isDarkMode();
     const chartOptions = resultData.chartOptions;
@@ -2152,6 +2215,7 @@ function singletonTitleForMode(mode: ResultViewMode): string {
     switch (mode) {
         case 'chart': return 'Chart';
         case 'data': return 'Data';
+        case 'detail': return 'Results';
         case 'all': return 'Results';
     }
 }
@@ -2159,6 +2223,7 @@ function singletonTitleForMode(mode: ResultViewMode): string {
 function showSingletonView(html: string, resultData: server.ResultData, tableNames: string[], beside: boolean, mode: ResultViewMode): void {
     const viewColumn = beside ? vscode.ViewColumn.Beside : vscode.ViewColumn.One;
     const title = singletonTitleForMode(mode);
+    singletonMode = mode;
 
     if (!singletonView) {
         singletonView = vscode.window.createWebviewPanel(
@@ -2213,6 +2278,8 @@ function showSingletonView(html: string, resultData: server.ResultData, tableNam
                 if (!message.clientOnly) {
                     singletonChartOptionsTimer = setTimeout(() => updateChartInSingletonView(), 600);
                 }
+                // Write back to the backing file
+                scheduleSingletonWriteBack();
                 return;
             }
             if (message.command === 'editPanelToggled' && typeof message.visible === 'boolean') {
@@ -2228,10 +2295,12 @@ function showSingletonView(html: string, resultData: server.ResultData, tableNam
 
         singletonView.onDidDispose(() => {
             if (singletonChartOptionsTimer) { clearTimeout(singletonChartOptionsTimer); }
+            flushSingletonWriteBack();
             viewerStates.delete(singletonView!);
             singletonView = undefined;
             singletonResultData = undefined;
             singletonChartOptionsOverride = undefined;
+            singletonBackingUri = undefined;
             vscode.commands.executeCommand('setContext', 'kusto.resultViewerHasChart', false);
             vscode.commands.executeCommand('setContext', 'kusto.resultViewerChartActive', false);
             vscode.commands.executeCommand('kusto.singletonViewStateChanged');
@@ -2278,12 +2347,107 @@ async function updateChartInSingletonView(): Promise<void> {
     }
 }
 
+/** Debounced write of singletonResultData back to the backing file. */
+function scheduleSingletonWriteBack(): void {
+    if (!singletonBackingUri || !singletonResultData) { return; }
+    if (singletonWriteBackTimer) { clearTimeout(singletonWriteBackTimer); }
+    singletonWriteBackTimer = setTimeout(() => {
+        singletonWriteBackTimer = undefined;
+        if (singletonBackingUri && singletonResultData) {
+            const content = JSON.stringify(singletonResultData, null, 2);
+            vscode.workspace.fs.writeFile(singletonBackingUri, Buffer.from(content, 'utf-8'));
+        }
+    }, 1000);
+}
+
+/** Immediately flushes any pending write-back to the backing file. */
+function flushSingletonWriteBack(): void {
+    if (singletonWriteBackTimer) {
+        clearTimeout(singletonWriteBackTimer);
+        singletonWriteBackTimer = undefined;
+    }
+    if (singletonBackingUri && singletonResultData) {
+        const content = JSON.stringify(singletonResultData, null, 2);
+        vscode.workspace.fs.writeFile(singletonBackingUri, Buffer.from(content, 'utf-8'));
+    }
+}
+
+/**
+ * Removes the chart from the active results viewer (singleton or document editor).
+ * If the singleton was in 'chart' mode, it is closed.
+ */
+async function removeChart(): Promise<void> {
+    if (!activeResultWebview?.active) { return; }
+
+    if (activeResultWebview === singletonView) {
+        // Singleton viewer: remove chart from the in-memory data
+        if (!singletonResultData) { return; }
+        const updated = { ...singletonResultData };
+        delete updated.chartOptions;
+        singletonResultData = updated;
+        singletonChartOptionsOverride = undefined;
+
+        // Write the update to the backing file
+        scheduleSingletonWriteBack();
+
+        if (singletonMode === 'chart') {
+            // Was showing chart-only — close the singleton
+            disposeSingletonView();
+        } else {
+            // Re-render without the chart
+            const darkMode = isDarkMode();
+            const dataResult = resultDataToHtml(updated);
+            const tableNames = (dataResult?.tables ?? []).map(t => t.name);
+            const columnNames = updated.tables[0]?.columns?.map(c => c.name) ?? [];
+            const html = htmlBuilder.BuildMultiTabbedHtml(dataResult, undefined, false, singletonMode ?? 'all', undefined, columnNames,
+                updated.query, updated.cluster, updated.database, updated.tables);
+            singletonView!.webview.html = injectMessageHandlerScripts(html, false);
+
+            viewerStates.set(singletonView!, {
+                resultData: updated,
+                tableNames,
+                activeView: 'table-0'
+            });
+            vscode.commands.executeCommand('setContext', 'kusto.resultViewerHasChart', false);
+            vscode.commands.executeCommand('setContext', 'kusto.resultViewerChartActive', false);
+        }
+    } else {
+        // Document viewer: remove chartOptions from the document
+        const state = viewerStates.get(activeResultWebview);
+        if (!state) { return; }
+        const updated = { ...state.resultData };
+        delete updated.chartOptions;
+        state.resultData = updated;
+        state.chartOptionsOverride = undefined;
+
+        // Find the backing document and update it
+        for (const doc of vscode.workspace.textDocuments) {
+            try {
+                const parsed = JSON.parse(doc.getText()) as server.ResultData;
+                if (parsed && viewerStates.get(activeResultWebview)?.resultData === updated) {
+                    const content = JSON.stringify(updated, null, 2);
+                    const fullRange = new vscode.Range(doc.positionAt(0), doc.positionAt(doc.getText().length));
+                    const edit = new vscode.WorkspaceEdit();
+                    edit.replace(doc.uri, fullRange, content);
+                    await vscode.workspace.applyEdit(edit);
+                    await doc.save();
+                    break;
+                }
+            } catch { /* not a result document */ }
+        }
+    }
+}
+
 function disposeSingletonView(): void {
     if (singletonView) {
+        // Flush any pending write-back before disposing
+        flushSingletonWriteBack();
         try { singletonView.dispose(); } catch { /* ignore */ }
         singletonView = undefined;
         singletonResultData = undefined;
         singletonChartOptionsOverride = undefined;
+        singletonBackingUri = undefined;
+        singletonMode = undefined;
         vscode.commands.executeCommand('kusto.singletonViewStateChanged');
     }
 }
@@ -2478,9 +2642,8 @@ async function saveCurrentResults(source: 'singleton' | 'panel'): Promise<void> 
 
     const result = await saveResults({ data });
     if (result) {
-        if (source === 'singleton') {
-            disposeSingletonView();
-        }
+        // Open saved file as a document view, but keep the singleton alive
+        // (history entry remains; singleton will be reused on next query or history click)
         await vscode.commands.executeCommand('vscode.openWith', result.uri, 'kusto.resultViewer', viewColumn);
     }
 }
