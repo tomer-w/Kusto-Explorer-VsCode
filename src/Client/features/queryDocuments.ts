@@ -5,8 +5,9 @@ import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 import { setDocumentConnection, ensureServer, getDocumentConnection } from './connections';
 import * as server from './server';
-import { displayResultsInPanel, displayErrorInPanel, displayResultsInSingletonView, ResultViewMode } from './resultsViewer';
+import { displayResultsInPanel, displayErrorInPanel, displayResultsInSingletonView, setSingletonBackingUri, ResultViewMode } from './resultsViewer';
 import * as resultsCache from './resultsCache';
+import * as history from './history';
 import { getClipboardContext, clearClipboardContext, copyToClipboard } from './clipboard';
 import { ENTITY_DEFINITION_SCHEME } from './entityDefinitionProvider';
 
@@ -151,6 +152,10 @@ async function runQuery(client: LanguageClient, queryRange?: server.SelectionRan
         {
             // Cache the result data on the client side
             await resultsCache.addToCache(uri, queryText, runResult.data);
+
+            // Add to history and use the history file as backing for the singleton view
+            const historyUri = await history.addHistoryEntry(runResult.data);
+            setSingletonBackingUri(historyUri);
 
             // Display result tables and chart from ResultData
             await displayResultsInPanel(client, runResult.data, 'data');

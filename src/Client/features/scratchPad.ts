@@ -179,7 +179,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // Create a default scratch pad if none exist yet
     if (getScratchPadFiles().length === 0) {
-        await createScratchPadFile('Query 1.kql');
+        await createScratchPadFile('QuerySet 1.kql');
     }
 }
 
@@ -280,9 +280,9 @@ async function openScratchPadByName(fileName: string): Promise<void> {
 async function openOrCreateDefaultScratchPad(): Promise<void> {
     const files = getScratchPadFiles();
     if (files.length === 0) {
-        await createScratchPadFile('Query 1.kql');
+        await createScratchPadFile('QuerySet 1.kql');
     }
-    const name = files.length > 0 ? files[0] : 'Query 1.kql';
+    const name = files.length > 0 ? files[0] : 'QuerySet 1.kql';
     await openScratchPadByName(name);
 }
 
@@ -290,10 +290,10 @@ async function openOrCreateDefaultScratchPad(): Promise<void> {
 async function createScratchPad(): Promise<void> {
     const existing = getScratchPadFiles();
     let num = 1;
-    while (existing.includes(`Query ${num}.kql`)) {
+    while (existing.includes(`QuerySet ${num}.kql`)) {
         num++;
     }
-    const name = `Query ${num}.kql`;
+    const name = `QuerySet ${num}.kql`;
 
     // Resolve connection to inherit before opening the new document
     const inheritedConnection = await resolveConnectionToInherit();
