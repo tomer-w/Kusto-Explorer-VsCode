@@ -15,6 +15,7 @@ import * as dotnet from './features/dotnet'
 import * as resultsCache from './features/resultsCache'
 import * as scratchPad from './features/scratchPad'
 import * as history from './features/history'
+import * as importConnections from './features/importConnections'
 import { SCRATCH_PAD_SCHEME } from './features/scratchPad'
 import { registerEntityDefinitionProvider, ENTITY_DEFINITION_SCHEME } from './features/entityDefinitionProvider'
 import
@@ -134,6 +135,9 @@ export async function activate(context: ExtensionContext)
 
     // activate connections panel and related features
     await conn.activate(context, client);
+
+    // activate import from Kusto Explorer
+    importConnections.activate(context);
 
     // Create status bar item for connection status
     connectionStatusBar.activate(context);
