@@ -273,6 +273,11 @@
         "command": "kusto.removeChart",
         "title": "Remove Chart",
         "icon": "$(close)"
+      },
+      {
+        "command": "kusto.importFromKustoExplorer",
+        "title": "Import from Kusto Explorer",
+        "icon": "$(cloud-download)"
       }
     ],
     "menus": {
@@ -286,6 +291,11 @@
           "command": "kusto.addServerGroup",
           "when": "view == kusto.connections",
           "group": "navigation@2"
+        },
+        {
+          "command": "kusto.importFromKustoExplorer",
+          "when": "view == kusto.connections",
+          "group": "navigation@3"
         },
         {
           "command": "kusto.newScratchPad",
@@ -610,6 +620,11 @@
             "type": "string",
             "default": ".kusto.windows.net",
             "description": "The domain appended to abbreviated cluster names in cluster() expressions."
+          },
+          "kusto.connections.suppressKustoExplorerImportPrompt": {
+            "type": "boolean",
+            "default": false,
+            "description": "Suppress the prompt to import connections from Kusto Explorer when no connections are configured."
           }
         }
       },
@@ -1545,6 +1560,7 @@
     ]
   },
   "dependencies": {
+    "fast-xml-parser": "^5.5.9",
     "vscode-languageclient": "^9.0.0"
   },
   "devDependencies": {

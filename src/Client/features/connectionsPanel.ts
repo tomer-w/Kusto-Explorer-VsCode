@@ -11,6 +11,7 @@ import { getHostName, isServerGroup } from './connections';
 import type { ServerInfo, ServerGroupInfo } from './connections';
 import type { DatabaseTableInfo, DatabaseColumnInfo, DatabaseFunctionInfo, DatabaseEntityGroupInfo, DatabaseGraphModelInfo } from './server';
 import { ENTITY_DEFINITION_SCHEME } from './entityDefinitionProvider';
+import { promptImportIfAvailable } from './importConnections';
 
 
 // =============================================================================
@@ -202,6 +203,21 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
 
     // Ensure tree is populated after all initialization
     connectionsProvider.refresh();
+
+    // Prompt to import Kusto Explorer connections when the panel becomes visible
+    let importPromptResolved = false;
+    const tryPromptImport = async () => {
+        if (!importPromptResolved) {
+            importPromptResolved = await promptImportIfAvailable();
+        }
+    };
+    context.subscriptions.push(
+        treeView.onDidChangeVisibility((e) => {
+            if (e.visible) { tryPromptImport(); }
+        })
+    );
+    // Also check if the panel is already visible at activation time
+    if (treeView.visible) { tryPromptImport(); }
 
     // Handle tree item expansion events - fetch data for servers (databases fetch in getChildren)
     context.subscriptions.push(
@@ -549,7 +565,7 @@ function getServerKindIcon(serverKind?: string): vscode.ThemeIcon {
     switch (serverKind) {
         case 'Engine':
             return new vscode.ThemeIcon('server'); // Server icon for query engine
-        case 'DataManager':
+        case 'DataManagement':
             return new vscode.ThemeIcon('cloud-upload'); // Cloud upload for data ingestion
         case 'ClusterManager':
             return new vscode.ThemeIcon('settings-gear'); // Gear for cluster management
