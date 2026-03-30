@@ -1,6 +1,12 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+/*
+* This module implements the "Query Sets" feature in the sidebar. 
+* Each query set is considered a scratch pad - a temporary workspace for Kusto queries that isn't part of the user's source code project,
+* but instead a .kql file stored in a space provided by the extension.
+*/
+
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -12,6 +18,12 @@ import * as connections from './connections';
 
 /** URI scheme for scratch pad virtual documents. */
 export const SCRATCH_PAD_SCHEME = 'kusto-scratch';
+
+/** Name of the JSON file that stores scratch pad display order. */
+const ORDER_FILE = '_order.json';
+
+/** MIME type for scratch pad drag-and-drop within the tree view. */
+const SCRATCH_PAD_DRAG_MIME = 'application/vnd.code.tree.kusto.scratchPads';
 
 // =============================================================================
 // Module-level State
@@ -40,14 +52,14 @@ const placeholderDecoration = vscode.window.createTextEditorDecorationType({
 // URI Helpers
 // =============================================================================
 
-/** Builds a virtual URI for a scratch pad file: kusto-scratch:/Scratch 1.kql */
+/** Builds a virtual URI for a scratch pad file: kusto-scratch:/ScratchPad1.kql */
 function scratchUri(fileName: string): vscode.Uri {
     return vscode.Uri.from({ scheme: SCRATCH_PAD_SCHEME, path: '/' + fileName });
 }
 
 /** Resolves a virtual URI to its backing file path on disk. */
 function diskPath(uri: vscode.Uri): string {
-    // uri.path is like "/Scratch 1.kql" — strip the leading slash
+    // uri.path is like "/ScratchPad1.kql" — strip the leading slash
     const fileName = uri.path.replace(/^\//, '');
     return path.join(scratchpadDir, fileName);
 }
@@ -133,10 +145,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.workspace.registerFileSystemProvider(SCRATCH_PAD_SCHEME, scratchFs)
     );
 
-    // Register tree data provider
+    // Register tree data provider with drag and drop support
     treeProvider = new ScratchPadTreeProvider();
     treeView = vscode.window.createTreeView('kusto.scratchPads', {
         treeDataProvider: treeProvider,
+        dragAndDropController: new ScratchPadDragAndDropController(),
     });
     context.subscriptions.push(treeView);
 
@@ -179,7 +192,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // Create a default scratch pad if none exist yet
     if (getScratchPadFiles().length === 0) {
-        await createScratchPadFile('QuerySet 1.kql');
+        await createScratchPadFile(nextScratchPadFileName([]));
     }
 }
 
@@ -187,22 +200,119 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 // File Helpers
 // =============================================================================
 
-/** Returns sorted list of .kql filenames in the scratchpads directory. */
+/** Returns ordered list of .kql filenames in the scratchpads directory, respecting user-defined order. */
 function getScratchPadFiles(): string[] {
     if (!fs.existsSync(scratchpadDir)) {
         return [];
     }
-    return fs.readdirSync(scratchpadDir)
-        .filter(f => f.endsWith('.kql'))
-        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    const filesOnDisk = fs.readdirSync(scratchpadDir)
+        .filter(f => f.endsWith('.kql'));
+    if (filesOnDisk.length === 0) {
+        return [];
+    }
+    const order = readOrder();
+    return reconcileOrder(order, filesOnDisk);
 }
 
-/** Creates an empty .kql file in the scratchpads directory if it doesn't exist. */
+/** Reads the order list from disk. Returns an empty array if the file doesn't exist or is invalid. */
+function readOrder(): string[] {
+    const orderPath = path.join(scratchpadDir, ORDER_FILE);
+    try {
+        const data = fs.readFileSync(orderPath, 'utf-8');
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed) && parsed.every(item => typeof item === 'string')) {
+            return parsed;
+        }
+    } catch {
+        // File missing or invalid — return empty
+    }
+    return [];
+}
+
+/** Writes the order list to disk. */
+function saveOrder(order: string[]): void {
+    const orderPath = path.join(scratchpadDir, ORDER_FILE);
+    fs.writeFileSync(orderPath, JSON.stringify(order, null, 2), 'utf-8');
+}
+
+/**
+ * Reconciles the persisted order with actual files on disk.
+ * - Preserves order for files that still exist
+ * - Removes entries for files that no longer exist on disk
+ * - Appends any new files not in the order list to the end
+ * Saves the reconciled order if it changed.
+ */
+function reconcileOrder(order: string[], filesOnDisk: string[]): string[] {
+    const diskSet = new Set(filesOnDisk);
+    const orderSet = new Set(order);
+
+    // Keep only entries that still exist on disk
+    const reconciled = order.filter(f => diskSet.has(f));
+
+    // Append any files on disk that aren't in the order list (sorted for determinism on first migration)
+    const newFiles = filesOnDisk.filter(f => !orderSet.has(f))
+        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    reconciled.push(...newFiles);
+
+    // Save if the order changed
+    if (reconciled.length !== order.length || reconciled.some((f, i) => f !== order[i])) {
+        saveOrder(reconciled);
+    }
+
+    return reconciled;
+}
+
+/** Returns the next available ScratchPad filename (e.g. "ScratchPad1.kql") that doesn't conflict with existing files. */
+function nextScratchPadFileName(existing: string[]): string {
+    let num = 1;
+    while (existing.includes(`ScratchPad${num}.kql`)) {
+        num++;
+    }
+    return `ScratchPad${num}.kql`;
+}
+
+/** Creates an empty .kql file in the scratchpads directory if it doesn't exist, and appends to order. */
 async function createScratchPadFile(name: string): Promise<void> {
     const filePath = path.join(scratchpadDir, name);
     if (!fs.existsSync(filePath)) {
         await fs.promises.writeFile(filePath, '', 'utf-8');
     }
+    const order = readOrder();
+    if (!order.includes(name)) {
+        order.push(name);
+        saveOrder(order);
+    }
+}
+
+/**
+ * Adds a scratch pad file with the given name and content.
+ * If name is null, the next available ScratchPad name is used.
+ * If a file with the same name already exists, a numeric suffix is added.
+ * Returns the final filename used.
+ */
+export async function addScratchPadFile(name: string | null, content: string): Promise<string> {
+    const existing = getScratchPadFiles();
+    let finalName = name ?? nextScratchPadFileName(existing);
+    if (!finalName.endsWith('.kql')) {
+        finalName += '.kql';
+    }
+    if (existing.includes(finalName)) {
+        const base = path.basename(finalName, '.kql');
+        let num = 2;
+        while (existing.includes(`${base} (${num}).kql`)) {
+            num++;
+        }
+        finalName = `${base} (${num}).kql`;
+    }
+    const filePath = path.join(scratchpadDir, finalName);
+    await fs.promises.writeFile(filePath, content, 'utf-8');
+    const order = readOrder();
+    if (!order.includes(finalName)) {
+        order.push(finalName);
+        saveOrder(order);
+    }
+    treeProvider.refresh();
+    return finalName;
 }
 
 function hasActiveKustoDocument(): boolean {
@@ -279,21 +389,20 @@ async function openScratchPadByName(fileName: string): Promise<void> {
 /** Opens or creates the first scratch pad. */
 async function openOrCreateDefaultScratchPad(): Promise<void> {
     const files = getScratchPadFiles();
-    if (files.length === 0) {
-        await createScratchPadFile('QuerySet 1.kql');
+    let name: string;
+    if (files.length > 0) {
+        name = files[0]!;
+    } else {
+        name = nextScratchPadFileName([]);
+        await createScratchPadFile(name);
     }
-    const name = files.length > 0 ? files[0] : 'QuerySet 1.kql';
     await openScratchPadByName(name);
 }
 
 /** Creates a new scratch pad with the lowest available number. */
 async function createScratchPad(): Promise<void> {
     const existing = getScratchPadFiles();
-    let num = 1;
-    while (existing.includes(`QuerySet ${num}.kql`)) {
-        num++;
-    }
-    const name = `QuerySet ${num}.kql`;
+    const name = nextScratchPadFileName(existing);
 
     // Resolve connection to inherit before opening the new document
     const inheritedConnection = await resolveConnectionToInherit();
@@ -337,6 +446,12 @@ async function deleteScratchPad(item: ScratchPadItem): Promise<void> {
     }
 
     scratchFs.delete(uri);
+    const order = readOrder();
+    const idx = order.indexOf(item.fileName);
+    if (idx !== -1) {
+        order.splice(idx, 1);
+        saveOrder(order);
+    }
     treeProvider.refresh();
 }
 
@@ -382,8 +497,14 @@ async function renameScratchPad(item: ScratchPadItem): Promise<void> {
         }
     }
 
-    // Rename the backing file
+    // Rename the backing file and update the order in-place
     scratchFs.rename(oldUri, newUri);
+    const order = readOrder();
+    const idx = order.indexOf(item.fileName);
+    if (idx !== -1) {
+        order[idx] = newFileName;
+        saveOrder(order);
+    }
     treeProvider.refresh();
 
     // Re-open under the new URI in the same column
@@ -413,22 +534,54 @@ async function saveScratchPadAs(): Promise<void> {
         return;
     }
 
+    // Capture the scratch pad's connection info before any changes
+    const scratchConnection = await connections.getDocumentConnection(scratchUriValue.toString());
+
     // Write content to the new file location
     const content = Buffer.from(scratchDocument.getText(), 'utf-8');
     await vscode.workspace.fs.writeFile(target, content);
 
-    // Close the scratch pad tab
-    for (const tabGroup of vscode.window.tabGroups.all) {
-        for (const tab of tabGroup.tabs) {
-            if (tab.input instanceof vscode.TabInputText && tab.input.uri.toString() === scratchUriValue.toString()) {
-                await vscode.window.tabGroups.close(tab);
-            }
-        }
+    // Transfer connection info to the new file
+    if (scratchConnection?.cluster) {
+        await connections.setDocumentConnection(target.toString(), scratchConnection.cluster, scratchConnection.database);
     }
 
-    // Delete the scratch pad backing file
-    scratchFs.delete(scratchUriValue);
-    treeProvider.refresh();
+    // Ask the user what to do with the original scratch pad
+    const action = await vscode.window.showInformationMessage(
+        `What would you like to do with the original query set "${path.basename(scratchUriValue.path, '.kql')}"?`,
+        { modal: true },
+        'Keep',
+        'Keep and Clear',
+        'Remove',
+    );
+    if (!action) {
+        // User dismissed the dialog — just open the saved file, keep scratch pad as-is
+        const newDoc = await vscode.workspace.openTextDocument(target);
+        await vscode.window.showTextDocument(newDoc, viewColumn);
+        return;
+    }
+
+    if (action === 'Remove') {
+        // Close the scratch pad tab and delete it
+        for (const tabGroup of vscode.window.tabGroups.all) {
+            for (const tab of tabGroup.tabs) {
+                if (tab.input instanceof vscode.TabInputText && tab.input.uri.toString() === scratchUriValue.toString()) {
+                    await vscode.window.tabGroups.close(tab);
+                }
+            }
+        }
+        scratchFs.delete(scratchUriValue);
+        const order = readOrder();
+        const orderIdx = order.indexOf(path.basename(scratchUriValue.path.replace(/^\//, '')));
+        if (orderIdx !== -1) {
+            order.splice(orderIdx, 1);
+            saveOrder(order);
+        }
+        treeProvider.refresh();
+    } else if (action === 'Keep and Clear') {
+        // Clear the scratch pad content
+        scratchFs.writeFile(scratchUriValue, new Uint8Array(), { create: false, overwrite: true });
+    }
 
     // Open the new file in the same column
     const newDoc = await vscode.workspace.openTextDocument(target);
@@ -453,6 +606,46 @@ class ScratchPadTreeProvider implements vscode.TreeDataProvider<ScratchPadItem> 
 
     getChildren(): ScratchPadItem[] {
         return getScratchPadFiles().map(f => new ScratchPadItem(f));
+    }
+}
+
+// =============================================================================
+// Drag and Drop Controller
+// =============================================================================
+
+class ScratchPadDragAndDropController implements vscode.TreeDragAndDropController<ScratchPadItem> {
+    readonly dropMimeTypes = [SCRATCH_PAD_DRAG_MIME];
+    readonly dragMimeTypes = [SCRATCH_PAD_DRAG_MIME];
+
+    handleDrag(source: readonly ScratchPadItem[], dataTransfer: vscode.DataTransfer): void {
+        if (source.length === 1) {
+            dataTransfer.set(SCRATCH_PAD_DRAG_MIME, new vscode.DataTransferItem(source[0]!.fileName));
+        }
+    }
+
+    async handleDrop(target: ScratchPadItem | undefined, dataTransfer: vscode.DataTransfer): Promise<void> {
+        const transferItem = dataTransfer.get(SCRATCH_PAD_DRAG_MIME);
+        if (!transferItem || !target) {
+            return;
+        }
+
+        const draggedFileName = transferItem.value as string;
+        if (draggedFileName === target.fileName) {
+            return;
+        }
+
+        const order = readOrder();
+        const fromIndex = order.indexOf(draggedFileName);
+        const toIndex = order.indexOf(target.fileName);
+        if (fromIndex === -1 || toIndex === -1) {
+            return;
+        }
+
+        // Remove from old position and insert at new position
+        order.splice(fromIndex, 1);
+        order.splice(toIndex, 0, draggedFileName);
+        saveOrder(order);
+        treeProvider.refresh();
     }
 }
 

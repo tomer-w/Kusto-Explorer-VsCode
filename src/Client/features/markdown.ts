@@ -1,6 +1,11 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+/*
+ * This module converts query result data into markdown table format.
+ * It is used by the Copilot integration to return query results as readable markdown text.
+ */
+
 import { ResultData, ResultTable } from './server';
 
 /**

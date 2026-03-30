@@ -1,6 +1,12 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+/*
+ * This module bridges the language server and VS Code's persistent storage.
+ * The server sends kusto/getData and kusto/setData requests, and this module reads from or writes to
+ * the extension's globalState in response, allowing the server to persist data across sessions.
+ */
+
 import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 

@@ -1,6 +1,13 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+/*
+ * This module implements query execution and the editor experience for .kql documents.
+ * It provides CodeLens actions (Run, Format, Copy, Results) above each query, handles query execution
+ * via the language server, manages result display, and adds visual elements like query separator
+ * decorations, semantic token coloring, error range markers, and context-aware paste.
+ */
+
 import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 import { setDocumentConnection, ensureServer, getDocumentConnection } from './connections';

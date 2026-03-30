@@ -1,6 +1,12 @@
 ﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+/*
+ * This module implements the @kusto chat participant and language model tools for GitHub Copilot.
+ * It registers tools for querying cluster metadata, running queries, validating KQL, and inspecting schema,
+ * enabling Copilot to assist users with Kusto queries using their connected database context.
+ */
+
 import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 import * as conn from './connections';

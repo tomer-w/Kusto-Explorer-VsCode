@@ -1,6 +1,12 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+/*
+ * This module manages the data layer for Kusto server connections and per-document connection assignments.
+ * Connections (servers and groups) are persisted in globalState; document-to-connection mappings are in workspaceState.
+ * It also provides database schema caching and event notifications when connections change.
+ */
+
 import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 import * as lspServer from './server';

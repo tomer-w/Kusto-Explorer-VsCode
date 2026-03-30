@@ -1,6 +1,12 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+/*
+ * This module provides "Go to Definition" for Kusto database entities (tables, functions, etc.).
+ * When the language server resolves a definition to a kusto-entity:// URI, this provider fetches
+ * the entity's create command from the server and displays it as a read-only virtual document.
+ */
+
 import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 import { EntityDefinitionContentResult } from './server';

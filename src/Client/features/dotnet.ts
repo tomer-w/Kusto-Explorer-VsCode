@@ -1,6 +1,12 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+/*
+ * This module acquires the .NET runtime needed to run the Kusto Language Server.
+ * It first checks for a system-installed dotnet (version 10+), and falls back to the
+ * VS Code .NET Runtime Acquisition extension if not found or if the user has opted out.
+ */
+
 import * as vscode from 'vscode';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
