@@ -1,6 +1,12 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+/*
+ * This module manages the status bar item that shows the active document's Kusto connection.
+ * It displays the current cluster and database, and updates automatically when the active editor
+ * or its connection changes.
+ */
+
 import * as vscode from 'vscode';
 import * as connections from './connections';
 

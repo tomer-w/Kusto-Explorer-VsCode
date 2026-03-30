@@ -236,7 +236,7 @@
       },
       {
         "command": "kusto.newScratchPad",
-        "title": "New Query Set",
+        "title": "New Scratch Pad",
         "icon": "$(add)"
       },
       {
@@ -275,8 +275,13 @@
         "icon": "$(close)"
       },
       {
-        "command": "kusto.importFromKustoExplorer",
-        "title": "Import from Kusto Explorer",
+        "command": "kusto.importConnectionsFromKustoExplorer",
+        "title": "Import Connections",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "kusto.importScratchPadsFromKustoExplorer",
+        "title": "Import Scratch Pads",
         "icon": "$(cloud-download)"
       }
     ],
@@ -293,14 +298,44 @@
           "group": "navigation@2"
         },
         {
-          "command": "kusto.importFromKustoExplorer",
+          "command": "kusto.importConnectionsFromKustoExplorer",
           "when": "view == kusto.connections",
           "group": "navigation@3"
+        },
+        {
+          "command": "kusto.addServer",
+          "when": "view == kusto.connections",
+          "group": "1_add@1"
+        },
+        {
+          "command": "kusto.addServerGroup",
+          "when": "view == kusto.connections",
+          "group": "1_add@2"
+        },
+        {
+          "command": "kusto.importConnectionsFromKustoExplorer",
+          "when": "view == kusto.connections",
+          "group": "1_add@3"
         },
         {
           "command": "kusto.newScratchPad",
           "when": "view == kusto.scratchPads",
           "group": "navigation@1"
+        },
+        {
+          "command": "kusto.importScratchPadsFromKustoExplorer",
+          "when": "view == kusto.scratchPads",
+          "group": "navigation@2"
+        },
+        {
+          "command": "kusto.newScratchPad",
+          "when": "view == kusto.scratchPads",
+          "group": "1_add@1"
+        },
+        {
+          "command": "kusto.importScratchPadsFromKustoExplorer",
+          "when": "view == kusto.scratchPads",
+          "group": "1_import@1"
         },
         {
           "command": "kusto.clearHistory",
@@ -333,6 +368,21 @@
           "command": "kusto.addServerToGroup",
           "when": "view == kusto.connections && viewItem == serverGroup",
           "group": "inline"
+        },
+        {
+          "command": "kusto.addServer",
+          "when": "view == kusto.connections && viewItem =~ /^(server|serverGroup|noConnection)$/",
+          "group": "1_add@1"
+        },
+        {
+          "command": "kusto.addServerGroup",
+          "when": "view == kusto.connections && viewItem =~ /^(server|serverGroup|noConnection)$/",
+          "group": "1_add@2"
+        },
+        {
+          "command": "kusto.addServerToGroup",
+          "when": "view == kusto.connections && viewItem == serverGroup",
+          "group": "1_add@3"
         },
         {
           "command": "kusto.removeServer",

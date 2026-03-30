@@ -1,6 +1,12 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+/*
+ * This module converts query result data into HTML tables for clipboard copy operations.
+ * It renders ResultData into styled HTML with configurable table, header, and cell attributes,
+ * and is used when copying query results with formatting (e.g. paste into Excel or email).
+ */
+
 import { ResultData, ResultTable } from './server';
 
 /** A single HTML table from the query result. */

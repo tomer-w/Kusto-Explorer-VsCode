@@ -1,6 +1,12 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+/*
+ * This module fixes a VS Code/LSP completion edge case where commit characters (e.g. '(' or '.')
+ * that also appear in the inserted text get doubled. It attaches a post-completion command to detect
+ * and remove the duplicate character.
+ */
+
 import * as vscode from 'vscode';
 
 /**

@@ -1,6 +1,12 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+/*
+ * This module implements query history, recording each executed query with its connection context.
+ * History entries are stored as individual .kql files in globalStorage, with a lightweight JSON index
+ * for the tree view. The "History" tree view in the sidebar lets users browse, open, and delete past queries.
+ */
+
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';

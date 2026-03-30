@@ -1,6 +1,13 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+/*
+ * This module implements the "Connections" tree view in the sidebar.
+ * It displays configured Kusto clusters, databases, and schema entities (tables, functions, etc.),
+ * and provides commands for adding, removing, editing, and browsing connections.
+ * On first activation with no connections, it prompts the user to import from Kusto Explorer.
+ */
+
 import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 import * as lspServer from './server';
@@ -11,7 +18,7 @@ import { getHostName, isServerGroup } from './connections';
 import type { ServerInfo, ServerGroupInfo } from './connections';
 import type { DatabaseTableInfo, DatabaseColumnInfo, DatabaseFunctionInfo, DatabaseEntityGroupInfo, DatabaseGraphModelInfo } from './server';
 import { ENTITY_DEFINITION_SCHEME } from './entityDefinitionProvider';
-import { promptImportIfAvailable } from './importConnections';
+import { promptImportIfAvailable } from './import';
 
 
 // =============================================================================
