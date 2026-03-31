@@ -1,129 +1,60 @@
 ﻿# Kusto Explorer for VS Code
 
-A VS Code extension for the Kusto Query Language (KQL)
+- Edit, run and chart Kusto queries (KQL)
+- Explore databases and query results
+- Consult copilot to help create, run and diagnose your queries
+- Works just like the Kusto Explorer desktop app and Azure Data Explorer
+- Runs on Windows, Mac and Linux
 
-## Features
+## Downloading and Using the Extension
 
-- Syntax highlighting
-- Intellisense (auto completions)
-- Hover tips
-- Code Actions (refactorings, quick fixes)
-- Diagnostics (errors/warnings)
-- Query formatting
-- Query execution
-- Charting
-- Connection management
+- Install from within VS Code: [Kusto Explorer]
+- Or download VSIX from [GitHub Releases](https://github.com/microsoft/Kusto-Explorer-VsCode/releases)
+- [How to Use the Extension](Client/README.md)
 
-## Usage
+----
 
-1. Open or create a `.kql` file
+## Using this Repository
 
-2. Add or open a server in the connections list (icon in activity panel)
-   ```
-    CONNECTIONS
-    ├── 📁 Production
-    │   ├── 🗄️ mycluster.eastus.kusto.windows.net
-    │   │   ├── 📊 MyDatabase
-    │   │   ├── 📊 LogsDatabase
-    │   │   └── 📊 TelemetryDB
-    │   └── 🗄️ analytics.westus.kusto.windows.net
-    │       └── 📊 AnalyticsDB
-    ├── 📁 Development
-    │   └── 🗄️ devcluster.kusto.windows.net
-    │       └── 📊 TestDatabase
-    └── 🗄️ help.kusto.windows.net
-        └── 📊 Samples
-    ```
+- src/KustoExplorerVscode.slnx - Visual Studio solution file for the entire extension
+- src/Client - TypeScript vscode extension
+- src/Server - C# LSP Server
+- src/ServerTests - C# Tests for the server codebase
 
-3. Select a database for the the document under the server item.
-    ```
-    CONNECTIONS
-    ├── 📁 Production
-    │   ├── 🗄️ mycluster.eastus.kusto.windows.net
-    │   │   ├── 📊 MyDatabase
-    │   │   ├── 📊 LogsDatabase
-    │   │   └── 📊 TelemetryDB
-    │   └── 🗄️ analytics.westus.kusto.windows.net
-    │       └── 📊 AnalyticsDB
-    ├── 📁 Development
-    │   └── 🗄️ devcluster.kusto.windows.net
-    │       └── 📊 TestDatabase
-    └── 🗄️ help.kusto.windows.net
-        └── ✓ 📊 Samples  (default)
-    ```
+### Client
+The Client is written in TypeScript and contains the VS Code extension code, including the UI components, LSP client and other extension features.
+that are not dependent on the Kusto parser library.
 
-    The document will now be associated with the server and database each time you open it.
-    You can change this association at any time by selecting a different database.
+### Server
+The Server is written in C# to interact with the dotnet version of the Kusto parser library for better typing performance.
+It primarily contains just LSP handlers and redirects requests to the parser library's code services.
+Some other custom features are also implemented here, but eventually most of these will move out to be handled by the client with the goal of leaving only code service related features in the server codebase.
 
-4. Write or edit your query
-    ```
-    StormEvents
-    | where StartTime > ago(7d)
-    | summarize EventCount = count() by State
-    | top 10 by EventCount desc
-    | render barchart
-     ```
+### Debugging the Client
+1. Open `src\Client` folder in VS Code
+2. Build the client side using `compile` command in explorer panel `NPM SCRIPTS`
+3. Build the server side using `build-debug-server` in explorer panel `NPM SCRIPTS`
+4. Press F5 to launch the extension in a new VS Code window with debugging enabled
 
-5. Press F5 to run the query
+### Debugging the Server
+1. Run the extension in debug mode as described above, which will also launch the server in debug mode
+1. Open `src/KustoExplorerVscode.slnx` in Visual Studio
+2. Attach to the dotnet.exe process associated with the extension
 
-    The results of the query will appear in the Results panel.
-    ```
-    RESULTS (10 rows)
-
-    State          EventCount
-    ─────────────  ──────────
-    Texas          280
-    California     240
-    Oklahoma       200
-    Kansas         180
-    Florida        160
-    Nebraska       140
-    Iowa           120
-    Missouri       100
-    Louisiana      80
-    Arkansas       60
-    ```
-
-   If the query includes a render operator, a chart is displayed in its own panel.
-
-    ```
-    State          EventCount
-    ────────────────────────────────────────────────────
-    Texas          ████████████████████████████ 280
-    California     ████████████████████████ 240
-    Oklahoma       ████████████████████ 200
-    Kansas         ██████████████████ 180
-    Florida        ████████████████ 160
-    Nebraska       ██████████████ 140
-    Iowa           ████████████ 120
-    Missouri       ██████████ 100
-    Louisiana      ████████ 80
-    Arkansas       ██████ 60
-    ```
-
-## Requirements
-
-- VS Code 1.75.0 or higher
-
-## Creating the VSIX installer
+### Creating the VSIX installer
 
 1. Must have vsce installed (npm install -g @vscode/vsce)
 2. run `npm run package` on command line within `src/Client` folder to build the .vsix file
 
-## Installing the VSIX manually
+### Installing the VSIX manually
 
 Run `code --install-extension <vsix file> [--force]` on command line.
 
-## Uninstalling the extension manually
+### Uninstalling the extension manually
 
 Run `code --uninstall-extension Microsoft.kusto-explorer-vscode` on command line.
 
-## Launching in VS Code debug mode (without installing VSIX)
-
-1. Open `src\Client` folder in VS Code.
-2. Build the client side using `compile` command in explorer panel `NPM SCRIPTS`
-3. Build the server side using `build-debug-server` in explorer panel `NPM SCRIPTS`
-4. Press F5 to launch the extension in a new VS Code window with debugging enabled.
+----
 
 ## Contributing
 
@@ -154,3 +85,4 @@ Any use of third-party trademarks or logos are subject to those third-party's po
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+

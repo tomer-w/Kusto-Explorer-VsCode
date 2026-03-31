@@ -1,8 +1,14 @@
 <Solution>
-  <Project Path="Server/Server.csproj" />
-  <Project Path="ServerTests/ServerTests.csproj" />
+  <Folder Name="/Solution Items/">
+    <File Path="../CONTRIBUTING.md" />
+    <File Path="../LICENSE" />
+    <File Path="../README.md" />
+    <File Path="../SECURITY.md" />
+  </Folder>
   <Project Path="Client/Client.esproj">
     <Build />
     <Deploy />
   </Project>
+  <Project Path="Server/Server.csproj" />
+  <Project Path="ServerTests/ServerTests.csproj" />
 </Solution>
