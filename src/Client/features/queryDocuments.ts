@@ -13,9 +13,10 @@ import { Server } from './server';
 import type { SelectionRange, Range } from './server';
 import { setDocumentConnection, ensureServer, getDocumentConnection } from './connections';
 import { displayResultsInPanel, displayErrorInPanel, displayResultsInSingletonView, setSingletonBackingUri, ResultViewMode } from './resultsViewer';
-import * as resultsCache from './resultsCache';
+import { ResultsCache } from './resultsCache';
 import * as history from './history';
-import { getClipboardContext, clearClipboardContext, copyToClipboard } from './clipboard';
+import { Clipboard } from './clipboard';
+import type { ClipboardItem } from './clipboard';
 import { ENTITY_DEFINITION_SCHEME } from './entityDefinitionProvider';
 
 const PASTE_KIND = vscode.DocumentDropOrPasteEditKind.Text.append('kusto');
@@ -31,14 +32,22 @@ let codeLensProvider: KustoCodeLensProvider;
 
 let lspServer: Server;
 
+let cache: ResultsCache;
+
+let clipboard: Clipboard;
+
 /**
  * Activates query execution features.
  * @param context The extension context
  * @param server The server wrapper for LSP communication
+ * @param resultsCache The results cache for storing and retrieving query results
+ * @param clip The clipboard for context-aware copy/paste
  */
-export function activate(context: vscode.ExtensionContext, server: Server): void {
+export function activate(context: vscode.ExtensionContext, server: Server, resultsCache: ResultsCache, clip: Clipboard): void {
 
     lspServer = server;
+    cache = resultsCache;
+    clipboard = clip;
 
     // Register query-related commands
     context.subscriptions.push(
@@ -162,7 +171,7 @@ async function runQuery(queryRange?: SelectionRange): Promise<void> {
         else if (runResult?.data)
         {
             // Cache the result data on the client side
-            await resultsCache.addToCache(uri, queryText, runResult.data);
+            await cache.addToCache(uri, queryText, runResult.data);
 
             // Add to history and use the history file as backing for the singleton view
             const historyUri = await history.addHistoryEntry(runResult.data);
@@ -206,7 +215,7 @@ async function showResults(uri: string, line: number, character: number): Promis
             queryRange.start.line, queryRange.start.character,
             queryRange.end.line, queryRange.end.character
         ));
-        const cachedData = await resultsCache.getFromCache(uri, queryText);
+        const cachedData = await cache.getFromCache(uri, queryText);
         if (cachedData) {
             await displayResultsInPanel(cachedData, 'data');
             await displayResultsInSingletonView(cachedData, 'chart', true);
@@ -329,12 +338,12 @@ async function copyQueryTransparent(codeLensRange?: SelectionRange): Promise<voi
         }
 
         // Place both HTML and plain text on the clipboard
-        const items: import('./clipboard').ClipboardItem[] = [
+        const items: ClipboardItem[] = [
             { format: 'HTML Format', data: wrapHtmlForClipboard(result.html) },
             { format: 'Text', data: plainText, encoding: 'text' }
         ];
 
-        await copyToClipboard(items);
+        await clipboard.copy(items);
     } catch (error) {
         vscode.window.showErrorMessage(`Failed to copy query: ${error}`);
     }
@@ -523,7 +532,7 @@ class KustoCodeLensProvider implements vscode.CodeLensProvider {
                 }));
 
                 // Only show Results lens if there is cached data for this query
-                if (await resultsCache.hasInCache(document.uri.toString(), queryText)) {
+                if (await cache.hasInCache(document.uri.toString(), queryText)) {
                     lenses.push(new vscode.CodeLens(vsRange, {
                         title: '📊 Results',
                         command: 'kusto.showResults',
@@ -554,7 +563,7 @@ class KustoPasteEditProvider implements vscode.DocumentPasteEditProvider {
         context: vscode.DocumentPasteEditContext,
         token: vscode.CancellationToken
     ): Promise<vscode.DocumentPasteEdit[] | undefined> {
-        const clipboardContext = getClipboardContext();
+        const clipboardContext = clipboard.getContext();
         if (!clipboardContext) {
             return undefined;
         }
@@ -567,7 +576,7 @@ class KustoPasteEditProvider implements vscode.DocumentPasteEditProvider {
         const clipboardText = await textItem.asString();
         if (clipboardText !== clipboardContext.text) {
             // Clipboard has changed since the contextual copy, let default paste handle it
-            clearClipboardContext();
+            clipboard.clearContext();
             return undefined;
         }
 

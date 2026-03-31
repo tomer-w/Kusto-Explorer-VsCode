@@ -25,31 +25,6 @@ export interface ClipboardContext {
     entityName?: string;
 }
 
-/** Stored clipboard context from the last copy operation with context. */
-let clipboardContext: ClipboardContext | undefined;
-
-/**
- * Stores clipboard context alongside the system clipboard text.
- * Call this when copying content that should carry source connection metadata.
- */
-export function setClipboardContext(context: ClipboardContext): void {
-    clipboardContext = context;
-}
-
-/**
- * Returns the current clipboard context, or undefined if none is set.
- */
-export function getClipboardContext(): ClipboardContext | undefined {
-    return clipboardContext;
-}
-
-/**
- * Clears the stored clipboard context.
- */
-export function clearClipboardContext(): void {
-    clipboardContext = undefined;
-}
-
 /** Describes a single item to place on the clipboard. */
 export interface ClipboardItem {
     /** The clipboard format name (e.g. 'PNG', 'image/svg+xml', 'Text'). */
@@ -58,6 +33,51 @@ export interface ClipboardItem {
     data: string;
     /** How the data string is encoded. 'base64' decodes to raw bytes, 'utf8' encodes as UTF-8 bytes, 'text' sets the string directly. Defaults to 'utf8'. */
     encoding?: 'base64' | 'utf8' | 'text';
+}
+
+/**
+ * Manages clipboard operations with rich context metadata.
+ * When content is copied (e.g. an entity name or query), it stores the source connection and entity info
+ * alongside the clipboard text, enabling context-aware paste behavior.
+ */
+export class Clipboard {
+    /** Stored clipboard context from the last copy operation with context. */
+    private clipboardContext: ClipboardContext | undefined;
+
+    /**
+     * Stores clipboard context alongside the system clipboard text.
+     * Call this when copying content that should carry source connection metadata.
+     */
+    setContext(context: ClipboardContext): void {
+        this.clipboardContext = context;
+    }
+
+    /**
+     * Returns the current clipboard context, or undefined if none is set.
+     */
+    getContext(): ClipboardContext | undefined {
+        return this.clipboardContext;
+    }
+
+    /**
+     * Clears the stored clipboard context.
+     */
+    clearContext(): void {
+        this.clipboardContext = undefined;
+    }
+
+    /**
+     * Copies multiple data formats to the clipboard.
+     * On Windows, uses PowerShell to set multiple clipboard formats (HTML, PNG, etc.).
+     * On other platforms, falls back to plain text only using VS Code's clipboard API.
+     */
+    async copy(items: ClipboardItem[]): Promise<void> {
+        if (process.platform === 'win32') {
+            return copyToClipboardWindows(items);
+        } else {
+            return copyToClipboardFallback(items);
+        }
+    }
 }
 
 /**
@@ -100,23 +120,6 @@ export function formatCfHtml(html: string): string {
         `EndFragment:${pad(endFragment)}\r\n`;
 
     return filledHeader + prefix + html + suffix;
-}
-
-/**
- * Copies multiple data formats to the clipboard.
- * On Windows, uses PowerShell to set multiple clipboard formats (HTML, PNG, etc.).
- * On other platforms, falls back to plain text only using VS Code's clipboard API.
- * @param items Array of clipboard items to set
- * @returns A promise that resolves when the clipboard operation completes
- */
-export async function copyToClipboard(items: ClipboardItem[]): Promise<void> {
-    if (process.platform === 'win32') {
-        return copyToClipboardWindows(items);
-    } else {
-        // Fall back to plain text on non-Windows platforms
-        // VS Code's clipboard API only supports plain text
-        return copyToClipboardFallback(items);
-    }
 }
 
 /**

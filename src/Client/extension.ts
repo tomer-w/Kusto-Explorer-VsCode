@@ -12,7 +12,8 @@ import * as copilot from './features/copilot'
 import { ConnectionStatusBar } from './features/connectionStatusBar'
 import { ClientStorage } from './features/clientStorage'
 import * as dotnet from './features/dotnet'
-import * as resultsCache from './features/resultsCache'
+import { ResultsCache } from './features/resultsCache'
+import { Clipboard } from './features/clipboard'
 import * as scratchPad from './features/scratchPad'
 import * as history from './features/history'
 import * as importFeature from './features/import'
@@ -89,7 +90,8 @@ export async function activate(context: ExtensionContext)
     new ClientStorage(context, server);
 
     // Initialize results cache with the language client
-    resultsCache.initialize(server);
+    const resultsCache = new ResultsCache(server);
+    const clipboard = new Clipboard();
 
     // Register "Go to Definition" provider for kusto-entity:// URIs (database entities)
     const entityDefinitionProvider = new EntityDefinitionProvider(server);
@@ -143,7 +145,7 @@ export async function activate(context: ExtensionContext)
     connections.activate(context, server);
 
     // activate connections panel and related features
-    await conn.activate(context, server);
+    await conn.activate(context, server, clipboard);
 
     // activate import from Kusto Explorer
     importFeature.activate(context);
@@ -153,7 +155,7 @@ export async function activate(context: ExtensionContext)
     new ConnectionStatusBar(context);
 
     // activate query execution features
-    queryDocuments.activate(context, server);
+    queryDocuments.activate(context, server, resultsCache, clipboard);
 
     // activate scratch pad documents
     await scratchPad.activate(context);
@@ -162,7 +164,7 @@ export async function activate(context: ExtensionContext)
     await history.activate(context);
 
     // activate chart file editor (.kchart)
-    resultsViewer.activate(context, server);
+    resultsViewer.activate(context, server, clipboard);
 
     // activate copilot hooks
     copilot.activate(context, server);

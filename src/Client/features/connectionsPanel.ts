@@ -10,7 +10,7 @@
 
 import * as vscode from 'vscode';
 import { Server } from './server';
-import { setClipboardContext } from './clipboard';
+import { Clipboard } from './clipboard';
 import * as connections from './connections';
 import { getHostName, isServerGroup } from './connections';
 import type { ServerInfo, ServerGroupInfo } from './connections';
@@ -28,7 +28,7 @@ import { promptImportIfAvailable } from './import';
  * @param context The extension context for accessing global state
  * @param server The server wrapper for LSP communication
  */
-export async function activate(context: vscode.ExtensionContext, server: Server): Promise<void> {
+export async function activate(context: vscode.ExtensionContext, server: Server, clipboard: Clipboard): Promise<void> {
     // Initialize module-level state
     lspServer = server;
     connectionsProvider = new KustoConnectionsProvider();
@@ -336,7 +336,7 @@ export async function activate(context: vscode.ExtensionContext, server: Server)
 
                 if (definition) {
                     await vscode.env.clipboard.writeText(definition);
-                    setClipboardContext({
+                    clipboard.setContext({
                         text: definition,
                         kind: 'command',
                         entityCluster: cluster,
@@ -375,7 +375,7 @@ export async function activate(context: vscode.ExtensionContext, server: Server)
 
                 if (expression) {
                     await vscode.env.clipboard.writeText(expression);
-                    setClipboardContext({
+                    clipboard.setContext({
                         text: expression,
                         kind: 'expression',
                         entityCluster: cluster,

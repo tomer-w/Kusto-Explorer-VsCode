@@ -23,7 +23,9 @@
 import * as vscode from 'vscode';
 import { Server } from './server';
 import * as server from './server';
-import { copyToClipboard, ClipboardItem, formatCfHtml } from './clipboard';
+import { Clipboard } from './clipboard';
+import type { ClipboardItem } from './clipboard';
+import { formatCfHtml } from './clipboard';
 import { resultDataToMarkdown } from './markdown';
 import { resultDataToHtml, DataAsHtml, HtmlTable } from './html';
 
@@ -46,6 +48,9 @@ const resultViewerViewType = 'kusto.resultViewer';
 
 /** The language client, set during activation. */
 let languageClient: Server;
+
+/** The clipboard instance, set during activation. */
+let clip: Clipboard;
 
 /** Function to wait for the results panel to be resolved. Set during activation. */
 let waitForPanelReady: (() => Promise<void>) | undefined;
@@ -134,8 +139,9 @@ export function registerResultWebview(webview: vscode.WebviewPanel): void {
  * Activates the chart file feature, registering the custom editor provider
  * and chart copy commands.
  */
-export function activate(context: vscode.ExtensionContext, srv: Server): void {
+export function activate(context: vscode.ExtensionContext, srv: Server, clipboard: Clipboard): void {
     languageClient = srv;
+    clip = clipboard;
 
     context.subscriptions.push(
         vscode.window.registerCustomEditorProvider(
@@ -290,7 +296,7 @@ function onCopyChartMessage(pngDataUrl: string, svgDataUrl?: string): void {
             items.push({ format: 'image/svg+xml', data: svgText });
         }
 
-        copyToClipboard(items).catch(error => {
+        clip.copy(items).catch(error => {
             vscode.window.showErrorMessage(`Failed to copy chart to clipboard: ${error}`);
         });
     } catch (error) {
@@ -2521,7 +2527,7 @@ export async function copyDataFromResultsView(): Promise<boolean> {
     const markdown = resultDataToMarkdown(state.resultData, tableName);
 
     if (html) {
-        copyToClipboard([
+        clip.copy([
             { format: 'HTML Format', data: formatCfHtml(html), encoding: 'utf8' },
             { format: 'Text', data: markdown || html, encoding: 'text' },
         ]);
@@ -2587,7 +2593,7 @@ async function copyData(): Promise<void> {
     const markdown = resultDataToMarkdown(lastPanelResultData, tableName);
 
     if (html) {
-        copyToClipboard([
+        clip.copy([
             { format: 'HTML Format', data: formatCfHtml(html), encoding: 'utf8' },
             { format: 'Text', data: markdown || html, encoding: 'text' },
         ]);
