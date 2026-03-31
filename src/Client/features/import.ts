@@ -11,7 +11,7 @@ import * as fs from 'fs';
 import { XMLParser } from 'fast-xml-parser';
 import * as connections from './connections';
 import type { ServerInfo, ServerGroupInfo } from './connections';
-import { addScratchPadFile } from './scratchPad';
+import type { ScratchPadManager } from './scratchPadManager';
 
 // =============================================================================
 // Constants
@@ -56,7 +56,7 @@ interface KustoExplorerRecoveryFile {
  * Imports connections and scratch pad query documents from desktop Kusto Explorer.
  */
 export class Importer {
-    constructor(context: vscode.ExtensionContext) {
+    constructor(context: vscode.ExtensionContext, private readonly scratchPadManager: ScratchPadManager) {
         context.subscriptions.push(
             vscode.commands.registerCommand('kusto.importConnectionsFromKustoExplorer', () => this.importConnectionsFromKustoExplorer()),
             vscode.commands.registerCommand('kusto.importScratchPadsFromKustoExplorer', () => this.importAllScratchPads()),
@@ -223,7 +223,7 @@ export class Importer {
             if (confirm !== 'Import') { return; }
         }
 
-        const importedCount = await importRecoveryFilesAsScratchPads(recoveryFiles);
+        const importedCount = await importRecoveryFilesAsScratchPads(recoveryFiles, this.scratchPadManager);
 
         if (importedCount > 0) {
             vscode.window.showInformationMessage(
@@ -275,7 +275,7 @@ function getScratchPadRecoveryFiles(): KustoExplorerRecoveryFile[] | undefined {
  * Imports a list of recovery files as scratch pad files.
  * Returns the number of successfully imported entries.
  */
-async function importRecoveryFilesAsScratchPads(recoveryFiles: KustoExplorerRecoveryFile[]): Promise<number> {
+async function importRecoveryFilesAsScratchPads(recoveryFiles: KustoExplorerRecoveryFile[], scratchPadManager: ScratchPadManager): Promise<number> {
     let importedCount = 0;
     for (const recoveryFile of recoveryFiles) {
         // Resolve the connection first so we can use the friendly name for naming
@@ -317,7 +317,7 @@ async function importRecoveryFilesAsScratchPads(recoveryFiles: KustoExplorerReco
             name = null;
         }
 
-        const finalName = await addScratchPadFile(name, recoveryFile.QueryText!);
+        const finalName = await scratchPadManager.addScratchPadFile(name, recoveryFile.QueryText!);
 
         // Associate the connection with the new scratch pad
         if (cluster) {

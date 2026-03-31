@@ -13,10 +13,10 @@ import { ConnectionStatusBar } from './features/connectionStatusBar'
 import * as dotnet from './features/dotnet'
 import { ResultsCache } from './features/resultsCache'
 import { Clipboard } from './features/clipboard'
-import * as scratchPad from './features/scratchPad'
+import { ScratchPadManager, SCRATCH_PAD_SCHEME } from './features/scratchPadManager'
+import { ScratchPadPanel } from './features/scratchPadPanel'
 import { ResultHistory } from './features/history'
 import { Importer } from './features/import'
-import { SCRATCH_PAD_SCHEME } from './features/scratchPad'
 import { EntityDefinitionProvider, ENTITY_DEFINITION_SCHEME } from './features/entityDefinitionProvider'
 import { Server } from './features/server'
 import
@@ -139,8 +139,12 @@ export async function activate(context: ExtensionContext)
     // activate connections data layer
     connections.activate(context, server);
 
+    // activate scratch pad documents
+    const scratchPadManager = new ScratchPadManager(context);
+    new ScratchPadPanel(context, scratchPadManager);
+
     // Register Kusto Explorer import commands
-    const importer = new Importer(context);
+    const importer = new Importer(context, scratchPadManager);
 
     // activate connections panel and related features
     await conn.activate(context, server, clipboard, importer);
@@ -154,9 +158,6 @@ export async function activate(context: ExtensionContext)
 
     // activate query execution features
     queryDocuments.activate(context, server, resultsCache, clipboard, history);
-
-    // activate scratch pad documents
-    await scratchPad.activate(context);
 
     // activate chart file editor (.kchart)
     resultsViewer.activate(context, server, clipboard);
