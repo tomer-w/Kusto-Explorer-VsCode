@@ -33,7 +33,7 @@
     "type-check": "tsc --noEmit",
     "build-release-server": "dotnet publish ../Server/Server.csproj -c Release -o ./server",
     "build-debug-server": "dotnet publish ../Server/Server.csproj -c Debug -o ./server",
-    "prepackage": "shx cp ../../LICENSE . && npm run compile && npm run build-release-server",
+    "prepackage": "node -e \"require('fs').copyFileSync('../../LICENSE','./LICENSE')\" && npm run compile && npm run build-release-server",
     "package": "npm run prepackage && vsce package",
     "package:version": "npm run prepackage && vsce package --no-update-package-json $VERSION",
     "publish": "vsce publish"
@@ -1617,7 +1617,9 @@
     "@types/node": "^18.0.0",
     "@types/vscode": "^1.90.0",
     "esbuild": "^0.27.4",
-    "shx": "^0.3.4",
     "typescript": "^5.0.0"
+  },
+  "overrides": {
+    "minimatch": "~5.1.9"
   }
 }
