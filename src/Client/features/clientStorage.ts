@@ -11,57 +11,30 @@ import * as vscode from 'vscode';
 import { Server } from './server';
 import type { GetDataParams, SetDataParams } from './server';
 
-// =============================================================================
-// Module-level State
-// =============================================================================
-
-let extensionContext: vscode.ExtensionContext | undefined;
-
-// =============================================================================
-// Activation
-// =============================================================================
-
 /**
- * Activates the client storage module with the extension context and language client.
- * Registers handlers for server-to-client storage requests.
- * Must be called after the client has started.
+ * Bridges the language server and VS Code's persistent storage.
+ * The server sends kusto/getData and kusto/setData requests, and this class reads from or writes to
+ * the extension's globalState in response, allowing the server to persist data across sessions.
+ *
+ * This class is self-contained: the constructor registers server request handlers that
+ * remain active for the lifetime of the extension. No external code calls into it directly.
  */
-export function activate(context: vscode.ExtensionContext, server: Server): void {
-    extensionContext = context;
-
-    // Register handler for server's request to get data
-    server.onGetData(handleGetData);
-
-    // Register handler for server's request to set data
-    server.onSetData(handleSetData);
-}
-
-// =============================================================================
-// Request Handlers
-// =============================================================================
-
-/**
- * Handles the server's request to get stored data.
- * Returns the data as an object, or null if not found.
- */
-async function handleGetData(params: GetDataParams): Promise<object | null> {
-    if (!extensionContext) {
-        return null;
+export class ClientStorage {
+    constructor(
+        private readonly context: vscode.ExtensionContext,
+        server: Server
+    ) {
+        server.onGetData(params => this.handleGetData(params));
+        server.onSetData(params => this.handleSetData(params));
     }
 
-    const data = extensionContext.globalState.get<object>(params.key);
-    return data ?? null;
-}
-
-/**
- * Handles the server's request to store data.
- * Pass undefined to remove the key.
- */
-async function handleSetData(params: SetDataParams): Promise<void> {
-    if (!extensionContext) {
-        return;
+    private async handleGetData(params: GetDataParams): Promise<object | null> {
+        const data = this.context.globalState.get<object>(params.key);
+        return data ?? null;
     }
 
-    await extensionContext.globalState.update(params.key, params.data);
+    private async handleSetData(params: SetDataParams): Promise<void> {
+        await this.context.globalState.update(params.key, params.data);
+    }
 }
 
