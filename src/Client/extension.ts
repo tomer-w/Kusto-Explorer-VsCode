@@ -18,6 +18,7 @@ import * as history from './features/history'
 import * as importFeature from './features/import'
 import { SCRATCH_PAD_SCHEME } from './features/scratchPad'
 import { registerEntityDefinitionProvider, ENTITY_DEFINITION_SCHEME } from './features/entityDefinitionProvider'
+import { Server } from './features/server'
 import
     {
         LanguageClient,
@@ -80,14 +81,17 @@ export async function activate(context: ExtensionContext)
     // Start the client BEFORE activating features that send notifications
     await client.start();
 
+    // Create the server wrapper for all LSP communication
+    const server = new Server(client);
+
     // Activate client storage handlers (server-to-client requests for persistent storage)
-    clientStorage.activate(context, client);
+    clientStorage.activate(context, server);
 
     // Initialize results cache with the language client
-    resultsCache.initialize(client);
+    resultsCache.initialize(server);
 
     // Register entity definition provider for "Go to Definition" on database entities
-    registerEntityDefinitionProvider(context, client);
+    registerEntityDefinitionProvider(context, server);
 
     // Register command to fix doubled commit characters after completion acceptance
     context.subscriptions.push(
@@ -131,10 +135,10 @@ export async function activate(context: ExtensionContext)
     );
 
     // activate connections data layer
-    connections.activate(context, client);
+    connections.activate(context, server);
 
     // activate connections panel and related features
-    await conn.activate(context, client);
+    await conn.activate(context, server);
 
     // activate import from Kusto Explorer
     importFeature.activate(context);
@@ -143,7 +147,7 @@ export async function activate(context: ExtensionContext)
     connectionStatusBar.activate(context);
 
     // activate query execution features
-    queryDocuments.activate(context, client);
+    queryDocuments.activate(context, server);
 
     // activate scratch pad documents
     await scratchPad.activate(context);
@@ -152,10 +156,10 @@ export async function activate(context: ExtensionContext)
     await history.activate(context);
 
     // activate chart file editor (.kchart)
-    resultsViewer.activate(context, client);
+    resultsViewer.activate(context, server);
 
     // activate copilot hooks
-    copilot.activate(context, client);
+    copilot.activate(context, server);
 }
 
 export function deactivate(): Thenable<void> | undefined

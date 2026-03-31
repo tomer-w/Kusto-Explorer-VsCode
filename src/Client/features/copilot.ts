@@ -8,9 +8,9 @@
  */
 
 import * as vscode from 'vscode';
-import { LanguageClient } from 'vscode-languageclient/node';
-import * as conn from './connections';
+import { Server } from './server';
 import * as server from './server';
+import * as conn from './connections';
 import { ENTITY_DEFINITION_SCHEME } from './entityDefinitionProvider';
 import { resultTableToMarkdown } from './markdown';
 import { displayResultsInPanel, displayResultsInSingletonView, ResultViewMode } from './resultsViewer';
@@ -18,7 +18,7 @@ import { displayResultsInPanel, displayResultsInSingletonView, ResultViewMode } 
 const COPILOT_PARTICIPANT_ID = 'kusto';
 const MAX_SCHEMA_CHARS = 30000; // Approximate limit to stay within token limits
 
-let languageClient: LanguageClient;
+let languageClient: Server;
 
 
 // =============================================================================
@@ -70,8 +70,8 @@ function registerTool<T>(
 // Activation
 // =============================================================================
 
-export function activate(context: vscode.ExtensionContext, client: LanguageClient): void {
-    languageClient = client;
+export function activate(context: vscode.ExtensionContext, srv: Server): void {
+    languageClient = srv;
 
     // Register tools
     registerTool(context, 'kusto_getClusters', 'Getting available clusters...', getClusters);
@@ -243,7 +243,7 @@ async function getEntityDefinition(input: EntityDefinitionInput, entityType: str
     }
 
     const uri = `${ENTITY_DEFINITION_SCHEME}://${encodeURIComponent(connection.cluster)}/${encodeURIComponent(connection.database)}/${encodeURIComponent(entityType)}/${encodeURIComponent(input.name)}.kql`;
-    const result = await server.getEntityDefinitionContent(languageClient, uri);
+    const result = await languageClient.getEntityDefinitionContent(uri);
     if (!result) {
         return `${entityType} "${input.name}" not found in ${connection.cluster}/${connection.database}.`;
     }
@@ -282,8 +282,8 @@ async function getCurrentQuery(): Promise<string> {
 
     const uri = editor.document.uri.toString();
     const cursorPos = editor.selection.active;
-    const queryRange = await server.getQueryRange(
-        languageClient, uri,
+    const queryRange = await languageClient.getQueryRange(
+        uri,
         { line: cursorPos.line, character: cursorPos.character }
     );
 
@@ -306,7 +306,7 @@ async function getQueryRanges(): Promise<string> {
         return 'No active Kusto document. Open a .kql file first.';
     }
 
-    const result = await server.getQueryRanges(languageClient, editor.document.uri.toString());
+    const result = await languageClient.getQueryRanges(editor.document.uri.toString());
     if (!result || result.ranges.length === 0) {
         return 'No queries found in the active document.';
     }
@@ -332,7 +332,7 @@ async function validateQuery(input: { query: string; cluster?: string; database?
         return 'No cluster specified and no active connection. Cannot validate query without schema context.';
     }
 
-    const result = await server.validateQuery(languageClient, input.query, cluster, database);
+    const result = await languageClient.validateQuery(input.query, cluster, database);
     if (!result) {
         return 'Validation failed. The server did not return a result.';
     }
@@ -365,7 +365,7 @@ async function getQueryResultType(input: { query: string; cluster?: string; data
         return 'No cluster specified and no active connection. Cannot determine query result type.';
     }
 
-    const result = await server.getQueryResultType(languageClient, input.query, cluster, database);
+    const result = await languageClient.getQueryResultType(input.query, cluster, database);
     if (!result || !result.resultType) {
         return 'The query does not have a determinable result type (it may not be a tabular or scalar expression).';
     }
@@ -379,7 +379,7 @@ async function getFunctionResultType(input: { cluster?: string; database?: strin
         return 'No Kusto connection available. Please connect to a cluster and database first.';
     }
 
-    const result = await server.getFunctionResultType(languageClient, connection.cluster, connection.database, input.name);
+    const result = await languageClient.getFunctionResultType(connection.cluster, connection.database, input.name);
     if (!result || !result.resultType) {
         return `Function "${input.name}" was not found or does not have a determinable result type.`;
     }
@@ -403,7 +403,7 @@ async function runQuery(input: { query: string; cluster?: string; database?: str
         return 'No cluster specified and no active connection. Cannot run query.';
     }
 
-    const result = await server.runQuery(languageClient, input.query, cluster, database, true, input.maxRows);
+    const result = await languageClient.runQuery(input.query, cluster, database, true, input.maxRows);
     if (!result) {
         return 'Query execution failed. The server did not return a result.';
     }
@@ -417,7 +417,7 @@ async function runQuery(input: { query: string; cluster?: string; database?: str
     }
 
     if (input.showResults) {
-        await displayResultsInSingletonView(languageClient, result.data, 'all', true);
+        await displayResultsInSingletonView(result.data, 'all', true);
     }
 
     return resultTableToMarkdown(result.data.tables[0]!);

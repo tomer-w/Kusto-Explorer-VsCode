@@ -8,8 +8,7 @@
  */
 
 import * as vscode from 'vscode';
-import { LanguageClient } from 'vscode-languageclient/node';
-import { EntityDefinitionContentResult } from './server';
+import { Server } from './server';
 
 /**
  * URI scheme for virtual entity definition documents.
@@ -30,15 +29,11 @@ export class EntityDefinitionProvider implements vscode.TextDocumentContentProvi
     private readonly _onDidChange = new vscode.EventEmitter<vscode.Uri>();
     readonly onDidChange = this._onDidChange.event;
 
-    constructor(private readonly client: LanguageClient) {}
+    constructor(private readonly server: Server) {}
 
     async provideTextDocumentContent(uri: vscode.Uri, token: vscode.CancellationToken): Promise<string> {
         try {
-            const result = await this.client.sendRequest<EntityDefinitionContentResult | null>(
-                'kusto/getEntityDefinitionContent',
-                { uri: uri.toString() },
-                token
-            );
+            const result = await this.server.getEntityDefinitionContent(uri.toString(), token);
 
             if (result?.content) {
                 return result.content;
@@ -68,14 +63,14 @@ export class EntityDefinitionProvider implements vscode.TextDocumentContentProvi
  * Call this during extension activation after the language client is ready.
  * 
  * @param context The extension context for managing subscriptions
- * @param client The language client for LSP communication
+ * @param server The server wrapper for LSP communication
  * @returns The registered provider instance
  */
 export function registerEntityDefinitionProvider(
     context: vscode.ExtensionContext,
-    client: LanguageClient
+    server: Server
 ): EntityDefinitionProvider {
-    const provider = new EntityDefinitionProvider(client);
+    const provider = new EntityDefinitionProvider(server);
     
     // Register the provider for the kusto-entity URI scheme
     const registration = vscode.workspace.registerTextDocumentContentProvider(

@@ -191,13 +191,13 @@ async function openHistoryItem(item: HistoryItem): Promise<void> {
     }
 
     // Import dynamically to avoid circular dependency at module level
-    const { displayResultsInPanel, displayResultsInSingletonView, setSingletonBackingUri, getLanguageClient } = await import('./resultsViewer');
-    const client = getLanguageClient();
-    if (!client) { return; }
+    const { displayResultsInPanel, displayResultsInSingletonView, setSingletonBackingUri, getServer } = await import('./resultsViewer');
+    const server = getServer();
+    if (!server) { return; }
 
     setSingletonBackingUri(uri);
-    await displayResultsInPanel(client, resultData, 'detail');
-    await displayResultsInSingletonView(client, resultData, 'chart', true);
+    await displayResultsInPanel(resultData, 'detail');
+    await displayResultsInSingletonView(resultData, 'chart', true);
 }
 
 /** Deletes a history item after confirmation. */

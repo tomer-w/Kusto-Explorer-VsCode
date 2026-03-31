@@ -9,9 +9,9 @@
  */
 
 import * as vscode from 'vscode';
-import { LanguageClient } from 'vscode-languageclient/node';
+import { Server } from './server';
+import type { SelectionRange, Range } from './server';
 import { setDocumentConnection, ensureServer, getDocumentConnection } from './connections';
-import * as server from './server';
 import { displayResultsInPanel, displayErrorInPanel, displayResultsInSingletonView, setSingletonBackingUri, ResultViewMode } from './resultsViewer';
 import * as resultsCache from './resultsCache';
 import * as history from './history';
@@ -29,26 +29,30 @@ const errorRangeDecoration = vscode.window.createTextEditorDecorationType({
 
 let codeLensProvider: KustoCodeLensProvider;
 
+let lspServer: Server;
+
 /**
  * Activates query execution features.
  * @param context The extension context
- * @param client The language client for LSP communication
+ * @param server The server wrapper for LSP communication
  */
-export function activate(context: vscode.ExtensionContext, client: LanguageClient): void {
+export function activate(context: vscode.ExtensionContext, server: Server): void {
+
+    lspServer = server;
 
     // Register query-related commands
     context.subscriptions.push(
-        vscode.commands.registerCommand('kusto.runQuery', (startLine?: number, startChar?: number, endLine?: number, endChar?: number) => runQuery(client, rangeFromArgs(startLine, startChar, endLine, endChar))),
-        vscode.commands.registerCommand('kusto.copyQuery', () => copyQuery(client)),
-        vscode.commands.registerCommand('kusto.copyQueryTransparent', (startLine?: number, startChar?: number, endLine?: number, endChar?: number) => copyQueryTransparent(client, rangeFromArgs(startLine, startChar, endLine, endChar))),
-        vscode.commands.registerCommand('kusto.formatQuery', (startLine?: number, startChar?: number, endLine?: number, endChar?: number) => formatQuery(client, rangeFromArgs(startLine, startChar, endLine, endChar))),
+        vscode.commands.registerCommand('kusto.runQuery', (startLine?: number, startChar?: number, endLine?: number, endChar?: number) => runQuery(rangeFromArgs(startLine, startChar, endLine, endChar))),
+        vscode.commands.registerCommand('kusto.copyQuery', () => copyQuery()),
+        vscode.commands.registerCommand('kusto.copyQueryTransparent', (startLine?: number, startChar?: number, endLine?: number, endChar?: number) => copyQueryTransparent(rangeFromArgs(startLine, startChar, endLine, endChar))),
+        vscode.commands.registerCommand('kusto.formatQuery', (startLine?: number, startChar?: number, endLine?: number, endChar?: number) => formatQuery(rangeFromArgs(startLine, startChar, endLine, endChar))),
         vscode.commands.registerCommand('kusto.selectQuery', (startLine: number, startChar: number, endLine: number, endChar: number) => selectQuery(startLine, startChar, endLine, endChar)),
-        vscode.commands.registerCommand('kusto.showResults', (uri: string, line: number, character: number) => showResults(client, uri, line, character)),
-        vscode.commands.registerCommand('kusto.refreshDocumentSchema', () => refreshDocumentSchema(client))
+        vscode.commands.registerCommand('kusto.showResults', (uri: string, line: number, character: number) => showResults(uri, line, character)),
+        vscode.commands.registerCommand('kusto.refreshDocumentSchema', () => refreshDocumentSchema())
     );
 
     // Register CodeLens provider for queries
-    codeLensProvider = new KustoCodeLensProvider(client);
+    codeLensProvider = new KustoCodeLensProvider();
     context.subscriptions.push(
         vscode.languages.registerCodeLensProvider(
             { language: 'kusto' },
@@ -60,7 +64,7 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
     context.subscriptions.push(
         vscode.languages.registerDocumentPasteEditProvider(
             { language: 'kusto' },
-            new KustoPasteEditProvider(client),
+            new KustoPasteEditProvider(),
             {
                 providedPasteEditKinds: [PASTE_KIND],
                 pasteMimeTypes: ['text/plain']
@@ -69,17 +73,17 @@ export function activate(context: vscode.ExtensionContext, client: LanguageClien
     );
 
     // Set up query separator decorations
-    activateQuerySeparators(context, client);
+    activateQuerySeparators(context);
 
     // Set up semantic token coloring
-    activateSemanticColoring(context, client);
+    activateSemanticColoring(context);
 }
 
 /**
  * Builds a SelectionRange from optional CodeLens arguments.
  * Returns undefined when no arguments are provided (cursor-based fallback).
  */
-function rangeFromArgs(startLine?: number, startChar?: number, endLine?: number, endChar?: number): server.SelectionRange | undefined {
+function rangeFromArgs(startLine?: number, startChar?: number, endLine?: number, endChar?: number): SelectionRange | undefined {
     if (startLine !== undefined && startChar !== undefined && endLine !== undefined && endChar !== undefined) {
         return { start: { line: startLine, character: startChar }, end: { line: endLine, character: endChar } };
     }
@@ -92,7 +96,7 @@ function rangeFromArgs(startLine?: number, startChar?: number, endLine?: number,
  * @param client The language client for LSP communication
  * @param queryRange Optional query range from CodeLens; uses editor selection when omitted
  */
-async function runQuery(client: LanguageClient, queryRange?: server.SelectionRange): Promise<void> {
+async function runQuery(queryRange?: SelectionRange): Promise<void> {
     const editor = vscode.window.activeTextEditor;
     if (!editor || editor.document.languageId !== 'kusto') {
         return;
@@ -113,7 +117,7 @@ async function runQuery(client: LanguageClient, queryRange?: server.SelectionRan
         // If the selection is zero-length (cursor position), resolve the enclosing query range
         const isZeroLength = selection.start.line === selection.end.line && selection.start.character === selection.end.character;
         const resolvedRange = isZeroLength
-            ? await server.getQueryRange(client, uri, selection.start)
+            ? await lspServer.getQueryRange(uri, selection.start)
             : selection;
         if (!resolvedRange) {
             return;
@@ -129,7 +133,7 @@ async function runQuery(client: LanguageClient, queryRange?: server.SelectionRan
         const connection = await getDocumentConnection(uri);
 
         // Run the query via server.runQuery (text-based, returns ResultData)
-        const runResult = await server.runQuery(client, queryText, connection?.cluster, connection?.database, true);
+        const runResult = await lspServer.runQuery(queryText, connection?.cluster, connection?.database, true);
 
         // If the result includes a connection string for an unknown cluster, add it as a server
         if (runResult?.connection || runResult?.cluster) {
@@ -165,8 +169,8 @@ async function runQuery(client: LanguageClient, queryRange?: server.SelectionRan
             setSingletonBackingUri(historyUri);
 
             // Display result tables and chart from ResultData
-            await displayResultsInPanel(client, runResult.data, 'data');
-            await displayResultsInSingletonView(client, runResult.data, 'chart', true);
+            await displayResultsInPanel(runResult.data, 'data');
+            await displayResultsInSingletonView(runResult.data, 'chart', true);
         }
 
         // Refresh CodeLens to show/hide Results lens
@@ -185,10 +189,10 @@ async function runQuery(client: LanguageClient, queryRange?: server.SelectionRan
  * @param line The line of the query position
  * @param character The character of the query position
  */
-async function showResults(client: LanguageClient, uri: string, line: number, character: number): Promise<void> {
+async function showResults(uri: string, line: number, character: number): Promise<void> {
     try {
         // Resolve the query range for this position
-        const queryRange = await server.getQueryRange(client, uri, { line, character });
+        const queryRange = await lspServer.getQueryRange(uri, { line, character });
         if (!queryRange) {
             return;
         }
@@ -204,8 +208,8 @@ async function showResults(client: LanguageClient, uri: string, line: number, ch
         ));
         const cachedData = await resultsCache.getFromCache(uri, queryText);
         if (cachedData) {
-            await displayResultsInPanel(client, cachedData, 'data');
-            await displayResultsInSingletonView(client, cachedData, 'chart', true);
+            await displayResultsInPanel(cachedData, 'data');
+            await displayResultsInSingletonView(cachedData, 'chart', true);
         }
     } catch (error) {
         vscode.window.showErrorMessage(`Failed to show results: ${error}`);
@@ -242,7 +246,7 @@ function selectQuery(startLine: number, startChar: number, endLine: number, endC
  * Copies the query at the current cursor position with syntax highlighting.
  * @param client The language client for LSP communication
  */
-async function copyQuery(client: LanguageClient): Promise<void> {
+async function copyQuery(): Promise<void> {
     const editor = vscode.window.activeTextEditor;
     if (!editor || editor.document.languageId !== 'kusto') {
         return;
@@ -251,8 +255,7 @@ async function copyQuery(client: LanguageClient): Promise<void> {
     try {
         // Get the query range containing the cursor position from the server
         const cursorPos = editor.selection.active;
-        const queryRange = await server.getQueryRange(
-            client,
+        const queryRange = await lspServer.getQueryRange(
             editor.document.uri.toString(),
             { line: cursorPos.line, character: cursorPos.character }
         );
@@ -288,7 +291,7 @@ async function copyQuery(client: LanguageClient): Promise<void> {
  * Uses the server to generate HTML rather than the editor's current theme.
  * @param client The language client for LSP communication
  */
-async function copyQueryTransparent(client: LanguageClient, codeLensRange?: server.SelectionRange): Promise<void> {
+async function copyQueryTransparent(codeLensRange?: SelectionRange): Promise<void> {
     const editor = vscode.window.activeTextEditor;
     if (!editor || editor.document.languageId !== 'kusto') {
         return;
@@ -298,11 +301,11 @@ async function copyQueryTransparent(client: LanguageClient, codeLensRange?: serv
         const uri = editor.document.uri.toString();
 
         // Use the CodeLens range if provided, otherwise resolve from cursor position
-        let queryRange: server.Range | undefined | null = codeLensRange;
+        let queryRange: Range | undefined | null = codeLensRange;
         if (!queryRange) {
             const cursorPos = editor.selection.active;
-            queryRange = await server.getQueryRange(
-                client, uri,
+            queryRange = await lspServer.getQueryRange(
+                uri,
                 { line: cursorPos.line, character: cursorPos.character }
             );
         }
@@ -320,7 +323,7 @@ async function copyQueryTransparent(client: LanguageClient, codeLensRange?: serv
 
         // Request light-mode HTML from the server (darkMode = false)
         const connection = await getDocumentConnection(uri);
-        const result = await server.getQueryAsHtml(client, plainText, connection?.cluster, connection?.database, false);
+        const result = await lspServer.getQueryAsHtml(plainText, connection?.cluster, connection?.database, false);
         if (!result?.html) {
             return;
         }
@@ -375,7 +378,7 @@ function wrapHtmlForClipboard(html: string): string {
  * Formats the query at the current cursor position using the LSP range formatting.
  * @param client The language client for LSP communication
  */
-async function formatQuery(client: LanguageClient, codeLensRange?: server.SelectionRange): Promise<void> {
+async function formatQuery(codeLensRange?: SelectionRange): Promise<void> {
     const editor = vscode.window.activeTextEditor;
     if (!editor || editor.document.languageId !== 'kusto') {
         return;
@@ -383,11 +386,10 @@ async function formatQuery(client: LanguageClient, codeLensRange?: server.Select
 
     try {
         // Use the CodeLens range if provided, otherwise resolve from cursor position
-        let queryRange: server.Range | undefined | null = codeLensRange;
+        let queryRange: Range | undefined | null = codeLensRange;
         if (!queryRange) {
             const cursorPos = editor.selection.active;
-            queryRange = await server.getQueryRange(
-                client,
+            queryRange = await lspServer.getQueryRange(
                 editor.document.uri.toString(),
                 { line: cursorPos.line, character: cursorPos.character }
             );
@@ -427,7 +429,7 @@ async function formatQuery(client: LanguageClient, codeLensRange?: server.Select
  * This includes databases accessed via cluster() and database() functions.
  * @param client The language client for LSP communication
  */
-async function refreshDocumentSchema(client: LanguageClient): Promise<void> {
+async function refreshDocumentSchema(): Promise<void> {
     const editor = vscode.window.activeTextEditor;
     if (!editor || editor.document.languageId !== 'kusto') {
         return;
@@ -442,7 +444,7 @@ async function refreshDocumentSchema(client: LanguageClient): Promise<void> {
         async () => {
             try {
                 const uri = editor.document.uri.toString();
-                await server.refreshDocumentSchema(client, uri);
+                await lspServer.refreshDocumentSchema(uri);
             } catch (error) {
                 vscode.window.showErrorMessage(`Failed to refresh schema: ${error}`);
             }
@@ -455,12 +457,10 @@ async function refreshDocumentSchema(client: LanguageClient): Promise<void> {
 // =============================================================================
 
 class KustoCodeLensProvider implements vscode.CodeLensProvider {
-    private client: LanguageClient;
     private _onDidChangeCodeLenses = new vscode.EventEmitter<void>();
     readonly onDidChangeCodeLenses = this._onDidChangeCodeLenses.event;
 
-    constructor(client: LanguageClient) {
-        this.client = client;
+    constructor() {
     }
 
     refresh(): void {
@@ -470,7 +470,7 @@ class KustoCodeLensProvider implements vscode.CodeLensProvider {
     async provideCodeLenses(document: vscode.TextDocument): Promise<vscode.CodeLens[]> {
         const isEntityDefinition = document.uri.scheme === ENTITY_DEFINITION_SCHEME;
 
-        const result = await server.getQueryRanges(this.client, document.uri.toString());
+        const result = await lspServer.getQueryRanges(document.uri.toString());
         if (!result || !result.ranges.length) {
             return [];
         }
@@ -543,10 +543,8 @@ class KustoCodeLensProvider implements vscode.CodeLensProvider {
 // =============================================================================
 
 class KustoPasteEditProvider implements vscode.DocumentPasteEditProvider {
-    private client: LanguageClient;
 
-    constructor(client: LanguageClient) {
-        this.client = client;
+    constructor() {
     }
 
     async provideDocumentPasteEdits(
@@ -580,8 +578,7 @@ class KustoPasteEditProvider implements vscode.DocumentPasteEditProvider {
         }
 
         // Ask the server to transform the paste
-        const result = await server.transformPaste(
-            this.client,
+        const result = await lspServer.transformPaste(
             clipboardContext.text,
             clipboardContext.kind,
             document.uri.toString(),
@@ -614,7 +611,7 @@ class KustoPasteEditProvider implements vscode.DocumentPasteEditProvider {
 /**
  * Activates editor decoration features like query separators.
  */
-function activateQuerySeparators(context: vscode.ExtensionContext, client: LanguageClient): void {
+function activateQuerySeparators(context: vscode.ExtensionContext): void {
 
     // Decoration for separator line between queries
     const querySeparatorDecoration = vscode.window.createTextEditorDecorationType({
@@ -632,7 +629,7 @@ function activateQuerySeparators(context: vscode.ExtensionContext, client: Langu
      */
     async function updateQuerySeparators(uri: string): Promise<void> {
         try {
-            const result = await server.getQueryRanges(client, uri);
+            const result = await lspServer.getQueryRanges(uri);
 
             if (!result) {
                 return;
@@ -733,14 +730,14 @@ function activateQuerySeparators(context: vscode.ExtensionContext, client: Langu
 /**
  * Activates semantic token coloring features.
  */
-function activateSemanticColoring(context: vscode.ExtensionContext, client: LanguageClient): void {
+function activateSemanticColoring(context: vscode.ExtensionContext): void {
     // Handle workspace/semanticTokens/refresh notification from server
     // VS Code does not automatically redraw with new semantic tokens when this notification is received,
     // so we need to force it manually
-    client.onNotification('workspace/semanticTokens/refresh', forceRefreshSemanticTokens);
+    lspServer.onSemanticTokensRefresh(forceRefreshSemanticTokens);
 
     // Force establishing semantic token provider for documents already open
-    const serverCapabilities = client.initializeResult?.capabilities;
+    const serverCapabilities = lspServer.initializeResult?.capabilities;
     if (serverCapabilities?.semanticTokensProvider) {
         // Small delay to ensure server is fully ready
         setTimeout(() => {

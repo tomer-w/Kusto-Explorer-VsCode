@@ -8,8 +8,7 @@
  */
 
 import * as vscode from 'vscode';
-import { LanguageClient } from 'vscode-languageclient/node';
-import * as lspServer from './server';
+import { Server } from './server';
 import type { DatabaseInfo } from './server';
 
 // =============================================================================
@@ -82,9 +81,9 @@ export function isServer(item: ServerOrGroup): item is ServerInfo {
  */
 export async function getHostName(connection: string): Promise<string> {
     // Try to use the language server to decode the connection string
-    if (languageClient) {
+    if (server) {
         try {
-            const result = await lspServer.decodeConnectionString(languageClient, connection);
+            const result = await server.decodeConnectionString(connection);
             if (result?.cluster) {
                 return result.cluster;
             }
@@ -154,7 +153,7 @@ export function getDisplayName(cluster: string): string | undefined {
 // =============================================================================
 
 let extensionContext: vscode.ExtensionContext | undefined;
-let languageClient: LanguageClient | undefined;
+let server: Server | undefined;
 const documentConnectionChangedListeners: ((uri: string) => Promise<void>)[] = [];
 const serversAndGroupsChangedListeners: (() => void)[] = [];
 
@@ -175,9 +174,9 @@ let clusterConnections: { cluster: string, connection: string, databases?: Datab
  * Activates the connections module with the extension context and language client.
  * Must be called before any other functions.
  */
-export function activate(context: vscode.ExtensionContext, client: LanguageClient): void {
+export function activate(context: vscode.ExtensionContext, srv: Server): void {
     extensionContext = context;
-    languageClient = client;
+    server = srv;
 }
 
 /**
@@ -237,11 +236,9 @@ async function saveServersAndGroups(): Promise<void> {
     await extensionContext.globalState.update(SERVERS_STORAGE_KEY, serversAndGroups);
 
     // Notify server about the updated connections
-    if (languageClient) {
+    if (server) {
         const connectionsList = getConfiguredConnections();
-        await languageClient.sendNotification('kusto/connectionsUpdated', {
-            connections: connectionsList
-        });
+        server.sendConnectionsUpdated(connectionsList);
     }
 }
 
@@ -608,12 +605,12 @@ export function getDatabaseInfo(cluster: string, database: string): DatabaseInfo
  * Called when a server tree item is expanded.
  */
 export async function fetchDatabasesForCluster(clusterName: string): Promise<void> {
-    if (!languageClient) return;
+    if (!server) return;
 
     try {
         const serverInfo = findServerInfo(clusterName);
         const serverKind = serverInfo?.serverKind ?? null;
-        const result = await lspServer.getServerInfo(languageClient, clusterName, serverKind);
+        const result = await server.getServerInfo(clusterName, serverKind);
 
         if (result && result.databases) {
             const databases = result.databases.map(db => ({ name: db.name }));
@@ -630,10 +627,10 @@ export async function fetchDatabasesForCluster(clusterName: string): Promise<voi
  * Called when a database tree item is expanded.
  */
 export async function fetchDatabaseInfo(clusterName: string, databaseName: string): Promise<void> {
-    if (!languageClient) return;
+    if (!server) return;
 
     try {
-        const result = await lspServer.getDatabaseInfo(languageClient, clusterName, databaseName);
+        const result = await server.getDatabaseInfo(clusterName, databaseName);
         if (result) {
             setDatabaseInfo(clusterName, result);
         }
@@ -650,7 +647,7 @@ export async function fetchDatabaseInfo(clusterName: string, databaseName: strin
  * Called when user requests refresh on a server tree item.
  */
 export async function refreshClusterSchema(clusterName: string): Promise<void> {
-    if (!languageClient) return;
+    if (!server) return;
 
     await vscode.window.withProgress(
         {
@@ -661,7 +658,7 @@ export async function refreshClusterSchema(clusterName: string): Promise<void> {
         async () => {
             try {
                 // Call server to refresh its schema cache
-                await lspServer.refreshSchema(languageClient!, clusterName);
+                await server!.refreshSchema(clusterName);
 
                 // Clear the client-side cache for this cluster so tree will re-fetch on expand
                 const connectionInfo = clusterConnections.find(c => c.cluster === clusterName);
@@ -686,7 +683,7 @@ export async function refreshClusterSchema(clusterName: string): Promise<void> {
  * Called when user requests refresh on a database tree item.
  */
 export async function refreshDatabaseSchema(clusterName: string, databaseName: string): Promise<void> {
-    if (!languageClient) return;
+    if (!server) return;
 
     await vscode.window.withProgress(
         {
@@ -697,7 +694,7 @@ export async function refreshDatabaseSchema(clusterName: string, databaseName: s
         async () => {
             try {
                 // Call server to refresh its schema cache for this database
-                await lspServer.refreshSchema(languageClient!, clusterName, databaseName);
+                await server!.refreshSchema(clusterName, databaseName);
 
                 // Clear the client-side cache for this database so tree will re-fetch on expand
                 const connectionInfo = clusterConnections.find(c => c.cluster === clusterName);
@@ -782,9 +779,9 @@ export async function getDocumentConnection(uri: string): Promise<DocumentConnec
 
     // Try to infer connection from document content
     let inferred: DocumentConnection | undefined;
-    if (languageClient) {
+    if (server) {
         try {
-            const inferredResult = await lspServer.inferDocumentConnection(languageClient, uri);
+            const inferredResult = await server.inferDocumentConnection(uri);
             
             if (inferredResult?.cluster) {
                 inferred = {
@@ -822,7 +819,7 @@ export async function getDocumentConnection(uri: string): Promise<DocumentConnec
  * - If the connection matches the inferred connection, it is removed from saved (will be inferred)
  */
 export async function setDocumentConnection(uri: string, cluster: string | undefined, database: string | undefined): Promise<void> {
-    if (!languageClient) {
+    if (!server) {
         console.error('Language client not initialized');
         return;
     }
@@ -831,7 +828,7 @@ export async function setDocumentConnection(uri: string, cluster: string | undef
     let matchesInferred = false;
     if (cluster) {
         try {
-            const inferred = await lspServer.inferDocumentConnection(languageClient, uri);
+            const inferred = await server.inferDocumentConnection(uri);
             if (inferred?.cluster === cluster && inferred?.database === database) {
                 matchesInferred = true;
             }
@@ -867,12 +864,7 @@ export async function setDocumentConnection(uri: string, cluster: string | undef
     }
 
     // Notify server of the connection change
-    await languageClient.sendNotification('kusto/documentConnectionChanged', {
-        uri,
-        cluster: cluster || null,
-        database: database || null,
-        serverKind: serverKind
-    });
+    server.sendDocumentConnectionChanged(uri, cluster || null, database || null, serverKind);
 }
 
 // =============================================================================
@@ -900,9 +892,9 @@ export function findServerInfo(cluster: string): ServerInfo | undefined {
  * Gets the server kind for a connection string from the language server.
  */
 export async function fetchServerKind(connectionString: string): Promise<string | undefined> {
-    if (!languageClient) return undefined;
+    if (!server) return undefined;
     try {
-        const result = await lspServer.getServerKind(languageClient, connectionString);
+        const result = await server.getServerKind(connectionString);
         return result?.serverKind;
     } catch (error) {
         console.error(`Failed to get server kind for ${connectionString}:`, error);
@@ -938,14 +930,14 @@ export function getConfiguredConnections(): string[] {
  * @returns Promise resolving to array of database names
  */
 export async function getDatabasesForCluster(cluster: string): Promise<string[]> {
-    if (!languageClient) {
+    if (!server) {
         return [];
     }
 
     try {
         const serverInfo = findServerInfo(cluster);
         const serverKind = serverInfo?.serverKind ?? null;
-        const result = await lspServer.getServerInfo(languageClient, cluster, serverKind);
+        const result = await server.getServerInfo(cluster, serverKind);
 
         if (result && result.databases) {
             return result.databases.map(db => db.name);
@@ -966,7 +958,7 @@ export async function getDatabasesForCluster(cluster: string): Promise<string[]>
  * @returns Promise resolving to database info or undefined
  */
 export async function getDatabaseSchema(cluster: string, database: string): Promise<DatabaseInfo | undefined> {
-    if (!languageClient) {
+    if (!server) {
         return undefined;
     }
 
@@ -978,7 +970,7 @@ export async function getDatabaseSchema(cluster: string, database: string): Prom
 
     // Fetch from server
     try {
-        const result = await lspServer.getDatabaseInfo(languageClient, cluster, database);
+        const result = await server.getDatabaseInfo(cluster, database);
 
         if (result) {
             setDatabaseInfo(cluster, result);

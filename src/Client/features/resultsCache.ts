@@ -2,8 +2,8 @@
 // Licensed under the MIT license.
 
 import * as vscode from 'vscode';
-import { LanguageClient } from 'vscode-languageclient/node';
-import { ResultData, getMinifiedQuery } from './server';
+import { Server } from './server';
+import type { ResultData } from './server';
 
 /**
  * Cache for query results, keyed by document URI and minified query text.
@@ -11,7 +11,7 @@ import { ResultData, getMinifiedQuery } from './server';
  */
 
 /** The language client for LSP communication */
-let languageClient: LanguageClient | null = null;
+let languageClient: Server | null = null;
 
 /** Map from document URI to its cached query results */
 const documentCache = new Map<string, Map<string, ResultData>>();
@@ -21,8 +21,8 @@ const documentCache = new Map<string, Map<string, ResultData>>();
  * Must be called before using cache functions that require query minification.
  * @param client The language client for LSP communication
  */
-export function initialize(client: LanguageClient): void {
-    languageClient = client;
+export function initialize(server: Server): void {
+    languageClient = server;
 
     // Clear cached results when a document is closed
     vscode.workspace.onDidCloseTextDocument((document) => {
@@ -43,7 +43,7 @@ async function getMinifiedKey(query: string): Promise<string> {
         return query.replace(/\s+/g, ' ').trim();
     }
 
-    const result = await getMinifiedQuery(languageClient, query);
+    const result = await languageClient.getMinifiedQuery(query);
     return result?.minifiedQuery ?? query.replace(/\s+/g, ' ').trim();
 }
 

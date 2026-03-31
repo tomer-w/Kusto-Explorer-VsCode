@@ -8,7 +8,8 @@
  */
 
 import * as vscode from 'vscode';
-import { LanguageClient } from 'vscode-languageclient/node';
+import { Server } from './server';
+import type { GetDataParams, SetDataParams } from './server';
 
 // =============================================================================
 // Module-level State
@@ -25,27 +26,14 @@ let extensionContext: vscode.ExtensionContext | undefined;
  * Registers handlers for server-to-client storage requests.
  * Must be called after the client has started.
  */
-export function activate(context: vscode.ExtensionContext, client: LanguageClient): void {
+export function activate(context: vscode.ExtensionContext, server: Server): void {
     extensionContext = context;
 
     // Register handler for server's request to get data
-    client.onRequest('kusto/getData', handleGetData);
+    server.onGetData(handleGetData);
 
     // Register handler for server's request to set data
-    client.onRequest('kusto/setData', handleSetData);
-}
-
-// =============================================================================
-// Request Parameter Types
-// =============================================================================
-
-interface GetDataParams {
-    key: string;
-}
-
-interface SetDataParams {
-    key: string;
-    data: object | undefined;
+    server.onSetData(handleSetData);
 }
 
 // =============================================================================

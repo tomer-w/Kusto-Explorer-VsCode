@@ -21,7 +21,7 @@
 */
 
 import * as vscode from 'vscode';
-import { LanguageClient } from 'vscode-languageclient/node';
+import { Server } from './server';
 import * as server from './server';
 import { copyToClipboard, ClipboardItem, formatCfHtml } from './clipboard';
 import { resultDataToMarkdown } from './markdown';
@@ -45,7 +45,7 @@ let panelActiveTabIndex = 0;
 const resultViewerViewType = 'kusto.resultViewer';
 
 /** The language client, set during activation. */
-let languageClient: LanguageClient;
+let languageClient: Server;
 
 /** Function to wait for the results panel to be resolved. Set during activation. */
 let waitForPanelReady: (() => Promise<void>) | undefined;
@@ -134,8 +134,8 @@ export function registerResultWebview(webview: vscode.WebviewPanel): void {
  * Activates the chart file feature, registering the custom editor provider
  * and chart copy commands.
  */
-export function activate(context: vscode.ExtensionContext, client: LanguageClient): void {
-    languageClient = client;
+export function activate(context: vscode.ExtensionContext, srv: Server): void {
+    languageClient = srv;
 
     context.subscriptions.push(
         vscode.window.registerCustomEditorProvider(
@@ -626,7 +626,7 @@ export class ResultsViewProvider implements vscode.CustomTextEditorProvider {
         const [dataResult, chartResult] = await Promise.all([
             Promise.resolve(resultDataToHtml(resultData)),
             resultData.chartOptions
-                ? server.getChartAsHtml(languageClient, resultData, darkMode)
+                ? languageClient.getChartAsHtml(resultData, darkMode)
                 : Promise.resolve(null)
         ]);
 
@@ -646,7 +646,7 @@ export class ResultsViewProvider implements vscode.CustomTextEditorProvider {
         }
 
         // Track viewer state for copy commands
-        const tableNames = (dataResult?.tables ?? []).map(t => t.name);
+        const tableNames = (dataResult?.tables ?? []).map((t: HtmlTable) => t.name);
         const firstActiveView = hasChart ? 'chart' : 'table-0';
         const existingState = viewerStates.get(webviewPanel);
         viewerStates.set(webviewPanel, {
@@ -671,7 +671,7 @@ export class ResultsViewProvider implements vscode.CustomTextEditorProvider {
             chartOptions
         };
         const darkMode = isDarkMode();
-        const chartResult = await server.getChartAsHtml(languageClient, modifiedData, darkMode);
+        const chartResult = await languageClient.getChartAsHtml(modifiedData, darkMode);
         if (chartResult?.html) {
             webviewPanel.webview.postMessage({
                 command: 'updateChart',
@@ -1980,9 +1980,9 @@ export function setSingletonBackingUri(uri: vscode.Uri | undefined): void {
 }
 
 /**
- * Returns the language client for use by other modules.
+ * Returns the server wrapper for use by other modules.
  */
-export function getLanguageClient(): LanguageClient {
+export function getServer(): Server {
     return languageClient;
 }
 
@@ -1999,7 +1999,6 @@ function getResultsViewDisplayLocation(): 'panel' | 'beside' {
  * Displays query results in the bottom panel.
  */
 export async function displayResultsInPanel(
-    client: LanguageClient,
     resultData: server.ResultData | undefined,
     mode: ResultViewMode
 ): Promise<void> {
@@ -2018,13 +2017,13 @@ export async function displayResultsInPanel(
     const [dataResult, chartResult] = await Promise.all([
         Promise.resolve(resultDataToHtml(resultData)),
         (mode === 'chart' || mode === 'all') && resultData.chartOptions
-            ? server.getChartAsHtml(client, resultData, darkMode)
+            ? languageClient.getChartAsHtml(resultData, darkMode)
             : Promise.resolve(null)
     ]);
 
     const hasChart = !!chartResult?.html;
     const hasTable = !!dataResult?.tables?.length;
-    lastPanelTableNames = (dataResult?.tables ?? []).map(t => t.name);
+    lastPanelTableNames = (dataResult?.tables ?? []).map((t: HtmlTable) => t.name);
 
     if (!hasTable && !hasChart) {
         await showPanelHtml('<html><body>no results</body></html>');
@@ -2036,7 +2035,7 @@ export async function displayResultsInPanel(
     const html = htmlBuilder.BuildMultiTabbedHtml(dataResult, chartResult?.html, hasChart, mode, chartOptions, columnNames,
         resultData.query, resultData.cluster, resultData.database, resultData.tables);
 
-    const totalRows = (dataResult?.tables ?? []).reduce((sum, t) => sum + t.rowCount, 0);
+    const totalRows = (dataResult?.tables ?? []).reduce((sum: number, t: HtmlTable) => sum + t.rowCount, 0);
     await showPanelHtml(injectMessageHandlerScripts(html, hasChart), totalRows);
     sendExpressionToResultsPanel();
 }
@@ -2136,7 +2135,7 @@ async function sendExpressionToResultsPanel(): Promise<void> {
     }
     try {
         const tableName = lastPanelTableNames[panelActiveTabIndex];
-        const result = await server.getDataAsExpression(languageClient, lastPanelResultData, tableName);
+        const result = await languageClient.getDataAsExpression(lastPanelResultData, tableName);
         if (result?.expression && resultsPanel) {
             resultsPanel.webview.postMessage({ command: 'setExpression', expression: result.expression });
         }
@@ -2153,7 +2152,6 @@ async function sendExpressionToResultsPanel(): Promise<void> {
  * @param beside If true, opens in a beside area; if false, opens in the main editor area.
  */
 export async function displayResultsInSingletonView(
-    client: LanguageClient,
     resultData: server.ResultData | undefined,
     mode: ResultViewMode,
     beside: boolean
@@ -2181,7 +2179,7 @@ export async function displayResultsInSingletonView(
     const [dataResult, chartResult] = await Promise.all([
         Promise.resolve(resultDataToHtml(resultData)),
         chartOptions
-            ? server.getChartAsHtml(client, resultData, darkMode)
+            ? languageClient.getChartAsHtml(resultData, darkMode)
             : Promise.resolve(null)
     ]);
 
@@ -2190,7 +2188,7 @@ export async function displayResultsInSingletonView(
     const html = htmlBuilder.BuildMultiTabbedHtml(dataResult, chartResult?.html, hasChart, mode, chartOptions, columnNames,
         resultData.query, resultData.cluster, resultData.database, resultData.tables);
 
-    showSingletonView(injectMessageHandlerScripts(html, hasChart), resultData, (dataResult?.tables ?? []).map(t => t.name), beside, mode);
+    showSingletonView(injectMessageHandlerScripts(html, hasChart), resultData, (dataResult?.tables ?? []).map((t: HtmlTable) => t.name), beside, mode);
 }
 
 function getSingletonViewColumn(): vscode.ViewColumn {
@@ -2338,7 +2336,7 @@ async function updateChartInSingletonView(): Promise<void> {
 
     const modifiedData = singletonResultData;
     const darkMode = isDarkMode();
-    const chartResult = await server.getChartAsHtml(languageClient, modifiedData, darkMode);
+    const chartResult = await languageClient.getChartAsHtml(modifiedData, darkMode);
     if (chartResult?.html) {
         singletonView.webview.postMessage({
             command: 'updateChart',
@@ -2418,7 +2416,7 @@ async function removeChart(): Promise<void> {
         const updated = { ...state.resultData };
         delete updated.chartOptions;
         state.resultData = updated;
-        state.chartOptionsOverride = undefined;
+        delete state.chartOptionsOverride;
 
         // Find the backing document and update it
         for (const doc of vscode.workspace.textDocuments) {
@@ -2483,7 +2481,7 @@ async function sendExpressionToResultsView(webview: vscode.WebviewPanel): Promis
     if (!state) { return; }
     try {
         const tableName = getActiveTableName(state);
-        const result = await server.getDataAsExpression(languageClient, state.resultData, tableName);
+        const result = await languageClient.getDataAsExpression(state.resultData, tableName);
         if (result?.expression) {
             webview.webview.postMessage({ command: 'setExpression', expression: result.expression });
         }
@@ -2545,7 +2543,7 @@ export async function copyTableAsExpressionFromResultsView(): Promise<boolean> {
 
     try {
         const tableName = getActiveTableName(state);
-        const result = await server.getDataAsExpression(languageClient, state.resultData, tableName);
+        const result = await languageClient.getDataAsExpression(state.resultData, tableName);
         if (result?.expression) {
             await vscode.env.clipboard.writeText(result.expression);
         }
@@ -2612,7 +2610,7 @@ async function copyTableAsExpression(): Promise<void> {
 
     try {
         const tableName = lastPanelTableNames[panelActiveTabIndex];
-        const result = await server.getDataAsExpression(languageClient, lastPanelResultData, tableName);
+        const result = await languageClient.getDataAsExpression(lastPanelResultData, tableName);
         if (result?.expression) {
             await vscode.env.clipboard.writeText(result.expression);
         }
@@ -2660,5 +2658,5 @@ async function openChartFromResultsPanel(): Promise<void> {
         ...lastPanelResultData,
         chartOptions: lastPanelResultData.chartOptions ?? { type: 'ColumnChart' }
     };
-    await displayResultsInSingletonView(languageClient, chartData, 'chart', true);
+    await displayResultsInSingletonView(chartData, 'chart', true);
 }

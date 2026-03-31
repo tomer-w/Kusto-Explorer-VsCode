@@ -9,9 +9,7 @@
  */
 
 import * as vscode from 'vscode';
-import { LanguageClient } from 'vscode-languageclient/node';
-import * as lspServer from './server';
-import type { DocumentReadyNotification } from './server';
+import { Server } from './server';
 import { setClipboardContext } from './clipboard';
 import * as connections from './connections';
 import { getHostName, isServerGroup } from './connections';
@@ -28,11 +26,11 @@ import { promptImportIfAvailable } from './import';
 /**
  * Initializes the Kusto connections tree panel and sets up all related features.
  * @param context The extension context for accessing global state
- * @param client The language client to use for communication with the LSP server
+ * @param server The server wrapper for LSP communication
  */
-export async function activate(context: vscode.ExtensionContext, client: LanguageClient): Promise<void> {
+export async function activate(context: vscode.ExtensionContext, server: Server): Promise<void> {
     // Initialize module-level state
-    languageClient = client;
+    lspServer = server;
     connectionsProvider = new KustoConnectionsProvider();
     
     // Register for connection change events
@@ -81,9 +79,7 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
 
     // Send initial connections list to server
     const initialConnections = connections.getConfiguredConnections();
-    client.sendNotification('kusto/connectionsUpdated', {
-        connections: initialConnections
-    });
+    server.sendConnectionsUpdated(initialConnections);
 
     // Load document connections on startup
     await connections.loadDocumentConnections();
@@ -95,18 +91,18 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
         if (document.languageId === 'kusto') {
             const connection = await connections.getDocumentConnection(document.uri.toString());
             const serverKind = connection?.cluster ? (connections.findServerInfo(connection.cluster)?.serverKind ?? null) : null;
-            await client.sendNotification('kusto/documentConnectionChanged', {
-                uri: document.uri.toString(),
-                cluster: connection?.cluster || null,
-                database: connection?.database || null,
-                serverKind: serverKind
-            });
+            server.sendDocumentConnectionChanged(
+                document.uri.toString(),
+                connection?.cluster || null,
+                connection?.database || null,
+                serverKind
+            );
         }
     }
 
     // Handle document ready notification from server - update connection and tree selection
     // This fires after the server has fully processed the document and can infer connections
-    client.onNotification('kusto/documentReady', async (params: DocumentReadyNotification) => {
+    server.onDocumentReady(async (params) => {
         const editor = vscode.window.activeTextEditor;
         if (editor && editor.document.uri.toString() === params.uri) {
             await updateTreeSelectionForActiveDocument();
@@ -120,8 +116,7 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
             if (editor && editor.document.languageId === 'kusto') {
                 // Ensure the server has this document and trigger documentReady
                 // The notification handler will call updateTreeSelectionForActiveDocument
-                await lspServer.ensureDocument(
-                    client,
+                await server.ensureDocument(
                     editor.document.uri.toString(),
                     editor.document.getText()
                 );
@@ -318,7 +313,7 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
         }),
 
         vscode.commands.registerCommand('kusto.copyEntityAsCommand', async (item: EntityTreeItem) => {
-            if (!client) {
+            if (!server) {
                 return;
             }
 
@@ -332,8 +327,7 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
             const database = getEntityDatabase(item);
 
             try {
-                const definition = await lspServer.getEntityAsCommand(
-                    client,
+                const definition = await server.getEntityAsCommand(
                     cluster,
                     database,
                     entityType,
@@ -357,7 +351,7 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
         }),
 
         vscode.commands.registerCommand('kusto.copyEntityAsExpression', async (item: EntityTreeItem) => {
-            if (!client) {
+            if (!server) {
                 return;
             }
 
@@ -371,8 +365,7 @@ export async function activate(context: vscode.ExtensionContext, client: Languag
             const database = getEntityDatabase(item);
 
             try {
-                const expression = await lspServer.getEntityAsExpression(
-                    client,
+                const expression = await server.getEntityAsExpression(
                     cluster,
                     database,
                     entityType,
@@ -1475,7 +1468,7 @@ class KustoDocumentDropEditProvider implements vscode.DocumentDropEditProvider {
         token: vscode.CancellationToken
     ): Promise<vscode.DocumentDropEdit | undefined> {
         const transferItem = dataTransfer.get(ENTITY_DRAG_MIME);
-        if (!transferItem || !languageClient) {
+        if (!transferItem || !lspServer) {
             return undefined;
         }
 
@@ -1492,7 +1485,6 @@ class KustoDocumentDropEditProvider implements vscode.DocumentDropEditProvider {
         }
 
         const expression = await lspServer.getEntityAsExpression(
-            languageClient,
             metadata.cluster,
             metadata.database,
             metadata.entityType,
@@ -1513,7 +1505,7 @@ class KustoDocumentDropEditProvider implements vscode.DocumentDropEditProvider {
 // Module-level state (initialized by activate)
 // =============================================================================
 
-let languageClient: LanguageClient | undefined;
+let lspServer: Server | undefined;
 let connectionsProvider: KustoConnectionsProvider | undefined;
 let treeView: vscode.TreeView<KustoTreeItem> | undefined;
 let programmaticSelectionCount = 0;
@@ -1575,7 +1567,7 @@ async function findServerTreeItem(cluster: string): Promise<ServerTreeItem | und
  * If looking for a database, ensures the server is expanded first.
  */
 async function findTreeItem(cluster: string, database: string | undefined): Promise<ServerTreeItem | DatabaseTreeItem | undefined> {
-    if (!connectionsProvider || !languageClient) return undefined;
+    if (!connectionsProvider || !lspServer) return undefined;
     
     // Find the server item
     let serverItem = await findServerTreeItem(cluster);
@@ -1670,14 +1662,9 @@ async function updateTreeSelectionForActiveDocument(): Promise<void> {
     }
     
     // Notify the server of the document's connection
-    if (languageClient) {
+    if (lspServer) {
         const serverKind = connections.findServerInfo(connection.cluster)?.serverKind ?? null;
-        await languageClient.sendNotification('kusto/documentConnectionChanged', {
-            uri,
-            cluster: connection.cluster,
-            database: connection.database || null,
-            serverKind: serverKind
-        });
+        lspServer.sendDocumentConnectionChanged(uri, connection.cluster, connection.database || null, serverKind);
     }
 
     try {
