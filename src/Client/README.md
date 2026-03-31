@@ -57,3 +57,7 @@
 
 ## Requirements
 - VS Code 1.9.0 or higher
+
+## Repository
+- To file issues, explore the sources or contribute: 
+ [[GitHub Repository]](https://github.com/microsoft/Kusto-Explorer-VsCode) 
