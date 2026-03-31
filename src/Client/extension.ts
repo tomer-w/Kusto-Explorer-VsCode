@@ -15,7 +15,8 @@ import { ResultsCache } from './features/resultsCache'
 import { Clipboard } from './features/clipboard'
 import { ScratchPadManager, SCRATCH_PAD_SCHEME } from './features/scratchPadManager'
 import { ScratchPadPanel } from './features/scratchPadPanel'
-import { ResultHistory } from './features/history'
+import { HistoryManager } from './features/historyManager'
+import { HistoryPanel } from './features/historyPanel'
 import { Importer } from './features/import'
 import { EntityDefinitionProvider, ENTITY_DEFINITION_SCHEME } from './features/entityDefinitionProvider'
 import { Server } from './features/server'
@@ -154,7 +155,8 @@ export async function activate(context: ExtensionContext)
     new ConnectionStatusBar(context);
 
     // activate query history
-    const history = new ResultHistory(context);
+    const history = new HistoryManager(context);
+    new HistoryPanel(context, history);
 
     // activate query execution features
     queryDocuments.activate(context, server, resultsCache, clipboard, history);
