@@ -2,9 +2,7 @@
 // Licensed under the MIT license.
 
 /*
- * This module implements importing data from Kusto Explorer, the desktop application for Azure Data Explorer.
- * It supports importing both connections (from UserConnectionGroups.xml) and scratch pad query documents (from .kebak recovery files).
- * On first activation, if no connections exist, it auto-prompts the user to import from Kusto Explorer.
+ * This module implements the Importer class for importing data from Kusto Explorer.
  */
 
 import * as vscode from 'vscode';
@@ -38,176 +36,7 @@ const RECOVERY_DIR = 'Recovery';
 const RECOVERY_EXT = '.kebak';
 
 // =============================================================================
-// Module-level State
-// =============================================================================
-
-let extensionContext: vscode.ExtensionContext;
-
-// =============================================================================
-// Activation
-// =============================================================================
-
-/**
- * Activates the import feature: registers the import command and optionally
- * prompts the user to import connections from Kusto Explorer.
- */
-export function activate(context: vscode.ExtensionContext): void {
-    extensionContext = context;
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('kusto.importConnectionsFromKustoExplorer', () => importConnectionsFromKustoExplorer()),
-        vscode.commands.registerCommand('kusto.importScratchPadsFromKustoExplorer', () => importAllScratchPads()),
-    );
-}
-
-// =============================================================================
-// Auto-detection and Prompting
-// =============================================================================
-
-/**
- * Checks if Kusto Explorer connections exist and the user hasn't dismissed
- * the prompt, then offers to import. Only prompts when the user has no
- * existing connections.
- * @returns true if the user made a definitive choice (Import or Don't Ask Again),
- *          false if they dismissed or no prompt was shown.
- */
-export async function promptImportIfAvailable(): Promise<boolean> {
-    // Only prompt if user has no connections and hasn't suppressed the prompt
-    if (vscode.workspace.getConfiguration('kusto').get<boolean>(SUPPRESS_IMPORT_SETTING)) {
-        return true;
-    }
-
-    const existingConnections = connections.getConfiguredConnections();
-    if (existingConnections.length > 0) {
-        return true;
-    }
-
-    const hasConnections = hasKustoExplorerConnections();
-    const hasScratchPads = hasKustoExplorerScratchPads();
-
-    if (!hasConnections && !hasScratchPads) {
-        return true;
-    }
-
-    const what = hasConnections && hasScratchPads ? 'connections and query set documents'
-        : hasConnections ? 'connections' 
-        : 'query set documents';
-
-    const choice = await vscode.window.showInformationMessage(
-        `Kusto Explorer ${what} found. Would you like to import them?`,
-        { modal: true },
-        'Import',
-        "Don't Ask Again"
-    );
-
-    if (choice === 'Import') {
-        if (hasConnections) {
-            await importConnectionsFromKustoExplorer(true);
-        }
-        if (hasScratchPads) {
-            await importAllScratchPads(true);
-        }
-        return true;
-    } else if (choice === "Don't Ask Again") {
-        await vscode.workspace.getConfiguration('kusto').update(SUPPRESS_IMPORT_SETTING, true, vscode.ConfigurationTarget.Global);
-        return true;
-    }
-    // Dismissed (no choice) — caller may re-prompt later
-    return false;
-}
-
-// =============================================================================
-// Import Connections
-// =============================================================================
-
-/**
- * Main connections import entry point. Reads Kusto Explorer connection files and
- * adds them to the extension, skipping duplicates.
- * @param skipConfirm If true, skip the confirmation dialog (used when already confirmed by the auto-prompt).
- */
-async function importConnectionsFromKustoExplorer(skipConfirm = false): Promise<void> {
-    const groupsPath = getGroupsFilePath();
-    if (!groupsPath || !fs.existsSync(groupsPath)) {
-        vscode.window.showErrorMessage('No Kusto Explorer installation found.');
-        return;
-    }
-
-    if (!skipConfirm) {
-        const confirm = await vscode.window.showInformationMessage(
-            'Import connections from Kusto Explorer?',
-            { modal: true },
-            'Import'
-        );
-        if (confirm !== 'Import') { return; }
-    }
-
-    try {
-        const groups = parseGroupsXml(await fs.promises.readFile(groupsPath, 'utf-8'));
-        if (groups.length === 0) {
-            vscode.window.showInformationMessage('No connections found in Kusto Explorer.');
-            return;
-        }
-
-        let importedCount = 0;
-        let skippedCount = 0;
-
-        for (const group of groups) {
-            if (!fs.existsSync(group.filePath)) {
-                continue;
-            }
-
-            const xml = await fs.promises.readFile(group.filePath, 'utf-8');
-            const servers = await parseConnectionsXml(xml);
-            if (servers.length === 0) {
-                continue;
-            }
-
-            const isDefaultGroup = group.name === DEFAULT_GROUP_NAME;
-
-            // Ensure the group exists (unless it's the default root group)
-            if (!isDefaultGroup) {
-                const existing = connections.getServersAndGroups();
-                const groupExists = existing.items.some(
-                    item => connections.isServerGroup(item) && item.name === group.name
-                );
-                if (!groupExists) {
-                    const newGroup: ServerGroupInfo = { name: group.name, servers: [] };
-                    await connections.addServerGroup(newGroup);
-                }
-            }
-
-            for (const server of servers) {
-                // Check for duplicates by cluster hostname
-                if (connections.findServerInfo(server.cluster)) {
-                    skippedCount++;
-                    continue;
-                }
-
-                await connections.addServer(server, isDefaultGroup ? undefined : group.name);
-                importedCount++;
-            }
-        }
-
-        if (importedCount > 0) {
-            const skippedMsg = skippedCount > 0 ? ` (${skippedCount} duplicates skipped)` : '';
-            vscode.window.showInformationMessage(
-                `Imported ${importedCount} connection${importedCount !== 1 ? 's' : ''} from Kusto Explorer${skippedMsg}.`
-            );
-        } else if (skippedCount > 0) {
-            vscode.window.showInformationMessage(
-                `All ${skippedCount} Kusto Explorer connection${skippedCount !== 1 ? 's' : ''} already exist.`
-            );
-        } else {
-            vscode.window.showInformationMessage('No connections found in Kusto Explorer.');
-        }
-    } catch (e) {
-        const message = e instanceof Error ? e.message : String(e);
-        vscode.window.showErrorMessage(`Failed to import connections: ${message}`);
-    }
-}
-
-// =============================================================================
-// Import Scratch Pads
+// Types
 // =============================================================================
 
 /** Shape of a Kusto Explorer scratch pad recovery (.kebak) file. */
@@ -219,32 +48,188 @@ interface KustoExplorerRecoveryFile {
     FullPath?: string;
 }
 
+// =============================================================================
+// Importer Class
+// =============================================================================
+
 /**
- * Imports all scratch pad documents from Kusto Explorer.
- * @param skipConfirm If true, skip the confirmation dialog (used when already confirmed by the auto-prompt).
+ * Imports connections and scratch pad query documents from desktop Kusto Explorer.
  */
-async function importAllScratchPads(skipConfirm = false): Promise<void> {
-    const recoveryFiles = getScratchPadRecoveryFiles();
-    if (!recoveryFiles) {
-        vscode.window.showInformationMessage('No Kusto Explorer scratch pad documents found to import.');
-        return;
+export class Importer {
+    constructor(context: vscode.ExtensionContext) {
+        context.subscriptions.push(
+            vscode.commands.registerCommand('kusto.importConnectionsFromKustoExplorer', () => this.importConnectionsFromKustoExplorer()),
+            vscode.commands.registerCommand('kusto.importScratchPadsFromKustoExplorer', () => this.importAllScratchPads()),
+        );
     }
 
-    if (!skipConfirm) {
-        const confirm = await vscode.window.showInformationMessage(
-            `Import ${recoveryFiles.length} scratch pad document${recoveryFiles.length !== 1 ? 's' : ''} from Kusto Explorer?`,
+    /**
+     * Checks if Kusto Explorer connections exist and the user hasn't dismissed
+     * the prompt, then offers to import. Only prompts when the user has no
+     * existing connections.
+     * @returns true if the user made a definitive choice (Import or Don't Ask Again),
+     *          false if they dismissed or no prompt was shown.
+     */
+    async promptImportIfAvailable(): Promise<boolean> {
+        // Only prompt if user has no connections and hasn't suppressed the prompt
+        if (vscode.workspace.getConfiguration('kusto').get<boolean>(SUPPRESS_IMPORT_SETTING)) {
+            return true;
+        }
+
+        const existingConnections = connections.getConfiguredConnections();
+        if (existingConnections.length > 0) {
+            return true;
+        }
+
+        const hasConnections = hasKustoExplorerConnections();
+        const hasScratchPads = hasKustoExplorerScratchPads();
+
+        if (!hasConnections && !hasScratchPads) {
+            return true;
+        }
+
+        const what = hasConnections && hasScratchPads ? 'connections and query set documents'
+            : hasConnections ? 'connections'
+            : 'query set documents';
+
+        const choice = await vscode.window.showInformationMessage(
+            `Kusto Explorer ${what} found. Would you like to import them?`,
             { modal: true },
-            'Import'
+            'Import',
+            "Don't Ask Again"
         );
-        if (confirm !== 'Import') { return; }
+
+        if (choice === 'Import') {
+            if (hasConnections) {
+                await this.importConnectionsFromKustoExplorer(true);
+            }
+            if (hasScratchPads) {
+                await this.importAllScratchPads(true);
+            }
+            return true;
+        } else if (choice === "Don't Ask Again") {
+            await vscode.workspace.getConfiguration('kusto').update(SUPPRESS_IMPORT_SETTING, true, vscode.ConfigurationTarget.Global);
+            return true;
+        }
+        // Dismissed (no choice) — caller may re-prompt later
+        return false;
     }
 
-    const importedCount = await importRecoveryFilesAsScratchPads(recoveryFiles);
+    // ─── Import Connections ───────────────────────────────────────────
 
-    if (importedCount > 0) {
-        vscode.window.showInformationMessage(
-            `Imported ${importedCount} scratch pad document${importedCount !== 1 ? 's' : ''} from Kusto Explorer.`
-        );
+    /**
+     * Main connections import entry point. Reads Kusto Explorer connection files and
+     * adds them to the extension, skipping duplicates.
+     */
+    private async importConnectionsFromKustoExplorer(skipConfirm = false): Promise<void> {
+        const groupsPath = getGroupsFilePath();
+        if (!groupsPath || !fs.existsSync(groupsPath)) {
+            vscode.window.showErrorMessage('No Kusto Explorer installation found.');
+            return;
+        }
+
+        if (!skipConfirm) {
+            const confirm = await vscode.window.showInformationMessage(
+                'Import connections from Kusto Explorer?',
+                { modal: true },
+                'Import'
+            );
+            if (confirm !== 'Import') { return; }
+        }
+
+        try {
+            const groups = parseGroupsXml(await fs.promises.readFile(groupsPath, 'utf-8'));
+            if (groups.length === 0) {
+                vscode.window.showInformationMessage('No connections found in Kusto Explorer.');
+                return;
+            }
+
+            let importedCount = 0;
+            let skippedCount = 0;
+
+            for (const group of groups) {
+                if (!fs.existsSync(group.filePath)) {
+                    continue;
+                }
+
+                const xml = await fs.promises.readFile(group.filePath, 'utf-8');
+                const servers = await parseConnectionsXml(xml);
+                if (servers.length === 0) {
+                    continue;
+                }
+
+                const isDefaultGroup = group.name === DEFAULT_GROUP_NAME;
+
+                // Ensure the group exists (unless it's the default root group)
+                if (!isDefaultGroup) {
+                    const existing = connections.getServersAndGroups();
+                    const groupExists = existing.items.some(
+                        item => connections.isServerGroup(item) && item.name === group.name
+                    );
+                    if (!groupExists) {
+                        const newGroup: ServerGroupInfo = { name: group.name, servers: [] };
+                        await connections.addServerGroup(newGroup);
+                    }
+                }
+
+                for (const server of servers) {
+                    // Check for duplicates by cluster hostname
+                    if (connections.findServerInfo(server.cluster)) {
+                        skippedCount++;
+                        continue;
+                    }
+
+                    await connections.addServer(server, isDefaultGroup ? undefined : group.name);
+                    importedCount++;
+                }
+            }
+
+            if (importedCount > 0) {
+                const skippedMsg = skippedCount > 0 ? ` (${skippedCount} duplicates skipped)` : '';
+                vscode.window.showInformationMessage(
+                    `Imported ${importedCount} connection${importedCount !== 1 ? 's' : ''} from Kusto Explorer${skippedMsg}.`
+                );
+            } else if (skippedCount > 0) {
+                vscode.window.showInformationMessage(
+                    `All ${skippedCount} Kusto Explorer connection${skippedCount !== 1 ? 's' : ''} already exist.`
+                );
+            } else {
+                vscode.window.showInformationMessage('No connections found in Kusto Explorer.');
+            }
+        } catch (e) {
+            const message = e instanceof Error ? e.message : String(e);
+            vscode.window.showErrorMessage(`Failed to import connections: ${message}`);
+        }
+    }
+
+    // ─── Import Scratch Pads ────────────────────────────────────────────
+
+    /**
+     * Imports all scratch pad documents from Kusto Explorer.
+     */
+    private async importAllScratchPads(skipConfirm = false): Promise<void> {
+        const recoveryFiles = getScratchPadRecoveryFiles();
+        if (!recoveryFiles) {
+            vscode.window.showInformationMessage('No Kusto Explorer scratch pad documents found to import.');
+            return;
+        }
+
+        if (!skipConfirm) {
+            const confirm = await vscode.window.showInformationMessage(
+                `Import ${recoveryFiles.length} scratch pad document${recoveryFiles.length !== 1 ? 's' : ''} from Kusto Explorer?`,
+                { modal: true },
+                'Import'
+            );
+            if (confirm !== 'Import') { return; }
+        }
+
+        const importedCount = await importRecoveryFilesAsScratchPads(recoveryFiles);
+
+        if (importedCount > 0) {
+            vscode.window.showInformationMessage(
+                `Imported ${importedCount} scratch pad document${importedCount !== 1 ? 's' : ''} from Kusto Explorer.`
+            );
+        }
     }
 }
 

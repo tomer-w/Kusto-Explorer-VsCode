@@ -16,7 +16,7 @@ import { getHostName, isServerGroup } from './connections';
 import type { ServerInfo, ServerGroupInfo } from './connections';
 import type { DatabaseTableInfo, DatabaseColumnInfo, DatabaseFunctionInfo, DatabaseEntityGroupInfo, DatabaseGraphModelInfo } from './server';
 import { ENTITY_DEFINITION_SCHEME } from './entityDefinitionProvider';
-import { promptImportIfAvailable } from './import';
+import { Importer } from './import';
 
 
 // =============================================================================
@@ -28,7 +28,7 @@ import { promptImportIfAvailable } from './import';
  * @param context The extension context for accessing global state
  * @param server The server wrapper for LSP communication
  */
-export async function activate(context: vscode.ExtensionContext, server: Server, clipboard: Clipboard): Promise<void> {
+export async function activate(context: vscode.ExtensionContext, server: Server, clipboard: Clipboard, importer: Importer): Promise<void> {
     // Initialize module-level state
     lspServer = server;
     connectionsProvider = new KustoConnectionsProvider();
@@ -210,7 +210,7 @@ export async function activate(context: vscode.ExtensionContext, server: Server,
     let importPromptResolved = false;
     const tryPromptImport = async () => {
         if (!importPromptResolved) {
-            importPromptResolved = await promptImportIfAvailable();
+            importPromptResolved = await importer.promptImportIfAvailable();
         }
     };
     context.subscriptions.push(

@@ -15,7 +15,7 @@ import { ResultsCache } from './features/resultsCache'
 import { Clipboard } from './features/clipboard'
 import * as scratchPad from './features/scratchPad'
 import * as history from './features/history'
-import * as importFeature from './features/import'
+import { Importer } from './features/import'
 import { SCRATCH_PAD_SCHEME } from './features/scratchPad'
 import { EntityDefinitionProvider, ENTITY_DEFINITION_SCHEME } from './features/entityDefinitionProvider'
 import { Server } from './features/server'
@@ -139,11 +139,11 @@ export async function activate(context: ExtensionContext)
     // activate connections data layer
     connections.activate(context, server);
 
-    // activate connections panel and related features
-    await conn.activate(context, server, clipboard);
+    // Register Kusto Explorer import commands
+    const importer = new Importer(context);
 
-    // activate import from Kusto Explorer
-    importFeature.activate(context);
+    // activate connections panel and related features
+    await conn.activate(context, server, clipboard, importer);
 
     // Create status bar item showing the active document's cluster and database connection.
     // The ConnectionStatusBar instance is not referenced — it updates itself via editor change events.
