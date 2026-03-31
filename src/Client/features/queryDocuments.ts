@@ -14,7 +14,7 @@ import type { SelectionRange, Range } from './server';
 import { setDocumentConnection, ensureServer, getDocumentConnection } from './connections';
 import { displayResultsInPanel, displayErrorInPanel, displayResultsInSingletonView, setSingletonBackingUri, ResultViewMode } from './resultsViewer';
 import { ResultsCache } from './resultsCache';
-import * as history from './history';
+import { ResultHistory } from './history';
 import { Clipboard } from './clipboard';
 import type { ClipboardItem } from './clipboard';
 import { ENTITY_DEFINITION_SCHEME } from './entityDefinitionProvider';
@@ -36,18 +36,22 @@ let cache: ResultsCache;
 
 let clipboard: Clipboard;
 
+let history: ResultHistory;
+
 /**
  * Activates query execution features.
  * @param context The extension context
  * @param server The server wrapper for LSP communication
  * @param resultsCache The results cache for storing and retrieving query results
  * @param clip The clipboard for context-aware copy/paste
+ * @param resultHistory The query result history
  */
-export function activate(context: vscode.ExtensionContext, server: Server, resultsCache: ResultsCache, clip: Clipboard): void {
+export function activate(context: vscode.ExtensionContext, server: Server, resultsCache: ResultsCache, clip: Clipboard, resultHistory: ResultHistory): void {
 
     lspServer = server;
     cache = resultsCache;
     clipboard = clip;
+    history = resultHistory;
 
     // Register query-related commands
     context.subscriptions.push(

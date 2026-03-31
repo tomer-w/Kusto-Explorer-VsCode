@@ -14,7 +14,7 @@ import * as dotnet from './features/dotnet'
 import { ResultsCache } from './features/resultsCache'
 import { Clipboard } from './features/clipboard'
 import * as scratchPad from './features/scratchPad'
-import * as history from './features/history'
+import { ResultHistory } from './features/history'
 import { Importer } from './features/import'
 import { SCRATCH_PAD_SCHEME } from './features/scratchPad'
 import { EntityDefinitionProvider, ENTITY_DEFINITION_SCHEME } from './features/entityDefinitionProvider'
@@ -149,14 +149,14 @@ export async function activate(context: ExtensionContext)
     // The ConnectionStatusBar instance is not referenced — it updates itself via editor change events.
     new ConnectionStatusBar(context);
 
+    // activate query history
+    const history = new ResultHistory(context);
+
     // activate query execution features
-    queryDocuments.activate(context, server, resultsCache, clipboard);
+    queryDocuments.activate(context, server, resultsCache, clipboard, history);
 
     // activate scratch pad documents
     await scratchPad.activate(context);
-
-    // activate query history
-    await history.activate(context);
 
     // activate chart file editor (.kchart)
     resultsViewer.activate(context, server, clipboard);
