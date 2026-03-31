@@ -10,7 +10,6 @@ import * as queryDocuments from './features/queryDocuments'
 import * as resultsViewer from './features/resultsViewer'
 import * as copilot from './features/copilot'
 import { ConnectionStatusBar } from './features/connectionStatusBar'
-import { ClientStorage } from './features/clientStorage'
 import * as dotnet from './features/dotnet'
 import { ResultsCache } from './features/resultsCache'
 import { Clipboard } from './features/clipboard'
@@ -82,12 +81,8 @@ export async function activate(context: ExtensionContext)
     // Start the client BEFORE activating features that send notifications
     await client.start();
 
-    // Create the server wrapper for all LSP communication
-    const server = new Server(client);
-
-    // Register handlers that relay the server's getData/setData requests to VS Code's globalState.
-    // The ClientStorage instance is not referenced — it registers its handlers in the constructor.
-    new ClientStorage(context, server);
+    // Create the server wrapper for all direct server interactions
+    const server = new Server(client, context);
 
     // Initialize results cache with the language client
     const resultsCache = new ResultsCache(server);

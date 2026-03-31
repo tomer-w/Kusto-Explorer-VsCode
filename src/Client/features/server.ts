@@ -2,15 +2,26 @@
 // Licensed under the MIT license.
 
 import { LanguageClient } from 'vscode-languageclient/node';
-import { CancellationToken, Disposable } from 'vscode';
+import { CancellationToken, Disposable, ExtensionContext } from 'vscode';
 
 /**
  * Typed wrapper around the Kusto Language Server LSP protocol.
  * Centralizes all custom LSP requests and notifications so return type signatures
  * are defined in one place, and the LanguageClient dependency is encapsulated.
+ *
+ * Also bridges the server's getData/setData requests to VS Code's globalState,
+ * allowing the server to persist data across sessions.
  */
 export class Server {
-    constructor(private readonly client: LanguageClient) {}
+    constructor(private readonly client: LanguageClient, context: ExtensionContext) {
+        // Bridge server storage requests to VS Code's globalState
+        this.client.onRequest('kusto/getData', async (params: GetDataParams) => {
+            return context.globalState.get<object>(params.key) ?? null;
+        });
+        this.client.onRequest('kusto/setData', async (params: SetDataParams) => {
+            await context.globalState.update(params.key, params.data);
+        });
+    }
 
     // ─── LSP Requests ──────────────────────────────────────────────────
 
@@ -327,22 +338,6 @@ export class Server {
      */
     onSemanticTokensRefresh(handler: () => void): Disposable {
         return this.client.onNotification('workspace/semanticTokens/refresh', handler);
-    }
-
-    // ─── Requests (server → client) ─────────────────────────────────────
-
-    /**
-     * Registers a handler for the server's getData request.
-     */
-    onGetData(handler: (params: GetDataParams) => object | null | Promise<object | null>): Disposable {
-        return this.client.onRequest('kusto/getData', handler);
-    }
-
-    /**
-     * Registers a handler for the server's setData request.
-     */
-    onSetData(handler: (params: SetDataParams) => void | Promise<void>): Disposable {
-        return this.client.onRequest('kusto/setData', handler);
     }
 
     // ─── Server Capabilities ────────────────────────────────────────────
