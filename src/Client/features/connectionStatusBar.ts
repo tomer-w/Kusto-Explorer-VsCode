@@ -10,80 +10,58 @@
 import * as vscode from 'vscode';
 import * as connections from './connections';
 
-let connectionStatusBarItem: vscode.StatusBarItem | undefined;
-
 /**
- * Creates and shows the connection status bar item.
- * @param context The extension context for registering disposables
+ * Status bar item that shows the active document's Kusto connection (cluster and database).
+ * Updates automatically when the active editor or its connection changes.
  */
-export function activate(context: vscode.ExtensionContext): void {
-    connectionStatusBarItem = vscode.window.createStatusBarItem(
-        vscode.StatusBarAlignment.Left,
-        0  // priority (higher = more to the left)
-    );
-    connectionStatusBarItem.text = "$(database) not connected";
-    connectionStatusBarItem.show();
-    context.subscriptions.push(connectionStatusBarItem);
+export class ConnectionStatusBar {
+    private readonly statusBarItem: vscode.StatusBarItem;
 
-    // Update status bar when the active document's connection changes
-    context.subscriptions.push(connections.registerOnDocumentConnectionChanged(async (uri: string) => {
-        if (vscode.window.activeTextEditor?.document.uri.toString() === uri) {
-            updateStatusBar();
+    constructor(context: vscode.ExtensionContext) {
+        this.statusBarItem = vscode.window.createStatusBarItem(
+            vscode.StatusBarAlignment.Left,
+            0  // priority (higher = more to the left)
+        );
+        this.statusBarItem.text = "$(database) not connected";
+        this.statusBarItem.show();
+        context.subscriptions.push(this.statusBarItem);
+
+        // Update status bar when the active document's connection changes
+        context.subscriptions.push(connections.registerOnDocumentConnectionChanged(async (uri: string) => {
+            if (vscode.window.activeTextEditor?.document.uri.toString() === uri) {
+                this.refresh();
+            }
+        }));
+
+        // Update status bar when active editor changes
+        context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(() => {
+            this.refresh();
+        }));
+
+        // Initialize status bar for currently active editor
+        this.refresh();
+    }
+
+    /**
+     * Updates the status bar to reflect the connection for the active document.
+     */
+    private async refresh(): Promise<void> {
+        const editor = vscode.window.activeTextEditor;
+
+        if (!editor || editor.document.languageId !== 'kusto') {
+            this.statusBarItem.hide();
+            return;
         }
-    }));
 
-    // Update status bar when active editor changes
-    context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(() => {
-        updateStatusBar();
-    }));
+        this.statusBarItem.show();
+        const connection = await connections.getDocumentConnection(editor.document.uri.toString());
 
-    // Initialize status bar for currently active editor
-    updateStatusBar();
-}
-
-/**
- * Updates the status bar item to reflect the connection for the active document.
- * @param cluster The cluster name, or undefined if not connected
- * @param database The database name, or undefined if not selected
- */
-function update(cluster: string | undefined, database: string | undefined): void {
-    if (!connectionStatusBarItem) return;
-
-    if (!cluster) {
-        connectionStatusBarItem.text = `$(database) not connected`;
-    } else if (!database) {
-        connectionStatusBarItem.text = `$(database) cluster('${cluster}')`;
-    } else {
-        connectionStatusBarItem.text = `$(database) cluster('${cluster}').database('${database}')`;
+        if (!connection?.cluster) {
+            this.statusBarItem.text = `$(database) not connected`;
+        } else if (!connection.database) {
+            this.statusBarItem.text = `$(database) cluster('${connection.cluster}')`;
+        } else {
+            this.statusBarItem.text = `$(database) cluster('${connection.cluster}').database('${connection.database}')`;
+        }
     }
-}
-
-/**
- * Shows the status bar item.
- */
-function show(): void {
-    connectionStatusBarItem?.show();
-}
-
-/**
- * Hides the status bar item.
- */
-function hide(): void {
-    connectionStatusBarItem?.hide();
-}
-
-/**
- * Updates the status bar item to reflect the connection for the active document.
- */
-async function updateStatusBar(): Promise<void> {
-    const editor = vscode.window.activeTextEditor;
-
-    if (!editor || editor.document.languageId !== 'kusto') {
-        hide();
-        return;
-    }
-
-    show();
-    const connection = await connections.getDocumentConnection(editor.document.uri.toString());
-    update(connection?.cluster, connection?.database);
 }

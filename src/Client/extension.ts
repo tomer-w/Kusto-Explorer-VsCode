@@ -9,7 +9,7 @@ import * as connections from './features/connections'
 import * as queryDocuments from './features/queryDocuments'
 import * as resultsViewer from './features/resultsViewer'
 import * as copilot from './features/copilot'
-import * as connectionStatusBar from './features/connectionStatusBar'
+import { ConnectionStatusBar } from './features/connectionStatusBar'
 import { ClientStorage } from './features/clientStorage'
 import * as dotnet from './features/dotnet'
 import * as resultsCache from './features/resultsCache'
@@ -17,7 +17,7 @@ import * as scratchPad from './features/scratchPad'
 import * as history from './features/history'
 import * as importFeature from './features/import'
 import { SCRATCH_PAD_SCHEME } from './features/scratchPad'
-import { registerEntityDefinitionProvider, ENTITY_DEFINITION_SCHEME } from './features/entityDefinitionProvider'
+import { EntityDefinitionProvider, ENTITY_DEFINITION_SCHEME } from './features/entityDefinitionProvider'
 import { Server } from './features/server'
 import
     {
@@ -91,8 +91,12 @@ export async function activate(context: ExtensionContext)
     // Initialize results cache with the language client
     resultsCache.initialize(server);
 
-    // Register entity definition provider for "Go to Definition" on database entities
-    registerEntityDefinitionProvider(context, server);
+    // Register "Go to Definition" provider for kusto-entity:// URIs (database entities)
+    const entityDefinitionProvider = new EntityDefinitionProvider(server);
+    context.subscriptions.push(
+        vscode.workspace.registerTextDocumentContentProvider(ENTITY_DEFINITION_SCHEME, entityDefinitionProvider),
+        entityDefinitionProvider
+    );
 
     // Register command to fix doubled commit characters after completion acceptance
     context.subscriptions.push(
@@ -144,8 +148,9 @@ export async function activate(context: ExtensionContext)
     // activate import from Kusto Explorer
     importFeature.activate(context);
 
-    // Create status bar item for connection status
-    connectionStatusBar.activate(context);
+    // Create status bar item showing the active document's cluster and database connection.
+    // The ConnectionStatusBar instance is not referenced — it updates itself via editor change events.
+    new ConnectionStatusBar(context);
 
     // activate query execution features
     queryDocuments.activate(context, server);

@@ -57,29 +57,3 @@ export class EntityDefinitionProvider implements vscode.TextDocumentContentProvi
         this._onDidChange.dispose();
     }
 }
-
-/**
- * Registers the entity definition content provider with VS Code.
- * Call this during extension activation after the language client is ready.
- * 
- * @param context The extension context for managing subscriptions
- * @param server The server wrapper for LSP communication
- * @returns The registered provider instance
- */
-export function registerEntityDefinitionProvider(
-    context: vscode.ExtensionContext,
-    server: Server
-): EntityDefinitionProvider {
-    const provider = new EntityDefinitionProvider(server);
-    
-    // Register the provider for the kusto-entity URI scheme
-    const registration = vscode.workspace.registerTextDocumentContentProvider(
-        ENTITY_DEFINITION_SCHEME,
-        provider
-    );
-    
-    context.subscriptions.push(registration);
-    context.subscriptions.push(provider);
-    
-    return provider;
-}
