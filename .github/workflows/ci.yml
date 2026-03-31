@@ -86,7 +86,7 @@ jobs:
         working-directory: src/Client
 
       - name: Install vsce
-        run: npm install -g @vscode/vsce
+        run: npm install -g @vscode/vsce --loglevel=error
 
       - name: Build VSIX package
         run: |
