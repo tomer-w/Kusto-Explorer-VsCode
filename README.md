@@ -10,7 +10,7 @@
 
 - Install from within VS Code: [Kusto Explorer]
 - Or download VSIX from [GitHub Releases](https://github.com/microsoft/Kusto-Explorer-VsCode/releases)
-- [How to Use the Extension](Client/README.md)
+- [How to Use the Extension](src/Client/README.md)
 
 ----
 
