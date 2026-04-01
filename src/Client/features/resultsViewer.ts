@@ -2,22 +2,8 @@
 // Licensed under the MIT license.
 
 /*
-*   This module manages query result display in three contexts:
-*
-*   1. Results Panel — A WebviewView in VS Code's bottom panel area, showing
-*      live query results. At most one exists. ("Panel" in our terminology.)
-*
-*   2. Singleton Result Viewer — A WebviewPanel in the editor area, used for
-*      live query results displayed beside the active editor. At most one
-*      exists and is not backed by a document.
-*
-*   3. Document Result Viewer — A WebviewPanel (custom editor) in the editor
-*      area for .kqr files. Document-backed; multiple can be open at once.
-*
-*   Terminology note: VS Code's API names are the reverse of ours — the bottom
-*   panel uses `WebviewView` while the editor-area viewers use `WebviewPanel`.
-*   We use "panel" to mean the bottom panel and "viewer" for the editor area,
-*   which is more intuitive even though it doesn't match the VS Code type names.
+*   This module implements ResultsViewer class that handles UI for displaying query results (data and charts) 
+*   inside webviews.
 */
 
 import * as vscode from 'vscode';
@@ -271,6 +257,17 @@ async function saveResults(source: { data: server.ResultData }): Promise<{ uri: 
 // ResultsViewer — main class
 // =============================================================================
 
+/**
+*   The ResultsViewer class handles UI for query results (data and charts). 
+* 
+*   It supports displaying results in one of three different locations:
+*
+*   1. The bottom results panel - last run query results or selected result history, usually just data tables
+*   2. Singleton Result Viewer - as an unnamed results document window typically used to just show charts
+*   3. Saved Results Viewer - a results document window for a saved results (.kqr) file that may include data, charts and query
+* 
+*   It works by primarily injecting generated HTML into the corresponding webview.
+*/
 export class ResultsViewer {
 
     private readonly server: Server;
