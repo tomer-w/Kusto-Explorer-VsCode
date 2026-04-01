@@ -6,7 +6,7 @@ import * as vscode from 'vscode';
 import { workspace, ExtensionContext, window } from 'vscode';
 import { ConnectionsPanel } from './features/connectionsPanel'
 import { ConnectionManager } from './features/connectionManager'
-import * as queryDocuments from './features/queryDocuments'
+import { QueryEditor } from './features/queryEditor'
 import * as resultsViewer from './features/resultsViewer'
 import * as copilot from './features/copilot'
 import { ConnectionStatusBar } from './features/connectionStatusBar'
@@ -160,7 +160,7 @@ export async function activate(context: ExtensionContext)
     new HistoryPanel(context, history);
 
     // activate query execution features
-    queryDocuments.activate(context, server, resultsCache, clipboard, history, connections);
+    new QueryEditor(context, server, resultsCache, clipboard, history, connections);
 
     // activate chart file editor (.kchart)
     resultsViewer.activate(context, server, clipboard);
