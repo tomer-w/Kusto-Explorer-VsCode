@@ -9,7 +9,8 @@ import * as vscode from 'vscode';
 import { Server } from './server';
 import type { SelectionRange, Range } from './server';
 import type { ConnectionManager } from './connectionManager';
-import { displayResultsInPanel, displayErrorInPanel, displayResultsInSingletonView, setSingletonBackingUri, ResultViewMode } from './resultsViewer';
+import { ResultsViewer } from './resultsViewer';
+import type { ResultViewMode } from './resultsViewer';
 import { ResultsCache } from './resultsCache';
 import { HistoryManager } from './historyManager';
 import { Clipboard } from './clipboard';
@@ -47,15 +48,17 @@ export class QueryEditor {
     private readonly clipboard: Clipboard;
     private readonly history: HistoryManager;
     private readonly connections: ConnectionManager;
+    private readonly resultsViewer: ResultsViewer;
     private readonly errorRangeDecoration: vscode.TextEditorDecorationType;
 
-    constructor(context: vscode.ExtensionContext, server: Server, resultsCache: ResultsCache, clip: Clipboard, resultHistory: HistoryManager, connectionManager: ConnectionManager) {
+    constructor(context: vscode.ExtensionContext, server: Server, resultsCache: ResultsCache, clip: Clipboard, resultHistory: HistoryManager, connectionManager: ConnectionManager, resultsViewer: ResultsViewer) {
 
         this.server = server;
         this.cache = resultsCache;
         this.clipboard = clip;
         this.history = resultHistory;
         this.connections = connectionManager;
+        this.resultsViewer = resultsViewer;
 
         this.errorRangeDecoration = vscode.window.createTextEditorDecorationType({
             before: {
@@ -163,7 +166,7 @@ export class QueryEditor {
             if (runResult && runResult.error)
             {
                 // display error and highlight error range
-                await displayErrorInPanel(runResult.error);
+                await this.resultsViewer.displayErrorInPanel(runResult.error);
 
                 if (runResult.error.range) {
                     const r = runResult.error.range;
@@ -178,11 +181,11 @@ export class QueryEditor {
 
                 // Add to history and use the history file as backing for the singleton view
                 const historyUri = await this.history.addHistoryEntry(runResult.data);
-                setSingletonBackingUri(historyUri);
+                this.resultsViewer.setSingletonBackingUri(historyUri);
 
                 // Display result tables and chart from ResultData
-                await displayResultsInPanel(runResult.data, 'data');
-                await displayResultsInSingletonView(runResult.data, 'chart', true);
+                await this.resultsViewer.displayResultsInPanel(runResult.data, 'data');
+                await this.resultsViewer.displayResultsInSingletonView(runResult.data, 'chart', true);
             }
 
             // Refresh CodeLens to show/hide Results lens
@@ -219,8 +222,8 @@ export class QueryEditor {
             ));
             const cachedData = await this.cache.getFromCache(uri, queryText);
             if (cachedData) {
-                await displayResultsInPanel(cachedData, 'data');
-                await displayResultsInSingletonView(cachedData, 'chart', true);
+                await this.resultsViewer.displayResultsInPanel(cachedData, 'data');
+                await this.resultsViewer.displayResultsInSingletonView(cachedData, 'chart', true);
             }
         } catch (error) {
             vscode.window.showErrorMessage(`Failed to show results: ${error}`);

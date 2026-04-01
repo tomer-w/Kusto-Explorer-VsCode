@@ -13,7 +13,8 @@ import * as server from './server';
 import type { ConnectionManager } from './connectionManager';
 import { ENTITY_DEFINITION_SCHEME } from './entityDefinitionProvider';
 import { resultTableToMarkdown } from './markdown';
-import { displayResultsInPanel, displayResultsInSingletonView, ResultViewMode } from './resultsViewer';
+import { ResultsViewer } from './resultsViewer';
+import type { ResultViewMode } from './resultsViewer';
 
 const COPILOT_PARTICIPANT_ID = 'kusto';
 const MAX_SCHEMA_CHARS = 30000; // Approximate limit to stay within token limits
@@ -21,6 +22,8 @@ const MAX_SCHEMA_CHARS = 30000; // Approximate limit to stay within token limits
 let languageClient: Server;
 
 let conn: ConnectionManager;
+
+let resultsViewer: ResultsViewer;
 
 
 // =============================================================================
@@ -72,9 +75,10 @@ function registerTool<T>(
 // Activation
 // =============================================================================
 
-export function activate(context: vscode.ExtensionContext, srv: Server, connectionManager: ConnectionManager): void {
+export function activate(context: vscode.ExtensionContext, srv: Server, connectionManager: ConnectionManager, rv: ResultsViewer): void {
     languageClient = srv;
     conn = connectionManager;
+    resultsViewer = rv;
 
     // Register tools
     registerTool(context, 'kusto_getClusters', 'Getting available clusters...', getClusters);
@@ -420,7 +424,7 @@ async function runQuery(input: { query: string; cluster?: string; database?: str
     }
 
     if (input.showResults) {
-        await displayResultsInSingletonView(result.data, 'all', true);
+        await resultsViewer.displayResultsInSingletonView(result.data, 'all', true);
     }
 
     return resultTableToMarkdown(result.data.tables[0]!);

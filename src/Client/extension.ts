@@ -7,7 +7,7 @@ import { workspace, ExtensionContext, window } from 'vscode';
 import { ConnectionsPanel } from './features/connectionsPanel'
 import { ConnectionManager } from './features/connectionManager'
 import { QueryEditor } from './features/queryEditor'
-import * as resultsViewer from './features/resultsViewer'
+import { ResultsViewer } from './features/resultsViewer'
 import * as copilot from './features/copilot'
 import { ConnectionStatusBar } from './features/connectionStatusBar'
 import * as dotnet from './features/dotnet'
@@ -101,6 +101,9 @@ export async function activate(context: ExtensionContext)
         vscode.commands.registerCommand('kusto.fixCommitCharDoubling', fixCommitCharDoubling)
     );
 
+    // activate results viewer early — needed by updateKustoContext below
+    const resultsViewer = new ResultsViewer(context, server, clipboard);
+
     // Track Kusto session state - keep views visible while in a Kusto session
     const updateKustoContext = () => {
         // Check if any Kusto documents are open OR if singleton results view exists
@@ -138,35 +141,32 @@ export async function activate(context: ExtensionContext)
     );
 
     // activate connections data layer
-    const connections = new ConnectionManager(context, server);
+    const connectionManager = new ConnectionManager(context, server);
 
     // activate scratch pad documents
     const scratchPadManager = new ScratchPadManager(context);
-    new ScratchPadPanel(context, scratchPadManager, connections);
+    new ScratchPadPanel(context, scratchPadManager, connectionManager);
 
     // Register Kusto Explorer import commands
-    const importer = new Importer(context, scratchPadManager, connections);
+    const importer = new Importer(context, scratchPadManager, connectionManager);
 
     // activate connections panel and related features
-    const connectionsPanel = new ConnectionsPanel(context, server, clipboard, importer, connections);
+    const connectionsPanel = new ConnectionsPanel(context, server, clipboard, importer, connectionManager);
     await connectionsPanel.initialize();
 
     // Create status bar item showing the active document's cluster and database connection.
     // The ConnectionStatusBar instance is not referenced — it updates itself via editor change events.
-    new ConnectionStatusBar(context, connections);
+    new ConnectionStatusBar(context, connectionManager);
 
     // activate query history
-    const history = new HistoryManager(context);
-    new HistoryPanel(context, history);
+    const historyManager = new HistoryManager(context);
 
     // activate query execution features
-    new QueryEditor(context, server, resultsCache, clipboard, history, connections);
-
-    // activate chart file editor (.kchart)
-    resultsViewer.activate(context, server, clipboard);
+    new HistoryPanel(context, historyManager, resultsViewer);
+    new QueryEditor(context, server, resultsCache, clipboard, historyManager, connectionManager, resultsViewer);
 
     // activate copilot hooks
-    copilot.activate(context, server, connections);
+    copilot.activate(context, server, connectionManager, resultsViewer);
 }
 
 export function deactivate(): Thenable<void> | undefined

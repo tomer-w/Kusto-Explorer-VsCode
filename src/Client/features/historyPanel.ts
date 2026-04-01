@@ -9,6 +9,7 @@
 
 import * as vscode from 'vscode';
 import { HistoryManager, HistoryEntry } from './historyManager';
+import type { ResultsViewer } from './resultsViewer';
 
 // =============================================================================
 // HistoryPanel — UI layer: tree view, commands
@@ -22,7 +23,7 @@ export class HistoryPanel {
     private readonly treeProvider: HistoryTreeProvider;
     private readonly treeView: vscode.TreeView<HistoryItem>;
 
-    constructor(context: vscode.ExtensionContext, private readonly manager: HistoryManager) {
+    constructor(context: vscode.ExtensionContext, private readonly manager: HistoryManager, private readonly resultsViewer: ResultsViewer) {
         this.treeProvider = new HistoryTreeProvider(manager);
         this.treeView = vscode.window.createTreeView('kusto.history', {
             treeDataProvider: this.treeProvider,
@@ -58,13 +59,9 @@ export class HistoryPanel {
         }
 
         // Import dynamically to avoid circular dependency at module level
-        const { displayResultsInPanel, displayResultsInSingletonView, setSingletonBackingUri, getServer } = await import('./resultsViewer');
-        const srv = getServer();
-        if (!srv) { return; }
-
-        setSingletonBackingUri(uri);
-        await displayResultsInPanel(resultData, 'detail');
-        await displayResultsInSingletonView(resultData, 'chart', true);
+        this.resultsViewer.setSingletonBackingUri(uri);
+        await this.resultsViewer.displayResultsInPanel(resultData, 'detail');
+        await this.resultsViewer.displayResultsInSingletonView(resultData, 'chart', true);
     }
 
     /** Deletes a history item after confirmation. */
