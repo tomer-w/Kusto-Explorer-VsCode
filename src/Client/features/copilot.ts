@@ -10,7 +10,7 @@
 import * as vscode from 'vscode';
 import { Server } from './server';
 import * as server from './server';
-import * as conn from './connections';
+import type { ConnectionManager } from './connectionManager';
 import { ENTITY_DEFINITION_SCHEME } from './entityDefinitionProvider';
 import { resultTableToMarkdown } from './markdown';
 import { displayResultsInPanel, displayResultsInSingletonView, ResultViewMode } from './resultsViewer';
@@ -19,6 +19,8 @@ const COPILOT_PARTICIPANT_ID = 'kusto';
 const MAX_SCHEMA_CHARS = 30000; // Approximate limit to stay within token limits
 
 let languageClient: Server;
+
+let conn: ConnectionManager;
 
 
 // =============================================================================
@@ -70,8 +72,9 @@ function registerTool<T>(
 // Activation
 // =============================================================================
 
-export function activate(context: vscode.ExtensionContext, srv: Server): void {
+export function activate(context: vscode.ExtensionContext, srv: Server, connectionManager: ConnectionManager): void {
     languageClient = srv;
+    conn = connectionManager;
 
     // Register tools
     registerTool(context, 'kusto_getClusters', 'Getting available clusters...', getClusters);

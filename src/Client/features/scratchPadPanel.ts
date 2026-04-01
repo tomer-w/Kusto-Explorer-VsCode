@@ -8,7 +8,7 @@
 
 import * as vscode from 'vscode';
 import * as path from 'path';
-import * as connections from './connections';
+import type { ConnectionManager, DocumentConnection } from './connectionManager';
 import { ScratchPadManager, SCRATCH_PAD_SCHEME } from './scratchPadManager';
 
 /** MIME type for scratch pad drag-and-drop within the tree view. */
@@ -36,7 +36,7 @@ export class ScratchPadPanel {
     private readonly autoSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
     private readonly placeholderDecoration: vscode.TextEditorDecorationType;
 
-    constructor(context: vscode.ExtensionContext, private readonly manager: ScratchPadManager) {
+    constructor(context: vscode.ExtensionContext, private readonly manager: ScratchPadManager, private readonly connections: ConnectionManager) {
         this.placeholderDecoration = vscode.window.createTextEditorDecorationType({
             after: {
                 contentText: 'Write a KQL query here, then press F5 to run it.',
@@ -129,10 +129,10 @@ export class ScratchPadPanel {
 
     // ─── Command Handlers ────────────────────────────────────────────
 
-    private async resolveConnectionToInherit(): Promise<connections.DocumentConnection | undefined> {
+    private async resolveConnectionToInherit(): Promise<DocumentConnection | undefined> {
         const activeEditor = vscode.window.activeTextEditor;
         if (activeEditor && activeEditor.document.languageId === 'kusto') {
-            const conn = await connections.getDocumentConnection(activeEditor.document.uri.toString());
+            const conn = await this.connections.getDocumentConnection(activeEditor.document.uri.toString());
             if (conn?.cluster) {
                 return conn;
             }
@@ -141,7 +141,7 @@ export class ScratchPadPanel {
         const files = this.manager.getScratchPadFiles();
         for (const file of files) {
             const uri = scratchUri(file).toString();
-            const conn = await connections.getDocumentConnection(uri);
+            const conn = await this.connections.getDocumentConnection(uri);
             if (conn?.cluster) {
                 return conn;
             }
@@ -180,7 +180,7 @@ export class ScratchPadPanel {
 
         if (inheritedConnection?.cluster) {
             const newUri = scratchUri(name).toString();
-            await connections.setDocumentConnection(newUri, inheritedConnection.cluster, inheritedConnection.database);
+            await this.connections.setDocumentConnection(newUri, inheritedConnection.cluster, inheritedConnection.database);
         }
     }
 
@@ -275,13 +275,13 @@ export class ScratchPadPanel {
             return;
         }
 
-        const scratchConnection = await connections.getDocumentConnection(scratchUriValue.toString());
+        const scratchConnection = await this.connections.getDocumentConnection(scratchUriValue.toString());
 
         const content = Buffer.from(scratchDocument.getText(), 'utf-8');
         await vscode.workspace.fs.writeFile(target, content);
 
         if (scratchConnection?.cluster) {
-            await connections.setDocumentConnection(target.toString(), scratchConnection.cluster, scratchConnection.database);
+            await this.connections.setDocumentConnection(target.toString(), scratchConnection.cluster, scratchConnection.database);
         }
 
         const action = await vscode.window.showInformationMessage(

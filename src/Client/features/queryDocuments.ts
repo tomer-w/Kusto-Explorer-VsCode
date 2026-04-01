@@ -11,7 +11,7 @@
 import * as vscode from 'vscode';
 import { Server } from './server';
 import type { SelectionRange, Range } from './server';
-import { setDocumentConnection, ensureServer, getDocumentConnection } from './connections';
+import type { ConnectionManager } from './connectionManager';
 import { displayResultsInPanel, displayErrorInPanel, displayResultsInSingletonView, setSingletonBackingUri, ResultViewMode } from './resultsViewer';
 import { ResultsCache } from './resultsCache';
 import { HistoryManager } from './historyManager';
@@ -38,6 +38,8 @@ let clipboard: Clipboard;
 
 let history: HistoryManager;
 
+let connections: ConnectionManager;
+
 /**
  * Activates query execution features.
  * @param context The extension context
@@ -46,12 +48,13 @@ let history: HistoryManager;
  * @param clip The clipboard for context-aware copy/paste
  * @param resultHistory The query result history
  */
-export function activate(context: vscode.ExtensionContext, server: Server, resultsCache: ResultsCache, clip: Clipboard, resultHistory: HistoryManager): void {
+export function activate(context: vscode.ExtensionContext, server: Server, resultsCache: ResultsCache, clip: Clipboard, resultHistory: HistoryManager, connectionManager: ConnectionManager): void {
 
     lspServer = server;
     cache = resultsCache;
     clipboard = clip;
     history = resultHistory;
+    connections = connectionManager;
 
     // Register query-related commands
     context.subscriptions.push(
@@ -143,19 +146,19 @@ async function runQuery(queryRange?: SelectionRange): Promise<void> {
         ));
 
         // Get the document's connection (cluster/database)
-        const connection = await getDocumentConnection(uri);
+        const connection = await connections.getDocumentConnection(uri);
 
         // Run the query via server.runQuery (text-based, returns ResultData)
         const runResult = await lspServer.runQuery(queryText, connection?.cluster, connection?.database, true);
 
         // If the result includes a connection string for an unknown cluster, add it as a server
         if (runResult?.connection || runResult?.cluster) {
-            await ensureServer(runResult.connection ?? runResult.cluster!);
+            await connections.ensureServer(runResult.connection ?? runResult.cluster!);
         }
 
         // If query changed cluster/database, update document connection
         if (runResult && runResult.cluster) {
-            await setDocumentConnection(uri, runResult.cluster, runResult.database);
+            await connections.setDocumentConnection(uri, runResult.cluster, runResult.database);
         }
         
         // Clear any previous error decoration
@@ -335,7 +338,7 @@ async function copyQueryTransparent(codeLensRange?: SelectionRange): Promise<voi
         const plainText = editor.document.getText(range);
 
         // Request light-mode HTML from the server (darkMode = false)
-        const connection = await getDocumentConnection(uri);
+        const connection = await connections.getDocumentConnection(uri);
         const result = await lspServer.getQueryAsHtml(plainText, connection?.cluster, connection?.database, false);
         if (!result?.html) {
             return;

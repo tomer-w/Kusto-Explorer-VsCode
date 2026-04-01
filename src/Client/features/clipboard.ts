@@ -2,9 +2,7 @@
 // Licensed under the MIT license.
 
 /*
- * This module manages clipboard operations with rich context metadata.
- * When content is copied (e.g. an entity name or query), it stores the source connection and entity info
- * alongside the clipboard text, enabling context-aware paste behavior.
+ * This module implements the Clipboard class, which manages clipboard operations with rich context metadata.
  */
 
 import * as vscode from 'vscode';
@@ -37,8 +35,6 @@ export interface ClipboardItem {
 
 /**
  * Manages clipboard operations with rich context metadata.
- * When content is copied (e.g. an entity name or query), it stores the source connection and entity info
- * alongside the clipboard text, enabling context-aware paste behavior.
  */
 export class Clipboard {
     /** Stored clipboard context from the last copy operation with context. */

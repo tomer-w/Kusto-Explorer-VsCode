@@ -4,8 +4,8 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { workspace, ExtensionContext, window } from 'vscode';
-import * as conn from './features/connectionsPanel'
-import * as connections from './features/connections'
+import { ConnectionsPanel } from './features/connectionsPanel'
+import { ConnectionManager } from './features/connectionManager'
 import * as queryDocuments from './features/queryDocuments'
 import * as resultsViewer from './features/resultsViewer'
 import * as copilot from './features/copilot'
@@ -17,7 +17,7 @@ import { ScratchPadManager, SCRATCH_PAD_SCHEME } from './features/scratchPadMana
 import { ScratchPadPanel } from './features/scratchPadPanel'
 import { HistoryManager } from './features/historyManager'
 import { HistoryPanel } from './features/historyPanel'
-import { Importer } from './features/import'
+import { Importer } from './features/importer'
 import { EntityDefinitionProvider, ENTITY_DEFINITION_SCHEME } from './features/entityDefinitionProvider'
 import { Server } from './features/server'
 import
@@ -138,34 +138,35 @@ export async function activate(context: ExtensionContext)
     );
 
     // activate connections data layer
-    connections.activate(context, server);
+    const connections = new ConnectionManager(context, server);
 
     // activate scratch pad documents
     const scratchPadManager = new ScratchPadManager(context);
-    new ScratchPadPanel(context, scratchPadManager);
+    new ScratchPadPanel(context, scratchPadManager, connections);
 
     // Register Kusto Explorer import commands
-    const importer = new Importer(context, scratchPadManager);
+    const importer = new Importer(context, scratchPadManager, connections);
 
     // activate connections panel and related features
-    await conn.activate(context, server, clipboard, importer);
+    const connectionsPanel = new ConnectionsPanel(context, server, clipboard, importer, connections);
+    await connectionsPanel.initialize();
 
     // Create status bar item showing the active document's cluster and database connection.
     // The ConnectionStatusBar instance is not referenced — it updates itself via editor change events.
-    new ConnectionStatusBar(context);
+    new ConnectionStatusBar(context, connections);
 
     // activate query history
     const history = new HistoryManager(context);
     new HistoryPanel(context, history);
 
     // activate query execution features
-    queryDocuments.activate(context, server, resultsCache, clipboard, history);
+    queryDocuments.activate(context, server, resultsCache, clipboard, history, connections);
 
     // activate chart file editor (.kchart)
     resultsViewer.activate(context, server, clipboard);
 
     // activate copilot hooks
-    copilot.activate(context, server);
+    copilot.activate(context, server, connections);
 }
 
 export function deactivate(): Thenable<void> | undefined

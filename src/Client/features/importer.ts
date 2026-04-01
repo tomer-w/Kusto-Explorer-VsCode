@@ -9,8 +9,8 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { XMLParser } from 'fast-xml-parser';
-import * as connections from './connections';
-import type { ServerInfo, ServerGroupInfo } from './connections';
+import { type ConnectionManager, isServerGroup } from './connectionManager';
+import type { ServerInfo, ServerGroupInfo } from './connectionManager';
 import type { ScratchPadManager } from './scratchPadManager';
 
 // =============================================================================
@@ -56,7 +56,7 @@ interface KustoExplorerRecoveryFile {
  * Imports connections and scratch pad query documents from desktop Kusto Explorer.
  */
 export class Importer {
-    constructor(context: vscode.ExtensionContext, private readonly scratchPadManager: ScratchPadManager) {
+    constructor(context: vscode.ExtensionContext, private readonly scratchPadManager: ScratchPadManager, private readonly connections: ConnectionManager) {
         context.subscriptions.push(
             vscode.commands.registerCommand('kusto.importConnectionsFromKustoExplorer', () => this.importConnectionsFromKustoExplorer()),
             vscode.commands.registerCommand('kusto.importScratchPadsFromKustoExplorer', () => this.importAllScratchPads()),
@@ -76,7 +76,7 @@ export class Importer {
             return true;
         }
 
-        const existingConnections = connections.getConfiguredConnections();
+        const existingConnections = this.connections.getConfiguredConnections();
         if (existingConnections.length > 0) {
             return true;
         }
@@ -153,7 +153,7 @@ export class Importer {
                 }
 
                 const xml = await fs.promises.readFile(group.filePath, 'utf-8');
-                const servers = await parseConnectionsXml(xml);
+                const servers = await parseConnectionsXml(xml, this.connections);
                 if (servers.length === 0) {
                     continue;
                 }
@@ -162,24 +162,24 @@ export class Importer {
 
                 // Ensure the group exists (unless it's the default root group)
                 if (!isDefaultGroup) {
-                    const existing = connections.getServersAndGroups();
+                    const existing = this.connections.getServersAndGroups();
                     const groupExists = existing.items.some(
-                        item => connections.isServerGroup(item) && item.name === group.name
+                        item => isServerGroup(item) && item.name === group.name
                     );
                     if (!groupExists) {
                         const newGroup: ServerGroupInfo = { name: group.name, servers: [] };
-                        await connections.addServerGroup(newGroup);
+                        await this.connections.addServerGroup(newGroup);
                     }
                 }
 
                 for (const server of servers) {
                     // Check for duplicates by cluster hostname
-                    if (connections.findServerInfo(server.cluster)) {
+                    if (this.connections.findServerInfo(server.cluster)) {
                         skippedCount++;
                         continue;
                     }
 
-                    await connections.addServer(server, isDefaultGroup ? undefined : group.name);
+                    await this.connections.addServer(server, isDefaultGroup ? undefined : group.name);
                     importedCount++;
                 }
             }
@@ -223,7 +223,7 @@ export class Importer {
             if (confirm !== 'Import') { return; }
         }
 
-        const importedCount = await importRecoveryFilesAsScratchPads(recoveryFiles, this.scratchPadManager);
+        const importedCount = await importRecoveryFilesAsScratchPads(recoveryFiles, this.scratchPadManager, this.connections);
 
         if (importedCount > 0) {
             vscode.window.showInformationMessage(
@@ -275,7 +275,7 @@ function getScratchPadRecoveryFiles(): KustoExplorerRecoveryFile[] | undefined {
  * Imports a list of recovery files as scratch pad files.
  * Returns the number of successfully imported entries.
  */
-async function importRecoveryFilesAsScratchPads(recoveryFiles: KustoExplorerRecoveryFile[], scratchPadManager: ScratchPadManager): Promise<number> {
+async function importRecoveryFilesAsScratchPads(recoveryFiles: KustoExplorerRecoveryFile[], scratchPadManager: ScratchPadManager, connections: ConnectionManager): Promise<number> {
     let importedCount = 0;
     for (const recoveryFile of recoveryFiles) {
         // Resolve the connection first so we can use the friendly name for naming
@@ -380,7 +380,7 @@ function parseGroupsXml(xml: string): { name: string; filePath: string }[] {
 /**
  * Parses a UserConnections.xml (or group connections file) into ServerInfo[].
  */
-async function parseConnectionsXml(xml: string): Promise<ServerInfo[]> {
+async function parseConnectionsXml(xml: string, connections: ConnectionManager): Promise<ServerInfo[]> {
     const doc = xmlParser.parse(xml);
     const entries = doc?.ArrayOfServerDescriptionBase?.ServerDescriptionBase;
     if (!entries) { return []; }

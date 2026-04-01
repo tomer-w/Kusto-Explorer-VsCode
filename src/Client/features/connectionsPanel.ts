@@ -11,47 +11,59 @@
 import * as vscode from 'vscode';
 import { Server } from './server';
 import { Clipboard } from './clipboard';
-import * as connections from './connections';
-import { getHostName, isServerGroup } from './connections';
-import type { ServerInfo, ServerGroupInfo } from './connections';
+import { type ConnectionManager, isServerGroup, getDisplayName } from './connectionManager';
+import type { ServerInfo, ServerGroupInfo } from './connectionManager';
 import type { DatabaseTableInfo, DatabaseColumnInfo, DatabaseFunctionInfo, DatabaseEntityGroupInfo, DatabaseGraphModelInfo } from './server';
 import { ENTITY_DEFINITION_SCHEME } from './entityDefinitionProvider';
-import { Importer } from './import';
+import { Importer } from './importer';
 
 
 // =============================================================================
-// Activation function
+// ConnectionsPanel Class
 // =============================================================================
 
 /**
- * Initializes the Kusto connections tree panel and sets up all related features.
- * @param context The extension context for accessing global state
- * @param server The server wrapper for LSP communication
+ * Implements the "Connections" tree view in the sidebar.
+ * Displays configured Kusto clusters, databases, and schema entities,
+ * and provides commands for managing connections.
  */
-export async function activate(context: vscode.ExtensionContext, server: Server, clipboard: Clipboard, importer: Importer): Promise<void> {
-    // Initialize module-level state
-    lspServer = server;
-    connectionsProvider = new KustoConnectionsProvider();
+export class ConnectionsPanel {
+    private readonly connectionsProvider: KustoConnectionsProvider;
+    private readonly treeView: vscode.TreeView<KustoTreeItem>;
+    private programmaticSelectionCount = 0;
+    private isTreeSelectionChangingConnection = false;
+    private isFetchingDatabasesForTreeUpdate = false;
+    private isDragging = false;
+    private lastValidSelection: KustoTreeItem | undefined;
+
+    constructor(
+        context: vscode.ExtensionContext,
+        private readonly server: Server,
+        clipboard: Clipboard,
+        importer: Importer,
+        private readonly connections: ConnectionManager
+    ) {
+        this.connectionsProvider = new KustoConnectionsProvider(connections);
     
     // Register for connection change events
     context.subscriptions.push(connections.registerOnDocumentConnectionChanged(async (uri: string) => {
         // Skip if the connection change was initiated from tree selection
         // (tree already shows the correct selection in that case)
-        if (isTreeSelectionChangingConnection) {
+        if (this.isTreeSelectionChangingConnection) {
             return;
         }
         if (vscode.window.activeTextEditor?.document.uri.toString() === uri) {
-            await updateTreeSelectionForActiveDocument();
+            await this.updateTreeSelectionForActiveDocument();
         }
     }));
     context.subscriptions.push(connections.registerOnServersAndGroupsChanged(async () => {
-        connectionsProvider?.refresh();
+        this.connectionsProvider.refresh();
         // After refresh, restore the tree selection based on the current document's connection
         // Use a small delay to allow the tree to rebuild first
         // Skip if we're already updating the tree (to prevent infinite loop from fetchDatabasesForCluster)
-        if (!isFetchingDatabasesForTreeUpdate) {
+        if (!this.isFetchingDatabasesForTreeUpdate) {
             setTimeout(async () => {
-                await updateTreeSelectionForActiveDocument();
+                await this.updateTreeSelectionForActiveDocument();
             }, 100);
         }
     }));
@@ -61,51 +73,31 @@ export async function activate(context: vscode.ExtensionContext, server: Server,
     connections.loadServersAndGroups();
 
     // Create tree view with drag and drop support
-    treeView = vscode.window.createTreeView('kusto.connections', {
-        treeDataProvider: connectionsProvider,
+    this.treeView = vscode.window.createTreeView('kusto.connections', {
+        treeDataProvider: this.connectionsProvider,
         showCollapseAll: true,
-        dragAndDropController: new KustoDragAndDropController()
+        dragAndDropController: new KustoDragAndDropController(connections, () => { this.isDragging = true; setTimeout(() => { this.isDragging = false; }, 100); })
     });
-    context.subscriptions.push(treeView);
+    context.subscriptions.push(this.treeView);
 
     // Register drop edit provider so entity drops resolve text at drop time with the target document URI
     context.subscriptions.push(
         vscode.languages.registerDocumentDropEditProvider(
             { language: 'kusto' },
-            new KustoDocumentDropEditProvider(),
+            new KustoDocumentDropEditProvider(server),
             { dropMimeTypes: [ENTITY_DRAG_MIME] }
         )
     );
 
-    // Send initial connections list to server
-    const initialConnections = connections.getConfiguredConnections();
-    server.sendConnectionsUpdated(initialConnections);
-
-    // Load document connections on startup
-    await connections.loadDocumentConnections();
-
-    // Initialize connection info for documents that are already open
-    // Note: For documents already open at activation, the server already has them,
-    // so we can safely infer connections
-    for (const document of vscode.workspace.textDocuments) {
-        if (document.languageId === 'kusto') {
-            const connection = await connections.getDocumentConnection(document.uri.toString());
-            const serverKind = connection?.cluster ? (connections.findServerInfo(connection.cluster)?.serverKind ?? null) : null;
-            server.sendDocumentConnectionChanged(
-                document.uri.toString(),
-                connection?.cluster || null,
-                connection?.database || null,
-                serverKind
-            );
-        }
-    }
+    // Send initial connections list to server and load document connections
+    // via initialize() which must be called after construction
 
     // Handle document ready notification from server - update connection and tree selection
     // This fires after the server has fully processed the document and can infer connections
     server.onDocumentReady(async (params) => {
         const editor = vscode.window.activeTextEditor;
         if (editor && editor.document.uri.toString() === params.uri) {
-            await updateTreeSelectionForActiveDocument();
+            await this.updateTreeSelectionForActiveDocument();
         }
     });
 
@@ -121,7 +113,7 @@ export async function activate(context: vscode.ExtensionContext, server: Server,
                     editor.document.getText()
                 );
             } else {
-                await updateTreeSelectionForActiveDocument();
+                await this.updateTreeSelectionForActiveDocument();
             }
         })
     );
@@ -129,18 +121,18 @@ export async function activate(context: vscode.ExtensionContext, server: Server,
     // Set initial context for view visibility
     const initialEditor = vscode.window.activeTextEditor;
     const initialIsKusto = initialEditor && initialEditor.document.languageId === 'kusto';
-    await vscode.commands.executeCommand('setContext', 'kusto.hasActiveDocument', initialIsKusto);
+    vscode.commands.executeCommand('setContext', 'kusto.hasActiveDocument', initialIsKusto);
 
     // Handle tree selection changes - update document connection when user clicks
     context.subscriptions.push(
-        treeView.onDidChangeSelection(async (event) => {
+        this.treeView.onDidChangeSelection(async (event) => {
             // Ignore if this is a programmatic selection (not user-initiated)
-            if (isProgrammaticSelection()) {
+            if (this.isProgrammaticSelection()) {
                 return;
             }
 
             // Ignore selection changes triggered by drag operations
-            if (isDragging) {
+            if (this.isDragging) {
                 return;
             }
 
@@ -157,9 +149,9 @@ export async function activate(context: vscode.ExtensionContext, server: Server,
 
             if (!isSelectableItem) {
                 // Revert to the last valid selection
-                if (lastValidSelection) {
+                if (this.lastValidSelection) {
                     try {
-                        await programmaticSelectTreeItem(lastValidSelection, { select: true, focus: false, expand: false });
+                        await this.programmaticSelectTreeItem(this.lastValidSelection, { select: true, focus: false, expand: false });
                     } catch {
                         // Silently ignore reveal errors
                     }
@@ -168,7 +160,7 @@ export async function activate(context: vscode.ExtensionContext, server: Server,
             }
 
 
-            lastValidSelection = selected;
+            this.lastValidSelection = selected;
 
             const editor = vscode.window.activeTextEditor;
             if (!editor || editor.document.languageId !== 'kusto') {
@@ -178,7 +170,7 @@ export async function activate(context: vscode.ExtensionContext, server: Server,
             // Set flag to prevent the onDocumentConnectionChanged callback from
             // calling updateTreeSelectionForActiveDocument (which would overwrite
             // the user's selection with the inferred connection)
-            isTreeSelectionChangingConnection = true;
+            this.isTreeSelectionChangingConnection = true;
             try {
                 if (selected instanceof NoConnectionTreeItem) {
                     await connections.setDocumentConnection(editor.document.uri.toString(), undefined, undefined);
@@ -190,7 +182,7 @@ export async function activate(context: vscode.ExtensionContext, server: Server,
             } catch (error) {
                 console.error('Failed to set document connection:', error);
             } finally {
-                isTreeSelectionChangingConnection = false;
+                this.isTreeSelectionChangingConnection = false;
             }
         })
     );
@@ -199,12 +191,12 @@ export async function activate(context: vscode.ExtensionContext, server: Server,
     setTimeout(async () => {
         const editor = vscode.window.activeTextEditor;
         if (editor && editor.document.languageId === 'kusto') {
-            await updateTreeSelectionForActiveDocument();
+            await this.updateTreeSelectionForActiveDocument();
         }
     }, 100);
 
     // Ensure tree is populated after all initialization
-    connectionsProvider.refresh();
+    this.connectionsProvider.refresh();
 
     // Prompt to import Kusto Explorer connections when the panel becomes visible
     let importPromptResolved = false;
@@ -214,22 +206,22 @@ export async function activate(context: vscode.ExtensionContext, server: Server,
         }
     };
     context.subscriptions.push(
-        treeView.onDidChangeVisibility((e) => {
+        this.treeView.onDidChangeVisibility((e) => {
             if (e.visible) { tryPromptImport(); }
         })
     );
     // Also check if the panel is already visible at activation time
-    if (treeView.visible) { tryPromptImport(); }
+    if (this.treeView.visible) { tryPromptImport(); }
 
     // Handle tree item expansion events - fetch data for servers (databases fetch in getChildren)
     context.subscriptions.push(
-        treeView.onDidExpandElement(async (event) => {
+        this.treeView.onDidExpandElement(async (event) => {
             const element = event.element;
 
             if (element instanceof ServerTreeItem) {
                 await connections.fetchDatabasesForCluster(element.clusterName);
                 // Refresh only this server item to show its databases
-                connectionsProvider?.refreshItem(element);
+                this.connectionsProvider.refreshItem(element);
             }
             // DatabaseTreeItem fetches data in getChildren, so no action needed here
         })
@@ -242,15 +234,15 @@ export async function activate(context: vscode.ExtensionContext, server: Server,
         vscode.commands.registerCommand('kusto.selectEntity', () => {}),
 
         vscode.commands.registerCommand('kusto.addServer', async () => {
-            await connectionsProvider!.promptAddServer();
+            await this.connectionsProvider.promptAddServer();
         }),
 
         vscode.commands.registerCommand('kusto.addServerToGroup', async (item: ServerGroupTreeItem) => {
-            await connectionsProvider!.promptAddServer(item.groupInfo.name);
+            await this.connectionsProvider.promptAddServer(item.groupInfo.name);
         }),
 
         vscode.commands.registerCommand('kusto.addServerGroup', async () => {
-            await connectionsProvider!.promptAddServerGroup();
+            await this.connectionsProvider.promptAddServerGroup();
         }),
 
         vscode.commands.registerCommand('kusto.removeServer', async (item: ServerTreeItem) => {
@@ -276,7 +268,7 @@ export async function activate(context: vscode.ExtensionContext, server: Server,
         }),
 
         vscode.commands.registerCommand('kusto.moveServer', async (item: ServerTreeItem) => {
-            await connectionsProvider!.promptMoveServer(
+            await this.connectionsProvider.promptMoveServer(
                 item.clusterName,
                 item.displayName ?? item.clusterName,
                 item.groupName
@@ -284,7 +276,7 @@ export async function activate(context: vscode.ExtensionContext, server: Server,
         }),
 
         vscode.commands.registerCommand('kusto.editServer', async (item: ServerTreeItem) => {
-            await connectionsProvider!.promptEditServer(
+            await this.connectionsProvider.promptEditServer(
                 item.connection,
                 item.clusterName,
                 item.displayName,
@@ -293,7 +285,7 @@ export async function activate(context: vscode.ExtensionContext, server: Server,
         }),
 
         vscode.commands.registerCommand('kusto.renameServer', async (item: ServerTreeItem) => {
-            await connectionsProvider!.promptRenameServer(
+            await this.connectionsProvider.promptRenameServer(
                 item.clusterName,
                 item.displayName ?? item.clusterName,
                 item.groupName
@@ -301,7 +293,7 @@ export async function activate(context: vscode.ExtensionContext, server: Server,
         }),
 
         vscode.commands.registerCommand('kusto.renameServerGroup', async (item: ServerGroupTreeItem) => {
-            await connectionsProvider!.promptRenameServerGroup(item.groupInfo.name);
+            await this.connectionsProvider.promptRenameServerGroup(item.groupInfo.name);
         }),
 
         vscode.commands.registerCommand('kusto.refreshServer', async (item: ServerTreeItem) => {
@@ -426,11 +418,167 @@ export async function activate(context: vscode.ExtensionContext, server: Server,
             }
         })
     );
-}
+    }
 
-// =============================================================================
-// Entity Helper Functions
-// =============================================================================
+    // =========================================================================
+    // Async Initialization
+    // =========================================================================
+
+    /**
+     * Performs async initialization that cannot be done in the constructor.
+     * Must be called immediately after construction.
+     */
+    async initialize(): Promise<void> {
+        // Send initial connections list to server
+        const initialConnections = this.connections.getConfiguredConnections();
+        this.server.sendConnectionsUpdated(initialConnections);
+
+        // Load document connections on startup
+        await this.connections.loadDocumentConnections();
+
+        // Initialize connection info for documents that are already open
+        for (const document of vscode.workspace.textDocuments) {
+            if (document.languageId === 'kusto') {
+                const connection = await this.connections.getDocumentConnection(document.uri.toString());
+                const serverKind = connection?.cluster ? (this.connections.findServerInfo(connection.cluster)?.serverKind ?? null) : null;
+                this.server.sendDocumentConnectionChanged(
+                    document.uri.toString(),
+                    connection?.cluster || null,
+                    connection?.database || null,
+                    serverKind
+                );
+            }
+        }
+    }
+
+    // =========================================================================
+    // Tree Selection Helpers
+    // =========================================================================
+
+    private isProgrammaticSelection(): boolean {
+        return this.programmaticSelectionCount > 0;
+    }
+
+    private async programmaticSelectTreeItem(item: KustoTreeItem, options?: { select?: boolean; focus?: boolean; expand?: boolean }): Promise<void> {
+        this.programmaticSelectionCount++;
+        try {
+            await this.treeView.reveal(item, options);
+        } finally {
+            this.programmaticSelectionCount--;
+        }
+    }
+
+    private async findServerTreeItem(cluster: string): Promise<ServerTreeItem | undefined> {
+        const clusterLower = cluster.toLowerCase();
+        const rootItems = await this.connectionsProvider.getChildren();
+
+        for (const item of rootItems) {
+            if (item instanceof ServerGroupTreeItem) {
+                const groupItems = await this.connectionsProvider.getChildren(item);
+                for (const sItem of groupItems) {
+                    if (sItem instanceof ServerTreeItem && sItem.clusterName.toLowerCase() === clusterLower) {
+                        return sItem;
+                    }
+                }
+            } else if (item instanceof ServerTreeItem && item.clusterName.toLowerCase() === clusterLower) {
+                return item;
+            }
+        }
+
+        return undefined;
+    }
+
+    private async findTreeItem(cluster: string, database: string | undefined): Promise<ServerTreeItem | DatabaseTreeItem | undefined> {
+        let serverItem = await this.findServerTreeItem(cluster);
+
+        if (!serverItem) {
+            return undefined;
+        }
+
+        if (!database) {
+            return serverItem;
+        }
+
+        this.isFetchingDatabasesForTreeUpdate = true;
+        try {
+            await this.connections.fetchDatabasesForCluster(serverItem.clusterName);
+        } finally {
+            this.isFetchingDatabasesForTreeUpdate = false;
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        serverItem = await this.findServerTreeItem(cluster);
+        if (!serverItem) {
+            return undefined;
+        }
+
+        const dbItems = await this.connectionsProvider.getChildren(serverItem);
+        for (const dbItem of dbItems) {
+            if (dbItem instanceof DatabaseTreeItem && dbItem.databaseName.toLowerCase() === database.toLowerCase()) {
+                return dbItem;
+            }
+        }
+
+        return serverItem;
+    }
+
+    private async selectNeutralTreeItem(): Promise<void> {
+        try {
+            const rootItems = await this.connectionsProvider.getChildren();
+            const noConnectionItem = rootItems.find(item => item instanceof NoConnectionTreeItem);
+
+            if (noConnectionItem) {
+                try {
+                    await this.programmaticSelectTreeItem(noConnectionItem, { select: true, focus: false, expand: false });
+                    this.lastValidSelection = noConnectionItem;
+                } catch {
+                    // Silently ignore reveal errors
+                }
+            }
+        } catch {
+            // Silently fail
+        }
+    }
+
+    private async updateTreeSelectionForActiveDocument(): Promise<void> {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor || editor.document.languageId !== 'kusto') {
+            await this.selectNeutralTreeItem();
+            return;
+        }
+
+        const uri = editor.document.uri.toString();
+
+        const connection = await this.connections.getDocumentConnection(uri);
+
+        if (!connection?.cluster) {
+            await this.selectNeutralTreeItem();
+            return;
+        }
+
+        const serverKind = this.connections.findServerInfo(connection.cluster)?.serverKind ?? null;
+        this.server.sendDocumentConnectionChanged(uri, connection.cluster, connection.database || null, serverKind);
+
+        try {
+            const itemToSelect = await this.findTreeItem(connection.cluster, connection.database);
+
+            if (itemToSelect) {
+                try {
+                    const currentEditor = vscode.window.activeTextEditor;
+                    if (currentEditor && currentEditor.document.languageId === 'kusto') {
+                        await this.programmaticSelectTreeItem(itemToSelect, { select: true, focus: false, expand: false });
+                        this.lastValidSelection = itemToSelect;
+                    }
+                } catch {
+                    // Silently ignore reveal errors
+                }
+            }
+        } catch {
+            // Silently fail - tree might not be fully loaded yet
+        }
+    }
+}
 
 /** Entity tree item types that support copy/drag operations */
 type EntityTreeItem = ServerTreeItem | DatabaseTreeItem | TableTreeItem | ExternalTableTreeItem | MaterializedViewTreeItem | FunctionTreeItem | EntityGroupTreeItem | GraphModelTreeItem;
@@ -883,6 +1031,8 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
     private _onDidChangeTreeData = new vscode.EventEmitter<KustoTreeItem | undefined>();
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
+    constructor(private readonly connections: ConnectionManager) {}
+
     refresh(): void {
         this._onDidChangeTreeData.fire(undefined);
     }
@@ -910,9 +1060,9 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
         }
 
         // Extract cluster hostname from connection string
-        const cluster = await getHostName(connectionString);
+        const cluster = await this.connections.getHostName(connectionString);
 
-        const displayName = connections.getDisplayName(cluster);
+        const displayName = getDisplayName(cluster);
         const server: ServerInfo = { 
             connection: connectionString,
             cluster: cluster
@@ -922,12 +1072,12 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
         }
 
         // Fetch server kind from the language server
-        const serverKind = await connections.fetchServerKind(connectionString);
+        const serverKind = await this.connections.fetchServerKind(connectionString);
         if (serverKind) {
             server.serverKind = serverKind;
         }
 
-        await connections.addServer(server, groupName);
+        await this.connections.addServer(server, groupName);
     }
 
     /**
@@ -948,7 +1098,7 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
             servers: []
         };
 
-        await connections.addServerGroup(group);
+        await this.connections.addServerGroup(group);
     }
 
     /**
@@ -964,7 +1114,7 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
             });
         }
 
-        for (const item of connections.getServersAndGroups().items) {
+        for (const item of this.connections.getServersAndGroups().items) {
             if (isServerGroup(item) && item.name !== currentGroupName) {
                 destinations.push({
                     label: `$(folder) ${item.name}`,
@@ -991,7 +1141,7 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
             targetGroupName = selection.label.replace('$(folder) ', '');
         }
 
-        await connections.moveServer(cluster, currentGroupName, targetGroupName);
+        await this.connections.moveServer(cluster, currentGroupName, targetGroupName);
     }
 
     /**
@@ -1008,7 +1158,7 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
             return;
         }
 
-        const newCluster = await getHostName(newConnectionString);
+        const newCluster = await this.connections.getHostName(newConnectionString);
 
         let newDisplayName: string | undefined;
         if (newCluster === cluster) {
@@ -1022,9 +1172,9 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
         }
 
         // Fetch server kind from the language server
-        const serverKind = await connections.fetchServerKind(newConnectionString);
+        const serverKind = await this.connections.fetchServerKind(newConnectionString);
 
-        await connections.editServer(cluster, newConnectionString, newDisplayName, serverKind ?? undefined, groupName);
+        await this.connections.editServer(cluster, newConnectionString, newDisplayName, serverKind ?? undefined, groupName);
     }
 
     /**
@@ -1040,7 +1190,7 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
             return;
         }
 
-        await connections.renameServer(cluster, newDisplayName, groupName);
+        await this.connections.renameServer(cluster, newDisplayName, groupName);
     }
 
     /**
@@ -1056,7 +1206,7 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
             return;
         }
 
-        await connections.renameServerGroup(currentName, newName);
+        await this.connections.renameServerGroup(currentName, newName);
     }
 
     // =========================================================================
@@ -1076,7 +1226,7 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
             const groups: ServerGroupTreeItem[] = [];
             const servers: ServerTreeItem[] = [];
 
-            for (const item of connections.getServersAndGroups().items) {
+            for (const item of this.connections.getServersAndGroups().items) {
                 if (isServerGroup(item)) {
                     groups.push(new ServerGroupTreeItem(item));
                 } else {
@@ -1115,7 +1265,7 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
         }
 
         if (element instanceof ServerTreeItem) {
-            const databases = connections.getClusterDatabases(element.clusterName);
+            const databases = this.connections.getClusterDatabases(element.clusterName);
             const items = databases?.map(db => new DatabaseTreeItem(element.clusterName, db.name)) ?? [];
 
             items.sort((a, b) =>
@@ -1127,7 +1277,7 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
 
         if (element instanceof DatabaseTreeItem) {
             // Fetch database info if not cached (returns cached data if available)
-            return connections.getDatabaseSchema(element.clusterName, element.databaseName).then(dbInfo => {
+            return this.connections.getDatabaseSchema(element.clusterName, element.databaseName).then(dbInfo => {
                 const folders: DatabaseFolderTreeItem[] = [];
 
                 if (dbInfo?.tables && dbInfo.tables.length > 0) {
@@ -1155,7 +1305,7 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
 
         if (element instanceof DatabaseFolderTreeItem) {
             // Fetch database info if not cached (returns cached data if available)
-            return connections.getDatabaseSchema(element.clusterName, element.databaseName).then(dbInfo => {
+            return this.connections.getDatabaseSchema(element.clusterName, element.databaseName).then(dbInfo => {
                 if (!dbInfo) return [];
 
                 switch (element.folderType) {
@@ -1196,7 +1346,7 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
 
         if (element instanceof EntityFolderTreeItem) {
             // Fetch database info if not cached (returns cached data if available)
-            return connections.getDatabaseSchema(element.clusterName, element.databaseName).then(dbInfo => {
+            return this.connections.getDatabaseSchema(element.clusterName, element.databaseName).then(dbInfo => {
                 if (!dbInfo) return [];
 
                 switch (element.folderType) {
@@ -1298,7 +1448,7 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
         }
         if (element instanceof EntityGroupMemberTreeItem)
         {
-            const dbInfo = connections.getDatabaseInfo(element.clusterName, element.databaseName);
+            const dbInfo = this.connections.getDatabaseInfo(element.clusterName, element.databaseName);
             const groupInfo = dbInfo?.entityGroups?.find(g => g.name === element.groupName);
             if (groupInfo) {
                 return new EntityGroupTreeItem(element.clusterName, element.databaseName, groupInfo);
@@ -1337,7 +1487,7 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
 
         if (element instanceof DatabaseTreeItem)
         {
-            for (const item of connections.getServersAndGroups().items)
+            for (const item of this.connections.getServersAndGroups().items)
             {
                 if (isServerGroup(item))
                 {
@@ -1358,7 +1508,7 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
         {
             if (element.groupName)
             {
-                const group = connections.getServersAndGroups().items.find(
+                const group = this.connections.getServersAndGroups().items.find(
                     item => isServerGroup(item) && item.name === element.groupName
                 ) as ServerGroupInfo | undefined;
                 if (group)
@@ -1386,10 +1536,11 @@ class KustoDragAndDropController implements vscode.TreeDragAndDropController<Kus
     readonly dropMimeTypes = ['application/vnd.code.tree.kusto.connections'];
     readonly dragMimeTypes = ['application/vnd.code.tree.kusto.connections', ENTITY_DRAG_MIME];
 
+    constructor(private readonly connections: ConnectionManager, private readonly onDragStart: () => void) {}
+
     async handleDrag(source: readonly KustoTreeItem[], dataTransfer: vscode.DataTransfer, token: vscode.CancellationToken): Promise<void> {
         // Suppress selection changes during drag
-        isDragging = true;
-        setTimeout(() => { isDragging = false; }, 100);
+        this.onDragStart();
 
         // Allow dragging ServerTreeItem for reordering between groups
         const servers = source.filter((item): item is ServerTreeItem => item instanceof ServerTreeItem);
@@ -1450,7 +1601,7 @@ class KustoDragAndDropController implements vscode.TreeDragAndDropController<Kus
             if (item.groupName === targetGroupName) {
                 continue;
             }
-            await connections.moveServer(item.cluster, item.groupName, targetGroupName);
+            await this.connections.moveServer(item.cluster, item.groupName, targetGroupName);
         }
     }
 }
@@ -1461,6 +1612,8 @@ class KustoDragAndDropController implements vscode.TreeDragAndDropController<Kus
  * the correct expression based on the document's connection context.
  */
 class KustoDocumentDropEditProvider implements vscode.DocumentDropEditProvider {
+    constructor(private readonly server: Server) {}
+
     async provideDocumentDropEdits(
         document: vscode.TextDocument,
         position: vscode.Position,
@@ -1468,7 +1621,7 @@ class KustoDocumentDropEditProvider implements vscode.DocumentDropEditProvider {
         token: vscode.CancellationToken
     ): Promise<vscode.DocumentDropEdit | undefined> {
         const transferItem = dataTransfer.get(ENTITY_DRAG_MIME);
-        if (!transferItem || !lspServer) {
+        if (!transferItem) {
             return undefined;
         }
 
@@ -1484,7 +1637,7 @@ class KustoDocumentDropEditProvider implements vscode.DocumentDropEditProvider {
             return undefined;
         }
 
-        const expression = await lspServer.getEntityAsExpression(
+        const expression = await this.server.getEntityAsExpression(
             metadata.cluster,
             metadata.database,
             metadata.entityType,
@@ -1500,190 +1653,3 @@ class KustoDocumentDropEditProvider implements vscode.DocumentDropEditProvider {
         return edit;
     }
 }
-
-// =============================================================================
-// Module-level state (initialized by activate)
-// =============================================================================
-
-let lspServer: Server | undefined;
-let connectionsProvider: KustoConnectionsProvider | undefined;
-let treeView: vscode.TreeView<KustoTreeItem> | undefined;
-let programmaticSelectionCount = 0;
-let isTreeSelectionChangingConnection = false;
-let isFetchingDatabasesForTreeUpdate = false;
-let isDragging = false;
-let lastValidSelection: KustoTreeItem | undefined;
-
-/**
- * Checks if a programmatic selection is in progress.
- */
-function isProgrammaticSelection(): boolean {
-    return programmaticSelectionCount > 0;
-}
-
-/**
- * Performs a programmatic reveal, ignoring the resulting selection event.
- */
-async function programmaticSelectTreeItem(item: KustoTreeItem, options?: { select?: boolean; focus?: boolean; expand?: boolean }): Promise<void> {
-    if (!treeView) return;
-    
-    programmaticSelectionCount++;
-    try {
-        await treeView.reveal(item, options);
-    } finally {
-        programmaticSelectionCount--;
-    }
-}
-
-/**
- * Finds the server tree item for a given cluster name.
- */
-async function findServerTreeItem(cluster: string): Promise<ServerTreeItem | undefined> {
-    if (!connectionsProvider) return undefined;
-    
-    const clusterLower = cluster.toLowerCase();
-    const rootItems = await connectionsProvider.getChildren();
-    
-    for (const item of rootItems) {
-        if (item instanceof ServerGroupTreeItem) {
-            // Check servers within group
-            const groupItems = await connectionsProvider.getChildren(item);
-            for (const sItem of groupItems) {
-                if (sItem instanceof ServerTreeItem && sItem.clusterName.toLowerCase() === clusterLower) {
-                    return sItem;
-                }
-            }
-        } else if (item instanceof ServerTreeItem && item.clusterName.toLowerCase() === clusterLower) {
-            return item;
-        }
-    }
-    
-    return undefined;
-}
-
-/**
- * Finds a tree item matching the cluster/database.
- * Returns the actual tree item instance from getChildren().
- * If looking for a database, ensures the server is expanded first.
- */
-async function findTreeItem(cluster: string, database: string | undefined): Promise<ServerTreeItem | DatabaseTreeItem | undefined> {
-    if (!connectionsProvider || !lspServer) return undefined;
-    
-    // Find the server item
-    let serverItem = await findServerTreeItem(cluster);
-    
-    if (!serverItem) {
-        return undefined;
-    }
-    
-    // If we're not looking for a database, return the server
-    if (!database) {
-        return serverItem;
-    }
-    
-    // We need a database - ensure the server is expanded first
-    // This triggers loading of databases if not already loaded
-    // Set flag to prevent onServersAndGroupsChanged from triggering another update
-    isFetchingDatabasesForTreeUpdate = true;
-    try {
-        await connections.fetchDatabasesForCluster(serverItem.clusterName);
-    } finally {
-        isFetchingDatabasesForTreeUpdate = false;
-    }
-    
-    // Wait for the tree to refresh after database fetch
-    await new Promise(resolve => setTimeout(resolve, 100));
-    
-    // Re-find the server item since tree items are recreated after refresh
-    serverItem = await findServerTreeItem(cluster);
-    if (!serverItem) {
-        return undefined;
-    }
-    
-    // Now try to find the database
-    const dbItems = await connectionsProvider.getChildren(serverItem);
-    for (const dbItem of dbItems) {
-        if (dbItem instanceof DatabaseTreeItem && dbItem.databaseName.toLowerCase() === database.toLowerCase()) {
-            return dbItem;
-        }
-    }
-    
-    // Database not found in tree (might not exist or not loaded yet)
-    // Fall back to selecting the server
-    return serverItem;
-}
-
-/**
- * Selects the "No Connection" tree item to indicate no specific connection.
- */
-async function selectNeutralTreeItem(): Promise<void> {
-    if (!connectionsProvider || !treeView) return;
-    
-    try {
-        const rootItems = await connectionsProvider.getChildren();
-        const noConnectionItem = rootItems.find(item => item instanceof NoConnectionTreeItem);
-        
-        if (noConnectionItem) {
-            try {
-                await programmaticSelectTreeItem(noConnectionItem, { select: true, focus: false, expand: false });
-                lastValidSelection = noConnectionItem;
-            } catch {
-                // Silently ignore reveal errors
-            }
-        }
-    } catch {
-        // Silently fail
-    }
-}
-
-
-
-/**
- * Updates the tree selection to match the active document's connection.
- * Also notifies the server of the document's connection (saved or inferred).
- */
-async function updateTreeSelectionForActiveDocument(): Promise<void> {
-    if (!treeView) return;
-    
-    const editor = vscode.window.activeTextEditor;
-    if (!editor || editor.document.languageId !== 'kusto') {
-        await selectNeutralTreeItem();
-        return;
-    }
-    
-    const uri = editor.document.uri.toString();
-    
-    // Get the connection (saved or inferred)
-    const connection = await connections.getDocumentConnection(uri);
-    
-    if (!connection?.cluster) {
-        await selectNeutralTreeItem();
-        return;
-    }
-    
-    // Notify the server of the document's connection
-    if (lspServer) {
-        const serverKind = connections.findServerInfo(connection.cluster)?.serverKind ?? null;
-        lspServer.sendDocumentConnectionChanged(uri, connection.cluster, connection.database || null, serverKind);
-    }
-
-    try {
-        const itemToSelect = await findTreeItem(connection.cluster, connection.database);
-        
-        if (itemToSelect) {
-            try {
-                const currentEditor = vscode.window.activeTextEditor;
-                if (currentEditor && currentEditor.document.languageId === 'kusto') {
-                    await programmaticSelectTreeItem(itemToSelect, { select: true, focus: false, expand: false });
-                    lastValidSelection = itemToSelect;
-                }
-            } catch {
-                // Silently ignore reveal errors
-            }
-        }
-    } catch {
-        // Silently fail - tree might not be fully loaded yet
-    }
-}
-
-

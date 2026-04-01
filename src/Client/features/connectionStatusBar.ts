@@ -8,7 +8,7 @@
  */
 
 import * as vscode from 'vscode';
-import * as connections from './connections';
+import type { ConnectionManager } from './connectionManager';
 
 /**
  * Status bar item that shows the active document's Kusto connection (cluster and database).
@@ -17,7 +17,7 @@ import * as connections from './connections';
 export class ConnectionStatusBar {
     private readonly statusBarItem: vscode.StatusBarItem;
 
-    constructor(context: vscode.ExtensionContext) {
+    constructor(context: vscode.ExtensionContext, private readonly connections: ConnectionManager) {
         this.statusBarItem = vscode.window.createStatusBarItem(
             vscode.StatusBarAlignment.Left,
             0  // priority (higher = more to the left)
@@ -27,7 +27,7 @@ export class ConnectionStatusBar {
         context.subscriptions.push(this.statusBarItem);
 
         // Update status bar when the active document's connection changes
-        context.subscriptions.push(connections.registerOnDocumentConnectionChanged(async (uri: string) => {
+        context.subscriptions.push(this.connections.registerOnDocumentConnectionChanged(async (uri: string) => {
             if (vscode.window.activeTextEditor?.document.uri.toString() === uri) {
                 this.refresh();
             }
@@ -54,7 +54,7 @@ export class ConnectionStatusBar {
         }
 
         this.statusBarItem.show();
-        const connection = await connections.getDocumentConnection(editor.document.uri.toString());
+        const connection = await this.connections.getDocumentConnection(editor.document.uri.toString());
 
         if (!connection?.cluster) {
             this.statusBarItem.text = `$(database) not connected`;
