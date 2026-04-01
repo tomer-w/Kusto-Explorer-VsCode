@@ -4,20 +4,22 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { workspace, ExtensionContext, window } from 'vscode';
-import * as conn from './features/connectionsPanel'
-import * as connections from './features/connections'
-import * as queryDocuments from './features/queryDocuments'
-import * as resultsViewer from './features/resultsViewer'
+import { ConnectionsPanel } from './features/connectionsPanel'
+import { ConnectionManager } from './features/connectionManager'
+import { QueryEditor } from './features/queryEditor'
+import { ResultsViewer } from './features/resultsViewer'
 import * as copilot from './features/copilot'
-import * as connectionStatusBar from './features/connectionStatusBar'
-import * as clientStorage from './features/clientStorage'
+import { ConnectionStatusBar } from './features/connectionStatusBar'
 import * as dotnet from './features/dotnet'
-import * as resultsCache from './features/resultsCache'
-import * as scratchPad from './features/scratchPad'
-import * as history from './features/history'
-import * as importFeature from './features/import'
-import { SCRATCH_PAD_SCHEME } from './features/scratchPad'
-import { registerEntityDefinitionProvider, ENTITY_DEFINITION_SCHEME } from './features/entityDefinitionProvider'
+import { ResultsCache } from './features/resultsCache'
+import { Clipboard } from './features/clipboard'
+import { ScratchPadManager, SCRATCH_PAD_SCHEME } from './features/scratchPadManager'
+import { ScratchPadPanel } from './features/scratchPadPanel'
+import { HistoryManager } from './features/historyManager'
+import { HistoryPanel } from './features/historyPanel'
+import { Importer } from './features/importer'
+import { EntityDefinitionProvider, ENTITY_DEFINITION_SCHEME } from './features/entityDefinitionProvider'
+import { Server } from './features/server'
 import
     {
         LanguageClient,
@@ -80,19 +82,27 @@ export async function activate(context: ExtensionContext)
     // Start the client BEFORE activating features that send notifications
     await client.start();
 
-    // Activate client storage handlers (server-to-client requests for persistent storage)
-    clientStorage.activate(context, client);
+    // Create the server wrapper for all direct server interactions
+    const server = new Server(client, context);
 
     // Initialize results cache with the language client
-    resultsCache.initialize(client);
+    const resultsCache = new ResultsCache(server);
+    const clipboard = new Clipboard();
 
-    // Register entity definition provider for "Go to Definition" on database entities
-    registerEntityDefinitionProvider(context, client);
+    // Register "Go to Definition" provider for kusto-entity:// URIs (database entities)
+    const entityDefinitionProvider = new EntityDefinitionProvider(server);
+    context.subscriptions.push(
+        vscode.workspace.registerTextDocumentContentProvider(ENTITY_DEFINITION_SCHEME, entityDefinitionProvider),
+        entityDefinitionProvider
+    );
 
     // Register command to fix doubled commit characters after completion acceptance
     context.subscriptions.push(
         vscode.commands.registerCommand('kusto.fixCommitCharDoubling', fixCommitCharDoubling)
     );
+
+    // activate results viewer early — needed by updateKustoContext below
+    const resultsViewer = new ResultsViewer(context, server, clipboard);
 
     // Track Kusto session state - keep views visible while in a Kusto session
     const updateKustoContext = () => {
@@ -131,31 +141,32 @@ export async function activate(context: ExtensionContext)
     );
 
     // activate connections data layer
-    connections.activate(context, client);
-
-    // activate connections panel and related features
-    await conn.activate(context, client);
-
-    // activate import from Kusto Explorer
-    importFeature.activate(context);
-
-    // Create status bar item for connection status
-    connectionStatusBar.activate(context);
-
-    // activate query execution features
-    queryDocuments.activate(context, client);
+    const connectionManager = new ConnectionManager(context, server);
 
     // activate scratch pad documents
-    await scratchPad.activate(context);
+    const scratchPadManager = new ScratchPadManager(context);
+    new ScratchPadPanel(context, scratchPadManager, connectionManager);
+
+    // Register Kusto Explorer import commands
+    const importer = new Importer(context, scratchPadManager, connectionManager);
+
+    // activate connections panel and related features
+    const connectionsPanel = new ConnectionsPanel(context, server, clipboard, importer, connectionManager);
+    await connectionsPanel.initialize();
+
+    // Create status bar item showing the active document's cluster and database connection.
+    // The ConnectionStatusBar instance is not referenced — it updates itself via editor change events.
+    new ConnectionStatusBar(context, connectionManager);
 
     // activate query history
-    await history.activate(context);
+    const historyManager = new HistoryManager(context);
 
-    // activate chart file editor (.kchart)
-    resultsViewer.activate(context, client);
+    // activate query execution features
+    new HistoryPanel(context, historyManager, resultsViewer);
+    new QueryEditor(context, server, resultsCache, clipboard, historyManager, connectionManager, resultsViewer);
 
     // activate copilot hooks
-    copilot.activate(context, client);
+    copilot.activate(context, server, connectionManager, resultsViewer);
 }
 
 export function deactivate(): Thenable<void> | undefined
