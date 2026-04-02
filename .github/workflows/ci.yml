@@ -36,7 +36,7 @@ jobs:
         run: ./src/ServerTests/bin/Release/net10.0/ServerTests
 
   lint-typescript:
-    name: Lint and Build (TypeScript)
+    name: Build and Test (TypeScript)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -53,6 +53,10 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+        working-directory: src/Client
+
+      - name: Run tests
+        run: npm test
         working-directory: src/Client
 
       - name: Compile TypeScript

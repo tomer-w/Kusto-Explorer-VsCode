@@ -40,17 +40,12 @@ export class HistoryPanel {
             this.treeView.reveal(item, { select: true, focus: false });
         });
 
-        context.subscriptions.push(
-            vscode.commands.registerCommand('kusto.openHistoryItem', (item: HistoryItem) => this.openHistoryItem(item)),
-            vscode.commands.registerCommand('kusto.deleteHistoryItem', (item: HistoryItem) => this.deleteHistoryItem(item)),
-            vscode.commands.registerCommand('kusto.clearHistory', () => this.clearHistory()),
-        );
     }
 
     // ─── Command Handlers ───────────────────────────────────────────────
 
     /** Opens a history item in the singleton results view. */
-    private async openHistoryItem(item: HistoryItem): Promise<void> {
+    async openHistoryItem(item: { meta: HistoryEntry }): Promise<void> {
         const uri = this.manager.getHistoryFileUri(item.meta.fileName);
         const resultData = this.manager.readHistoryFile(uri);
         if (!resultData) {
@@ -59,18 +54,18 @@ export class HistoryPanel {
         }
 
         // Import dynamically to avoid circular dependency at module level
-        this.resultsViewer.setSingletonBackingUri(uri);
-        await this.resultsViewer.displayResultsInPanel(resultData, 'detail');
+        this.resultsViewer.setSingletonViewBackingUri(uri);
+        await this.resultsViewer.displayResultsInBottomPanel(resultData, 'detail');
         await this.resultsViewer.displayResultsInSingletonView(resultData, 'chart', true);
     }
 
     /** Deletes a history item after confirmation. */
-    private async deleteHistoryItem(item: HistoryItem): Promise<void> {
+    async deleteHistoryItem(item: { meta: HistoryEntry }): Promise<void> {
         await this.manager.deleteEntry(item.meta.fileName);
     }
 
     /** Clears all history after confirmation. */
-    private async clearHistory(): Promise<void> {
+    async clearHistory(): Promise<void> {
         const confirm = await vscode.window.showWarningMessage(
             'Delete all query history?',
             { modal: true },

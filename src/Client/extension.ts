@@ -18,6 +18,7 @@ import { ScratchPadPanel } from './features/scratchPadPanel'
 import { HistoryManager } from './features/historyManager'
 import { HistoryPanel } from './features/historyPanel'
 import { Importer } from './features/importer'
+import { ImportManager } from './features/importManager'
 import { EntityDefinitionProvider, ENTITY_DEFINITION_SCHEME } from './features/entityDefinitionProvider'
 import { Server } from './features/server'
 import
@@ -103,12 +104,25 @@ export async function activate(context: ExtensionContext)
 
     // activate results viewer early — needed by updateKustoContext below
     const resultsViewer = new ResultsViewer(context, server, clipboard);
+    context.subscriptions.push(
+        vscode.commands.registerCommand('kusto.copyChart', () => resultsViewer.copyChart()),
+        vscode.commands.registerCommand('kusto.toggleChartEditor', () => resultsViewer.toggleChartEditor()),
+        vscode.commands.registerCommand('kusto.saveSingletonResults', () => resultsViewer.saveCurrentResults()),
+        vscode.commands.registerCommand('kusto.moveViewToMain', () => resultsViewer.moveResultsTabToMain()),
+        vscode.commands.registerCommand('kusto.toggleSearch', () => resultsViewer.toggleSearch()),
+        vscode.commands.registerCommand('kusto.removeChart', () => resultsViewer.removeChart()),
+        vscode.commands.registerCommand('kusto.copyData', () => resultsViewer.copyData()),
+        vscode.commands.registerCommand('kusto.copyCell', () => resultsViewer.copyCell()),
+        vscode.commands.registerCommand('kusto.copyTableAsExpression', () => resultsViewer.copyTableAsExpression()),
+        vscode.commands.registerCommand('kusto.savePanelResults', () => resultsViewer.saveCurrentResults()),
+        vscode.commands.registerCommand('kusto.chartPanelResults', () => resultsViewer.openChartFromBottomView()),
+    );
 
     // Track Kusto session state - keep views visible while in a Kusto session
     const updateKustoContext = () => {
         // Check if any Kusto documents are open OR if singleton results view exists
         const hasKustoDocument = vscode.workspace.textDocuments.some(doc => doc.languageId === 'kusto');
-        const hasSingletonView = resultsViewer.hasSingletonResultsView();
+        const hasSingletonView = resultsViewer.hasSingletonView();
         const isKustoActive = hasKustoDocument || hasSingletonView;
         vscode.commands.executeCommand('setContext', 'kusto.hasActiveDocument', isKustoActive);
         vscode.commands.executeCommand('setContext', 'kusto.hasSingletonView', hasSingletonView);
@@ -145,14 +159,45 @@ export async function activate(context: ExtensionContext)
 
     // activate scratch pad documents
     const scratchPadManager = new ScratchPadManager(context);
-    new ScratchPadPanel(context, scratchPadManager, connectionManager);
+    const scratchPadPanel = new ScratchPadPanel(context, scratchPadManager, connectionManager);
+    context.subscriptions.push(
+        vscode.commands.registerCommand('kusto.newScratchPad', () => scratchPadPanel.createScratchPad()),
+        vscode.commands.registerCommand('kusto.openScratchPad', (item) => scratchPadPanel.openScratchPad(item)),
+        vscode.commands.registerCommand('kusto.deleteScratchPad', (item) => scratchPadPanel.deleteScratchPad(item)),
+        vscode.commands.registerCommand('kusto.renameScratchPad', (item) => scratchPadPanel.renameScratchPad(item)),
+        vscode.commands.registerCommand('kusto.saveScratchPadAs', () => scratchPadPanel.saveScratchPadAs()),
+    );
 
     // Register Kusto Explorer import commands
-    const importer = new Importer(context, scratchPadManager, connectionManager);
+    const importManager = new ImportManager(scratchPadManager, connectionManager);
+    const importer = new Importer(importManager, connectionManager);
+    context.subscriptions.push(
+        vscode.commands.registerCommand('kusto.importConnectionsFromKustoExplorer', () => importer.importConnections()),
+        vscode.commands.registerCommand('kusto.importScratchPadsFromKustoExplorer', () => importer.importScratchPads()),
+    );
 
     // activate connections panel and related features
     const connectionsPanel = new ConnectionsPanel(context, server, clipboard, importer, connectionManager);
     await connectionsPanel.initialize();
+    context.subscriptions.push(
+        vscode.commands.registerCommand('kusto.selectServer', () => {}),
+        vscode.commands.registerCommand('kusto.selectDatabase', () => {}),
+        vscode.commands.registerCommand('kusto.selectEntity', () => {}),
+        vscode.commands.registerCommand('kusto.addServer', () => connectionsPanel.addServer()),
+        vscode.commands.registerCommand('kusto.addServerToGroup', (item) => connectionsPanel.addServerToGroup(item)),
+        vscode.commands.registerCommand('kusto.addServerGroup', () => connectionsPanel.addServerGroup()),
+        vscode.commands.registerCommand('kusto.removeServer', (item) => connectionsPanel.removeServer(item)),
+        vscode.commands.registerCommand('kusto.removeServerGroup', (item) => connectionsPanel.removeServerGroup(item)),
+        vscode.commands.registerCommand('kusto.moveServer', (item) => connectionsPanel.moveServer(item)),
+        vscode.commands.registerCommand('kusto.editServer', (item) => connectionsPanel.editServer(item)),
+        vscode.commands.registerCommand('kusto.renameServer', (item) => connectionsPanel.renameServer(item)),
+        vscode.commands.registerCommand('kusto.renameServerGroup', (item) => connectionsPanel.renameServerGroup(item)),
+        vscode.commands.registerCommand('kusto.refreshServer', (item) => connectionsPanel.refreshServer(item)),
+        vscode.commands.registerCommand('kusto.refreshDatabase', (item) => connectionsPanel.refreshDatabase(item)),
+        vscode.commands.registerCommand('kusto.copyEntityAsCommand', (item) => connectionsPanel.copyEntityAsCommand(item)),
+        vscode.commands.registerCommand('kusto.copyEntityAsExpression', (item) => connectionsPanel.copyEntityAsExpression(item)),
+        vscode.commands.registerCommand('kusto.viewEntityDefinition', (item) => connectionsPanel.viewEntityDefinition(item)),
+    );
 
     // Create status bar item showing the active document's cluster and database connection.
     // The ConnectionStatusBar instance is not referenced — it updates itself via editor change events.
@@ -162,8 +207,22 @@ export async function activate(context: ExtensionContext)
     const historyManager = new HistoryManager(context);
 
     // activate query execution features
-    new HistoryPanel(context, historyManager, resultsViewer);
-    new QueryEditor(context, server, resultsCache, clipboard, historyManager, connectionManager, resultsViewer);
+    const historyPanel = new HistoryPanel(context, historyManager, resultsViewer);
+    context.subscriptions.push(
+        vscode.commands.registerCommand('kusto.openHistoryItem', (item) => historyPanel.openHistoryItem(item)),
+        vscode.commands.registerCommand('kusto.deleteHistoryItem', (item) => historyPanel.deleteHistoryItem(item)),
+        vscode.commands.registerCommand('kusto.clearHistory', () => historyPanel.clearHistory()),
+    );
+    const queryEditor = new QueryEditor(context, server, resultsCache, clipboard, historyManager, connectionManager, resultsViewer);
+    context.subscriptions.push(
+        vscode.commands.registerCommand('kusto.runQuery', (startLine?: number, startChar?: number, endLine?: number, endChar?: number) => queryEditor.runQuery(startLine, startChar, endLine, endChar)),
+        vscode.commands.registerCommand('kusto.copyQuery', (startLine?: number, startChar?: number, endLine?: number, endChar?: number) => queryEditor.copyQuery(startLine, startChar, endLine, endChar)),
+        vscode.commands.registerCommand('kusto.copyQueryTransparent', (startLine?: number, startChar?: number, endLine?: number, endChar?: number) => queryEditor.copyQuery(startLine, startChar, endLine, endChar, true)),
+        vscode.commands.registerCommand('kusto.formatQuery', (startLine?: number, startChar?: number, endLine?: number, endChar?: number) => queryEditor.formatQuery(startLine, startChar, endLine, endChar)),
+        vscode.commands.registerCommand('kusto.selectQuery', (startLine: number, startChar: number, endLine: number, endChar: number) => queryEditor.selectRange(startLine, startChar, endLine, endChar)),
+        vscode.commands.registerCommand('kusto.showResults', (startLine: number, startChar: number) => queryEditor.showCachedResults(startLine, startChar)),
+        vscode.commands.registerCommand('kusto.refreshDocumentSchema', () => queryEditor.refreshDocumentSchema()),
+    );
 
     // activate copilot hooks
     copilot.activate(context, server, connectionManager, resultsViewer);
