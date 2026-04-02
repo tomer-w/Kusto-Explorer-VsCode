@@ -8,24 +8,24 @@
 - Select the Kusto Explorer icon in VS Code activity panel
 - Select a scratch pad document, or open/create a `.kql` file
 - Connect the query document to a Kusto cluster and database (if not already connected)
-	- Add or select a cluster connection in the *Connections* sidebar
-	- Expand the server item and select a database
+	- Add a cluster connection in the *Connections* sidebar (if it does not yet exist)
+	- Select a database (below cluster item) to set the active cluster and database for the document
 - Write a Kusto query or consult copilot for help writing one
 - Press F5 to execute the query and view results in the results panel
 - Use the chart button in the results panel to create a chart for your result data
 - Edit the chart options to customize the chart type, axes, legend and more
 - Add another query to the document or edit the prior one, and run it too
-- Revisit prior results in the Result History sidebar
+- Revisit prior results in the *History* sidebar
 
 ## Connections (sidebar)
 - Keep a list of Kusto clusters you use to run queries
 - Select a cluster and database to be the defaults for your active query document
 - Explore the entities (tables, functions, etc) contained in each database
 
-## Query Sets (sidebar)
+## Scratch Pads (sidebar)
 - Scratch pad documents for jotting down queries without needing to create and name a file
 
-## Result History (sidebar)
+## History (sidebar)
  - Previously executed queries and their results that you can revisit
 
 ## Query Editor (query set documents)
