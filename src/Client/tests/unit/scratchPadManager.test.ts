@@ -139,6 +139,24 @@ describe('ScratchPadManager', () => {
             const raw = fs.readFileSync(path.join(scratchpadDir, '_order.json'), 'utf-8');
             expect(JSON.parse(raw)).toEqual(['A.kql', 'B.kql']);
         });
+
+        it('reorders items correctly when dragging an item to a new position', () => {
+            const mgr = createManager();
+            fs.writeFileSync(path.join(scratchpadDir, 'A.kql'), '', 'utf-8');
+            fs.writeFileSync(path.join(scratchpadDir, 'B.kql'), '', 'utf-8');
+            fs.writeFileSync(path.join(scratchpadDir, 'C.kql'), '', 'utf-8');
+            mgr.saveOrder(['A.kql', 'B.kql', 'C.kql', 'ScratchPad1.kql']);
+
+            // Simulate dragging C.kql to before A.kql (same logic as handleDrop)
+            const order = mgr.readOrder();
+            const fromIndex = order.indexOf('C.kql');
+            const toIndex = order.indexOf('A.kql');
+            order.splice(fromIndex, 1);
+            order.splice(toIndex, 0, 'C.kql');
+            mgr.saveOrder(order);
+
+            expect(mgr.getScratchPadFiles()).toEqual(['C.kql', 'A.kql', 'B.kql', 'ScratchPad1.kql']);
+        });
     });
 
     describe('createScratchPadFile', () => {
