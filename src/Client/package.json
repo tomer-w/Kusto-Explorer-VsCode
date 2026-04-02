@@ -32,6 +32,7 @@
     "watch": "esbuild ./extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap --watch",
     "type-check": "tsc --noEmit",
     "test": "vitest run",
+    "test:unit": "vitest run",
     "test:watch": "vitest",
     "build-release-server": "dotnet publish ../Server/Server.csproj -c Release -o ./server",
     "build-debug-server": "dotnet publish ../Server/Server.csproj -c Debug -o ./server",

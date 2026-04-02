@@ -2,9 +2,9 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
     test: {
-        include: ['tests/**/*.test.ts'],
+        include: ['tests/unit/**/*.test.ts'],
         alias: {
-            vscode: new URL('./tests/__mocks__/vscode.ts', import.meta.url).pathname,
+            vscode: new URL('./tests/unit/__mocks__/vscode.ts', import.meta.url).pathname,
         },
     },
 });

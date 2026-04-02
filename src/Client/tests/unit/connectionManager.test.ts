@@ -4,13 +4,13 @@ import {
     isServer,
     isServerGroup,
     getDisplayName,
-} from '../features/connectionManager';
+} from '../../features/connectionManager';
 import type {
     ServerInfo,
     ServerGroupInfo,
     DocumentConnection,
-} from '../features/connectionManager';
-import type { Server, DatabaseInfo } from '../features/server';
+} from '../../features/connectionManager';
+import type { Server, DatabaseInfo } from '../../features/server';
 import type * as vscode from 'vscode';
 
 // ─── Mock Helpers ────────────────────────────────────────────────────────────

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { ScratchPadManager } from '../features/scratchPadManager';
+import { ScratchPadManager } from '../../features/scratchPadManager';
 import type * as vscode from 'vscode';
 
 /** Creates a minimal mock ExtensionContext pointing at a temp directory. */

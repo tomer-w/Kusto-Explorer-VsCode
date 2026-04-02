@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Clipboard, formatCfHtml } from '../features/clipboard';
-import type { ClipboardContext } from '../features/clipboard';
+import { Clipboard, formatCfHtml } from '../../features/clipboard';
+import type { ClipboardContext } from '../../features/clipboard';
 
 // ─── formatCfHtml ────────────────────────────────────────────────────────────
 
