@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
+import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { workspace, ExtensionContext, window } from 'vscode';
@@ -20,7 +21,8 @@ import { HistoryPanel } from './features/historyPanel'
 import { Importer } from './features/importer'
 import { ImportManager } from './features/importManager'
 import { EntityDefinitionProvider, ENTITY_DEFINITION_SCHEME } from './features/entityDefinitionProvider'
-import { Server } from './features/server'
+import { Server, NullServer } from './features/server'
+import type { IServer } from './features/server'
 import
     {
         LanguageClient,
@@ -36,94 +38,60 @@ export async function activate(context: ExtensionContext)
     // Create output channel early so dotnet activation can log to it
     const outputChannel = window.createOutputChannel('Kusto');
 
-    // ─── Features that do NOT require the language server ────────────
+    // ─── Language server (optional — requires .NET and Server.dll) ───
 
-    // activate scratch pad documents
-    const scratchPadManager = new ScratchPadManager(context);
+    let server: IServer = new NullServer();
+    const serverDll = path.join(context.extensionPath, 'server', 'Server.dll');
+    const dotnetPath = fs.existsSync(serverDll) ? await dotnet.activate(outputChannel) : undefined;
 
-    // Track Kusto session state - keep views visible while in a Kusto session
-    const updateKustoContext = (hasSingletonView: () => boolean) => {
-        const hasKustoDocument = vscode.workspace.textDocuments.some(doc => doc.languageId === 'kusto');
-        const hasSingleton = hasSingletonView();
-        const isKustoActive = hasKustoDocument || hasSingleton;
-        vscode.commands.executeCommand('setContext', 'kusto.hasActiveDocument', isKustoActive);
-        vscode.commands.executeCommand('setContext', 'kusto.hasSingletonView', hasSingleton);
+    if (dotnetPath) {
+        const serverExecutable: Executable = {
+            command: dotnetPath,
+            args: [serverDll, "vscode"]
+        };
 
-        const activeEditor = vscode.window.activeTextEditor;
-        const isEntityDef = activeEditor?.document.uri.scheme === ENTITY_DEFINITION_SCHEME;
-        vscode.commands.executeCommand('setContext', 'kusto.isEntityDefinition', isEntityDef);
+        const serverOptions: ServerOptions = {
+            run: serverExecutable,
+            debug: serverExecutable
+        };
 
-        const isScratchPad = activeEditor?.document.uri.scheme === SCRATCH_PAD_SCHEME;
-        vscode.commands.executeCommand('setContext', 'kusto.isScratchPad', isScratchPad);
-    };
+        const clientOptions: LanguageClientOptions = {
+            documentSelector: [
+                { scheme: 'file', language: 'kusto' },
+                { scheme: ENTITY_DEFINITION_SCHEME, language: 'kusto' },
+                { scheme: SCRATCH_PAD_SCHEME, language: 'kusto' }
+            ],
+            synchronize: { 
+                fileEvents: workspace.createFileSystemWatcher('**/*.{kql,csl,kusto}')
+            },
+            outputChannel: outputChannel,
+            middleware: {
+                provideCompletionItem: async (document, position, context, token, next) => {
+                    const result = await next(document, position, context, token);
+                    const globalCommitChars = client?.initializeResult?.capabilities
+                        ?.completionProvider?.allCommitCharacters ?? [];
+                    return fixCompletionCommit(result, globalCommitChars);
+                }
+            }
+        };
 
-    // ─── Language server (requires .NET) ─────────────────────────────
-
-    // Find or acquire .NET runtime before starting the language server
-    const dotnetPath = await dotnet.activate(outputChannel);
-    if (!dotnetPath) {
-        // Register scratch pad commands even without the language server
-        const connectionManager = new ConnectionManager(context, undefined as any);
-        const scratchPadPanel = new ScratchPadPanel(context, scratchPadManager, connectionManager);
-        context.subscriptions.push(
-            vscode.commands.registerCommand('kusto.newScratchPad', () => scratchPadPanel.createScratchPad()),
-            vscode.commands.registerCommand('kusto.openScratchPad', (item) => scratchPadPanel.openScratchPad(item)),
-            vscode.commands.registerCommand('kusto.deleteScratchPad', (item) => scratchPadPanel.deleteScratchPad(item)),
-            vscode.commands.registerCommand('kusto.renameScratchPad', (item) => scratchPadPanel.renameScratchPad(item)),
-            vscode.commands.registerCommand('kusto.saveScratchPadAs', () => scratchPadPanel.saveScratchPadAs()),
+        client = new LanguageClient(
+            'kustoLanguageServer',
+            'Kusto Language Server',
+            serverOptions,
+            clientOptions
         );
-        return;
+
+        await client.start();
+        server = new Server(client, context);
     }
 
-    const serverDll = path.join(context.extensionPath, 'server', 'Server.dll');
-    const serverExecutable: Executable = {
-        command: dotnetPath,
-        args: [serverDll, "vscode"]
-    };
+    // ─── UI features (always registered) ─────────────────────────────
 
-    const serverOptions: ServerOptions = {
-        run: serverExecutable,
-        debug: serverExecutable
-    };
-
-    const clientOptions: LanguageClientOptions = {
-        documentSelector: [
-            { scheme: 'file', language: 'kusto' },
-            { scheme: ENTITY_DEFINITION_SCHEME, language: 'kusto' },
-            { scheme: SCRATCH_PAD_SCHEME, language: 'kusto' }
-        ],
-        synchronize: { 
-            fileEvents: workspace.createFileSystemWatcher('**/*.{kql,csl,kusto}')
-        },
-        outputChannel: outputChannel,
-        middleware: {
-            provideCompletionItem: async (document, position, context, token, next) => {
-                const result = await next(document, position, context, token);
-                const globalCommitChars = client?.initializeResult?.capabilities
-                    ?.completionProvider?.allCommitCharacters ?? [];
-                return fixCompletionCommit(result, globalCommitChars);
-            }
-        }
-    };
-
-    client = new LanguageClient(
-        'kustoLanguageServer',
-        'Kusto Language Server',
-        serverOptions,
-        clientOptions
-    );
-
-    // Start the client BEFORE activating features that send notifications
-    await client.start();
-
-    // Create the server wrapper for all direct server interactions
-    const server = new Server(client, context);
-
-    // Initialize results cache with the language client
-    const resultsCache = new ResultsCache(server);
     const clipboard = new Clipboard();
+    const scratchPadManager = new ScratchPadManager(context);
 
-    // Register "Go to Definition" provider for kusto-entity:// URIs (database entities)
+    // Register "Go to Definition" provider for kusto-entity:// URIs
     const entityDefinitionProvider = new EntityDefinitionProvider(server);
     context.subscriptions.push(
         vscode.workspace.registerTextDocumentContentProvider(ENTITY_DEFINITION_SCHEME, entityDefinitionProvider),
@@ -135,8 +103,9 @@ export async function activate(context: ExtensionContext)
         vscode.commands.registerCommand('kusto.fixCommitCharDoubling', fixCommitCharDoubling)
     );
 
-    // activate results viewer early — needed by updateKustoContext below
+    // activate results viewer
     const resultsViewer = new ResultsViewer(context, server, clipboard);
+    const resultsCache = new ResultsCache(server);
     context.subscriptions.push(
         vscode.commands.registerCommand('kusto.copyChart', () => resultsViewer.copyChart()),
         vscode.commands.registerCommand('kusto.toggleChartEditor', () => resultsViewer.toggleChartEditor()),
@@ -151,20 +120,23 @@ export async function activate(context: ExtensionContext)
         vscode.commands.registerCommand('kusto.chartPanelResults', () => resultsViewer.openChartFromBottomView()),
     );
 
-    // Track Kusto session state - keep views visible while in a Kusto session
-    const updateKustoContextFn = () => updateKustoContext(() => resultsViewer.hasSingletonView());
+    // Track Kusto session state
+    const updateKustoContextFn = () => {
+        const hasKustoDocument = vscode.workspace.textDocuments.some(doc => doc.languageId === 'kusto');
+        const hasSingletonView = resultsViewer.hasSingletonView();
+        const isKustoActive = hasKustoDocument || hasSingletonView;
+        vscode.commands.executeCommand('setContext', 'kusto.hasActiveDocument', isKustoActive);
+        vscode.commands.executeCommand('setContext', 'kusto.hasSingletonView', hasSingletonView);
 
-    // Command to notify when singleton view state changes (triggers context update)
+        const activeEditor = vscode.window.activeTextEditor;
+        vscode.commands.executeCommand('setContext', 'kusto.isEntityDefinition', activeEditor?.document.uri.scheme === ENTITY_DEFINITION_SCHEME);
+        vscode.commands.executeCommand('setContext', 'kusto.isScratchPad', activeEditor?.document.uri.scheme === SCRATCH_PAD_SCHEME);
+    };
+
     context.subscriptions.push(
-        vscode.commands.registerCommand('kusto.singletonViewStateChanged', () => {
-            updateKustoContextFn();
-        })
+        vscode.commands.registerCommand('kusto.singletonViewStateChanged', () => updateKustoContextFn())
     );
-
-    // Update context on activation
     updateKustoContextFn();
-
-    // Update context when documents are opened/closed or when active editor changes
     context.subscriptions.push(
         vscode.workspace.onDidOpenTextDocument(() => updateKustoContextFn()),
         vscode.workspace.onDidCloseTextDocument(() => updateKustoContextFn()),
@@ -216,7 +188,6 @@ export async function activate(context: ExtensionContext)
     );
 
     // Create status bar item showing the active document's cluster and database connection.
-    // The ConnectionStatusBar instance is not referenced — it updates itself via editor change events.
     new ConnectionStatusBar(context, connectionManager);
 
     // activate query history

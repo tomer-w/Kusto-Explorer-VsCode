@@ -1,8 +1,50 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { LanguageClient } from 'vscode-languageclient/node';
+import { LanguageClient, InitializeResult } from 'vscode-languageclient/node';
 import { CancellationToken, Disposable, ExtensionContext } from 'vscode';
+
+/**
+ * Interface for the Kusto Language Server, used by all components.
+ * The real Server communicates via LSP; NullServer returns safe defaults
+ * when no language server is available (e.g. during integration tests).
+ */
+export interface IServer {
+    // LSP Requests
+    runQuery(query: string, cluster?: string, database?: string, isReadOnly?: boolean, maxRows?: number): Promise<RunQueryResult | null>;
+    getQueryResultType(query: string, cluster: string, database?: string): Promise<GetQueryResultTypeResult | null>;
+    getFunctionResultType(cluster: string, database: string, functionName: string): Promise<GetFunctionResultTypeResult | null>;
+    getQueryRanges(uri: string): Promise<QueryRangesResult | null>;
+    getQueryRange(uri: string, position: Position): Promise<Range | null>;
+    getServerKind(connection: string): Promise<ServerKindResult | null>;
+    decodeConnectionString(connectionString: string): Promise<DecodeConnectionStringResult | null>;
+    getServerInfo(connection: string, serverKind: string | null): Promise<ServerInfoResult | null>;
+    getDatabaseInfo(cluster: string, database: string): Promise<DatabaseInfo | null>;
+    getEntityAsCommand(cluster: string, database: string, entityType: string, entityName: string): Promise<string | null>;
+    getEntityAsExpression(cluster: string, database: string, entityType: string, entityName: string, uri: string | null): Promise<string | null>;
+    getChartAsHtml(data: ResultData, darkMode?: boolean): Promise<ChartAsHtmlResult | null>;
+    getQueryAsHtml(query: string, cluster?: string, database?: string, darkMode?: boolean): Promise<QueryAsHtmlResult | null>;
+    getDataAsExpression(data: ResultData, tableName?: string): Promise<DataAsExpression | null>;
+    getEntityDefinitionContent(uri: string, token?: CancellationToken): Promise<EntityDefinitionContentResult | null>;
+    transformPaste(text: string, kind: string, targetUri: string, targetPosition: Position, entityCluster?: string, entityDatabase?: string, entityType?: string, entityName?: string): Promise<string | null>;
+    refreshSchema(cluster: string, database?: string): Promise<void>;
+    refreshDocumentSchema(uri: string): Promise<void>;
+    inferDocumentConnection(uri: string): Promise<InferDocumentConnectionResult | null>;
+    ensureDocument(uri: string, text: string): Promise<void>;
+    validateQuery(query: string, cluster: string, database?: string): Promise<ValidateQueryResult | null>;
+    getMinifiedQuery(query: string): Promise<GetMinifiedQueryResult | null>;
+
+    // Notifications (client → server)
+    sendConnectionsUpdated(connections: string[]): void;
+    sendDocumentConnectionChanged(uri: string, cluster: string | null, database: string | null, serverKind: string | null): void;
+
+    // Notifications (server → client)
+    onDocumentReady(handler: (params: DocumentReadyNotification) => void): Disposable;
+    onSemanticTokensRefresh(handler: () => void): Disposable;
+
+    // Server Capabilities
+    readonly initializeResult: InitializeResult | undefined;
+}
 
 /**
  * Typed wrapper around the Kusto Language Server LSP protocol.
@@ -12,7 +54,7 @@ import { CancellationToken, Disposable, ExtensionContext } from 'vscode';
  * Also bridges the server's getData/setData requests to VS Code's globalState,
  * allowing the server to persist data across sessions.
  */
-export class Server {
+export class Server implements IServer {
     constructor(private readonly client: LanguageClient, context: ExtensionContext) {
         // Bridge server storage requests to VS Code's globalState
         this.client.onRequest('kusto/getData', async (params: GetDataParams) => {
@@ -348,6 +390,44 @@ export class Server {
     get initializeResult() {
         return this.client.initializeResult;
     }
+}
+
+/**
+ * Null Object implementation of IServer.
+ * Returns safe defaults (null, empty, no-op) for all operations.
+ * Used when no language server is available so all components can still be
+ * constructed and registered without conditional guards.
+ */
+export class NullServer implements IServer {
+    private static readonly noopDisposable: Disposable = { dispose() {} };
+
+    runQuery(): Promise<RunQueryResult | null> { return Promise.resolve(null); }
+    getQueryResultType(): Promise<GetQueryResultTypeResult | null> { return Promise.resolve(null); }
+    getFunctionResultType(): Promise<GetFunctionResultTypeResult | null> { return Promise.resolve(null); }
+    getQueryRanges(): Promise<QueryRangesResult | null> { return Promise.resolve(null); }
+    getQueryRange(): Promise<Range | null> { return Promise.resolve(null); }
+    getServerKind(): Promise<ServerKindResult | null> { return Promise.resolve(null); }
+    decodeConnectionString(): Promise<DecodeConnectionStringResult | null> { return Promise.resolve(null); }
+    getServerInfo(): Promise<ServerInfoResult | null> { return Promise.resolve(null); }
+    getDatabaseInfo(): Promise<DatabaseInfo | null> { return Promise.resolve(null); }
+    getEntityAsCommand(): Promise<string | null> { return Promise.resolve(null); }
+    getEntityAsExpression(): Promise<string | null> { return Promise.resolve(null); }
+    getChartAsHtml(): Promise<ChartAsHtmlResult | null> { return Promise.resolve(null); }
+    getQueryAsHtml(): Promise<QueryAsHtmlResult | null> { return Promise.resolve(null); }
+    getDataAsExpression(): Promise<DataAsExpression | null> { return Promise.resolve(null); }
+    getEntityDefinitionContent(): Promise<EntityDefinitionContentResult | null> { return Promise.resolve(null); }
+    transformPaste(): Promise<string | null> { return Promise.resolve(null); }
+    refreshSchema(): Promise<void> { return Promise.resolve(); }
+    refreshDocumentSchema(): Promise<void> { return Promise.resolve(); }
+    inferDocumentConnection(): Promise<InferDocumentConnectionResult | null> { return Promise.resolve(null); }
+    ensureDocument(): Promise<void> { return Promise.resolve(); }
+    validateQuery(): Promise<ValidateQueryResult | null> { return Promise.resolve(null); }
+    getMinifiedQuery(): Promise<GetMinifiedQueryResult | null> { return Promise.resolve(null); }
+    sendConnectionsUpdated(): void {}
+    sendDocumentConnectionChanged(): void {}
+    onDocumentReady(): Disposable { return NullServer.noopDisposable; }
+    onSemanticTokensRefresh(): Disposable { return NullServer.noopDisposable; }
+    get initializeResult(): undefined { return undefined; }
 }
 
 /** Result of getting chart as HTML. */

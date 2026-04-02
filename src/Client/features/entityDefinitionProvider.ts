@@ -8,7 +8,7 @@
  */
 
 import * as vscode from 'vscode';
-import { Server } from './server';
+import type { IServer } from './server';
 
 /**
  * URI scheme for virtual entity definition documents.
@@ -29,7 +29,7 @@ export class EntityDefinitionProvider implements vscode.TextDocumentContentProvi
     private readonly _onDidChange = new vscode.EventEmitter<vscode.Uri>();
     readonly onDidChange = this._onDidChange.event;
 
-    constructor(private readonly server: Server) {}
+    constructor(private readonly server: IServer) {}
 
     async provideTextDocumentContent(uri: vscode.Uri, token: vscode.CancellationToken): Promise<string> {
         try {

@@ -6,8 +6,7 @@
  */
 
 import * as vscode from 'vscode';
-import { Server } from './server';
-import type { SelectionRange, Range } from './server';
+import type { IServer, SelectionRange, Range } from './server';
 import type { ConnectionManager } from './connectionManager';
 import { ResultsViewer } from './resultsViewer';
 import { ResultsCache } from './resultsCache';
@@ -42,7 +41,7 @@ function rangeFromArgs(startLine?: number, startChar?: number, endLine?: number,
 export class QueryEditor {
 
     private readonly codeLensProvider: KustoCodeLensProvider;
-    private readonly server: Server;
+    private readonly server: IServer;
     private readonly cache: ResultsCache;
     private readonly clipboard: Clipboard;
     private readonly history: HistoryManager;
@@ -52,7 +51,7 @@ export class QueryEditor {
 
     constructor(
         context: vscode.ExtensionContext, 
-        server: Server, 
+        server: IServer, 
         resultsCache: ResultsCache, 
         clipboard: Clipboard, 
         historyManager: HistoryManager, 
@@ -410,7 +409,7 @@ class KustoCodeLensProvider implements vscode.CodeLensProvider {
     private _onDidChangeCodeLenses = new vscode.EventEmitter<void>();
     readonly onDidChangeCodeLenses = this._onDidChangeCodeLenses.event;
 
-    constructor(private readonly server: Server, private readonly cache: ResultsCache) {
+    constructor(private readonly server: IServer, private readonly cache: ResultsCache) {
     }
 
     refresh(): void {
@@ -494,7 +493,7 @@ class KustoCodeLensProvider implements vscode.CodeLensProvider {
 
 class KustoPasteEditProvider implements vscode.DocumentPasteEditProvider {
 
-    constructor(private readonly server: Server, private readonly clipboard: Clipboard) {
+    constructor(private readonly server: IServer, private readonly clipboard: Clipboard) {
     }
 
     async provideDocumentPasteEdits(
@@ -561,7 +560,7 @@ class KustoPasteEditProvider implements vscode.DocumentPasteEditProvider {
 /**
  * Activates editor decoration features like query separators.
  */
-function activateQuerySeparators(context: vscode.ExtensionContext, server: Server, errorRangeDecoration: vscode.TextEditorDecorationType): void {
+function activateQuerySeparators(context: vscode.ExtensionContext, server: IServer, errorRangeDecoration: vscode.TextEditorDecorationType): void {
 
     // Decoration for separator line between queries
     const querySeparatorDecoration = vscode.window.createTextEditorDecorationType({
@@ -680,7 +679,7 @@ function activateQuerySeparators(context: vscode.ExtensionContext, server: Serve
 /**
  * Activates semantic token coloring features.
  */
-function activateSemanticColoring(context: vscode.ExtensionContext, server: Server): void {
+function activateSemanticColoring(context: vscode.ExtensionContext, server: IServer): void {
     // Handle workspace/semanticTokens/refresh notification from server
     // VS Code does not automatically redraw with new semantic tokens when this notification is received,
     // so we need to force it manually
