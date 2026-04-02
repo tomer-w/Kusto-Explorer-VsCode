@@ -258,21 +258,19 @@ async function saveResults(source: { data: server.ResultData }): Promise<{ uri: 
 // =============================================================================
 
 /**
-*   The ResultsViewer class handles UI for query results (data and charts). 
+*   The ResultsViewer class handles UI for multiple query results that can each show a combination of data tables, charts, and query text in a variety of locations:
 * 
-*   It supports displaying results in one of three different locations:
+*   - Bottom view - results shown in the bottom panel
+*   - Singleton view - a tab view not associated with a file backed document, typically used to show just charts
+*   - Document view - a tab view for results saved to a .kqr file that may include data, charts and query
 *
-*   1. The bottom results panel - last run query results or selected result history, usually just data tables
-*   2. Singleton Result Viewer - as an unnamed results document window typically used to just show charts
-*   3. Saved Results Viewer - a results document window for a saved results (.kqr) file that may include data, charts and query
-* 
-*   It works by primarily injecting generated HTML into the corresponding webview.
+*   More than one view can exist at the same time, but only one is the active view
 */
 export class ResultsViewer {
 
     private readonly server: Server;
     private readonly clipboard: Clipboard;
-    private readonly htmlBuilder: ResultsViewProvider;
+    private readonly htmlBuilder: DocumentViewProvider;
 
     /** Map from webview to its viewer state. */
     private readonly viewerStates = new Map<vscode.WebviewPanel, ResultViewerState>();
@@ -283,14 +281,14 @@ export class ResultsViewer {
     /** The most recently focused result webview. */
     private activeResultWebview: vscode.WebviewPanel | undefined;
 
-    // ─── Results Panel (bottom panel WebviewView) state ─────────────────
+    // ─── Bottom view state ──────────────────────────────────────────────
     private resultsPanel: vscode.WebviewView | undefined;
     private lastPanelResultData: server.ResultData | undefined;
     private lastPanelTableNames: string[] = [];
     private panelActiveTabIndex = 0;
     private waitForPanelReady: (() => Promise<void>) | undefined;
 
-    // ─── Singleton Result Viewer state ──────────────────────────────────
+    // ─── Singleton view state ───────────────────────────────────────────
     private singletonView: vscode.WebviewPanel | undefined;
     private singletonResultData: server.ResultData | undefined;
     private singletonChartOptionsOverride: server.ChartOptions | undefined;
@@ -299,10 +297,10 @@ export class ResultsViewer {
     private singletonWriteBackTimer: ReturnType<typeof setTimeout> | undefined;
     private singletonMode: ResultViewMode | undefined;
 
-    constructor(context: vscode.ExtensionContext, srv: Server, clipboard: Clipboard) {
-        this.server = srv;
+    constructor(context: vscode.ExtensionContext, server: Server, clipboard: Clipboard) {
+        this.server = server;
         this.clipboard = clipboard;
-        this.htmlBuilder = new ResultsViewProvider(this);
+        this.htmlBuilder = new DocumentViewProvider(this, server);
 
         context.subscriptions.push(
             vscode.window.registerCustomEditorProvider(
@@ -375,37 +373,14 @@ export class ResultsViewer {
         if (getResultsViewDisplayLocation() === 'panel') {
             vscode.commands.executeCommand('kusto.resultsView.focus');
         }
-
-        // Register chart copy commands that target whichever chart webview is active
-        context.subscriptions.push(
-            vscode.commands.registerCommand('kusto.copyChart', () => {
-                this.activeResultWebview?.webview.postMessage({ command: 'copyChart' });
-            }),
-            vscode.commands.registerCommand('kusto.toggleChartEditor', () => {
-                this.activeResultWebview?.webview.postMessage({ command: 'toggleEditPanel' });
-            }),
-            vscode.commands.registerCommand('kusto.saveSingletonResults', () => this.saveCurrentResults('singleton')),
-            vscode.commands.registerCommand('kusto.moveViewToMain', () => this.moveResultViewToMain()),
-            vscode.commands.registerCommand('kusto.toggleSearch', () => this.toggleSearch()),
-            vscode.commands.registerCommand('kusto.removeChart', () => this.removeChart())
-        );
-
-        // Register results-related commands (previously in resultsPanel)
-        context.subscriptions.push(
-            vscode.commands.registerCommand('kusto.copyData', () => this.copyData()),
-            vscode.commands.registerCommand('kusto.copyCell', () => this.copyCell()),
-            vscode.commands.registerCommand('kusto.copyTableAsExpression', () => this.copyTableAsExpression()),
-            vscode.commands.registerCommand('kusto.savePanelResults', () => this.saveCurrentResults('panel')),
-            vscode.commands.registerCommand('kusto.chartPanelResults', () => this.openChartFromResultsPanel())
-        );
     }
 
     // ─── Public API ─────────────────────────────────────────────────────
 
     /**
-     * Returns whether the singleton result viewer currently exists.
+     * Returns whether the singleton view currently exists.
      */
-    hasSingletonResultsView(): boolean {
+    hasSingletonView(): boolean {
         return this.singletonView !== undefined;
     }
 
@@ -413,24 +388,17 @@ export class ResultsViewer {
      * Sets the backing file URI for the singleton view.
      * Flushes any pending write-back to the previous URI before switching.
      */
-    setSingletonBackingUri(uri: vscode.Uri | undefined): void {
+    setSingletonViewBackingUri(uri: vscode.Uri | undefined): void {
         // Flush pending writes to the OLD backing file before switching
         this.flushSingletonWriteBack();
         this.singletonBackingUri = uri;
     }
 
     /**
-     * Returns the server wrapper for use by other modules.
-     */
-    getServer(): Server {
-        return this.server;
-    }
-
-    /**
      * Registers a result webview for copy command targeting.
      * Tracks focus and removes on dispose.
      */
-    registerResultWebview(webview: vscode.WebviewPanel): void {
+    private registerResultWebview(webview: vscode.WebviewPanel): void {
         this.resultWebviews.add(webview);
         this.activeResultWebview = webview;
 
@@ -453,7 +421,7 @@ export class ResultsViewer {
      * Call this from any webview's onDidReceiveMessage to support chart copy.
      * Returns true if the message was handled.
      */
-    handleChartWebviewMessage(message: { command?: string; pngDataUrl?: string; svgDataUrl?: string; error?: string }): boolean {
+    private handleChartWebviewMessage(message: { command?: string; pngDataUrl?: string; svgDataUrl?: string; error?: string }): boolean {
         if (message.command === 'copyChartError') {
             vscode.window.showErrorMessage(`Chart copy failed in webview: ${message.error}`);
             return true;
@@ -466,9 +434,9 @@ export class ResultsViewer {
     }
 
     /**
-     * Displays query results in the bottom panel.
+     * Displays result data in the bottom view.
      */
-    async displayResultsInPanel(
+    async displayResultsInBottomPanel(
         resultData: server.ResultData | undefined,
         mode: ResultViewMode
     ): Promise<void> {
@@ -511,9 +479,9 @@ export class ResultsViewer {
     }
 
     /**
-     * Displays a query error in the bottom panel and closes any singleton beside view.
+     * Displays a query error in the bottom view and closes any singleton view.
      */
-    async displayErrorInPanel(error: server.QueryDiagnostic): Promise<void> {
+    async displayErrorInBottomView(error: server.QueryDiagnostic): Promise<void> {
         this.disposeSingletonView();
 
         const htmlMessage = `<html><body><table><tr><td>\u274C</td><td><pre>${escapeHtmlStatic(error.message)}</pre></td></tr><tr><td></td><td><pre>${escapeHtmlStatic(error.details || '')}</pre></td></tr></table></body></html>`;
@@ -522,7 +490,7 @@ export class ResultsViewer {
     }
 
     /**
-     * Shows/hides the singleton results view.
+     * Displays the result data in the singleton view.
      * @param beside If true, opens in a beside area; if false, opens in the main editor area.
      */
     async displayResultsInSingletonView(
@@ -565,68 +533,6 @@ export class ResultsViewer {
         this.showSingletonView(injectMessageHandlerScripts(html, hasChart), resultData, (dataResult?.tables ?? []).map((t: HtmlTable) => t.name), beside, mode);
     }
 
-    /**
-     * Copies the table cell under the cursor in the active results viewer.
-     * Returns true if handled.
-     */
-    copyCellFromResultsView(): boolean {
-        const state = this.getActiveViewerState();
-        if (!state || !this.activeResultWebview) {
-            return false;
-        }
-        this.activeResultWebview.webview.postMessage({ command: 'copyCell' });
-        return true;
-    }
-
-    /**
-     * Copies the active table data from the results viewer as HTML + markdown.
-     * Returns true if handled.
-     */
-    async copyDataFromResultsView(): Promise<boolean> {
-        const state = this.getActiveViewerState();
-        if (!state) {
-            return false;
-        }
-
-        const tableName = this.getActiveTableName(state);
-
-        const htmlResult = resultDataToHtml(state.resultData, tableName);
-
-        const html = htmlResult?.tables[0]?.html;
-        const markdown = resultDataToMarkdown(state.resultData, tableName);
-
-        if (html) {
-            this.clipboard.copy([
-                { format: 'HTML Format', data: formatCfHtml(html), encoding: 'utf8' },
-                { format: 'Text', data: markdown || html, encoding: 'text' },
-            ]);
-        } else if (markdown) {
-            vscode.env.clipboard.writeText(markdown);
-        }
-        return true;
-    }
-
-    /**
-     * Copies the active table as a KQL datatable expression from the results viewer.
-     * Returns true if handled.
-     */
-    async copyTableAsExpressionFromResultsView(): Promise<boolean> {
-        const state = this.getActiveViewerState();
-        if (!state) {
-            return false;
-        }
-
-        try {
-            const tableName = this.getActiveTableName(state);
-            const result = await this.server.getDataAsExpression(state.resultData, tableName);
-            if (result?.expression) {
-                await vscode.env.clipboard.writeText(result.expression);
-            }
-        } catch (error) {
-            vscode.window.showErrorMessage(`Failed to copy as expression: ${error}`);
-        }
-        return true;
-    }
 
     // ─── Private methods ────────────────────────────────────────────────
 
@@ -653,7 +559,25 @@ export class ResultsViewer {
         }
     }
 
-    private toggleSearch(): void {
+    /**
+     * Copies the active chart in the active results viewer to the clipboard.
+     * Targets whichever tab view (singleton or document) is currently focused.
+     */
+    copyChart(): void {
+        this.activeResultWebview?.webview.postMessage({ command: 'copyChart' });
+    }
+
+    /**
+     * Toggles the chart edit panel in the active tab view.
+     */
+    toggleChartEditor(): void {
+        this.activeResultWebview?.webview.postMessage({ command: 'toggleEditPanel' });
+    }
+
+    /**
+     * Toggles the search box visibility in the active results view.
+     */
+    toggleSearch(): void {
         if (this.activeResultWebview?.active) {
             this.activeResultWebview.webview.postMessage({ command: 'toggleSearch' });
         } else if (this.resultsPanel) {
@@ -888,11 +812,14 @@ export class ResultsViewer {
         }
     }
 
-    private async removeChart(): Promise<void> {
+    /**
+     * Removes the active chart from the active tab view.
+     */
+    async removeChart(): Promise<void> {
         if (!this.activeResultWebview?.active) { return; }
 
         if (this.activeResultWebview === this.singletonView) {
-            // Singleton viewer: remove chart from the in-memory data
+            // Singleton view: remove chart from the in-memory data
             if (!this.singletonResultData) { return; }
             const updated = { ...this.singletonResultData };
             delete updated.chartOptions;
@@ -923,7 +850,7 @@ export class ResultsViewer {
                 vscode.commands.executeCommand('setContext', 'kusto.resultViewerChartActive', false);
             }
         } else {
-            // Document result viewer: remove chart from the data and update the document
+            // Document view: remove chart from the data and update the document
             const state = this.viewerStates.get(this.activeResultWebview);
             if (!state) { return; }
             const updated = { ...state.resultData };
@@ -993,22 +920,44 @@ export class ResultsViewer {
         }
     }
 
-    private copyCell(): void {
-        if (this.copyCellFromResultsView()) {
+    /**
+     * Copies the table cell under the cursor in the active results view.
+     */
+    copyCell(): void {
+        const state = this.getActiveViewerState();
+        if (state && this.activeResultWebview) {
+            this.activeResultWebview.webview.postMessage({ command: 'copyCell' });
             return;
         }
-        // Panel mode: post message to the bottom panel webview
+        // Fall back to bottom view
         if (this.resultsPanel) {
             this.resultsPanel.webview.postMessage({ command: 'copyCell' });
         }
     }
 
-    private async copyData(): Promise<void> {
-        if (await this.copyDataFromResultsView()) {
+    /**
+     * Copies the active table data as HTML + markdown from the active results view.
+     */
+    async copyData(): Promise<void> {
+        const state = this.getActiveViewerState();
+        if (state) {
+            const tableName = this.getActiveTableName(state);
+            const htmlResult = resultDataToHtml(state.resultData, tableName);
+            const html = htmlResult?.tables[0]?.html;
+            const markdown = resultDataToMarkdown(state.resultData, tableName);
+
+            if (html) {
+                this.clipboard.copy([
+                    { format: 'HTML Format', data: formatCfHtml(html), encoding: 'utf8' },
+                    { format: 'Text', data: markdown || html, encoding: 'text' },
+                ]);
+            } else if (markdown) {
+                vscode.env.clipboard.writeText(markdown);
+            }
             return;
         }
 
-        // Fall back to panel data
+        // Fall back to bottom view data
         if (!this.server || !this.lastPanelResultData) {
             return;
         }
@@ -1028,8 +977,21 @@ export class ResultsViewer {
         }
     }
 
-    private async copyTableAsExpression(): Promise<void> {
-        if (await this.copyTableAsExpressionFromResultsView()) {
+    /**
+     * Copies the active table as a KQL datatable expression from the active results view.
+     */
+    async copyTableAsExpression(): Promise<void> {
+        const state = this.getActiveViewerState();
+        if (state) {
+            try {
+                const tableName = this.getActiveTableName(state);
+                const result = await this.server.getDataAsExpression(state.resultData, tableName);
+                if (result?.expression) {
+                    await vscode.env.clipboard.writeText(result.expression);
+                }
+            } catch (error) {
+                vscode.window.showErrorMessage(`Failed to copy as expression: ${error}`);
+            }
             return;
         }
 
@@ -1048,18 +1010,23 @@ export class ResultsViewer {
         }
     }
 
-    private async saveCurrentResults(source: 'singleton' | 'panel'): Promise<void> {
-        const rawData = source === 'singleton' ? this.singletonResultData : this.lastPanelResultData;
+    /**
+     * Saves the current result data to a .kqr file and opens it in a document view.
+     */
+    async saveCurrentResults(): Promise<void> {
+        const isSingleton = this.activeResultWebview === this.singletonView && this.singletonView?.active;
+
+        const rawData = isSingleton ? this.singletonResultData : this.lastPanelResultData;
         if (!rawData) {
             vscode.window.showWarningMessage('No result data available to save.');
             return;
         }
 
-        const data = this.singletonChartOptionsOverride && source === 'singleton'
+        const data = this.singletonChartOptionsOverride && isSingleton
             ? { ...rawData, chartOptions: this.singletonChartOptionsOverride }
             : rawData;
 
-        const viewColumn = source === 'singleton'
+        const viewColumn = isSingleton
             ? this.singletonView?.viewColumn ?? vscode.ViewColumn.One
             : vscode.ViewColumn.One;
 
@@ -1071,7 +1038,10 @@ export class ResultsViewer {
         }
     }
 
-    private async openChartFromResultsPanel(): Promise<void> {
+    /**
+     * Opens a chart from the bottom view results in the singleton view.
+     */
+    async openChartFromBottomView(): Promise<void> {
         if (!this.lastPanelResultData) {
             vscode.window.showWarningMessage('No result data available to chart.');
             return;
@@ -1083,7 +1053,10 @@ export class ResultsViewer {
         await this.displayResultsInSingletonView(chartData, 'chart', true);
     }
 
-    private moveResultViewToMain(): void {
+    /**
+     * Moves the results tab to main editor area
+     */
+    moveResultsTabToMain(): void {
         const webview = this.activeResultWebview;
         if (!webview) { return; }
         const isMain = webview.viewColumn === vscode.ViewColumn.One;
@@ -1122,17 +1095,17 @@ function singletonTitleForMode(mode: ResultViewMode): string {
 }
 
 // =============================================================================
-// ResultsViewProvider — Custom text editor for .kqr files
+// DocumentViewProvider — document view provider for .kqr files
 // =============================================================================
 
 /**
- * Custom text editor provider for .kqr files.
+ * Document view provider for .kqr files.
  * The file contains ResultData JSON (tables + chart options + query).
  * Can show chart, data tables and query in different tabs.
  */
-class ResultsViewProvider implements vscode.CustomTextEditorProvider {
+class DocumentViewProvider implements vscode.CustomTextEditorProvider {
 
-    constructor(private readonly viewer: ResultsViewer) {
+    constructor(private readonly viewer: ResultsViewer, private readonly server: Server) {
     }
 
     async resolveCustomTextEditor(
@@ -1145,7 +1118,7 @@ class ResultsViewProvider implements vscode.CustomTextEditorProvider {
         };
 
         // Track this results viewer webview for copy commands
-        this.viewer.registerResultWebview(webviewPanel);
+        this.viewer['registerResultWebview'](webviewPanel);
 
         // Update context key when this panel gains/loses focus
         const updateChartContext = () => {
@@ -1233,7 +1206,7 @@ class ResultsViewProvider implements vscode.CustomTextEditorProvider {
                 }
                 return;
             }
-            this.viewer.handleChartWebviewMessage(message);
+            this.viewer['handleChartWebviewMessage'](message);
         });
 
         // Render from the document content
@@ -1287,7 +1260,7 @@ class ResultsViewProvider implements vscode.CustomTextEditorProvider {
         const [dataResult, chartResult] = await Promise.all([
             Promise.resolve(resultDataToHtml(resultData)),
             resultData.chartOptions
-                ? this.viewer.getServer().getChartAsHtml(resultData, darkMode)
+                ? this.server.getChartAsHtml(resultData, darkMode)
                 : Promise.resolve(null)
         ]);
 
@@ -1332,7 +1305,7 @@ class ResultsViewProvider implements vscode.CustomTextEditorProvider {
             chartOptions
         };
         const darkMode = isDarkMode();
-        const chartResult = await this.viewer.getServer().getChartAsHtml(modifiedData, darkMode);
+        const chartResult = await this.server.getChartAsHtml(modifiedData, darkMode);
         if (chartResult?.html) {
             webviewPanel.webview.postMessage({
                 command: 'updateChart',

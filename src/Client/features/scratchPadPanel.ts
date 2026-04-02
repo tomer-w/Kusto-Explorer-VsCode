@@ -3,7 +3,7 @@
 
 /*
 * This module implements the ScratchPadPanel class.
-* It is the UI for the "Query Sets" feature in the sidebar, which provides a list of scratch pad query sets.
+* It is the UI for the "Scratch Pads" feature in the sidebar, which provides a list of scratch pad query sets.
 */
 
 import * as vscode from 'vscode';
@@ -56,15 +56,6 @@ export class ScratchPadPanel {
 
         // Refresh the tree whenever the manager reports a data change
         manager.onDidChange(() => this.treeProvider.refresh());
-
-        // Register commands
-        context.subscriptions.push(
-            vscode.commands.registerCommand('kusto.newScratchPad', () => this.createScratchPad()),
-            vscode.commands.registerCommand('kusto.openScratchPad', (item: ScratchPadItem) => this.openScratchPad(item)),
-            vscode.commands.registerCommand('kusto.deleteScratchPad', (item: ScratchPadItem) => this.deleteScratchPad(item)),
-            vscode.commands.registerCommand('kusto.renameScratchPad', (item: ScratchPadItem) => this.renameScratchPad(item)),
-            vscode.commands.registerCommand('kusto.saveScratchPadAs', () => this.saveScratchPadAs()),
-        );
 
         // Auto-open a scratch pad when the sidebar becomes visible and no Kusto doc is active
         this.treeView.onDidChangeVisibility(async (e) => {
@@ -169,7 +160,7 @@ export class ScratchPadPanel {
         await this.openScratchPadByName(name);
     }
 
-    private async createScratchPad(): Promise<void> {
+    async createScratchPad(): Promise<void> {
         const existing = this.manager.getScratchPadFiles();
         const name = this.manager.nextScratchPadFileName(existing);
 
@@ -184,11 +175,11 @@ export class ScratchPadPanel {
         }
     }
 
-    private async openScratchPad(item: ScratchPadItem): Promise<void> {
+    async openScratchPad(item: { fileName: string }): Promise<void> {
         await this.openScratchPadByName(item.fileName);
     }
 
-    private async deleteScratchPad(item: ScratchPadItem): Promise<void> {
+    async deleteScratchPad(item: { fileName: string }): Promise<void> {
         const confirm = await vscode.window.showWarningMessage(
             `Delete query "${path.basename(item.fileName, '.kql')}"?`,
             { modal: true },
@@ -210,7 +201,7 @@ export class ScratchPadPanel {
         this.manager.deleteScratchPadFile(uri, item.fileName);
     }
 
-    private async renameScratchPad(item: ScratchPadItem): Promise<void> {
+    async renameScratchPad(item: { fileName: string }): Promise<void> {
         const currentName = path.basename(item.fileName, '.kql');
         const newName = await vscode.window.showInputBox({
             prompt: 'Enter new name for the query document',
@@ -256,7 +247,7 @@ export class ScratchPadPanel {
         }
     }
 
-    private async saveScratchPadAs(): Promise<void> {
+    async saveScratchPadAs(): Promise<void> {
         const editor = vscode.window.activeTextEditor;
         if (!editor || editor.document.uri.scheme !== SCRATCH_PAD_SCHEME) {
             return;

@@ -39,7 +39,7 @@ export class ConnectionsPanel {
     constructor(
         context: vscode.ExtensionContext,
         private readonly server: Server,
-        clipboard: Clipboard,
+        private readonly clipboard: Clipboard,
         importer: Importer,
         private readonly connections: ConnectionManager
     ) {
@@ -227,197 +227,6 @@ export class ConnectionsPanel {
         })
     );
 
-    // Register commands for managing servers and groups
-    context.subscriptions.push(
-        vscode.commands.registerCommand('kusto.selectServer', () => {}),
-        vscode.commands.registerCommand('kusto.selectDatabase', () => {}),
-        vscode.commands.registerCommand('kusto.selectEntity', () => {}),
-
-        vscode.commands.registerCommand('kusto.addServer', async () => {
-            await this.connectionsProvider.promptAddServer();
-        }),
-
-        vscode.commands.registerCommand('kusto.addServerToGroup', async (item: ServerGroupTreeItem) => {
-            await this.connectionsProvider.promptAddServer(item.groupInfo.name);
-        }),
-
-        vscode.commands.registerCommand('kusto.addServerGroup', async () => {
-            await this.connectionsProvider.promptAddServerGroup();
-        }),
-
-        vscode.commands.registerCommand('kusto.removeServer', async (item: ServerTreeItem) => {
-            const confirm = await vscode.window.showWarningMessage(
-                `Are you sure you want to remove connection "${item.displayName ?? item.clusterName}"?`,
-                { modal: true },
-                'Remove'
-            );
-            if (confirm === 'Remove') {
-                await connections.removeServer(item.clusterName, item.groupName);
-            }
-        }),
-
-        vscode.commands.registerCommand('kusto.removeServerGroup', async (item: ServerGroupTreeItem) => {
-            const confirm = await vscode.window.showWarningMessage(
-                `Are you sure you want to remove group "${item.groupInfo.name}" and all its connections?`,
-                { modal: true },
-                'Remove'
-            );
-            if (confirm === 'Remove') {
-                await connections.removeServerGroup(item.groupInfo.name);
-            }
-        }),
-
-        vscode.commands.registerCommand('kusto.moveServer', async (item: ServerTreeItem) => {
-            await this.connectionsProvider.promptMoveServer(
-                item.clusterName,
-                item.displayName ?? item.clusterName,
-                item.groupName
-            );
-        }),
-
-        vscode.commands.registerCommand('kusto.editServer', async (item: ServerTreeItem) => {
-            await this.connectionsProvider.promptEditServer(
-                item.connection,
-                item.clusterName,
-                item.displayName,
-                item.groupName
-            );
-        }),
-
-        vscode.commands.registerCommand('kusto.renameServer', async (item: ServerTreeItem) => {
-            await this.connectionsProvider.promptRenameServer(
-                item.clusterName,
-                item.displayName ?? item.clusterName,
-                item.groupName
-            );
-        }),
-
-        vscode.commands.registerCommand('kusto.renameServerGroup', async (item: ServerGroupTreeItem) => {
-            await this.connectionsProvider.promptRenameServerGroup(item.groupInfo.name);
-        }),
-
-        vscode.commands.registerCommand('kusto.refreshServer', async (item: ServerTreeItem) => {
-            await connections.refreshClusterSchema(item.clusterName);
-        }),
-
-        vscode.commands.registerCommand('kusto.refreshDatabase', async (item: DatabaseTreeItem) => {
-            await connections.refreshDatabaseSchema(item.clusterName, item.databaseName);
-        }),
-
-        vscode.commands.registerCommand('kusto.copyEntityAsCommand', async (item: EntityTreeItem) => {
-            if (!server) {
-                return;
-            }
-
-            const entityType = getEntityType(item);
-            if (!entityType) {
-                return;
-            }
-
-            const entityName = getEntityName(item);
-            const cluster = getEntityCluster(item);
-            const database = getEntityDatabase(item);
-
-            try {
-                const definition = await server.getEntityAsCommand(
-                    cluster,
-                    database,
-                    entityType,
-                    entityName
-                );
-
-                if (definition) {
-                    await vscode.env.clipboard.writeText(definition);
-                    clipboard.setContext({
-                        text: definition,
-                        kind: 'command',
-                        entityCluster: cluster,
-                        entityDatabase: database,
-                        entityType: entityType,
-                        entityName: entityName
-                    });
-                }
-            } catch (error) {
-                vscode.window.showErrorMessage(`Failed to copy entity: ${error}`);
-            }
-        }),
-
-        vscode.commands.registerCommand('kusto.copyEntityAsExpression', async (item: EntityTreeItem) => {
-            if (!server) {
-                return;
-            }
-
-            const entityType = getEntityType(item);
-            if (!entityType) {
-                return;
-            }
-
-            const entityName = getEntityName(item);
-            const cluster = getEntityCluster(item);
-            const database = getEntityDatabase(item);
-
-            try {
-                const expression = await server.getEntityAsExpression(
-                    cluster,
-                    database,
-                    entityType,
-                    entityName,
-                    null
-                );
-
-                if (expression) {
-                    await vscode.env.clipboard.writeText(expression);
-                    clipboard.setContext({
-                        text: expression,
-                        kind: 'expression',
-                        entityCluster: cluster,
-                        entityDatabase: database,
-                        entityType: entityType,
-                        entityName: entityName
-                    });
-                }
-            } catch (error) {
-                vscode.window.showErrorMessage(`Failed to copy expression: ${error}`);
-            }
-        }),
-
-        vscode.commands.registerCommand('kusto.viewEntityDefinition', async (item: EntityTreeItem) => {
-            const entityType = getEntityType(item);
-            if (!entityType) {
-                return;
-            }
-
-            // Only support entities that have definitions (not server/database)
-            if (item instanceof ServerTreeItem || item instanceof DatabaseTreeItem) {
-                return;
-            }
-
-            const entityName = getEntityName(item);
-            const cluster = getEntityCluster(item);
-            const database = getEntityDatabase(item);
-
-            if (!cluster || !database) {
-                return;
-            }
-
-            // Build the virtual document URI - must match the format in KustoLspServer.cs
-            const encodedCluster = encodeURIComponent(cluster);
-            const encodedDatabase = encodeURIComponent(database);
-            const encodedEntityType = encodeURIComponent(entityType);
-            const encodedEntityName = encodeURIComponent(entityName);
-            
-            const uri = vscode.Uri.parse(
-                `${ENTITY_DEFINITION_SCHEME}://${encodedCluster}/${encodedDatabase}/${encodedEntityType}/${encodedEntityName}.kql`
-            );
-
-            try {
-                const doc = await vscode.workspace.openTextDocument(uri);
-                await vscode.window.showTextDocument(doc, { preview: true });
-            } catch (error) {
-                vscode.window.showErrorMessage(`Failed to open entity definition: ${error}`);
-            }
-        })
-    );
     }
 
     // =========================================================================
@@ -448,6 +257,195 @@ export class ConnectionsPanel {
                     serverKind
                 );
             }
+        }
+    }
+
+    // =========================================================================
+    // Command Handlers
+    // =========================================================================
+
+    async addServer(): Promise<void> {
+        await this.connectionsProvider.promptAddServer();
+    }
+
+    async addServerToGroup(item: { groupInfo: { name: string } }): Promise<void> {
+        await this.connectionsProvider.promptAddServer(item.groupInfo.name);
+    }
+
+    async addServerGroup(): Promise<void> {
+        await this.connectionsProvider.promptAddServerGroup();
+    }
+
+    async removeServer(item: { clusterName: string; displayName?: string; groupName?: string }): Promise<void> {
+        const confirm = await vscode.window.showWarningMessage(
+            `Are you sure you want to remove connection "${item.displayName ?? item.clusterName}"?`,
+            { modal: true },
+            'Remove'
+        );
+        if (confirm === 'Remove') {
+            await this.connections.removeServer(item.clusterName, item.groupName);
+        }
+    }
+
+    async removeServerGroup(item: { groupInfo: { name: string } }): Promise<void> {
+        const confirm = await vscode.window.showWarningMessage(
+            `Are you sure you want to remove group "${item.groupInfo.name}" and all its connections?`,
+            { modal: true },
+            'Remove'
+        );
+        if (confirm === 'Remove') {
+            await this.connections.removeServerGroup(item.groupInfo.name);
+        }
+    }
+
+    async moveServer(item: { clusterName: string; displayName?: string; groupName?: string }): Promise<void> {
+        await this.connectionsProvider.promptMoveServer(
+            item.clusterName,
+            item.displayName ?? item.clusterName,
+            item.groupName
+        );
+    }
+
+    async editServer(item: { connection: string; clusterName: string; displayName?: string; groupName?: string }): Promise<void> {
+        await this.connectionsProvider.promptEditServer(
+            item.connection,
+            item.clusterName,
+            item.displayName,
+            item.groupName
+        );
+    }
+
+    async renameServer(item: { clusterName: string; displayName?: string; groupName?: string }): Promise<void> {
+        await this.connectionsProvider.promptRenameServer(
+            item.clusterName,
+            item.displayName ?? item.clusterName,
+            item.groupName
+        );
+    }
+
+    async renameServerGroup(item: { groupInfo: { name: string } }): Promise<void> {
+        await this.connectionsProvider.promptRenameServerGroup(item.groupInfo.name);
+    }
+
+    async refreshServer(item: { clusterName: string }): Promise<void> {
+        await this.connections.refreshClusterSchema(item.clusterName);
+    }
+
+    async refreshDatabase(item: { clusterName: string; databaseName: string }): Promise<void> {
+        await this.connections.refreshDatabaseSchema(item.clusterName, item.databaseName);
+    }
+
+    async copyEntityAsCommand(item: EntityTreeItem): Promise<void> {
+        if (!this.server) {
+            return;
+        }
+
+        const entityType = getEntityType(item);
+        if (!entityType) {
+            return;
+        }
+
+        const entityName = getEntityName(item);
+        const cluster = getEntityCluster(item);
+        const database = getEntityDatabase(item);
+
+        try {
+            const definition = await this.server.getEntityAsCommand(
+                cluster,
+                database,
+                entityType,
+                entityName
+            );
+
+            if (definition) {
+                await vscode.env.clipboard.writeText(definition);
+                this.clipboard.setContext({
+                    text: definition,
+                    kind: 'command',
+                    entityCluster: cluster,
+                    entityDatabase: database,
+                    entityType: entityType,
+                    entityName: entityName
+                });
+            }
+        } catch (error) {
+            vscode.window.showErrorMessage(`Failed to copy entity: ${error}`);
+        }
+    }
+
+    async copyEntityAsExpression(item: EntityTreeItem): Promise<void> {
+        if (!this.server) {
+            return;
+        }
+
+        const entityType = getEntityType(item);
+        if (!entityType) {
+            return;
+        }
+
+        const entityName = getEntityName(item);
+        const cluster = getEntityCluster(item);
+        const database = getEntityDatabase(item);
+
+        try {
+            const expression = await this.server.getEntityAsExpression(
+                cluster,
+                database,
+                entityType,
+                entityName,
+                null
+            );
+
+            if (expression) {
+                await vscode.env.clipboard.writeText(expression);
+                this.clipboard.setContext({
+                    text: expression,
+                    kind: 'expression',
+                    entityCluster: cluster,
+                    entityDatabase: database,
+                    entityType: entityType,
+                    entityName: entityName
+                });
+            }
+        } catch (error) {
+            vscode.window.showErrorMessage(`Failed to copy expression: ${error}`);
+        }
+    }
+
+    async viewEntityDefinition(item: EntityTreeItem): Promise<void> {
+        const entityType = getEntityType(item);
+        if (!entityType) {
+            return;
+        }
+
+        // Only support entities that have definitions (not server/database)
+        if (item instanceof ServerTreeItem || item instanceof DatabaseTreeItem) {
+            return;
+        }
+
+        const entityName = getEntityName(item);
+        const cluster = getEntityCluster(item);
+        const database = getEntityDatabase(item);
+
+        if (!cluster || !database) {
+            return;
+        }
+
+        // Build the virtual document URI - must match the format in KustoLspServer.cs
+        const encodedCluster = encodeURIComponent(cluster);
+        const encodedDatabase = encodeURIComponent(database);
+        const encodedEntityType = encodeURIComponent(entityType);
+        const encodedEntityName = encodeURIComponent(entityName);
+        
+        const uri = vscode.Uri.parse(
+            `${ENTITY_DEFINITION_SCHEME}://${encodedCluster}/${encodedDatabase}/${encodedEntityType}/${encodedEntityName}.kql`
+        );
+
+        try {
+            const doc = await vscode.workspace.openTextDocument(uri);
+            await vscode.window.showTextDocument(doc, { preview: true });
+        } catch (error) {
+            vscode.window.showErrorMessage(`Failed to open entity definition: ${error}`);
         }
     }
 

@@ -31,6 +31,8 @@
     "compile": "esbuild ./extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap",
     "watch": "esbuild ./extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap --watch",
     "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "build-release-server": "dotnet publish ../Server/Server.csproj -c Release -o ./server",
     "build-debug-server": "dotnet publish ../Server/Server.csproj -c Debug -o ./server",
     "prepackage": "node -e \"require('fs').copyFileSync('../../LICENSE','./LICENSE')\" && npm run compile && npm run build-release-server",
@@ -638,7 +640,7 @@
         },
         {
           "id": "kusto.scratchPads",
-          "name": "Query Sets",
+          "name": "Scratch Pads",
           "icon": "$(note)"
         },
         {
@@ -1617,7 +1619,8 @@
     "@types/node": "^18.0.0",
     "@types/vscode": "^1.90.0",
     "esbuild": "^0.27.4",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vitest": "^2.0.0"
   },
   "overrides": {
     "minimatch": "~5.1.9"

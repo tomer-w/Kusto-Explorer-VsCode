@@ -10,7 +10,6 @@ import { Server } from './server';
 import type { SelectionRange, Range } from './server';
 import type { ConnectionManager } from './connectionManager';
 import { ResultsViewer } from './resultsViewer';
-import type { ResultViewMode } from './resultsViewer';
 import { ResultsCache } from './resultsCache';
 import { HistoryManager } from './historyManager';
 import { Clipboard } from './clipboard';
@@ -51,12 +50,19 @@ export class QueryEditor {
     private readonly resultsViewer: ResultsViewer;
     private readonly errorRangeDecoration: vscode.TextEditorDecorationType;
 
-    constructor(context: vscode.ExtensionContext, server: Server, resultsCache: ResultsCache, clip: Clipboard, resultHistory: HistoryManager, connectionManager: ConnectionManager, resultsViewer: ResultsViewer) {
+    constructor(
+        context: vscode.ExtensionContext, 
+        server: Server, 
+        resultsCache: ResultsCache, 
+        clipboard: Clipboard, 
+        historyManager: HistoryManager, 
+        connectionManager: ConnectionManager, 
+        resultsViewer: ResultsViewer) {
 
         this.server = server;
         this.cache = resultsCache;
-        this.clipboard = clip;
-        this.history = resultHistory;
+        this.clipboard = clipboard;
+        this.history = historyManager;
         this.connections = connectionManager;
         this.resultsViewer = resultsViewer;
 
@@ -66,17 +72,6 @@ export class QueryEditor {
                 margin: '0 4px 0 0'
             }
         });
-
-        // Register query-related commands
-        context.subscriptions.push(
-            vscode.commands.registerCommand('kusto.runQuery', (startLine?: number, startChar?: number, endLine?: number, endChar?: number) => this.runQuery(rangeFromArgs(startLine, startChar, endLine, endChar))),
-            vscode.commands.registerCommand('kusto.copyQuery', () => this.copyQuery()),
-            vscode.commands.registerCommand('kusto.copyQueryTransparent', (startLine?: number, startChar?: number, endLine?: number, endChar?: number) => this.copyQueryTransparent(rangeFromArgs(startLine, startChar, endLine, endChar))),
-            vscode.commands.registerCommand('kusto.formatQuery', (startLine?: number, startChar?: number, endLine?: number, endChar?: number) => this.formatQuery(rangeFromArgs(startLine, startChar, endLine, endChar))),
-            vscode.commands.registerCommand('kusto.selectQuery', (startLine: number, startChar: number, endLine: number, endChar: number) => this.selectQuery(startLine, startChar, endLine, endChar)),
-            vscode.commands.registerCommand('kusto.showResults', (uri: string, line: number, character: number) => this.showResults(uri, line, character)),
-            vscode.commands.registerCommand('kusto.refreshDocumentSchema', () => this.refreshDocumentSchema())
-        );
 
         // Register CodeLens provider for queries
         this.codeLensProvider = new KustoCodeLensProvider(this.server, this.cache);
@@ -107,11 +102,10 @@ export class QueryEditor {
     }
 
     /**
-     * Runs the query at the current cursor position or selection,
-     * or the specific query range if provided (e.g. from a CodeLens).
-     * @param queryRange Optional query range from CodeLens; uses editor selection when omitted
+     * Runs the query in the active document at the current cursor position or within the specified range.
      */
-    private async runQuery(queryRange?: SelectionRange): Promise<void> {
+    async runQuery(startLine?: number, startChar?: number, endLine?: number, endChar?: number): Promise<void> {
+        const queryRange = rangeFromArgs(startLine, startChar, endLine, endChar);
         const editor = vscode.window.activeTextEditor;
         if (!editor || editor.document.languageId !== 'kusto') {
             return;
@@ -166,7 +160,7 @@ export class QueryEditor {
             if (runResult && runResult.error)
             {
                 // display error and highlight error range
-                await this.resultsViewer.displayErrorInPanel(runResult.error);
+                await this.resultsViewer.displayErrorInBottomView(runResult.error);
 
                 if (runResult.error.range) {
                     const r = runResult.error.range;
@@ -181,10 +175,10 @@ export class QueryEditor {
 
                 // Add to history and use the history file as backing for the singleton view
                 const historyUri = await this.history.addHistoryEntry(runResult.data);
-                this.resultsViewer.setSingletonBackingUri(historyUri);
+                this.resultsViewer.setSingletonViewBackingUri(historyUri);
 
                 // Display result tables and chart from ResultData
-                await this.resultsViewer.displayResultsInPanel(runResult.data, 'data');
+                await this.resultsViewer.displayResultsInBottomPanel(runResult.data, 'data');
                 await this.resultsViewer.displayResultsInSingletonView(runResult.data, 'chart', true);
             }
 
@@ -198,31 +192,33 @@ export class QueryEditor {
     }
 
     /**
-     * Shows cached results for a query at the given position.
-     * @param uri The document URI
-     * @param line The line of the query position
-     * @param character The character of the query position
+     * Shows the cached results for the query at the given position in the active document.
+     * @param startLine The start line of the query position
+     * @param startChar The start character of the query position
      */
-    private async showResults(uri: string, line: number, character: number): Promise<void> {
+    async showCachedResults(startLine: number, startChar: number): Promise<void> {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor || editor.document.languageId !== 'kusto') {
+            return;
+        }
+
         try {
+            const uri = editor.document.uri.toString();
+
             // Resolve the query range for this position
-            const queryRange = await this.server.getQueryRange(uri, { line, character });
+            const queryRange = await this.server.getQueryRange(uri, { line: startLine, character: startChar });
             if (!queryRange) {
                 return;
             }
 
             // Extract the query text and look up cached result data
-            const editor = vscode.window.activeTextEditor;
-            if (!editor) {
-                return;
-            }
             const queryText = editor.document.getText(new vscode.Range(
                 queryRange.start.line, queryRange.start.character,
                 queryRange.end.line, queryRange.end.character
             ));
             const cachedData = await this.cache.getFromCache(uri, queryText);
             if (cachedData) {
-                await this.resultsViewer.displayResultsInPanel(cachedData, 'data');
+                await this.resultsViewer.displayResultsInBottomPanel(cachedData, 'data');
                 await this.resultsViewer.displayResultsInSingletonView(cachedData, 'chart', true);
             }
         } catch (error) {
@@ -231,13 +227,13 @@ export class QueryEditor {
     }
 
     /**
-     * Selects the entire query range in the editor.
-     * @param startLine The start line of the query range
-     * @param startChar The start character of the query range
-     * @param endLine The end line of the query range
-     * @param endChar The end character of the query range
+     * Selects the range in the active document.
+     * @param startLine The start line of the range
+     * @param startChar The start character of query range
+     * @param endLine The end line of the range
+     * @param endChar The end character of query range
      */
-    private selectQuery(startLine: number, startChar: number, endLine: number, endChar: number): void {
+    selectRange(startLine: number, startChar: number, endLine: number, endChar: number): void {
         const editor = vscode.window.activeTextEditor;
         if (!editor || editor.document.languageId !== 'kusto') {
             return;
@@ -257,53 +253,12 @@ export class QueryEditor {
     }
 
     /**
-     * Copies the query at the current cursor position with syntax highlighting.
+     * Copies the query in the active document at the current cursor position or within the specified range.
+     * When transparent is true, uses the server to generate light-mode HTML with a transparent
+     * background suitable for pasting into documents, rather than the editor's current theme.
      */
-    private async copyQuery(): Promise<void> {
-        const editor = vscode.window.activeTextEditor;
-        if (!editor || editor.document.languageId !== 'kusto') {
-            return;
-        }
-
-        try {
-            // Get the query range containing the cursor position from the server
-            const cursorPos = editor.selection.active;
-            const queryRange = await this.server.getQueryRange(
-                editor.document.uri.toString(),
-                { line: cursorPos.line, character: cursorPos.character }
-            );
-
-            if (!queryRange) {
-                return;
-            }
-
-            // Save the current selection
-            const previousSelection = editor.selection;
-
-            // Select the query range
-            const range = new vscode.Range(
-                queryRange.start.line, queryRange.start.character,
-                queryRange.end.line, queryRange.end.character
-            );
-            editor.selection = new vscode.Selection(range.start, range.end);
-
-            // Copy with syntax highlighting
-            await vscode.commands.executeCommand('editor.action.clipboardCopyWithSyntaxHighlightingAction');
-
-            // Restore the previous selection
-            editor.selection = previousSelection;
-
-        } catch (error) {
-            vscode.window.showErrorMessage(`Failed to copy query: ${error}`);
-        }
-    }
-
-    /**
-     * Copies the query at the current cursor position with light-mode syntax highlighting
-     * and a transparent background, suitable for pasting into documents.
-     * Uses the server to generate HTML rather than the editor's current theme.
-     */
-    private async copyQueryTransparent(codeLensRange?: SelectionRange): Promise<void> {
+    async copyQuery(startLine?: number, startChar?: number, endLine?: number, endChar?: number, transparent?: boolean): Promise<void> {
+        const codeLensRange = rangeFromArgs(startLine, startChar, endLine, endChar);
         const editor = vscode.window.activeTextEditor;
         if (!editor || editor.document.languageId !== 'kusto') {
             return;
@@ -326,36 +281,54 @@ export class QueryEditor {
                 return;
             }
 
-            // Get plain text of the query
             const range = new vscode.Range(
                 queryRange.start.line, queryRange.start.character,
                 queryRange.end.line, queryRange.end.character
             );
-            const plainText = editor.document.getText(range);
 
-            // Request light-mode HTML from the server (darkMode = false)
-            const connection = await this.connections.getDocumentConnection(uri);
-            const result = await this.server.getQueryAsHtml(plainText, connection?.cluster, connection?.database, false);
-            if (!result?.html) {
-                return;
+            if (transparent) {
+                // Get plain text of the query
+                const plainText = editor.document.getText(range);
+
+                // Request light-mode HTML from the server (darkMode = false)
+                const connection = await this.connections.getDocumentConnection(uri);
+                const result = await this.server.getQueryAsHtml(plainText, connection?.cluster, connection?.database, false);
+                if (!result?.html) {
+                    return;
+                }
+
+                // Place both HTML and plain text on the clipboard
+                const items: ClipboardItem[] = [
+                    { format: 'HTML Format', data: wrapHtmlForClipboard(result.html) },
+                    { format: 'Text', data: plainText, encoding: 'text' }
+                ];
+
+                await this.clipboard.copy(items);
+            } else {
+                // Save the current selection
+                const previousSelection = editor.selection;
+
+                // Select the query range and copy with editor syntax highlighting
+                editor.selection = new vscode.Selection(range.start, range.end);
+                await vscode.commands.executeCommand('editor.action.clipboardCopyWithSyntaxHighlightingAction');
+
+                // Restore the previous selection
+                editor.selection = previousSelection;
             }
-
-            // Place both HTML and plain text on the clipboard
-            const items: ClipboardItem[] = [
-                { format: 'HTML Format', data: wrapHtmlForClipboard(result.html) },
-                { format: 'Text', data: plainText, encoding: 'text' }
-            ];
-
-            await this.clipboard.copy(items);
         } catch (error) {
             vscode.window.showErrorMessage(`Failed to copy query: ${error}`);
         }
     }
 
     /**
-     * Formats the query at the current cursor position using the LSP range formatting.
+     * Formats the query in the active document at the current cursor position or within the specified range.
+     * @param startLine The start line of the query position
+     * @param startChar The start character of the query position
+     * @param endLine The end line of the query position
+     * @param endChar The end character of the query position
      */
-    private async formatQuery(codeLensRange?: SelectionRange): Promise<void> {
+    async formatQuery(startLine?: number, startChar?: number, endLine?: number, endChar?: number): Promise<void> {
+        const codeLensRange = rangeFromArgs(startLine, startChar, endLine, endChar);
         const editor = vscode.window.activeTextEditor;
         if (!editor || editor.document.languageId !== 'kusto') {
             return;
@@ -402,10 +375,10 @@ export class QueryEditor {
     }
 
     /**
-     * Refreshes the schema for all databases referenced in the current document.
+     * Refreshes the schema for all databases referenced in all the queries in the active document.
      * This includes databases accessed via cluster() and database() functions.
      */
-    private async refreshDocumentSchema(): Promise<void> {
+    async refreshDocumentSchema(): Promise<void> {
         const editor = vscode.window.activeTextEditor;
         if (!editor || editor.document.languageId !== 'kusto') {
             return;
@@ -505,7 +478,7 @@ class KustoCodeLensProvider implements vscode.CodeLensProvider {
                         title: '📊 Results',
                         command: 'kusto.showResults',
                         tooltip: 'Show cached results for this query',
-                        arguments: [document.uri.toString(), range.start.line, range.start.character]
+                        arguments: [range.start.line, range.start.character]
                     }));
                 }
             }
