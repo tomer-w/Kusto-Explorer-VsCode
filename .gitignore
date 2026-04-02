@@ -426,3 +426,7 @@ src/Client/out/
 src/Client/LICENSE
 src/Client/PATH.TXT
 
+# VS Code integration test runner
+src/Client/.vscode-test/
+src/Client/test-workspace/
+
