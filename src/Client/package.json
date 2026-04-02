@@ -35,7 +35,7 @@
     "test:unit": "vitest run",
     "test:watch": "vitest",
     "compile:integration": "tsc -p tsconfig.integration.json",
-    "test:integration": "npm run compile:integration && vscode-test",
+    "test:integration": "npm run compile && npm run compile:integration && vscode-test",
     "build-release-server": "dotnet publish ../Server/Server.csproj -c Release -o ./server",
     "build-debug-server": "dotnet publish ../Server/Server.csproj -c Debug -o ./server",
     "prepackage": "node -e \"require('fs').copyFileSync('../../LICENSE','./LICENSE')\" && npm run compile && npm run build-release-server",

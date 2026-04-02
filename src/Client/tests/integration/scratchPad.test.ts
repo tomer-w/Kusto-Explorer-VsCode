@@ -6,7 +6,7 @@ import * as vscode from 'vscode';
 
 /** Close all editors for the given URI scheme and delete the files via the file system provider. */
 async function cleanupScratchPads(keepFiles: string[]): Promise<void> {
-    // Close all scratch pad tabs
+    // Close all scratch pad tabs except those we're keeping
     for (const group of vscode.window.tabGroups.all) {
         for (const tab of group.tabs) {
             const input = tab.input as { uri?: vscode.Uri } | undefined;
@@ -14,9 +14,18 @@ async function cleanupScratchPads(keepFiles: string[]): Promise<void> {
                 const name = input.uri.path;
                 if (!keepFiles.some(f => name.includes(f))) {
                     await vscode.window.tabGroups.close(tab);
-                    await vscode.workspace.fs.delete(input.uri);
                 }
             }
+        }
+    }
+
+    // Delete all scratch pad files except those we're keeping
+    const rootUri = vscode.Uri.from({ scheme: 'kusto-scratch', path: '/' });
+    const entries = await vscode.workspace.fs.readDirectory(rootUri);
+    for (const [name] of entries) {
+        if (!keepFiles.some(f => name.includes(f))) {
+            const fileUri = vscode.Uri.from({ scheme: 'kusto-scratch', path: '/' + name });
+            await vscode.workspace.fs.delete(fileUri);
         }
     }
 }
