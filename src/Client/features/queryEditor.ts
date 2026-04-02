@@ -704,16 +704,18 @@ function activateSemanticColoring(context: vscode.ExtensionContext, server: ISer
     }
 
     // Also establish semantic token provider for new documents as they are opened
-    context.subscriptions.push(
-        vscode.workspace.onDidOpenTextDocument(doc => {
-            if (doc.languageId === 'kusto') {
-                // Small delay to ensure document is fully loaded
-                setTimeout(() => {
-                    vscode.commands.executeCommand('vscode.executeDocumentSemanticTokensProvider', doc.uri);
-                }, 100);
-            }
-        })
-    );
+    if (serverCapabilities?.semanticTokensProvider) {
+        context.subscriptions.push(
+            vscode.workspace.onDidOpenTextDocument(doc => {
+                if (doc.languageId === 'kusto') {
+                    // Small delay to ensure document is fully loaded
+                    setTimeout(() => {
+                        vscode.commands.executeCommand('vscode.executeDocumentSemanticTokensProvider', doc.uri);
+                    }, 100);
+                }
+            })
+        );
+    }
 }
 
 /**
