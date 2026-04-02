@@ -36,9 +36,42 @@ export async function activate(context: ExtensionContext)
     // Create output channel early so dotnet activation can log to it
     const outputChannel = window.createOutputChannel('Kusto');
 
+    // ─── Features that do NOT require the language server ────────────
+
+    // activate scratch pad documents
+    const scratchPadManager = new ScratchPadManager(context);
+
+    // Track Kusto session state - keep views visible while in a Kusto session
+    const updateKustoContext = (hasSingletonView: () => boolean) => {
+        const hasKustoDocument = vscode.workspace.textDocuments.some(doc => doc.languageId === 'kusto');
+        const hasSingleton = hasSingletonView();
+        const isKustoActive = hasKustoDocument || hasSingleton;
+        vscode.commands.executeCommand('setContext', 'kusto.hasActiveDocument', isKustoActive);
+        vscode.commands.executeCommand('setContext', 'kusto.hasSingletonView', hasSingleton);
+
+        const activeEditor = vscode.window.activeTextEditor;
+        const isEntityDef = activeEditor?.document.uri.scheme === ENTITY_DEFINITION_SCHEME;
+        vscode.commands.executeCommand('setContext', 'kusto.isEntityDefinition', isEntityDef);
+
+        const isScratchPad = activeEditor?.document.uri.scheme === SCRATCH_PAD_SCHEME;
+        vscode.commands.executeCommand('setContext', 'kusto.isScratchPad', isScratchPad);
+    };
+
+    // ─── Language server (requires .NET) ─────────────────────────────
+
     // Find or acquire .NET runtime before starting the language server
     const dotnetPath = await dotnet.activate(outputChannel);
     if (!dotnetPath) {
+        // Register scratch pad commands even without the language server
+        const connectionManager = new ConnectionManager(context, undefined as any);
+        const scratchPadPanel = new ScratchPadPanel(context, scratchPadManager, connectionManager);
+        context.subscriptions.push(
+            vscode.commands.registerCommand('kusto.newScratchPad', () => scratchPadPanel.createScratchPad()),
+            vscode.commands.registerCommand('kusto.openScratchPad', (item) => scratchPadPanel.openScratchPad(item)),
+            vscode.commands.registerCommand('kusto.deleteScratchPad', (item) => scratchPadPanel.deleteScratchPad(item)),
+            vscode.commands.registerCommand('kusto.renameScratchPad', (item) => scratchPadPanel.renameScratchPad(item)),
+            vscode.commands.registerCommand('kusto.saveScratchPadAs', () => scratchPadPanel.saveScratchPadAs()),
+        );
         return;
     }
 
@@ -119,46 +152,29 @@ export async function activate(context: ExtensionContext)
     );
 
     // Track Kusto session state - keep views visible while in a Kusto session
-    const updateKustoContext = () => {
-        // Check if any Kusto documents are open OR if singleton results view exists
-        const hasKustoDocument = vscode.workspace.textDocuments.some(doc => doc.languageId === 'kusto');
-        const hasSingletonView = resultsViewer.hasSingletonView();
-        const isKustoActive = hasKustoDocument || hasSingletonView;
-        vscode.commands.executeCommand('setContext', 'kusto.hasActiveDocument', isKustoActive);
-        vscode.commands.executeCommand('setContext', 'kusto.hasSingletonView', hasSingletonView);
-
-        // Track whether the active editor is showing a read-only entity definition
-        const activeEditor = vscode.window.activeTextEditor;
-        const isEntityDef = activeEditor?.document.uri.scheme === ENTITY_DEFINITION_SCHEME;
-        vscode.commands.executeCommand('setContext', 'kusto.isEntityDefinition', isEntityDef);
-
-        // Track whether the active editor is a scratch pad document
-        const isScratchPad = activeEditor?.document.uri.scheme === SCRATCH_PAD_SCHEME;
-        vscode.commands.executeCommand('setContext', 'kusto.isScratchPad', isScratchPad);
-    };
+    const updateKustoContextFn = () => updateKustoContext(() => resultsViewer.hasSingletonView());
 
     // Command to notify when singleton view state changes (triggers context update)
     context.subscriptions.push(
         vscode.commands.registerCommand('kusto.singletonViewStateChanged', () => {
-            updateKustoContext();
+            updateKustoContextFn();
         })
     );
 
     // Update context on activation
-    updateKustoContext();
+    updateKustoContextFn();
 
     // Update context when documents are opened/closed or when active editor changes
     context.subscriptions.push(
-        vscode.workspace.onDidOpenTextDocument(() => updateKustoContext()),
-        vscode.workspace.onDidCloseTextDocument(() => updateKustoContext()),
-        vscode.window.onDidChangeActiveTextEditor(() => updateKustoContext())
+        vscode.workspace.onDidOpenTextDocument(() => updateKustoContextFn()),
+        vscode.workspace.onDidCloseTextDocument(() => updateKustoContextFn()),
+        vscode.window.onDidChangeActiveTextEditor(() => updateKustoContextFn())
     );
 
     // activate connections data layer
     const connectionManager = new ConnectionManager(context, server);
 
     // activate scratch pad documents
-    const scratchPadManager = new ScratchPadManager(context);
     const scratchPadPanel = new ScratchPadPanel(context, scratchPadManager, connectionManager);
     context.subscriptions.push(
         vscode.commands.registerCommand('kusto.newScratchPad', () => scratchPadPanel.createScratchPad()),
