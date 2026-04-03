@@ -215,7 +215,7 @@ export async function activate(context: ExtensionContext)
     copilot.activate(context, server, connectionManager, resultsViewer);
 
     // Expose internal components for integration tests
-    return { historyManager };
+    return { historyManager, connectionManager };
 }
 
 export function deactivate(): Thenable<void> | undefined
