@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { resultDataToHtml, resultTableToHtml } from '../features/html';
-import type { ResultData, ResultTable } from '../features/server';
+import { resultDataToHtml, resultTableToHtml } from '../../features/html';
+import type { ResultData, ResultTable } from '../../features/server';
 
 describe('resultTableToHtml', () => {
     it('returns empty string for table with no columns', () => {

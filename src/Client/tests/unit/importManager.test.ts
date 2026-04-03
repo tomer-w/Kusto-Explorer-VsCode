@@ -8,10 +8,10 @@ import {
     parseGroupsXml,
     parseConnectionsXml,
     ImportManager,
-} from '../features/importManager';
-import type { KustoExplorerRecoveryFile } from '../features/importManager';
-import type { ConnectionManager } from '../features/connectionManager';
-import type { ScratchPadManager } from '../features/scratchPadManager';
+} from '../../features/importManager';
+import type { KustoExplorerRecoveryFile } from '../../features/importManager';
+import type { ConnectionManager } from '../../features/connectionManager';
+import type { ScratchPadManager } from '../../features/scratchPadManager';
 
 // ─── Mock Helpers ────────────────────────────────────────────────────────────
 

@@ -2,8 +2,7 @@
 // Licensed under the MIT license.
 
 import * as vscode from 'vscode';
-import { Server } from './server';
-import type { ResultData } from './server';
+import type { IServer, ResultData } from './server';
 
 /**
  * Cache for query results, keyed by document URI and minified query text.
@@ -13,7 +12,7 @@ export class ResultsCache {
     /** Map from document URI to its cached query results */
     private readonly documentCache = new Map<string, Map<string, ResultData>>();
 
-    constructor(private readonly server: Server) {
+    constructor(private readonly server: IServer) {
         // Clear cached results when a document is closed
         vscode.workspace.onDidCloseTextDocument((document) => {
             if (document.languageId === 'kusto') {

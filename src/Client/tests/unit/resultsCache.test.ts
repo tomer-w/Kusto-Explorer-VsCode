@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ResultsCache } from '../features/resultsCache';
-import type { Server } from '../features/server';
-import type { ResultData } from '../features/server';
+import { ResultsCache } from '../../features/resultsCache';
+import type { Server } from '../../features/server';
+import type { ResultData } from '../../features/server';
 
 function makeResultData(name: string): ResultData {
     return {

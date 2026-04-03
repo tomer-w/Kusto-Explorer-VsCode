@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { EntityDefinitionProvider, ENTITY_DEFINITION_SCHEME } from '../features/entityDefinitionProvider';
-import type { Server } from '../features/server';
+import { EntityDefinitionProvider, ENTITY_DEFINITION_SCHEME } from '../../features/entityDefinitionProvider';
+import type { Server } from '../../features/server';
 import type * as vscode from 'vscode';
 
 function createMockServer(content?: string | null, shouldThrow?: boolean): Server {

@@ -9,7 +9,7 @@
  */
 
 import * as vscode from 'vscode';
-import { Server } from './server';
+import type { IServer } from './server';
 import { Clipboard } from './clipboard';
 import { type ConnectionManager, isServerGroup, getDisplayName } from './connectionManager';
 import type { ServerInfo, ServerGroupInfo } from './connectionManager';
@@ -38,7 +38,7 @@ export class ConnectionsPanel {
 
     constructor(
         context: vscode.ExtensionContext,
-        private readonly server: Server,
+        private readonly server: IServer,
         private readonly clipboard: Clipboard,
         importer: Importer,
         private readonly connections: ConnectionManager

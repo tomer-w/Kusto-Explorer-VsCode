@@ -7,7 +7,7 @@
 */
 
 import * as vscode from 'vscode';
-import { Server } from './server';
+import type { IServer } from './server';
 import * as server from './server';
 import { Clipboard } from './clipboard';
 import type { ClipboardItem } from './clipboard';
@@ -268,7 +268,7 @@ async function saveResults(source: { data: server.ResultData }): Promise<{ uri: 
 */
 export class ResultsViewer {
 
-    private readonly server: Server;
+    private readonly server: IServer;
     private readonly clipboard: Clipboard;
     private readonly htmlBuilder: DocumentViewProvider;
 
@@ -297,7 +297,7 @@ export class ResultsViewer {
     private singletonWriteBackTimer: ReturnType<typeof setTimeout> | undefined;
     private singletonMode: ResultViewMode | undefined;
 
-    constructor(context: vscode.ExtensionContext, server: Server, clipboard: Clipboard) {
+    constructor(context: vscode.ExtensionContext, server: IServer, clipboard: Clipboard) {
         this.server = server;
         this.clipboard = clipboard;
         this.htmlBuilder = new DocumentViewProvider(this, server);
@@ -1105,7 +1105,7 @@ function singletonTitleForMode(mode: ResultViewMode): string {
  */
 class DocumentViewProvider implements vscode.CustomTextEditorProvider {
 
-    constructor(private readonly viewer: ResultsViewer, private readonly server: Server) {
+    constructor(private readonly viewer: ResultsViewer, private readonly server: IServer) {
     }
 
     async resolveCustomTextEditor(

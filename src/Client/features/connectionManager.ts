@@ -8,8 +8,7 @@
  */
 
 import * as vscode from 'vscode';
-import { Server } from './server';
-import type { DatabaseInfo } from './server';
+import type { IServer, DatabaseInfo } from './server';
 
 // =============================================================================
 // Storage Keys
@@ -140,7 +139,7 @@ export class ConnectionManager {
     private serversAndGroups: ServersAndGroupsData = { items: [] };
     private clusterConnections: { cluster: string, connection: string, databases?: DatabaseInfo[] }[] = [];
 
-    constructor(private readonly context: vscode.ExtensionContext, private readonly server: Server) {
+    constructor(private readonly context: vscode.ExtensionContext, private readonly server: IServer) {
     }
 
     // =========================================================================

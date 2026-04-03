@@ -2,9 +2,9 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { HistoryManager } from '../features/historyManager';
-import type { HistoryEntry } from '../features/historyManager';
-import type { ResultData } from '../features/server';
+import { HistoryManager } from '../../features/historyManager';
+import type { HistoryEntry } from '../../features/historyManager';
+import type { ResultData } from '../../features/server';
 import type * as vscode from 'vscode';
 
 function createMockContext(storageDir: string): vscode.ExtensionContext {
