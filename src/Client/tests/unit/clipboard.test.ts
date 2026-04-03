@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Clipboard, formatCfHtml } from '../../features/clipboard';
 import type { ClipboardContext } from '../../features/clipboard';

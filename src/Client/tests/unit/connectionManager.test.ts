@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
     ConnectionManager,

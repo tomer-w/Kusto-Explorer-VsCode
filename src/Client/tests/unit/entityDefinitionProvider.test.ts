@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
 import { describe, it, expect, vi } from 'vitest';
 import { EntityDefinitionProvider, ENTITY_DEFINITION_SCHEME } from '../../features/entityDefinitionProvider';
 import type { Server } from '../../features/server';
