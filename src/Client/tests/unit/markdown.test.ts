@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
 import { describe, it, expect } from 'vitest';
 import { resultDataToMarkdown, resultTableToMarkdown } from '../../features/markdown';
 import type { ResultData, ResultTable } from '../../features/server';

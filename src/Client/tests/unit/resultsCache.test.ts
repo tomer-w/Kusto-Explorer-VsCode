@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ResultsCache } from '../../features/resultsCache';
 import type { Server } from '../../features/server';

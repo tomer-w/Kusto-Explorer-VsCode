@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT license.
+
 // Minimal mock of the vscode module for unit testing.
 // Add additional mocks here as needed when testing features that use the vscode API.
 

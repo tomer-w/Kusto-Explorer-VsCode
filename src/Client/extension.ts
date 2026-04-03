@@ -86,7 +86,7 @@ export async function activate(context: ExtensionContext)
         server = new Server(client, context);
     }
 
-    // ─── UI features (always registered) ─────────────────────────────
+    // ─── UI features (always registered so integration tests will run) ────────────────────
 
     const clipboard = new Clipboard();
     const scratchPadManager = new ScratchPadManager(context);
