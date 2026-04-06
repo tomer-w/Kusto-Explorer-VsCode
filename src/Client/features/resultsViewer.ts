@@ -275,6 +275,9 @@ export class ResultsViewer {
     /** Map from webview to its viewer state. */
     private readonly viewerStates = new Map<vscode.WebviewPanel, ResultViewerState>();
 
+    /** Map from document-view webview to its backing document URI. */
+    private readonly webviewDocuments = new Map<vscode.WebviewPanel, vscode.Uri>();
+
     /** Set of all result webviews (singleton + results viewer tabs). */
     private readonly resultWebviews = new Set<vscode.WebviewPanel>();
 
@@ -1069,6 +1072,64 @@ export class ResultsViewer {
             );
         }
     }
+
+    /**
+     * Re-runs the query stored in the active document-view result and updates the document in-place.
+     * Does not add history or display results in the bottom panel or singleton view.
+     */
+    async rerunQuery(): Promise<void> {
+        const webview = this.activeResultWebview;
+        if (!webview) { return; }
+
+        const documentUri = this.webviewDocuments.get(webview);
+        if (!documentUri) { return; }
+
+        const state = this.viewerStates.get(webview);
+        if (!state?.resultData?.query) {
+            vscode.window.showWarningMessage('No query found in result data.');
+            return;
+        }
+
+        const { query, cluster, database, chartOptions } = state.resultData;
+
+        try {
+            const runResult = await vscode.window.withProgress(
+                { location: vscode.ProgressLocation.Notification, title: 'Rerunning query...' },
+                () => this.server.runQuery(query, cluster, database, true)
+            );
+
+            if (runResult?.error) {
+                vscode.window.showErrorMessage(runResult.error.message);
+                return;
+            }
+
+            if (!runResult?.data) { return; }
+
+            // Preserve existing chart options; fall back to server-returned options
+            const updatedData: server.ResultData = {
+                ...runResult.data,
+                chartOptions: chartOptions ?? runResult.data.chartOptions
+            };
+
+            // Update the backing document (the change listener will re-render the webview)
+            const document = vscode.workspace.textDocuments.find(
+                doc => doc.uri.toString() === documentUri.toString()
+            );
+            if (!document) { return; }
+
+            const content = JSON.stringify(updatedData, null, 2);
+            const fullRange = new vscode.Range(
+                document.positionAt(0),
+                document.positionAt(document.getText().length)
+            );
+            const edit = new vscode.WorkspaceEdit();
+            edit.replace(document.uri, fullRange, content);
+            await vscode.workspace.applyEdit(edit);
+            await document.save();
+        } catch (error) {
+            vscode.window.showErrorMessage(`Failed to rerun query: ${error}`);
+        }
+    }
 }
 
 // =============================================================================
@@ -1120,6 +1181,9 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         // Track this results viewer webview for copy commands
         this.viewer['registerResultWebview'](webviewPanel);
 
+        // Track document association for rerun support
+        this.viewer['webviewDocuments'].set(webviewPanel, document.uri);
+
         // Update context key when this panel gains/loses focus
         const updateChartContext = () => {
             if (webviewPanel.active) {
@@ -1127,6 +1191,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
                 const hasChart = !!state?.resultData?.chartOptions;
                 vscode.commands.executeCommand('setContext', 'kusto.resultViewerHasChart', hasChart);
                 vscode.commands.executeCommand('setContext', 'kusto.resultViewerChartActive', state?.activeView === 'chart');
+                vscode.commands.executeCommand('setContext', 'kusto.resultViewerHasQuery', !!state?.resultData?.query);
             }
         };
         webviewPanel.onDidChangeViewState(() => updateChartContext());
@@ -1231,8 +1296,10 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         webviewPanel.onDidDispose(() => {
             if (chartOptionsTimer) { clearTimeout(chartOptionsTimer); }
             this.viewer['viewerStates'].delete(webviewPanel);
+            this.viewer['webviewDocuments'].delete(webviewPanel);
             vscode.commands.executeCommand('setContext', 'kusto.resultViewerHasChart', false);
             vscode.commands.executeCommand('setContext', 'kusto.resultViewerChartActive', false);
+            vscode.commands.executeCommand('setContext', 'kusto.resultViewerHasQuery', false);
             changeSubscription.dispose();
             themeSubscription.dispose();
         });
@@ -1267,13 +1334,6 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         const hasChart = !!chartResult?.html;
         const hasTable = !!dataResult?.tables?.length;
 
-        // Update context key for editor title actions
-        if (webviewPanel.active) {
-            vscode.commands.executeCommand('setContext', 'kusto.resultViewerHasChart', hasChart);
-            const activeView = this.viewer['viewerStates'].get(webviewPanel)?.activeView ?? (hasChart ? 'chart' : 'table-0');
-            vscode.commands.executeCommand('setContext', 'kusto.resultViewerChartActive', activeView === 'chart');
-        }
-
         if (!hasTable && !hasChart) {
             webviewPanel.webview.html = '<html><body><p>Failed to render results.</p></body></html>';
             return;
@@ -1286,9 +1346,16 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         this.viewer['viewerStates'].set(webviewPanel, {
             resultData,
             tableNames,
-            activeView: existingState?.activeView ?? firstActiveView,
+            activeView: firstActiveView,
             ...(existingState?.chartOptionsOverride && { chartOptionsOverride: existingState.chartOptionsOverride })
         });
+
+        // Update context keys after state is set (HTML rebuild always resets to firstActiveView)
+        if (webviewPanel.active) {
+            vscode.commands.executeCommand('setContext', 'kusto.resultViewerHasChart', hasChart);
+            vscode.commands.executeCommand('setContext', 'kusto.resultViewerChartActive', firstActiveView === 'chart');
+            vscode.commands.executeCommand('setContext', 'kusto.resultViewerHasQuery', !!resultData?.query);
+        }
 
         const chartOptions = existingState?.chartOptionsOverride ?? resultData.chartOptions;
         const columnNames = resultData.tables[0]?.columns?.map(c => c.name) ?? [];
@@ -1405,6 +1472,8 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         const chartStyle = chartStyleParts.length ? ` style="${chartStyleParts.join('; ')}"` : '';
         const chartDataAttrs = textSize ? ` data-text-size="${textSize}"` : '';
 
+
+
         // When only a single item is visible, mark it active and use full height
         const mainAreaHeight = showTabs ? 'calc(100vh - 33px)' : '100vh';
 
@@ -1464,6 +1533,9 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         .view-content.active { display: flex; flex-direction: column; }
         #chart.has-aspect-ratio.active {
             position: relative;
+        }
+        #chart.has-aspect-ratio > :first-child {
+            visibility: hidden;
         }
         #chart-view { padding: 0; }
         /* Edit panel */
@@ -1945,6 +2017,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
                 wrapperDiv.style.top = '';
                 wrapperDiv.style.width = availW + 'px';
                 wrapperDiv.style.height = availH + 'px';
+                wrapperDiv.style.visibility = 'visible';
                 lastAppliedW = chartDiv.clientWidth;
                 lastAppliedH = chartDiv.clientHeight;
                 Plotly.newPlot(plotDiv, plotDiv.data, Object.assign({}, plotDiv.layout, buildLayoutOverrides(availW, availH)), plotDiv._context);
@@ -1971,6 +2044,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
             wrapperDiv.style.width = w + 'px';
             wrapperDiv.style.height = h + 'px';
             wrapperDiv.style.margin = '';
+            wrapperDiv.style.visibility = 'visible';
             lastAppliedW = chartDiv.clientWidth;
             lastAppliedH = chartDiv.clientHeight;
             Plotly.newPlot(plotDiv, plotDiv.data, Object.assign({}, plotDiv.layout, buildLayoutOverrides(w, h)), plotDiv._context);
@@ -2271,6 +2345,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
                             wrapperDiv.style.width = availW + 'px';
                             wrapperDiv.style.height = availH + 'px';
                         }
+                        wrapperDiv.style.visibility = 'visible';
                     }
                     lastAppliedW = availW;
                     lastAppliedH = availH;
