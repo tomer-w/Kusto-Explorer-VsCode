@@ -288,6 +288,11 @@
         "command": "kusto.importScratchPadsFromKustoExplorer",
         "title": "Import Scratch Pads",
         "icon": "$(cloud-download)"
+      },
+      {
+        "command": "kusto.rerunQuery",
+        "title": "Rerun Query",
+        "icon": "$(play)"
       }
     ],
     "menus": {
@@ -510,6 +515,11 @@
           "command": "kusto.toggleSearch",
           "when": "(activeWebviewPanelId == kusto || activeWebviewPanelId == kusto.resultViewer) && !kusto.resultViewerChartActive",
           "group": "navigation@4"
+        },
+        {
+          "command": "kusto.rerunQuery",
+          "when": "activeWebviewPanelId == kusto.resultViewer && kusto.resultViewerHasQuery",
+          "group": "navigation@5"
         }
       ],
       "editor/context": [
@@ -574,6 +584,10 @@
         {
           "command": "kusto.saveSingletonResults",
           "when": "webviewId == 'kusto' && chartVisible"
+        },
+        {
+          "command": "kusto.rerunQuery",
+          "when": "webviewId == 'kusto.resultViewer' && kusto.resultViewerHasQuery"
         }
       ]
     },

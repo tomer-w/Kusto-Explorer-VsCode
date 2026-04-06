@@ -118,6 +118,7 @@ export async function activate(context: ExtensionContext)
         vscode.commands.registerCommand('kusto.copyTableAsExpression', () => resultsViewer.copyTableAsExpression()),
         vscode.commands.registerCommand('kusto.savePanelResults', () => resultsViewer.saveCurrentResults()),
         vscode.commands.registerCommand('kusto.chartPanelResults', () => resultsViewer.openChartFromBottomView()),
+        vscode.commands.registerCommand('kusto.rerunQuery', () => resultsViewer.rerunQuery()),
     );
 
     // Track Kusto session state
