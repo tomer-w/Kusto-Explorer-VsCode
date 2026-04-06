@@ -5,14 +5,20 @@ import * as assert from 'assert';
 import * as vscode from 'vscode';
 
 /** Close all editors for the given URI scheme and delete the files via the file system provider. */
+/** Check if a scratch pad path/name matches one of the keep names exactly (ignoring extension). */
+function shouldKeep(nameOrPath: string, keepFiles: string[]): boolean {
+    // Extract just the base name without extension from the path
+    const baseName = nameOrPath.replace(/^\//, '').replace(/\.kql$/, '');
+    return keepFiles.some(f => baseName === f);
+}
+
 async function cleanupScratchPads(keepFiles: string[]): Promise<void> {
     // Close all scratch pad tabs except those we're keeping
     for (const group of vscode.window.tabGroups.all) {
         for (const tab of group.tabs) {
             const input = tab.input as { uri?: vscode.Uri } | undefined;
             if (input?.uri?.scheme === 'kusto-scratch') {
-                const name = input.uri.path;
-                if (!keepFiles.some(f => name.includes(f))) {
+                if (!shouldKeep(input.uri.path, keepFiles)) {
                     await vscode.window.tabGroups.close(tab);
                 }
             }
@@ -23,7 +29,7 @@ async function cleanupScratchPads(keepFiles: string[]): Promise<void> {
     const rootUri = vscode.Uri.from({ scheme: 'kusto-scratch', path: '/' });
     const entries = await vscode.workspace.fs.readDirectory(rootUri);
     for (const [name] of entries) {
-        if (!keepFiles.some(f => name.includes(f))) {
+        if (!shouldKeep(name, keepFiles)) {
             const fileUri = vscode.Uri.from({ scheme: 'kusto-scratch', path: '/' + name });
             await vscode.workspace.fs.delete(fileUri);
         }
