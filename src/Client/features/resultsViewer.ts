@@ -1334,14 +1334,6 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         const hasChart = !!chartResult?.html;
         const hasTable = !!dataResult?.tables?.length;
 
-        // Update context key for editor title actions
-        if (webviewPanel.active) {
-            vscode.commands.executeCommand('setContext', 'kusto.resultViewerHasChart', hasChart);
-            const activeView = this.viewer['viewerStates'].get(webviewPanel)?.activeView ?? (hasChart ? 'chart' : 'table-0');
-            vscode.commands.executeCommand('setContext', 'kusto.resultViewerChartActive', activeView === 'chart');
-            vscode.commands.executeCommand('setContext', 'kusto.resultViewerHasQuery', !!resultData?.query);
-        }
-
         if (!hasTable && !hasChart) {
             webviewPanel.webview.html = '<html><body><p>Failed to render results.</p></body></html>';
             return;
@@ -1354,9 +1346,16 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         this.viewer['viewerStates'].set(webviewPanel, {
             resultData,
             tableNames,
-            activeView: existingState?.activeView ?? firstActiveView,
+            activeView: firstActiveView,
             ...(existingState?.chartOptionsOverride && { chartOptionsOverride: existingState.chartOptionsOverride })
         });
+
+        // Update context keys after state is set (HTML rebuild always resets to firstActiveView)
+        if (webviewPanel.active) {
+            vscode.commands.executeCommand('setContext', 'kusto.resultViewerHasChart', hasChart);
+            vscode.commands.executeCommand('setContext', 'kusto.resultViewerChartActive', firstActiveView === 'chart');
+            vscode.commands.executeCommand('setContext', 'kusto.resultViewerHasQuery', !!resultData?.query);
+        }
 
         const chartOptions = existingState?.chartOptionsOverride ?? resultData.chartOptions;
         const columnNames = resultData.tables[0]?.columns?.map(c => c.name) ?? [];
