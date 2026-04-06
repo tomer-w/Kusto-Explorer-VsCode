@@ -244,4 +244,231 @@ suite('Connections Panel Integration Tests', () => {
         assert.ok(result, 'Server should still exist');
         assert.strictEqual(result.groupName, 'TargetGroup', 'Server should be in the target group');
     });
+
+    test('Move a server from a group back to root', async () => {
+        await connectionManager.addServerGroup({ name: 'MyGroup', servers: [] });
+        await connectionManager.addServer({
+            connection: 'https://moveback.kusto.windows.net',
+            cluster: 'moveback.kusto.windows.net',
+        }, 'MyGroup');
+
+        let result = findServer(connectionManager, 'moveback.kusto.windows.net');
+        assert.strictEqual(result?.groupName, 'MyGroup', 'Server should start in group');
+
+        const original = vscode.window.showQuickPick;
+        (vscode.window as any).showQuickPick = async () => ({
+            label: '$(home) Root',
+            description: 'Move to root level',
+        });
+        try {
+            await vscode.commands.executeCommand('kusto.moveServer', {
+                clusterName: 'moveback.kusto.windows.net',
+                displayName: 'moveback',
+                groupName: 'MyGroup',
+            });
+        } finally {
+            (vscode.window as any).showQuickPick = original;
+        }
+
+        result = findServer(connectionManager, 'moveback.kusto.windows.net');
+        assert.ok(result, 'Server should still exist');
+        assert.strictEqual(result.groupName, undefined, 'Server should be at root');
+    });
+
+    test('Move a server between groups', async () => {
+        await connectionManager.addServerGroup({ name: 'GroupA', servers: [] });
+        await connectionManager.addServerGroup({ name: 'GroupB', servers: [] });
+        await connectionManager.addServer({
+            connection: 'https://between.kusto.windows.net',
+            cluster: 'between.kusto.windows.net',
+        }, 'GroupA');
+
+        let result = findServer(connectionManager, 'between.kusto.windows.net');
+        assert.strictEqual(result?.groupName, 'GroupA', 'Server should start in GroupA');
+
+        const original = vscode.window.showQuickPick;
+        (vscode.window as any).showQuickPick = async () => ({
+            label: '$(folder) GroupB',
+            description: 'Move to group "GroupB"',
+        });
+        try {
+            await vscode.commands.executeCommand('kusto.moveServer', {
+                clusterName: 'between.kusto.windows.net',
+                displayName: 'between',
+                groupName: 'GroupA',
+            });
+        } finally {
+            (vscode.window as any).showQuickPick = original;
+        }
+
+        result = findServer(connectionManager, 'between.kusto.windows.net');
+        assert.ok(result, 'Server should still exist');
+        assert.strictEqual(result.groupName, 'GroupB', 'Server should be in GroupB');
+        assert.strictEqual(findGroup(connectionManager, 'GroupA')?.servers.length, 0, 'GroupA should be empty');
+    });
+
+    test('Add a server directly to a group via command', async () => {
+        await connectionManager.addServerGroup({ name: 'DirectGroup', servers: [] });
+
+        const original = vscode.window.showInputBox;
+        (vscode.window as any).showInputBox = async () => 'https://direct.kusto.windows.net';
+        try {
+            await vscode.commands.executeCommand('kusto.addServerToGroup', {
+                groupInfo: { name: 'DirectGroup' },
+            });
+        } finally {
+            (vscode.window as any).showInputBox = original;
+        }
+
+        const result = findServer(connectionManager, 'direct.kusto.windows.net');
+        assert.ok(result, 'Server should exist');
+        assert.strictEqual(result.groupName, 'DirectGroup', 'Server should be in the specified group');
+    });
+
+    test('Edit a server connection via command', async () => {
+        await connectionManager.addServer({
+            connection: 'https://old.kusto.windows.net',
+            cluster: 'old.kusto.windows.net',
+            displayName: 'old',
+        });
+
+        const original = vscode.window.showInputBox;
+        (vscode.window as any).showInputBox = async () => 'https://new.kusto.windows.net';
+        try {
+            await vscode.commands.executeCommand('kusto.editServer', {
+                connection: 'https://old.kusto.windows.net',
+                clusterName: 'old.kusto.windows.net',
+                displayName: 'old',
+            });
+        } finally {
+            (vscode.window as any).showInputBox = original;
+        }
+
+        assert.strictEqual(
+            findServer(connectionManager, 'old.kusto.windows.net'),
+            undefined,
+            'Old cluster should no longer exist'
+        );
+        const result = findServer(connectionManager, 'new.kusto.windows.net');
+        assert.ok(result, 'New cluster should exist');
+    });
+
+    test('Add server cancelled when user dismisses input', async () => {
+        const original = vscode.window.showInputBox;
+        (vscode.window as any).showInputBox = async () => undefined;
+        try {
+            await vscode.commands.executeCommand('kusto.addServer');
+        } finally {
+            (vscode.window as any).showInputBox = original;
+        }
+
+        assert.strictEqual(
+            connectionManager.getServersAndGroups().items.length, 0,
+            'No server should be added when input is cancelled'
+        );
+    });
+
+    test('Remove server cancelled when user dismisses confirmation', async () => {
+        await connectionManager.addServer({
+            connection: 'https://keepme.kusto.windows.net',
+            cluster: 'keepme.kusto.windows.net',
+        });
+
+        const original = vscode.window.showWarningMessage;
+        (vscode.window as any).showWarningMessage = async () => undefined;
+        try {
+            await vscode.commands.executeCommand('kusto.removeServer', {
+                clusterName: 'keepme.kusto.windows.net',
+                displayName: 'keepme',
+            });
+        } finally {
+            (vscode.window as any).showWarningMessage = original;
+        }
+
+        assert.ok(
+            findServer(connectionManager, 'keepme.kusto.windows.net'),
+            'Server should still exist after cancelling removal'
+        );
+    });
+
+    test('Rename server is no-op when user enters same name', async () => {
+        await connectionManager.addServer({
+            connection: 'https://samename.kusto.windows.net',
+            cluster: 'samename.kusto.windows.net',
+            displayName: 'samename',
+        });
+
+        const original = vscode.window.showInputBox;
+        (vscode.window as any).showInputBox = async () => 'samename';
+        try {
+            await vscode.commands.executeCommand('kusto.renameServer', {
+                clusterName: 'samename.kusto.windows.net',
+                displayName: 'samename',
+            });
+        } finally {
+            (vscode.window as any).showInputBox = original;
+        }
+
+        const result = findServer(connectionManager, 'samename.kusto.windows.net');
+        assert.ok(result, 'Server should still exist');
+        assert.strictEqual(result.server.displayName, 'samename', 'Display name should remain unchanged');
+    });
+
+    test('getConfiguredConnections returns all clusters', async () => {
+        await connectionManager.addServerGroup({ name: 'TestGroup', servers: [] });
+        await connectionManager.addServer({
+            connection: 'https://root1.kusto.windows.net',
+            cluster: 'root1.kusto.windows.net',
+        });
+        await connectionManager.addServer({
+            connection: 'https://grouped1.kusto.windows.net',
+            cluster: 'grouped1.kusto.windows.net',
+        }, 'TestGroup');
+        await connectionManager.addServer({
+            connection: 'https://root2.kusto.windows.net',
+            cluster: 'root2.kusto.windows.net',
+        });
+
+        const connections = connectionManager.getConfiguredConnections();
+        assert.strictEqual(connections.length, 3, 'Should return all 3 clusters');
+        assert.ok(connections.includes('root1.kusto.windows.net'));
+        assert.ok(connections.includes('root2.kusto.windows.net'));
+        assert.ok(connections.includes('grouped1.kusto.windows.net'));
+    });
+
+    test('findServerInfo finds servers in root and groups', async () => {
+        await connectionManager.addServerGroup({ name: 'FindGroup', servers: [] });
+        await connectionManager.addServer({
+            connection: 'https://rootfind.kusto.windows.net',
+            cluster: 'rootfind.kusto.windows.net',
+        });
+        await connectionManager.addServer({
+            connection: 'https://groupfind.kusto.windows.net',
+            cluster: 'groupfind.kusto.windows.net',
+        }, 'FindGroup');
+
+        assert.ok(connectionManager.findServerInfo('rootfind.kusto.windows.net'), 'Should find root server');
+        assert.ok(connectionManager.findServerInfo('groupfind.kusto.windows.net'), 'Should find grouped server');
+        assert.strictEqual(connectionManager.findServerInfo('nonexistent.kusto.windows.net'), undefined, 'Should return undefined for non-existent');
+    });
+
+    test('Servers and groups are sorted alphabetically', async () => {
+        await connectionManager.addServer({
+            connection: 'https://zebra.kusto.windows.net',
+            cluster: 'zebra.kusto.windows.net',
+        });
+        await connectionManager.addServer({
+            connection: 'https://alpha.kusto.windows.net',
+            cluster: 'alpha.kusto.windows.net',
+        });
+        await connectionManager.addServerGroup({ name: 'Zulu', servers: [] });
+        await connectionManager.addServerGroup({ name: 'Bravo', servers: [] });
+
+        const items = connectionManager.getServersAndGroups().items;
+        // Servers come first, then groups, each sorted alphabetically
+        assert.ok(isServer(items[0]) && items[0].cluster === 'alpha.kusto.windows.net', 'First should be alpha server');
+        assert.ok(isServer(items[1]) && items[1].cluster === 'zebra.kusto.windows.net', 'Second should be zebra server');
+        assert.ok(isServerGroup(items[2]) && items[2].name === 'Bravo', 'Third should be Bravo group');
+        assert.ok(isServerGroup(items[3]) && items[3].name === 'Zulu', 'Fourth should be Zulu group');
+    });
 });
