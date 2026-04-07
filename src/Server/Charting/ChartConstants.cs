@@ -41,30 +41,12 @@ public static class ChartKind
 }
 
 /// <summary>
-/// Constants for chart legend visibility.
-/// </summary>
-public static class ChartLegendMode
-{
-    public const string Visible = "Visible";
-    public const string Hidden = "Hidden";
-}
-
-/// <summary>
 /// Constants for chart axis modes.
 /// </summary>
 public static class ChartAxis
 {
     public const string Linear = "Linear";
     public const string Log = "Log";
-}
-
-/// <summary>
-/// Constants for chart visibility options (ticks, grid, values).
-/// </summary>
-public static class ChartVisibility
-{
-    public const string Visible = "Visible";
-    public const string Hidden = "Hidden";
 }
 
 /// <summary>
@@ -101,6 +83,7 @@ public static class ChartMode
 /// </summary>
 public static class ChartTextSize
 {
+    public const string ExtraSmall = "Extra Small";
     public const string Small = "Small";
     public const string Medium = "Medium";
     public const string Large = "Large";

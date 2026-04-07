@@ -16,6 +16,10 @@ public abstract class Setting
     }
 }
 
+/// <summary>
+/// General settings for values of type <see cref="T"/>
+/// </summary>
+/// <typeparam name="T"></typeparam>
 public class Setting<T> : Setting
 {
     public T DefaultValue { get; }
@@ -25,64 +29,98 @@ public class Setting<T> : Setting
         this.DefaultValue = defaultValue;
     }
 
-    public virtual T GetValue(ImmutableDictionary<string, object?> settings)
+    /// <summary>
+    /// Gets the value if defined in the settings.
+    /// </summary>
+    public virtual bool TryGetValue(ImmutableDictionary<string, object?> settings, out T value)
     {
-        if (settings.TryGetValue(this.Name, out var value))
+        if (settings.TryGetValue(this.Name, out var objValue))
         {
-            if (value is T tvalue)
+            if (objValue is T tvalue)
             {
-                return tvalue;
+                value = tvalue;
+                return true;
             }
-            else if (value == null && typeof(T).CanBeNull())
+            else if (objValue == null && typeof(T).CanBeNull())
             {
-                return (T)value!;
+                value = (T)objValue!;
             }
             else
             {
                 try
                 {
-                    return (T)Convert.ChangeType(value, typeof(T))!;
+                    value = (T)Convert.ChangeType(objValue, typeof(T))!;
+                    return true;
                 }
                 catch
                 {
-                    return this.DefaultValue;
                 }
             }
         }
 
-        return this.DefaultValue;
+        value = default!;
+        return false;
     }
 
+    /// <summary>
+    /// Gets the value (or the default value if not defined in the settings).
+    /// </summary>
+    public T GetValue(ImmutableDictionary<string, object?> settings)
+    {
+        if (TryGetValue(settings, out var value))
+        {
+            return value;
+        }
+        else
+        {
+            return this.DefaultValue;
+        }
+    }
+
+    /// <summary>
+    /// Updates the settings with the value for this setting.
+    /// </summary>
     public virtual ImmutableDictionary<string, object?> WithValue(ImmutableDictionary<string, object?> settings, T value)
     {
         return settings.SetItem(this.Name, value!);
     }
 }
 
+/// <summary>
+/// A Setting for an array or list of items of type <see cref="T"/>
+/// </summary>
+/// <typeparam name="T"></typeparam>
 public class ArraySetting<T> : Setting<ImmutableList<T>>
 {
     public ArraySetting(string name, ImmutableList<T> defaultValue) : base(name, defaultValue)
     {
     }
 
-    public override ImmutableList<T> GetValue(ImmutableDictionary<string, object?> settings)
+    public override bool TryGetValue(ImmutableDictionary<string, object?> settings, out ImmutableList<T> value)
     {
-        if (settings.TryGetValue(this.Name, out var value))
+        if (settings.TryGetValue(this.Name, out var objValue))
         {
-            if (value is JArray jarray)
+            if (objValue is JArray jarray)
             {
-                return jarray.ToObject<ImmutableList<T>>() ?? this.DefaultValue;
+                value = jarray.ToObject<ImmutableList<T>>()!;
+                return value != null;
             }
-            else if (value is IEnumerable<T> enumerable)
+            else if (objValue is IEnumerable<T> enumerable)
             {
-                return enumerable.ToImmutableList();
+                value = enumerable.ToImmutableList();
+                return true;
             }
         }
 
-        return this.DefaultValue;
+        value = default!;
+        return false;
     }
 }
 
+/// <summary>
+/// A Setting for a type that is mapped to and from a string value in the settings.
+/// </summary>
+/// <typeparam name="T"></typeparam>
 public class StringMappedSetting<T> : Setting<T>
     where T : notnull
 {
@@ -96,16 +134,18 @@ public class StringMappedSetting<T> : Setting<T>
         _reverseMap = valueMapping.ToImmutableDictionary(kv => kv.Value, kv => kv.Key);
     }
 
-    public override T GetValue(ImmutableDictionary<string, object?> settings)
+    public override bool TryGetValue(ImmutableDictionary<string, object?> settings, out T value)
     {
-        if (settings.TryGetValue(this.Name, out var value)
-            && value is string strValue
+        if (settings.TryGetValue(this.Name, out var objValue)
+            && objValue is string strValue
             && _map.TryGetValue(strValue, out var mappedValue))
         {
-            return mappedValue;
+            value = mappedValue;
+            return true;
         }
 
-        return this.DefaultValue;
+        value = default!;
+        return false;
     }
 
     public override ImmutableDictionary<string, object?> WithValue(ImmutableDictionary<string, object?> settings, T value)

@@ -46,10 +46,7 @@ const chartModes = ['Light', 'Dark'];
 const aspectRatios = ['16:9', '3:2', '4:3', '1:1', '3:4', '2:3', '9:16'];
 
 /** Known text size presets (must match server-side ChartTextSize constants). */
-const textSizes = ['Small', 'Medium', 'Large', 'Extra Large'];
-
-/** Known visibility options (must match server-side ChartVisibility constants). */
-const visibilityOptions = ['Visible', 'Hidden'];
+const textSizes = ['Extra Small', 'Small', 'Medium', 'Large', 'Extra Large'];
 
 /**
  * Controls which content sections are shown in a result view.
@@ -74,6 +71,48 @@ export function isDarkMode(): boolean {
     const colorTheme = vscode.window.activeColorTheme;
     return colorTheme.kind === vscode.ColorThemeKind.Dark ||
            colorTheme.kind === vscode.ColorThemeKind.HighContrast;
+}
+
+/**
+ * Reads chart default settings from VS Code configuration and returns
+ * a partial ChartOptions with only the configured defaults.
+ */
+function getChartDefaults(): Partial<server.ChartOptions> {
+    const config = vscode.workspace.getConfiguration('kusto.chart');
+    const defaults: Partial<server.ChartOptions> = {};
+    const showLegend = config.get<string>('showLegend');
+    if (showLegend === 'yes') { defaults.showLegend = true; }
+    else if (showLegend === 'no') { defaults.showLegend = false; }
+    const legendPosition = config.get<string>('legendPosition');
+    if (legendPosition) { defaults.legendPosition = legendPosition; }
+    const xShowTicks = config.get<string>('xShowTicks');
+    if (xShowTicks === 'yes') { defaults.xShowTicks = true; }
+    else if (xShowTicks === 'no') { defaults.xShowTicks = false; }
+    const yShowTicks = config.get<string>('yShowTicks');
+    if (yShowTicks === 'yes') { defaults.yShowTicks = true; }
+    else if (yShowTicks === 'no') { defaults.yShowTicks = false; }
+    const xShowGrid = config.get<string>('xShowGrid');
+    if (xShowGrid === 'yes') { defaults.xShowGrid = true; }
+    else if (xShowGrid === 'no') { defaults.xShowGrid = false; }
+    const yShowGrid = config.get<string>('yShowGrid');
+    if (yShowGrid === 'yes') { defaults.yShowGrid = true; }
+    else if (yShowGrid === 'no') { defaults.yShowGrid = false; }
+    const showValues = config.get<string>('showValues');
+    if (showValues === 'yes') { defaults.showValues = true; }
+    else if (showValues === 'no') { defaults.showValues = false; }
+    const textSize = config.get<string>('textSize');
+    if (textSize) { defaults.textSize = textSize; }
+    const aspectRatio = config.get<string>('aspectRatio');
+    if (aspectRatio) { defaults.aspectRatio = aspectRatio; }
+    return defaults;
+}
+
+/**
+ * Returns a new ChartOptions with unset properties filled in from configuration defaults.
+ */
+function applyChartDefaults(options: server.ChartOptions): server.ChartOptions {
+    const defaults = getChartDefaults();
+    return { ...defaults, ...options };
 }
 
 function escapeHtmlStatic(text: string): string {
@@ -471,7 +510,7 @@ export class ResultsViewer {
             return;
         }
 
-        const chartOptions = resultData.chartOptions;
+        const chartOptions = resultData.chartOptions ? applyChartDefaults(resultData.chartOptions) : undefined;
         const columnNames = resultData.tables[0]?.columns?.map(c => c.name) ?? [];
         const html = this.htmlBuilder.BuildMultiTabbedHtml(dataResult, chartResult?.html, hasChart, mode, chartOptions, columnNames,
             resultData.query, resultData.cluster, resultData.database, resultData.tables);
@@ -518,7 +557,7 @@ export class ResultsViewer {
         }
 
         const darkMode = isDarkMode();
-        const chartOptions = resultData.chartOptions;
+        const chartOptions = resultData.chartOptions ? applyChartDefaults(resultData.chartOptions) : undefined;
 
         // Fetch table HTML and chart HTML in parallel
         const [dataResult, chartResult] = await Promise.all([
@@ -770,8 +809,9 @@ export class ResultsViewer {
 
     private async updateChartInSingletonView(): Promise<void> {
         if (!this.singletonView || !this.singletonResultData) { return; }
-        const chartOptions = this.singletonChartOptionsOverride ?? this.singletonResultData.chartOptions;
-        if (!chartOptions) { return; }
+        const rawChartOptions = this.singletonChartOptionsOverride ?? this.singletonResultData.chartOptions;
+        if (!rawChartOptions) { return; }
+        const chartOptions = applyChartDefaults(rawChartOptions);
 
         const state = this.viewerStates.get(this.singletonView);
         if (state && this.singletonChartOptionsOverride) { state.chartOptionsOverride = this.singletonChartOptionsOverride; }
@@ -1357,7 +1397,8 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
             vscode.commands.executeCommand('setContext', 'kusto.resultViewerHasQuery', !!resultData?.query);
         }
 
-        const chartOptions = existingState?.chartOptionsOverride ?? resultData.chartOptions;
+        const rawChartOptions = existingState?.chartOptionsOverride ?? resultData.chartOptions;
+        const chartOptions = rawChartOptions ? applyChartDefaults(rawChartOptions) : undefined;
         const columnNames = resultData.tables[0]?.columns?.map(c => c.name) ?? [];
         const html = this.BuildMultiTabbedHtml(dataResult, chartResult?.html, hasChart, 'all', chartOptions, columnNames,
             resultData.query, resultData.cluster, resultData.database, resultData.tables);
@@ -1365,8 +1406,9 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
     }
 
     private async updateChartOnly(state: ResultViewerState, webviewPanel: vscode.WebviewPanel): Promise<void> {
-        const chartOptions = state.chartOptionsOverride ?? state.resultData.chartOptions;
-        if (!chartOptions) { return; }
+        const rawChartOptions = state.chartOptionsOverride ?? state.resultData.chartOptions;
+        if (!rawChartOptions) { return; }
+        const chartOptions = applyChartDefaults(rawChartOptions);
         const modifiedData: server.ResultData = {
             ...state.resultData,
             chartOptions
@@ -1947,7 +1989,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
 
         // Compute font sizes based on chart dimensions and text size preset
         function computeFontSizes(chartW, chartH, preset) {
-            var scale = preset === 'Small' ? 0.75 : preset === 'Large' ? 1.5 : preset === 'Extra Large' ? 2.0 : 1.0;
+            var scale = preset === 'Extra Small' ? 0.5 : preset === 'Small' ? 0.75 : preset === 'Large' ? 1.5 : preset === 'Extra Large' ? 2.0 : 1.0;
             var base = Math.min(chartW, chartH);
             var titleSize = Math.round(Math.max(10, Math.min(36, base * 0.04)) * scale);
             var axisSize = Math.round(Math.max(8, Math.min(24, base * 0.028)) * scale);
@@ -2173,8 +2215,8 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
             if (kind && kind.value) opts.kind = kind.value;
             var legendPos = document.getElementById('opt-legendPosition');
             if (legendPos && legendPos.value) {
-                if (legendPos.value === 'Hidden') { opts.legend = 'Hidden'; }
-                else { opts.legend = 'Visible'; opts.legendPosition = legendPos.value; }
+                if (legendPos.value === 'Hidden') { opts.showLegend = false; }
+                else { opts.showLegend = true; opts.legendPosition = legendPos.value; }
             }
             var sort = document.getElementById('opt-sort');
             if (sort && sort.value) opts.sort = sort.value;
@@ -2185,7 +2227,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
             var textSize = document.getElementById('opt-textSize');
             if (textSize && textSize.value) opts.textSize = textSize.value;
             var showValues = document.getElementById('opt-showValues');
-            if (showValues) opts.showValues = showValues.checked ? 'Visible' : 'Hidden';
+            if (showValues) opts.showValues = showValues.checked;
             var title = document.getElementById('opt-title');
             if (title && title.value) opts.title = title.value;
             var xTitle = document.getElementById('opt-xTitle');
@@ -2215,13 +2257,13 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
             var ymax = document.getElementById('opt-ymax');
             if (ymax && ymax.value) opts.ymax = ymax.value;
             var xShowTicks = document.getElementById('opt-xShowTicks');
-            if (xShowTicks) opts.xShowTicks = xShowTicks.checked ? 'Visible' : 'Hidden';
+            if (xShowTicks) opts.xShowTicks = xShowTicks.checked;
             var yShowTicks = document.getElementById('opt-yShowTicks');
-            if (yShowTicks) opts.yShowTicks = yShowTicks.checked ? 'Visible' : 'Hidden';
+            if (yShowTicks) opts.yShowTicks = yShowTicks.checked;
             var xShowGrid = document.getElementById('opt-xShowGrid');
-            if (xShowGrid) opts.xShowGrid = xShowGrid.checked ? 'Visible' : 'Hidden';
+            if (xShowGrid) opts.xShowGrid = xShowGrid.checked;
             var yShowGrid = document.getElementById('opt-yShowGrid');
-            if (yShowGrid) opts.yShowGrid = yShowGrid.checked ? 'Visible' : 'Hidden';
+            if (yShowGrid) opts.yShowGrid = yShowGrid.checked;
             var xTickAngle = document.getElementById('opt-xTickAngle');
             if (xTickAngle && xTickAngle.value !== '') opts.xTickAngle = Number(xTickAngle.value);
             var yTickAngle = document.getElementById('opt-yTickAngle');
@@ -2388,7 +2430,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         ).join('');
 
         // Combined legend: map legacy legend + legendPosition into one value
-        const currentLegend = (opts.legend === 'Hidden') ? 'Hidden' : (opts.legendPosition ?? '');
+        const currentLegend = (opts.showLegend === false) ? 'Hidden' : (opts.legendPosition ?? '');
         const legendPosOptions = ['', ...legendPositions].map(p =>
             `<option value="${p}"${p === currentLegend ? ' selected' : ''}>${p || '(default)'}</option>`
         ).join('');
@@ -2418,7 +2460,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         ).join('');
 
         // Show values
-        const showValuesChecked = opts.showValues === 'Visible' ? ' checked' : '';
+        const showValuesChecked = opts.showValues === true ? ' checked' : '';
 
         // Column pickers
         const xColOptions = ['', ...columnNames].map(c =>
@@ -2451,10 +2493,10 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         ).join('');
 
         // Per-axis display options
-        const xShowTicksChecked = opts.xShowTicks === 'Visible' ? ' checked' : '';
-        const yShowTicksChecked = opts.yShowTicks === 'Visible' ? ' checked' : '';
-        const xShowGridChecked = opts.xShowGrid === 'Hidden' ? '' : ' checked';
-        const yShowGridChecked = opts.yShowGrid === 'Hidden' ? '' : ' checked';
+        const xShowTicksChecked = opts.xShowTicks === true ? ' checked' : '';
+        const yShowTicksChecked = opts.yShowTicks === true ? ' checked' : '';
+        const xShowGridChecked = opts.xShowGrid === false ? '' : ' checked';
+        const yShowGridChecked = opts.yShowGrid === false ? '' : ' checked';
         const xTickAngleValue = opts.xTickAngle != null ? String(opts.xTickAngle) : '';
         const yTickAngleValue = opts.yTickAngle != null ? String(opts.yTickAngle) : '';
 
