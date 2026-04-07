@@ -9,8 +9,11 @@
       "match": "//.*"
     },
     {
-      "name": "meta.preprocessor.kusto",
-      "match": "#.*"
+      "match": "(#\\w+)(.*)",
+      "captures": {
+        "1": { "name": "keyword.control.directive.kusto" },
+        "2": { "name": "comment.directive.kusto" }
+      }
     },
     {
       "name": "string.quoted.other.verbatim.kusto",
@@ -81,6 +84,34 @@
     {
       "name": "keyword.other.kusto",
       "match": "\\b(writeaheadlog|workload_groups|workload_group|workload|whatsgoingon|whatif|warming|warm|w3clogfile|volatile|virtual_clusters|virtual_cluster|violations|views|viewers|version|verbose|v9|v10|utilization|using|users|user|usage|update|unused|until|unrestrictedviewers|undo|type|tsv|trim|transactions|traces|traceresults|trace|throw|threadpools|tenants|tempstorage|templates|template|tcpports|tcpconnections|tasks|task|tags|tables|table-purge|tablepurge|table_mirroring_templates|table_mirroring_template|systemdb|system_properties|suspend|streaming-ingestion-post-processing|streamingingestion_maintenance_mode|streamingingestion|stream|stored-query-results|storedqueryresultcontainers|stored_query_results|stored_query_result|storage-artifacts-cleanup|storage|status|stats|statistics|state|startofyear|startofweek|startofmonth|startofday|start|sstream|sql|softretention|softdelete|skip-seal|skip-results|shuffle|show|sharedcontainers|shards-group|shards_grouping|shards|sharding|shard-groups|set-or-replace|set-or-append|services|servicepoints|service|sensitive|secrets|seals|seal|script|schema|scalein|save|sandboxes|sandbox|running|runner|run|rowstores|rowstorepolicy|rowstore_sealinfo|rowstore_references|rowstore|roworderpolicy|roworder|row_level_security|roles|retention|resume-purges|resume|restricted_view_access|restore|resourcetree|resources|request_support|request_classification|rename|remote-schema|recycle|recoverability|records|record|rebuild|reason|readwrite|readonly|quote|queryplan|queryexecution|query-acceleration|query_weak_consistency|query_results|query_acceleration|query|queries|purge-storage-artifacts-cleanup|purge-cleanup|purge|principals-modification-kind|principals|principal|primary|pretty-name-override|prettyname|pretend|prefetch-extents|policy|policies|pod-name|plugins|plotly|persist|periodic-storage-artifacts-cleanup|period|pending|pathformat|patch|password|partitioning|parquet|pair_delimiter|over|orc|ops|operations|operation|onelake_client|older|node|network|nan|multidatabaseadmins|move|monitors|monitoring|missing|mirroring|migrated|method|metadata_artifacts|metadata|merge|mempools|memory|mdm|MB|maxRecords|materialized-views|materialized-view|mappings|mapping|management|managed_identity|make|maintenance_mode|lookback|location|local|load|leftovers|leader-key-vault-name|leader-cluster-metadata-path|latest|kv_delimiter|kuiper|kqlschema|kql|keyvaultsecrets|keyvault|keys|key|json|journal|jobs|job|internal|inline|ingestors|ingestiontime|ingestions|ingestionbatching|ingestion|ingest-inline|ingest-from-storage|ingest|info|include|immutable|ifnotexists|ifexists|if_later_than|identity|hours|hot_window|hash|hardretention|harddelete|groups|groupmembership|greedy|graph_snapshots_optimize|graph_snapshots_drop_by_retention|graph_snapshots|graph_snapshot|graph_models|graph_model|granularity|get|generic|GB|functions|function|freshness|format_datetime|for|follower|follow-authorized-principals|folder|flush|filesystem|featureflags|farm|failures|fabriclocks|fabricclocks|fabriccache|fabric|external-artifacts|external_throttling|external|extents-partition|extents-merge|extentsmerge|extentsize|extents|extentcontainers|extentcontainer|extent_tags_retention|extent|-exported-artifacts|exported-artifacts|export|expired_tables_cleanup|exclude|except|escape|ephemeral|entity_groups|entity|entities|encryption|encodingpolicy|encoding|enabled|enable|empty|effective|echo|earliest|dup-next-ingest|dup-next-failed-ingest|dryrun|drop-pretend|drop|docstring|dnshostname|disabled|disable|dimensions|diagnostics|details|detach|delete|define|default-principals-modification-kind|default-caching-policies-modification-kind|decryption-certificate-thumbprint|days|datetime_pattern|datastats|datasize|datamanagement|dataformat|data-export|dataexport|databases|database-name-prefix|database-name-override|databasecreators|data-analyzer|data_movement_restriction|data|cursor|csv|cslschema|csl|credstore|create-or-alter|create-merge|createdon|create|crash|corrupted|copy|continuous-job|continuous-exports|continuous-export|continuous|containers|container|conservative|configuration|concurrency|compute_pools|compute_pool|compressed|completed|complete|compact|commpools|commconcurrency|commands-and-queries|commands|command_line_args|columns|column-docstrings|column|cmk|clusters|clustermanagement|clusteradmin|cloudsettings|clear|cleanup|clean|classification|char|certificates|catalogquery|catalog|capacity|cancel|call-tree|callstacks|callouts|callout|cachingpolicy|caching-policies-modification-kind|caching|cache|bytes|byte|blockedprincipals|blocked|block|blob|based-on|azmonstream|avro|autoUpdateSchema|auto_delete|attach|async|assignments|assignment|artifacts|apply|application|append|apacheavro|alter-merge|alter|allow-non-empty-container|alldatabasesviewers|alldatabasesmonitors|alldatabasesadmins|admins|admin|adl|add|activitystate|accounts|account|abandoned|__unique|$systemdb-data)\\b"
+    },
+    {
+      "name": "keyword.other.kusto",
+      "match": "\\b(3Dchart|anomalychart|areachart|barchart|card|columnchart|graph|ladderchart|linechart|list|piechart|pivotchart|plotly|sankey|stackedareachart|scatterchart|table|timechart|timepivot|timeline|treemap)\\b"
+    },
+    {
+      "name": "keyword.other.kusto",
+      "match": "\\b(accumulate|anomalycolumns|kind|legend|series|title|xaxis|xcolumn|xmax|xmin|xtitle|ycolumns|yaxis|ymax|ymin|ytitle|ysplit)\\b"
+    },
+    {
+      "name": "keyword.other.kusto",
+      "match": "\\b(default|map|stacked|stacked100|unstacked)\\b"
+    },
+    {
+      "name": "keyword.other.kusto",
+      "match": "\\b(hidden|visible)\\b"
+    },
+    {
+      "name": "keyword.other.kusto",
+      "match": "\\b(linear|log)\\b"
+    },
+    {
+      "name": "keyword.other.kusto",
+      "match": "\\b(axes|none|panels)\\b"
+    },
+    {
+      "name": "keyword.other.kusto",
+      "match": "\\b(all|any|array|auto|bag|bin|broadcast|case_insensitive|case_sensitive|centralized|default|full|hotcache|isfuzzy|last|left|legacy|local|multipleBlocks|native|nonempty|none|nooptimization|outer|partial|parquet|per_node|per_shard|regex|relaxed|right|shuffe|simple|single|source|splitBlock|startofday|startofweek|startofmonth|startofyear|storage|strong|unique_edges|unresolved|weak|withsource|with_source)\\b"
     },
     {
       "name": "support.type.kusto",
