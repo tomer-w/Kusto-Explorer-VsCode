@@ -9,6 +9,7 @@ import { ConnectionsPanel } from './features/connectionsPanel'
 import { ConnectionManager } from './features/connectionManager'
 import { QueryEditor } from './features/queryEditor'
 import { ResultsViewer } from './features/resultsViewer'
+import { PlotlyChartManager } from './features/chartManager'
 import * as copilot from './features/copilot'
 import { ConnectionStatusBar } from './features/connectionStatusBar'
 import * as dotnet from './features/dotnet'
@@ -104,7 +105,8 @@ export async function activate(context: ExtensionContext)
     );
 
     // activate results viewer
-    const resultsViewer = new ResultsViewer(context, server, clipboard);
+    const chartManager = new PlotlyChartManager();
+    const resultsViewer = new ResultsViewer(context, server, clipboard, chartManager);
     const resultsCache = new ResultsCache(server);
     context.subscriptions.push(
         vscode.commands.registerCommand('kusto.copyChart', () => resultsViewer.copyChart()),

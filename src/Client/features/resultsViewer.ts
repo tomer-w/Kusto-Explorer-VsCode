@@ -14,6 +14,7 @@ import type { ClipboardItem } from './clipboard';
 import { formatCfHtml } from './clipboard';
 import { resultDataToMarkdown } from './markdown';
 import { resultDataToHtml, DataAsHtml, HtmlTable } from './html';
+import type { IChartManager } from './chartManager';
 
 /** The view type used for the custom results viewer. */
 const resultViewerViewType = 'kusto.resultViewer';
@@ -296,6 +297,15 @@ async function saveResults(source: { data: server.ResultData }): Promise<{ uri: 
 // ResultsViewer — main class
 // =============================================================================
 
+/** Renders chart HTML client-side, matching the shape of the old server response. */
+function getChartAsHtml(chartManager: IChartManager, resultData: server.ResultData, darkMode: boolean): server.ChartAsHtmlResult | null {
+    const table = resultData.tables[0];
+    const options = resultData.chartOptions;
+    if (!table || !options) return null;
+    const html = chartManager.renderChartToHtmlDocument(table, options, darkMode);
+    return html != null ? { html } : null;
+}
+
 /**
 *   The ResultsViewer class handles UI for multiple query results that can each show a combination of data tables, charts, and query text in a variety of locations:
 * 
@@ -309,6 +319,7 @@ export class ResultsViewer {
 
     private readonly server: IServer;
     private readonly clipboard: Clipboard;
+    private readonly chartManager: IChartManager;
     private readonly htmlBuilder: DocumentViewProvider;
 
     /** Map from webview to its viewer state. */
@@ -339,10 +350,11 @@ export class ResultsViewer {
     private singletonWriteBackTimer: ReturnType<typeof setTimeout> | undefined;
     private singletonMode: ResultViewMode | undefined;
 
-    constructor(context: vscode.ExtensionContext, server: IServer, clipboard: Clipboard) {
+    constructor(context: vscode.ExtensionContext, server: IServer, clipboard: Clipboard, chartManager: IChartManager) {
         this.server = server;
         this.clipboard = clipboard;
-        this.htmlBuilder = new DocumentViewProvider(this, server);
+        this.chartManager = chartManager;
+        this.htmlBuilder = new DocumentViewProvider(this, server, chartManager);
 
         context.subscriptions.push(
             vscode.window.registerCustomEditorProvider(
@@ -494,12 +506,10 @@ export class ResultsViewer {
 
         const darkMode = isDarkMode();
 
-        const [dataResult, chartResult] = await Promise.all([
-            Promise.resolve(resultDataToHtml(resultData)),
-            (mode === 'chart' || mode === 'all') && resultData.chartOptions
-                ? this.server.getChartAsHtml(resultData, darkMode)
-                : Promise.resolve(null)
-        ]);
+        const dataResult = resultDataToHtml(resultData);
+        const chartResult = (mode === 'chart' || mode === 'all') && resultData.chartOptions
+            ? getChartAsHtml(this.chartManager, resultData, darkMode)
+            : null;
 
         const hasChart = !!chartResult?.html;
         const hasTable = !!dataResult?.tables?.length;
@@ -559,13 +569,10 @@ export class ResultsViewer {
         const darkMode = isDarkMode();
         const chartOptions = resultData.chartOptions ? applyChartDefaults(resultData.chartOptions) : undefined;
 
-        // Fetch table HTML and chart HTML in parallel
-        const [dataResult, chartResult] = await Promise.all([
-            Promise.resolve(resultDataToHtml(resultData)),
-            chartOptions
-                ? this.server.getChartAsHtml(resultData, darkMode)
-                : Promise.resolve(null)
-        ]);
+        const dataResult = resultDataToHtml(resultData);
+        const chartResult = chartOptions
+            ? getChartAsHtml(this.chartManager, resultData, darkMode)
+            : null;
 
         const hasChart = !!chartResult?.html;
         const columnNames = resultData.tables[0]?.columns?.map(c => c.name) ?? [];
@@ -823,7 +830,7 @@ export class ResultsViewer {
 
         const modifiedData = this.singletonResultData;
         const darkMode = isDarkMode();
-        const chartResult = await this.server.getChartAsHtml(modifiedData, darkMode);
+        const chartResult = getChartAsHtml(this.chartManager, modifiedData, darkMode);
         if (chartResult?.html) {
             this.singletonView.webview.postMessage({
                 command: 'updateChart',
@@ -1206,7 +1213,7 @@ function singletonTitleForMode(mode: ResultViewMode): string {
  */
 class DocumentViewProvider implements vscode.CustomTextEditorProvider {
 
-    constructor(private readonly viewer: ResultsViewer, private readonly server: IServer) {
+    constructor(private readonly viewer: ResultsViewer, private readonly server: IServer, private readonly chartManager: IChartManager) {
     }
 
     async resolveCustomTextEditor(
@@ -1363,13 +1370,10 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
 
         const darkMode = isDarkMode();
 
-        // Fetch table HTML and chart HTML in parallel
-        const [dataResult, chartResult] = await Promise.all([
-            Promise.resolve(resultDataToHtml(resultData)),
-            resultData.chartOptions
-                ? this.server.getChartAsHtml(resultData, darkMode)
-                : Promise.resolve(null)
-        ]);
+        const dataResult = resultDataToHtml(resultData);
+        const chartResult = resultData.chartOptions
+            ? getChartAsHtml(this.chartManager, resultData, darkMode)
+            : null;
 
         const hasChart = !!chartResult?.html;
         const hasTable = !!dataResult?.tables?.length;
@@ -1414,7 +1418,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
             chartOptions
         };
         const darkMode = isDarkMode();
-        const chartResult = await this.server.getChartAsHtml(modifiedData, darkMode);
+        const chartResult = getChartAsHtml(this.chartManager, modifiedData, darkMode);
         if (chartResult?.html) {
             webviewPanel.webview.postMessage({
                 command: 'updateChart',

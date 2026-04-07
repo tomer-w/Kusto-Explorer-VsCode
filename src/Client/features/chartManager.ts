@@ -1057,7 +1057,12 @@ function convertToNumeric(values: unknown[]): number[] {
 
 // ─── Chart Manager ──────────────────────────────────────────────────────────
 
-export class ChartManager {
+export interface IChartManager {
+    renderChartToHtmlDiv(data: ResultTable, options: ChartOptions, darkMode?: boolean): string | undefined;
+    renderChartToHtmlDocument(data: ResultTable, options: ChartOptions, darkMode?: boolean): string | undefined;
+}
+
+export class PlotlyChartManager implements IChartManager {
 
     renderChartToHtmlDiv(data: ResultTable, options: ChartOptions, darkMode = false): string | undefined {
         if (options.type === ChartType.Plotly) {
