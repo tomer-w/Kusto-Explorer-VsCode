@@ -81,6 +81,16 @@
     "configurationDefaults": {
       "[kusto]": {
         "editor.semanticHighlighting.enabled": true
+      },
+      "editor.tokenColorCustomizations": {
+        "textMateRules": [
+          {
+            "scope": "keyword.other.kusto",
+            "settings": {
+              "foreground": "#569CD6"
+            }
+          }
+        ]
       }
     },
     "customEditors": [
