@@ -577,7 +577,7 @@ export interface ChartOptions {
     xColumn?: string;
     yColumns?: string[];
     series?: string[];
-    legend?: string;
+    showLegend?: boolean;
     xAxis?: string;
     yAxis?: string;
     xmin?: unknown;
@@ -586,13 +586,13 @@ export interface ChartOptions {
     ymax?: unknown;
     accumulate?: boolean;
     zTitle?: string;
-    xShowTicks?: string;
-    yShowTicks?: string;
-    xShowGrid?: string;
-    yShowGrid?: string;
+    xShowTicks?: boolean;
+    yShowTicks?: boolean;
+    xShowGrid?: boolean;
+    yShowGrid?: boolean;
     xTickAngle?: number;
     yTickAngle?: number;
-    showValues?: string;
+    showValues?: boolean;
     sort?: string;
     legendPosition?: string;
     mode?: string;

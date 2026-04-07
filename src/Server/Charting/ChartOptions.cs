@@ -63,11 +63,11 @@ public class ChartOptions
     public ImmutableList<string>? Series { get; init; }
 
     /// <summary>
-    /// Legend visibility. Use <see cref="ChartLegendMode"/> constants: "Visible", "Hidden".
-    /// If null, defaults to "Visible". Overridden by <see cref="LegendPosition"/> if set.
+    /// Whether the legend is visible. If null, defaults to true.
+    /// Overridden by <see cref="LegendPosition"/> if set.
     /// </summary>
-    [DataMember(Name = "legend")]
-    public string? Legend { get; init; }
+    [DataMember(Name = "showLegend")]
+    public bool? ShowLegend { get; init; }
 
     /// <summary>
     /// X-axis scale type. Use <see cref="ChartAxis"/> constants: "Linear", "Log".
@@ -125,32 +125,28 @@ public class ChartOptions
     public string? ZTitle { get; init; }
 
     /// <summary>
-    /// Tick mark visibility on the X-axis. Use <see cref="ChartVisibility"/> constants: "Visible", "Hidden".
-    /// If null, ticks are hidden by default.
+    /// Whether tick marks are visible on the X-axis. If null, ticks are hidden by default.
     /// </summary>
     [DataMember(Name = "xShowTicks")]
-    public string? XShowTicks { get; init; }
+    public bool? XShowTicks { get; init; }
 
     /// <summary>
-    /// Tick mark visibility on the Y-axis. Use <see cref="ChartVisibility"/> constants: "Visible", "Hidden".
-    /// If null, ticks are hidden by default.
+    /// Whether tick marks are visible on the Y-axis. If null, ticks are hidden by default.
     /// </summary>
     [DataMember(Name = "yShowTicks")]
-    public string? YShowTicks { get; init; }
+    public bool? YShowTicks { get; init; }
 
     /// <summary>
-    /// Grid line visibility on the X-axis. Use <see cref="ChartVisibility"/> constants: "Visible", "Hidden".
-    /// If null, grid lines are shown by default.
+    /// Whether grid lines are visible on the X-axis. If null, grid lines are shown by default.
     /// </summary>
     [DataMember(Name = "xShowGrid")]
-    public string? XShowGrid { get; init; }
+    public bool? XShowGrid { get; init; }
 
     /// <summary>
-    /// Grid line visibility on the Y-axis. Use <see cref="ChartVisibility"/> constants: "Visible", "Hidden".
-    /// If null, grid lines are shown by default.
+    /// Whether grid lines are visible on the Y-axis. If null, grid lines are shown by default.
     /// </summary>
     [DataMember(Name = "yShowGrid")]
-    public string? YShowGrid { get; init; }
+    public bool? YShowGrid { get; init; }
 
     /// <summary>
     /// Rotation angle for tick labels on the X-axis, in degrees (e.g., -45, 90).
@@ -167,11 +163,11 @@ public class ChartOptions
     public double? YTickAngle { get; init; }
 
     /// <summary>
-    /// Data value label visibility. Use <see cref="ChartVisibility"/> constants: "Visible", "Hidden".
-    /// If null, values are hidden. When visible, bar charts show values on bars and pie charts show label+value+percent.
+    /// Whether data value labels are shown. If null, values are hidden.
+    /// When true, bar charts show values on bars and pie charts show label+value+percent.
     /// </summary>
     [DataMember(Name = "showValues")]
-    public string? ShowValues { get; init; }
+    public bool? ShowValues { get; init; }
 
     /// <summary>
     /// Category sort order on the X-axis. Use <see cref="ChartSortOrder"/> constants: "Default", "Ascending", "Descending".
@@ -224,7 +220,7 @@ public class ChartOptions
             XColumn = options.XColumn,
             YColumns = options.YColumns?.ToImmutableList(),
             Series = options.Series?.ToImmutableList(),
-            Legend = options.Legend.ToString(),
+            ShowLegend = options.Legend.ToString() != "Hidden",
             XAxis = options.XAxis.ToString(),
             YAxis = options.YAxis.ToString(),
             Xmin = ConvertNanToNull(options.Xmin),
@@ -232,6 +228,45 @@ public class ChartOptions
             Ymin = ConvertNanToNull(options.Ymin),
             Ymax = ConvertNanToNull(options.Ymax),
             Accumulate = options.Accumulate
+        };
+    }
+
+    /// <summary>
+    /// Returns a new <see cref="ChartOptions"/> with null properties filled in from the specified defaults.
+    /// </summary>
+    public ChartOptions WithDefaults(ChartOptions defaults)
+    {
+        return new ChartOptions
+        {
+            Type = this.Type,
+            Kind = this.Kind,
+            Title = this.Title,
+            XTitle = this.XTitle,
+            YTitle = this.YTitle,
+            XColumn = this.XColumn,
+            YColumns = this.YColumns,
+            Series = this.Series,
+            ShowLegend = this.ShowLegend ?? defaults.ShowLegend,
+            XAxis = this.XAxis,
+            YAxis = this.YAxis,
+            Xmin = this.Xmin,
+            Xmax = this.Xmax,
+            Ymin = this.Ymin,
+            Ymax = this.Ymax,
+            Accumulate = this.Accumulate,
+            ZTitle = this.ZTitle,
+            XShowTicks = this.XShowTicks ?? defaults.XShowTicks,
+            YShowTicks = this.YShowTicks ?? defaults.YShowTicks,
+            XShowGrid = this.XShowGrid ?? defaults.XShowGrid,
+            YShowGrid = this.YShowGrid ?? defaults.YShowGrid,
+            XTickAngle = this.XTickAngle,
+            YTickAngle = this.YTickAngle,
+            ShowValues = this.ShowValues ?? defaults.ShowValues,
+            Sort = this.Sort,
+            LegendPosition = this.LegendPosition ?? defaults.LegendPosition,
+            Mode = this.Mode,
+            AspectRatio = this.AspectRatio ?? defaults.AspectRatio,
+            TextSize = this.TextSize ?? defaults.TextSize,
         };
     }
 

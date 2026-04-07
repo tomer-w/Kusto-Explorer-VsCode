@@ -679,16 +679,112 @@
     },
     "configuration": [
       {
-        "title": "Results",
+        "title": "Charts",
         "properties": {
-          "kusto.results.display": {
+          "kusto.chart.showLegend": {
+            "type": "string",
+            "enum": ["", "yes", "no"],
+            "enumItemLabels": ["(default)", "Yes", "No"],
+            "default": "",
+            "description": "Default legend visibility for charts"
+          },
+          "kusto.chart.legendPosition": {
             "type": "string",
             "enum": [
-              "panel",
-              "beside"
+              "",
+              "Right",
+              "Bottom",
+              "Hidden"
             ],
-            "default": "panel",
-            "markdownDescription": "Where query results are displayed.\n- `panel`: In the Results tab of the bottom panel\n- `beside`: In an editor column beside your query"
+            "enumItemLabels": [
+              "(default)",
+              "Right",
+              "Bottom",
+              "Hidden"
+            ],
+            "default": "",
+            "description": "Default legend position for charts"
+          },
+          "kusto.chart.xShowTicks": {
+            "type": "string",
+            "enum": ["", "yes", "no"],
+            "enumItemLabels": ["(default)", "Yes", "No"],
+            "default": "",
+            "description": "Default X-axis tick mark visibility for charts"
+          },
+          "kusto.chart.yShowTicks": {
+            "type": "string",
+            "enum": ["", "yes", "no"],
+            "enumItemLabels": ["(default)", "Yes", "No"],
+            "default": "",
+            "description": "Default Y-axis tick mark visibility for charts"
+          },
+          "kusto.chart.xShowGrid": {
+            "type": "string",
+            "enum": ["", "yes", "no"],
+            "enumItemLabels": ["(default)", "Yes", "No"],
+            "default": "",
+            "description": "Default X-axis grid line visibility for charts"
+          },
+          "kusto.chart.yShowGrid": {
+            "type": "string",
+            "enum": ["", "yes", "no"],
+            "enumItemLabels": ["(default)", "Yes", "No"],
+            "default": "",
+            "description": "Default Y-axis grid line visibility for charts"
+          },
+          "kusto.chart.showValues": {
+            "type": "string",
+            "enum": ["", "yes", "no"],
+            "enumItemLabels": ["(default)", "Yes", "No"],
+            "default": "",
+            "description": "Default data value label visibility for charts"
+          },
+          "kusto.chart.textSize": {
+            "type": "string",
+            "enum": [
+              "",
+              "Extra Small",
+              "Small",
+              "Medium",
+              "Large",
+              "Extra Large"
+            ],
+            "enumItemLabels": [
+              "(default)",
+              "Extra Small",
+              "Small",
+              "Medium",
+              "Large",
+              "Extra Large"
+            ],
+            "default": "",
+            "description": "Default text size for chart titles and labels"
+          },
+          "kusto.chart.aspectRatio": {
+            "type": "string",
+            "enum": [
+              "",
+              "16:9",
+              "3:2",
+              "4:3",
+              "1:1",
+              "3:4",
+              "2:3",
+              "9:16"
+            ],
+            "enumItemLabels": [
+              "(default)",
+              "16:9",
+              "3:2",
+              "4:3",
+              "1:1",
+              "3:4",
+              "2:3",
+              "9:16"
+            ],
+            "default": "",
+            "description": "Default aspect ratio for chart display"
           }
         }
       },
@@ -714,16 +810,6 @@
             "type": "boolean",
             "default": true,
             "description": "Show query separator lines (---) in the editor."
-          }
-        }
-      },
-      {
-        "title": "Runtime",
-        "properties": {
-          "kusto.runtime.useSystemDotnet": {
-            "type": "boolean",
-            "default": true,
-            "description": "Use system-installed .NET runtime if available. Set to false to always use the VS Code runtime acquisition extension."
           }
         }
       },
@@ -834,6 +920,30 @@
             ],
             "default": "none",
             "description": "How semicolons are placed when formatting"
+          }
+        }
+      },
+      {
+        "title": "Results",
+        "properties": {
+          "kusto.results.display": {
+            "type": "string",
+            "enum": [
+              "panel",
+              "beside"
+            ],
+            "default": "panel",
+            "markdownDescription": "Where query results are displayed.\n- `panel`: In the Results tab of the bottom panel\n- `beside`: In an editor column beside your query"
+          }
+        }
+      },
+      {
+        "title": "Runtime",
+        "properties": {
+          "kusto.runtime.useSystemDotnet": {
+            "type": "boolean",
+            "default": true,
+            "description": "Use system-installed .NET runtime if available. Set to false to always use the VS Code runtime acquisition extension."
           }
         }
       }

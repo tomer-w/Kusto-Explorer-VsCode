@@ -213,7 +213,7 @@ public class PlotlyChartManager : IChartManager
         }
         else
         {
-            bool showValues = options.ShowValues == ChartVisibility.Visible;
+            bool showValues = options.ShowValues == true;
             return Build2dChart(builder, data, options,
                 (builder, keys, values, name, yAxis) =>
                     builder.Add2DBarTrace(
@@ -275,14 +275,14 @@ public class PlotlyChartManager : IChartManager
         if (options.YTitle != null)
             builder = builder.SetYAxisTitle(options.YTitle);
 
-        if (options.Legend == ChartLegendMode.Hidden)
+        if (options.ShowLegend == false)
             builder = builder.HideLegend();
 
         // Set Y-axis range to 0-1 for percentage display
         builder = builder.SetYAxisRange(0, 1);
 
         // Add traces with normalized values
-        bool showValues = options.ShowValues == ChartVisibility.Visible;
+        bool showValues = options.ShowValues == true;
         foreach (var (keys, values, name) in seriesData)
         {
             var normalizedValues = new double[values.Length];
@@ -330,7 +330,7 @@ public class PlotlyChartManager : IChartManager
         if (options.Title != null)
             builder = builder.WithTitle(options.Title);
 
-        if (options.Legend == ChartLegendMode.Hidden)
+        if (options.ShowLegend == false)
             builder = builder.HideLegend();
 
         // Apply new chart options
@@ -345,7 +345,7 @@ public class PlotlyChartManager : IChartManager
         
         // For pie charts, we typically use only the first value column
         // Multiple value columns would create multiple pie charts
-        string? textInfo = options.ShowValues == ChartVisibility.Visible ? "label+value+percent" : null;
+        string? textInfo = options.ShowValues == true ? "label+value+percent" : null;
 
         foreach (var valueColumn in valueColumns)
         {
@@ -545,7 +545,7 @@ public class PlotlyChartManager : IChartManager
             builder = builder.WithScene(scene);
         }
 
-        if (options.Legend == ChartLegendMode.Hidden)
+        if (options.ShowLegend == false)
             builder = builder.HideLegend();
 
         // Apply new chart options
@@ -683,7 +683,7 @@ public class PlotlyChartManager : IChartManager
             branchValues: "total"
         );
 
-        if (options.Legend == ChartLegendMode.Hidden)
+        if (options.ShowLegend == false)
             builder = builder.HideLegend();
 
         // Apply new chart options
@@ -804,7 +804,7 @@ public class PlotlyChartManager : IChartManager
             name: valueColumn.ColumnName
         );
 
-        if (options.Legend == ChartLegendMode.Hidden)
+        if (options.ShowLegend == false)
             builder = builder.HideLegend();
 
         // Apply new chart options
@@ -852,7 +852,7 @@ public class PlotlyChartManager : IChartManager
             && TryGetDouble(options.Ymax, out var yMaxD))
             builder = builder.SetYAxisRange(yMinD, yMaxD);
 
-        if (options.Legend == ChartLegendMode.Hidden)
+        if (options.ShowLegend == false)
             builder = builder.HideLegend();
 
         // Apply new chart options
@@ -1009,24 +1009,24 @@ public class PlotlyChartManager : IChartManager
     /// </summary>
     private static PlotlyChartBuilder ApplyCommonOptions(PlotlyChartBuilder builder, ChartOptions options)
     {
-        if (options.XShowTicks == ChartVisibility.Visible)
+        if (options.XShowTicks == true)
             builder = builder.SetXShowTicks(true);
-        else if (options.XShowTicks == ChartVisibility.Hidden)
+        else if (options.XShowTicks == false)
             builder = builder.SetXShowTicks(false);
 
-        if (options.YShowTicks == ChartVisibility.Visible)
+        if (options.YShowTicks == true)
             builder = builder.SetYShowTicks(true);
-        else if (options.YShowTicks == ChartVisibility.Hidden)
+        else if (options.YShowTicks == false)
             builder = builder.SetYShowTicks(false);
 
-        if (options.XShowGrid == ChartVisibility.Hidden)
+        if (options.XShowGrid == false)
             builder = builder.SetXShowGrid(false);
-        else if (options.XShowGrid == ChartVisibility.Visible)
+        else if (options.XShowGrid == true)
             builder = builder.SetXShowGrid(true);
 
-        if (options.YShowGrid == ChartVisibility.Hidden)
+        if (options.YShowGrid == false)
             builder = builder.SetYShowGrid(false);
-        else if (options.YShowGrid == ChartVisibility.Visible)
+        else if (options.YShowGrid == true)
             builder = builder.SetYShowGrid(true);
 
         if (options.XTickAngle.HasValue)
