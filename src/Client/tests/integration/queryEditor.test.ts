@@ -14,7 +14,7 @@ async function getExports(): Promise<{
     resultsViewer: ResultsViewer;
     historyManager: HistoryManager;
 }> {
-    const ext = vscode.extensions.getExtension('Microsoft.kusto-explorer-vscode')!;
+    const ext = vscode.extensions.getExtension('ms-kusto.kusto-explorer-vscode')!;
     const exports = ext.isActive ? ext.exports : await ext.activate();
     return exports as any;
 }

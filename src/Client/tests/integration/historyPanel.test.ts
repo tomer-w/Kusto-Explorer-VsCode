@@ -21,7 +21,7 @@ function makeResultData(query: string, cluster?: string, database?: string, rowC
 
 /** Get the extension's exported HistoryManager instance. */
 async function getHistoryManager(): Promise<HistoryManager> {
-    const ext = vscode.extensions.getExtension('Microsoft.kusto-explorer-vscode')!;
+    const ext = vscode.extensions.getExtension('ms-kusto.kusto-explorer-vscode')!;
     // activate() returns cached exports if already activated
     const exports = ext.isActive ? ext.exports : await ext.activate();
     return (exports as any).historyManager as HistoryManager;
