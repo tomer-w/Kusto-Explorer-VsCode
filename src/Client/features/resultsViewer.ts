@@ -297,8 +297,8 @@ async function saveResults(source: { data: server.ResultData }): Promise<{ uri: 
 // ResultsViewer — main class
 // =============================================================================
 
-/** Renders chart HTML client-side, matching the shape of the old server response. */
-function getChartAsHtml(chartManager: IChartManager, resultData: server.ResultData, darkMode: boolean): server.ChartAsHtmlResult | null {
+/** Renders chart HTML client-side. */
+function getChartAsHtml(chartManager: IChartManager, resultData: server.ResultData, darkMode: boolean): { html: string } | null {
     const table = resultData.tables[0];
     const options = resultData.chartOptions;
     if (!table || !options) return null;
@@ -1153,9 +1153,10 @@ export class ResultsViewer {
             if (!runResult?.data) { return; }
 
             // Preserve existing chart options; fall back to server-returned options
+            const effectiveChartOptions = chartOptions ?? runResult.data.chartOptions;
             const updatedData: server.ResultData = {
                 ...runResult.data,
-                chartOptions: chartOptions ?? runResult.data.chartOptions
+                ...(effectiveChartOptions && { chartOptions: effectiveChartOptions })
             };
 
             // Update the backing document (the change listener will re-render the webview)

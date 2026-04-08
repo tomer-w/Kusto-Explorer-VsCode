@@ -22,7 +22,6 @@ export interface IServer {
     getDatabaseInfo(cluster: string, database: string): Promise<DatabaseInfo | null>;
     getEntityAsCommand(cluster: string, database: string, entityType: string, entityName: string): Promise<string | null>;
     getEntityAsExpression(cluster: string, database: string, entityType: string, entityName: string, uri: string | null): Promise<string | null>;
-    getChartAsHtml(data: ResultData, darkMode?: boolean): Promise<ChartAsHtmlResult | null>;
     getQueryAsHtml(query: string, cluster?: string, database?: string, darkMode?: boolean): Promise<QueryAsHtmlResult | null>;
     getDataAsExpression(data: ResultData, tableName?: string): Promise<DataAsExpression | null>;
     getEntityDefinitionContent(uri: string, token?: CancellationToken): Promise<EntityDefinitionContentResult | null>;
@@ -202,19 +201,6 @@ export class Server implements IServer {
         return this.client.sendRequest<string | null>(
             'kusto/getEntityAsExpression',
             { cluster, database, entityType, entityName, uri }
-        );
-    }
-
-    /**
-     * Gets the HTML representation of a chart from result data.
-     */
-    getChartAsHtml(data: ResultData, darkMode?: boolean): Promise<ChartAsHtmlResult | null> {
-        return this.client.sendRequest<ChartAsHtmlResult | null>(
-            'kusto/getChartAsHtml',
-            {
-                data,
-                darkMode: darkMode ?? false
-            }
         );
     }
 
@@ -412,7 +398,6 @@ export class NullServer implements IServer {
     getDatabaseInfo(): Promise<DatabaseInfo | null> { return Promise.resolve(null); }
     getEntityAsCommand(): Promise<string | null> { return Promise.resolve(null); }
     getEntityAsExpression(): Promise<string | null> { return Promise.resolve(null); }
-    getChartAsHtml(): Promise<ChartAsHtmlResult | null> { return Promise.resolve(null); }
     getQueryAsHtml(): Promise<QueryAsHtmlResult | null> { return Promise.resolve(null); }
     getDataAsExpression(): Promise<DataAsExpression | null> { return Promise.resolve(null); }
     getEntityDefinitionContent(): Promise<EntityDefinitionContentResult | null> { return Promise.resolve(null); }
@@ -428,11 +413,6 @@ export class NullServer implements IServer {
     onDocumentReady(): Disposable { return NullServer.noopDisposable; }
     onSemanticTokensRefresh(): Disposable { return NullServer.noopDisposable; }
     get initializeResult(): undefined { return undefined; }
-}
-
-/** Result of getting chart as HTML. */
-export interface ChartAsHtmlResult {
-    html: string;
 }
 
 export interface DatabaseTableInfo {
