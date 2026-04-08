@@ -14,8 +14,7 @@ import type { ClipboardItem } from './clipboard';
 import { formatCfHtml } from './clipboard';
 import { resultDataToMarkdown } from './markdown';
 import { resultDataToHtml, DataAsHtml, HtmlTable } from './html';
-import type { IChartManager, IChartController } from './chartManager';
-import { WebViewAdapter } from './webview';
+import type { IChartManager, IChartController, IChartWebView } from './chartManager';
 
 /** The view type used for the custom results viewer. */
 const resultViewerViewType = 'kusto.resultViewer';
@@ -57,6 +56,38 @@ const textSizes = ['Extra Small', 'Small', 'Medium', 'Large', 'Extra Large'];
  * - 'all': Chart, data tables, and query tabs — all visible.
  */
 export type ResultViewMode = 'chart' | 'data' | 'detail' | 'all';
+
+/**
+ * Adapts a VS Code `Webview` to the `IChartWebView` interface.
+ * Stores page-level setup content (headHtml, scriptsHtml) for the page builder to read.
+ * Implements `setChart()` by posting a message to the page handler.
+ */
+class ChartWebViewAdapter implements IChartWebView {
+    private readonly webview: vscode.Webview;
+    headHtml = '';
+    scriptsHtml = '';
+
+    constructor(webview: vscode.Webview) {
+        this.webview = webview;
+    }
+
+    setup(headHtml: string, scriptsHtml: string): void {
+        this.headHtml = headHtml;
+        this.scriptsHtml = scriptsHtml;
+    }
+
+    setChart(html: string): void {
+        this.webview.postMessage({ command: 'setChartHtml', html });
+    }
+
+    invoke(command: string, args?: Record<string, unknown>): void {
+        this.webview.postMessage({ command, ...args });
+    }
+
+    handle(handler: (message: Record<string, unknown>) => void): vscode.Disposable {
+        return this.webview.onDidReceiveMessage(handler);
+    }
+}
 
 /** Per-viewer state for results viewer webviews. */
 interface ResultViewerState {
@@ -239,15 +270,6 @@ async function saveResults(source: { data: server.ResultData }): Promise<{ uri: 
 // ResultsViewer — main class
 // =============================================================================
 
-/** Renders chart HTML client-side. */
-function getChartAsHtml(chartManager: IChartManager, resultData: server.ResultData, darkMode: boolean): { html: string } | null {
-    const table = resultData.tables[0];
-    const options = resultData.chartOptions;
-    if (!table || !options) return null;
-    const html = chartManager.renderChartToHtmlDocument(table, options, darkMode);
-    return html != null ? { html } : null;
-}
-
 /**
 *   The ResultsViewer class handles UI for multiple query results that can each show a combination of data tables, charts, and query text in a variety of locations:
 * 
@@ -283,6 +305,7 @@ export class ResultsViewer {
     private panelActiveTabIndex = 0;
     private waitForPanelReady: (() => Promise<void>) | undefined;
     private panelChartController: IChartController | undefined;
+    private panelWebView: ChartWebViewAdapter | undefined;
 
     // ─── Singleton view state ───────────────────────────────────────────
     private singletonView: vscode.WebviewPanel | undefined;
@@ -293,9 +316,11 @@ export class ResultsViewer {
     private singletonWriteBackTimer: ReturnType<typeof setTimeout> | undefined;
     private singletonMode: ResultViewMode | undefined;
     private singletonChartController: IChartController | undefined;
+    private singletonWebView: ChartWebViewAdapter | undefined;
 
     // ─── Chart controllers for document views ───────────────────────────
     private readonly chartControllers = new Map<vscode.WebviewPanel, IChartController>();
+    private readonly chartWebViews = new Map<vscode.WebviewPanel, ChartWebViewAdapter>();
 
     constructor(context: vscode.ExtensionContext, server: IServer, clipboard: Clipboard, chartManager: IChartManager) {
         this.server = server;
@@ -344,12 +369,15 @@ export class ResultsViewer {
                 };
 
                 // Create chart controller for the bottom panel
-                this.panelChartController = this.chartManager.createController(new WebViewAdapter(webviewView.webview));
+                const panelAdapter = new ChartWebViewAdapter(webviewView.webview);
+                this.panelChartController = this.chartManager.createController(panelAdapter);
+                this.panelWebView = panelAdapter;
                 this.wireChartController(this.panelChartController);
 
                 webviewView.onDidDispose(() => {
                     this.panelChartController?.dispose();
                     this.panelChartController = undefined;
+                    this.panelWebView = undefined;
                     this.resultsPanel = undefined;
                 });
                 webviewView.webview.onDidReceiveMessage((message) => {
@@ -451,11 +479,7 @@ export class ResultsViewer {
         const darkMode = isDarkMode();
 
         const dataResult = resultDataToHtml(resultData);
-        const chartResult = (mode === 'chart' || mode === 'all') && resultData.chartOptions
-            ? getChartAsHtml(this.chartManager, resultData, darkMode)
-            : null;
-
-        const hasChart = !!chartResult?.html;
+        const hasChart = !!((mode === 'chart' || mode === 'all') && resultData.chartOptions);
         const hasTable = !!dataResult?.tables?.length;
         this.lastPanelTableNames = (dataResult?.tables ?? []).map((t: HtmlTable) => t.name);
 
@@ -466,11 +490,20 @@ export class ResultsViewer {
 
         const chartOptions = resultData.chartOptions ? applyChartDefaults(resultData.chartOptions) : undefined;
         const columnNames = resultData.tables[0]?.columns?.map(c => c.name) ?? [];
-        const html = this.htmlBuilder.BuildMultiTabbedHtml(dataResult, chartResult?.html, hasChart, mode, chartOptions, columnNames,
+        const html = this.htmlBuilder.BuildMultiTabbedHtml(dataResult, hasChart, mode, this.panelWebView, chartOptions, columnNames,
             resultData.query, resultData.cluster, resultData.database, resultData.tables);
 
         const totalRows = (dataResult?.tables ?? []).reduce((sum: number, t: HtmlTable) => sum + t.rowCount, 0);
         await this.showPanelHtml(injectMessageHandlerScripts(html), totalRows);
+
+        // Populate chart via controller message after page is set
+        if (hasChart && chartOptions) {
+            const table = resultData.tables[0];
+            if (table) {
+                this.panelChartController?.renderChart(table, chartOptions, darkMode);
+            }
+        }
+
         this.sendExpressionToResultsPanel();
     }
 
@@ -513,17 +546,25 @@ export class ResultsViewer {
         const darkMode = isDarkMode();
         const chartOptions = resultData.chartOptions ? applyChartDefaults(resultData.chartOptions) : undefined;
 
-        const dataResult = resultDataToHtml(resultData);
-        const chartResult = chartOptions
-            ? getChartAsHtml(this.chartManager, resultData, darkMode)
-            : null;
+        // Ensure the singleton view (and its chart adapter) exist before building
+        // HTML so that BuildMultiTabbedHtml can read the adapter's headHtml/scriptsHtml.
+        this.ensureSingletonView(beside, mode);
 
-        const hasChart = !!chartResult?.html;
+        const dataResult = resultDataToHtml(resultData);
+        const hasChart = !!chartOptions;
         const columnNames = resultData.tables[0]?.columns?.map(c => c.name) ?? [];
-        const html = this.htmlBuilder.BuildMultiTabbedHtml(dataResult, chartResult?.html, hasChart, mode, chartOptions, columnNames,
+        const html = this.htmlBuilder.BuildMultiTabbedHtml(dataResult, hasChart, mode, this.singletonWebView, chartOptions, columnNames,
             resultData.query, resultData.cluster, resultData.database, resultData.tables);
 
         this.showSingletonView(injectMessageHandlerScripts(html), resultData, (dataResult?.tables ?? []).map((t: HtmlTable) => t.name), beside, mode);
+
+        // Populate chart via controller message after page is set
+        if (hasChart && chartOptions) {
+            const table = resultData.tables[0];
+            if (table) {
+                this.singletonChartController?.renderChart(table, chartOptions, darkMode);
+            }
+        }
     }
 
 
@@ -656,101 +697,113 @@ export class ResultsViewer {
         }
     }
 
+    /** Ensures the singleton webview panel exists, creating it (with chart adapter) if needed. */
+    private ensureSingletonView(beside: boolean, mode: ResultViewMode): void {
+        if (this.singletonView) { return; }
+
+        const viewColumn = beside ? vscode.ViewColumn.Beside : vscode.ViewColumn.One;
+        const title = singletonTitleForMode(mode);
+        this.singletonMode = mode;
+
+        this.singletonView = vscode.window.createWebviewPanel(
+            'kusto',
+            title,
+            { viewColumn, preserveFocus: true },
+            { enableScripts: true, retainContextWhenHidden: true }
+        );
+
+        vscode.commands.executeCommand('kusto.singletonViewStateChanged');
+        this.registerResultWebview(this.singletonView);
+
+        // Create chart controller for the singleton view
+        const singletonAdapter = new ChartWebViewAdapter(this.singletonView.webview);
+        this.singletonChartController = this.chartManager.createController(singletonAdapter);
+        this.singletonWebView = singletonAdapter;
+        this.wireChartController(this.singletonChartController);
+
+        this.singletonView.onDidChangeViewState(() => {
+            if (this.singletonView?.active) {
+                const state = this.viewerStates.get(this.singletonView);
+                const hasChart = !!state?.resultData?.chartOptions;
+                vscode.commands.executeCommand('setContext', 'kusto.resultViewerHasChart', hasChart);
+                vscode.commands.executeCommand('setContext', 'kusto.resultViewerChartActive', state?.activeView === 'chart');
+            }
+        });
+
+        this.singletonView.webview.onDidReceiveMessage(async (message) => {
+            if (message.command === 'viewChanged' && typeof message.viewId === 'string') {
+                const state = this.viewerStates.get(this.singletonView!);
+                if (state) { state.activeView = message.viewId; }
+                vscode.commands.executeCommand('setContext', 'kusto.resultViewerChartActive', message.viewId === 'chart');
+                if (message.viewId.startsWith('table-')) {
+                    this.sendExpressionToResultsView(this.singletonView!);
+                }
+                return;
+            }
+            if (message.command === 'requestExpression') {
+                this.sendExpressionToResultsView(this.singletonView!);
+                return;
+            }
+            if (message.command === 'copyText' && typeof message.text === 'string') {
+                vscode.env.clipboard.writeText(message.text);
+                return;
+            }
+            if (message.command === 'chartOptionsChanged' && message.chartOptions) {
+                this.singletonChartOptionsOverride = message.chartOptions as server.ChartOptions;
+                // Keep singletonResultData in sync so it is always authoritative
+                if (this.singletonResultData) {
+                    this.singletonResultData = { ...this.singletonResultData, chartOptions: this.singletonChartOptionsOverride };
+                }
+                const state = this.viewerStates.get(this.singletonView!);
+                if (state) {
+                    state.chartOptionsOverride = this.singletonChartOptionsOverride;
+                    state.resultData = this.singletonResultData ?? state.resultData;
+                }
+                if (this.singletonChartOptionsTimer) { clearTimeout(this.singletonChartOptionsTimer); }
+                if (!message.clientOnly) {
+                    this.singletonChartOptionsTimer = setTimeout(() => this.updateChartInSingletonView(), 600);
+                }
+                // Write back to the backing file
+                this.scheduleSingletonWriteBack();
+                return;
+            }
+            if (message.command === 'editPanelToggled' && typeof message.visible === 'boolean') {
+                if (message.visible) {
+                    this.singletonView?.reveal(vscode.ViewColumn.One, false);
+                } else {
+                    this.singletonView?.reveal(getSingletonViewColumn(), false);
+                }
+                return;
+            }
+        });
+
+        this.singletonView.onDidDispose(() => {
+            if (this.singletonChartOptionsTimer) { clearTimeout(this.singletonChartOptionsTimer); }
+            this.flushSingletonWriteBack();
+            this.singletonChartController?.dispose();
+            this.singletonChartController = undefined;
+            this.singletonWebView = undefined;
+            this.viewerStates.delete(this.singletonView!);
+            this.singletonView = undefined;
+            this.singletonResultData = undefined;
+            this.singletonChartOptionsOverride = undefined;
+            this.singletonBackingUri = undefined;
+            vscode.commands.executeCommand('setContext', 'kusto.resultViewerHasChart', false);
+            vscode.commands.executeCommand('setContext', 'kusto.resultViewerChartActive', false);
+            vscode.commands.executeCommand('kusto.singletonViewStateChanged');
+        });
+    }
+
     private showSingletonView(html: string, resultData: server.ResultData, tableNames: string[], beside: boolean, mode: ResultViewMode): void {
         const viewColumn = beside ? vscode.ViewColumn.Beside : vscode.ViewColumn.One;
         const title = singletonTitleForMode(mode);
         this.singletonMode = mode;
 
-        if (!this.singletonView) {
-            this.singletonView = vscode.window.createWebviewPanel(
-                'kusto',
-                title,
-                { viewColumn, preserveFocus: true },
-                { enableScripts: true, retainContextWhenHidden: true }
-            );
-
-            vscode.commands.executeCommand('kusto.singletonViewStateChanged');
-            this.registerResultWebview(this.singletonView);
-
-            // Create chart controller for the singleton view
-            this.singletonChartController = this.chartManager.createController(new WebViewAdapter(this.singletonView.webview));
-            this.wireChartController(this.singletonChartController);
-
-            this.singletonView.onDidChangeViewState(() => {
-                if (this.singletonView?.active) {
-                    const state = this.viewerStates.get(this.singletonView);
-                    const hasChart = !!state?.resultData?.chartOptions;
-                    vscode.commands.executeCommand('setContext', 'kusto.resultViewerHasChart', hasChart);
-                    vscode.commands.executeCommand('setContext', 'kusto.resultViewerChartActive', state?.activeView === 'chart');
-                }
-            });
-
-            this.singletonView.webview.onDidReceiveMessage(async (message) => {
-                if (message.command === 'viewChanged' && typeof message.viewId === 'string') {
-                    const state = this.viewerStates.get(this.singletonView!);
-                    if (state) { state.activeView = message.viewId; }
-                    vscode.commands.executeCommand('setContext', 'kusto.resultViewerChartActive', message.viewId === 'chart');
-                    if (message.viewId.startsWith('table-')) {
-                        this.sendExpressionToResultsView(this.singletonView!);
-                    }
-                    return;
-                }
-                if (message.command === 'requestExpression') {
-                    this.sendExpressionToResultsView(this.singletonView!);
-                    return;
-                }
-                if (message.command === 'copyText' && typeof message.text === 'string') {
-                    vscode.env.clipboard.writeText(message.text);
-                    return;
-                }
-                if (message.command === 'chartOptionsChanged' && message.chartOptions) {
-                    this.singletonChartOptionsOverride = message.chartOptions as server.ChartOptions;
-                    // Keep singletonResultData in sync so it is always authoritative
-                    if (this.singletonResultData) {
-                        this.singletonResultData = { ...this.singletonResultData, chartOptions: this.singletonChartOptionsOverride };
-                    }
-                    const state = this.viewerStates.get(this.singletonView!);
-                    if (state) {
-                        state.chartOptionsOverride = this.singletonChartOptionsOverride;
-                        state.resultData = this.singletonResultData ?? state.resultData;
-                    }
-                    if (this.singletonChartOptionsTimer) { clearTimeout(this.singletonChartOptionsTimer); }
-                    if (!message.clientOnly) {
-                        this.singletonChartOptionsTimer = setTimeout(() => this.updateChartInSingletonView(), 600);
-                    }
-                    // Write back to the backing file
-                    this.scheduleSingletonWriteBack();
-                    return;
-                }
-                if (message.command === 'editPanelToggled' && typeof message.visible === 'boolean') {
-                    if (message.visible) {
-                        this.singletonView?.reveal(vscode.ViewColumn.One, false);
-                    } else {
-                        this.singletonView?.reveal(getSingletonViewColumn(), false);
-                    }
-                    return;
-                }
-            });
-
-            this.singletonView.onDidDispose(() => {
-                if (this.singletonChartOptionsTimer) { clearTimeout(this.singletonChartOptionsTimer); }
-                this.flushSingletonWriteBack();
-                this.singletonChartController?.dispose();
-                this.singletonChartController = undefined;
-                this.viewerStates.delete(this.singletonView!);
-                this.singletonView = undefined;
-                this.singletonResultData = undefined;
-                this.singletonChartOptionsOverride = undefined;
-                this.singletonBackingUri = undefined;
-                vscode.commands.executeCommand('setContext', 'kusto.resultViewerHasChart', false);
-                vscode.commands.executeCommand('setContext', 'kusto.resultViewerChartActive', false);
-                vscode.commands.executeCommand('kusto.singletonViewStateChanged');
-            });
-        }
+        this.ensureSingletonView(beside, mode);
 
         // Track state for copy commands
         const hasChart = !!resultData.chartOptions;
-        this.viewerStates.set(this.singletonView, {
+        this.viewerStates.set(this.singletonView!, {
             resultData,
             tableNames,
             activeView: hasChart ? 'chart' : 'table-0'
@@ -758,10 +811,10 @@ export class ResultsViewer {
 
         vscode.commands.executeCommand('setContext', 'kusto.resultViewerChartActive', hasChart);
 
-        this.singletonView.title = title;
-        this.singletonView.webview.html = html;
-        this.singletonView.reveal(viewColumn, true);
-        this.sendExpressionToResultsView(this.singletonView);
+        this.singletonView!.title = title;
+        this.singletonView!.webview.html = html;
+        this.singletonView!.reveal(viewColumn, true);
+        this.sendExpressionToResultsView(this.singletonView!);
     }
 
     private async updateChartInSingletonView(): Promise<void> {
@@ -780,9 +833,9 @@ export class ResultsViewer {
 
         const modifiedData = this.singletonResultData;
         const darkMode = isDarkMode();
-        const chartResult = getChartAsHtml(this.chartManager, modifiedData, darkMode);
-        if (chartResult?.html) {
-            this.singletonChartController?.updateChart(this.htmlBuilder.extractBody(chartResult.html));
+        const table = modifiedData.tables[0];
+        if (table && chartOptions) {
+            this.singletonChartController?.renderChart(table, chartOptions, darkMode);
         }
     }
 
@@ -834,7 +887,7 @@ export class ResultsViewer {
                 const dataResult = resultDataToHtml(updated);
                 const tableNames = (dataResult?.tables ?? []).map(t => t.name);
                 const columnNames = updated.tables[0]?.columns?.map(c => c.name) ?? [];
-                const html = this.htmlBuilder.BuildMultiTabbedHtml(dataResult, undefined, false, this.singletonMode ?? 'all', undefined, columnNames,
+                const html = this.htmlBuilder.BuildMultiTabbedHtml(dataResult, false, this.singletonMode ?? 'all', this.singletonWebView, undefined, columnNames,
                     updated.query, updated.cluster, updated.database, updated.tables);
                 this.singletonView!.webview.html = injectMessageHandlerScripts(html);
 
@@ -1190,9 +1243,11 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         this.viewer['webviewDocuments'].set(webviewPanel, document.uri);
 
         // Create chart controller for this document view
-        const docChartController = this.chartManager.createController(new WebViewAdapter(webviewPanel.webview));
+        const docAdapter = new ChartWebViewAdapter(webviewPanel.webview);
+        const docChartController = this.chartManager.createController(docAdapter);
         this.viewer['wireChartController'](docChartController);
         (this.viewer['chartControllers'] as Map<vscode.WebviewPanel, IChartController>).set(webviewPanel, docChartController);
+        (this.viewer['chartWebViews'] as Map<vscode.WebviewPanel, ChartWebViewAdapter>).set(webviewPanel, docAdapter);
 
         // Update context key when this panel gains/loses focus
         const updateChartContext = () => {
@@ -1306,6 +1361,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
             if (chartOptionsTimer) { clearTimeout(chartOptionsTimer); }
             docChartController.dispose();
             (this.viewer['chartControllers'] as Map<vscode.WebviewPanel, IChartController>).delete(webviewPanel);
+            (this.viewer['chartWebViews'] as Map<vscode.WebviewPanel, ChartWebViewAdapter>).delete(webviewPanel);
             this.viewer['viewerStates'].delete(webviewPanel);
             this.viewer['webviewDocuments'].delete(webviewPanel);
             vscode.commands.executeCommand('setContext', 'kusto.resultViewerHasChart', false);
@@ -1335,11 +1391,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         const darkMode = isDarkMode();
 
         const dataResult = resultDataToHtml(resultData);
-        const chartResult = resultData.chartOptions
-            ? getChartAsHtml(this.chartManager, resultData, darkMode)
-            : null;
-
-        const hasChart = !!chartResult?.html;
+        const hasChart = !!resultData.chartOptions;
         const hasTable = !!dataResult?.tables?.length;
 
         if (!hasTable && !hasChart) {
@@ -1368,9 +1420,19 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         const rawChartOptions = existingState?.chartOptionsOverride ?? resultData.chartOptions;
         const chartOptions = rawChartOptions ? applyChartDefaults(rawChartOptions) : undefined;
         const columnNames = resultData.tables[0]?.columns?.map(c => c.name) ?? [];
-        const html = this.BuildMultiTabbedHtml(dataResult, chartResult?.html, hasChart, 'all', chartOptions, columnNames,
+        const docWebView = (this.viewer['chartWebViews'] as Map<vscode.WebviewPanel, ChartWebViewAdapter>).get(webviewPanel);
+        const html = this.BuildMultiTabbedHtml(dataResult, hasChart, 'all', docWebView, chartOptions, columnNames,
             resultData.query, resultData.cluster, resultData.database, resultData.tables);
         webviewPanel.webview.html = injectMessageHandlerScripts(html);
+
+        // Populate chart via controller message after page is set
+        if (hasChart && chartOptions) {
+            const table = resultData.tables[0];
+            if (table) {
+                const controller = (this.viewer['chartControllers'] as Map<vscode.WebviewPanel, IChartController>).get(webviewPanel);
+                controller?.renderChart(table, chartOptions, darkMode);
+            }
+        }
     }
 
     private async updateChartOnly(state: ResultViewerState, webviewPanel: vscode.WebviewPanel): Promise<void> {
@@ -1382,10 +1444,10 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
             chartOptions
         };
         const darkMode = isDarkMode();
-        const chartResult = getChartAsHtml(this.chartManager, modifiedData, darkMode);
-        if (chartResult?.html) {
+        const table = modifiedData.tables[0];
+        if (table) {
             const controller = (this.viewer['chartControllers'] as Map<vscode.WebviewPanel, IChartController>).get(webviewPanel);
-            controller?.updateChart(this.extractBody(chartResult.html));
+            controller?.renderChart(table, chartOptions, darkMode);
         }
     }
 
@@ -1394,9 +1456,9 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
     */
     BuildMultiTabbedHtml(
         dataResult: DataAsHtml | null,
-        chartHtml: string | undefined,
         hasChart: boolean,
         mode: ResultViewMode,
+        webview: ChartWebViewAdapter | undefined,
         chartOptions?: server.ChartOptions,
         columnNames?: string[],
         queryText?: string,
@@ -1430,15 +1492,9 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
                 .replace(/<\//g, '<\\/')
             : '[]';
 
-        // Extract the chart body content from the full HTML
-        const chartContent = chartHtml
-            ? this.extractBody(chartHtml)
-            : '';
-
-        // Extract chart head content (scripts like Plotly)
-        const chartHead = chartHtml && showChart
-            ? this.extractHead(chartHtml)
-            : '';
+        // Get chart page dependencies from the webview adapter
+        const chartHead = showChart ? (webview?.headHtml ?? '') : '';
+        const chartScripts = showChart ? (webview?.scriptsHtml ?? '') : '';
 
         // Determine first active view
         const firstActiveView = showChart ? 'chart' : 'table-0';
@@ -1833,7 +1889,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
     </div>` : ''}
     <div class="main-area">
         <div class="content-area">
-            ${showChart ? `<div id="chart" class="view-content${chartAspectClass}${firstActiveView === 'chart' ? ' active' : ''}"${chartStyle}${chartDataAttrs} data-vscode-context='{"chartVisible": true, "queryVisible": false, "preventDefaultContextMenuItems": true}'>${chartContent}</div>` : ''}
+            ${showChart ? `<div id="chart" class="view-content${chartAspectClass}${firstActiveView === 'chart' ? ' active' : ''}"${chartStyle}${chartDataAttrs} data-vscode-context='{"chartVisible": true, "queryVisible": false, "preventDefaultContextMenuItems": true}'></div>` : ''}
             ${tableContents}
             ${showQuery ? `<div id="query" class="view-content" data-vscode-context='{"chartVisible": false, "queryVisible": true, "preventDefaultContextMenuItems": true}'>
                 <div class="query-info">
@@ -1953,128 +2009,6 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
             }
         });
 
-        // Compute font sizes based on chart dimensions and text size preset
-        function computeFontSizes(chartW, chartH, preset) {
-            var scale = preset === 'Extra Small' ? 0.5 : preset === 'Small' ? 0.75 : preset === 'Large' ? 1.5 : preset === 'Extra Large' ? 2.0 : 1.0;
-            var base = Math.min(chartW, chartH);
-            var titleSize = Math.round(Math.max(10, Math.min(36, base * 0.04)) * scale);
-            var axisSize = Math.round(Math.max(8, Math.min(24, base * 0.028)) * scale);
-            var tickSize = Math.round(Math.max(7, Math.min(16, base * 0.018)) * scale);
-            return { titleSize: titleSize, axisSize: axisSize, tickSize: tickSize };
-        }
-
-        // Apply font size overrides to a layout object
-        function applyFontOverrides(layout, w, h, preset) {
-            var fonts = computeFontSizes(w, h, preset);
-            var overrides = {};
-            var titleObj = layout.title;
-            if (titleObj && typeof titleObj === 'object') {
-                overrides.title = Object.assign({}, titleObj, { font: Object.assign({}, titleObj.font || {}, { size: fonts.titleSize }) });
-            } else if (typeof titleObj === 'string') {
-                overrides.title = { text: titleObj, font: { size: fonts.titleSize } };
-            }
-            var xaxis = layout.xaxis;
-            if (xaxis) {
-                overrides.xaxis = Object.assign({}, xaxis, {
-                    automargin: true,
-                    title: Object.assign({}, xaxis.title || {}, { font: Object.assign({}, (xaxis.title && xaxis.title.font) || {}, { size: fonts.axisSize }), standoff: fonts.tickSize }),
-                    tickfont: Object.assign({}, xaxis.tickfont || {}, { size: fonts.tickSize })
-                });
-            }
-            var yaxis = layout.yaxis;
-            if (yaxis) {
-                overrides.yaxis = Object.assign({}, yaxis, {
-                    automargin: true,
-                    title: Object.assign({}, yaxis.title || {}, { font: Object.assign({}, (yaxis.title && yaxis.title.font) || {}, { size: fonts.axisSize }), standoff: fonts.tickSize }),
-                    tickfont: Object.assign({}, yaxis.tickfont || {}, { size: fonts.tickSize })
-                });
-            }
-            var legend = layout.legend || {};
-            overrides.legend = Object.assign({}, legend, {
-                font: Object.assign({}, legend.font || {}, { size: fonts.tickSize })
-            });
-            return overrides;
-        }
-
-        // Resize chart to fit aspect ratio within available space
-        function resizeChartToAspectRatio() {
-            var chartDiv = document.getElementById('chart');
-            if (!chartDiv) return;
-            var plotDiv = chartDiv.querySelector('.js-plotly-plot') || chartDiv.querySelector('.plotly-graph-div');
-            if (!plotDiv || typeof Plotly === 'undefined') return;
-            // Find the wrapper div (e.g. #plotly-chart) — immediate child of #chart
-            var wrapperDiv = chartDiv.firstElementChild;
-            if (!wrapperDiv) return;
-            var arValue = getComputedStyle(chartDiv).getPropertyValue('--chart-aspect-ratio').trim();
-            var availW = chartDiv.clientWidth;
-            var availH = chartDiv.clientHeight;
-            var preset = chartDiv.getAttribute('data-text-size') || '';
-
-            function buildLayoutOverrides(w, h) {
-                var overrides = { width: w, height: h };
-                if (plotDiv.layout) {
-                    Object.assign(overrides, applyFontOverrides(plotDiv.layout, w, h, preset));
-                }
-                return overrides;
-            }
-
-            if (!arValue) {
-                // No aspect ratio — fill the available space
-                wrapperDiv.style.position = '';
-                wrapperDiv.style.left = '';
-                wrapperDiv.style.top = '';
-                wrapperDiv.style.width = availW + 'px';
-                wrapperDiv.style.height = availH + 'px';
-                wrapperDiv.style.visibility = 'visible';
-                lastAppliedW = chartDiv.clientWidth;
-                lastAppliedH = chartDiv.clientHeight;
-                Plotly.newPlot(plotDiv, plotDiv.data, Object.assign({}, plotDiv.layout, buildLayoutOverrides(availW, availH)), plotDiv._context);
-                return;
-            }
-            var parts = arValue.split('/').map(Number);
-            if (parts.length !== 2 || parts[0] <= 0 || parts[1] <= 0) {
-                Plotly.Plots.resize(plotDiv);
-                return;
-            }
-            var ratio = parts[0] / parts[1];
-            var w, h;
-            if (availW / availH > ratio) {
-                h = availH;
-                w = Math.round(h * ratio);
-            } else {
-                w = availW;
-                h = Math.round(w / ratio);
-            }
-            // Center the wrapper using absolute positioning
-            wrapperDiv.style.position = 'absolute';
-            wrapperDiv.style.left = Math.round((availW - w) / 2) + 'px';
-            wrapperDiv.style.top = Math.round((availH - h) / 2) + 'px';
-            wrapperDiv.style.width = w + 'px';
-            wrapperDiv.style.height = h + 'px';
-            wrapperDiv.style.margin = '';
-            wrapperDiv.style.visibility = 'visible';
-            lastAppliedW = chartDiv.clientWidth;
-            lastAppliedH = chartDiv.clientHeight;
-            Plotly.newPlot(plotDiv, plotDiv.data, Object.assign({}, plotDiv.layout, buildLayoutOverrides(w, h)), plotDiv._context);
-        }
-
-        // Track last applied dimensions to avoid redundant redraws
-        var lastAppliedW = 0;
-        var lastAppliedH = 0;
-        var resizeTimer = null;
-
-        // Observe chart container resizes to enforce aspect ratio
-        var chartContainer = document.getElementById('chart');
-        if (chartContainer) {
-            new ResizeObserver(function() {
-                var w = chartContainer.clientWidth;
-                var h = chartContainer.clientHeight;
-                if (w === lastAppliedW && h === lastAppliedH) return;
-                if (resizeTimer) clearTimeout(resizeTimer);
-                resizeTimer = setTimeout(function() { resizeChartToAspectRatio(); }, 30);
-            }).observe(chartContainer);
-        }
-
         function switchView(viewId) {
             cachedExpression = '';
             document.querySelectorAll('.view-content').forEach(function(el) { el.classList.remove('active'); });
@@ -2095,10 +2029,10 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
                     editPanel.classList.add('visible');
                 }
             }
-            // Trigger Plotly resize when switching to chart
+            // Trigger chart resize when switching to chart
             if (viewId === 'chart') {
                 setTimeout(function() {
-                    resizeChartToAspectRatio();
+                    if (window._chartResize) window._chartResize();
                 }, 50);
             }
         }
@@ -2168,7 +2102,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
 
             // Resize chart when panel toggles
             setTimeout(function() {
-                resizeChartToAspectRatio();
+                if (window._chartResize) window._chartResize();
             }, 50);
         }
 
@@ -2270,9 +2204,8 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
                 // Store text size preset
                 chartDiv.setAttribute('data-text-size', tsSelect ? tsSelect.value : '');
                 // Trigger aspect-ratio-aware resize
-                lastAppliedW = 0; lastAppliedH = 0; // force redraw
                 setTimeout(function() {
-                    resizeChartToAspectRatio();
+                    if (window._chartResize) window._chartResize();
                 }, 50);
             }
         }
@@ -2280,6 +2213,21 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         // Listen for messages from the extension
         window.addEventListener('message', function(event) {
             var msg = event.data;
+            if (msg && msg.command === 'setChartHtml' && typeof msg.html === 'string') {
+                var chartDiv = document.getElementById('chart');
+                if (!chartDiv) return;
+                chartDiv.innerHTML = msg.html;
+                // Re-execute inline scripts (innerHTML doesn't execute them)
+                chartDiv.querySelectorAll('script').forEach(function(oldScript) {
+                    var newScript = document.createElement('script');
+                    if (oldScript.src) { newScript.src = oldScript.src; }
+                    else { newScript.textContent = oldScript.textContent; }
+                    oldScript.parentNode.replaceChild(newScript, oldScript);
+                });
+                // Notify chart engine scripts to apply post-insertion overrides
+                if (window._chartUpdated) window._chartUpdated();
+                return;
+            }
             if (msg && msg.command === 'toggleSearch') {
                 toggleSearch();
                 return;
@@ -2300,81 +2248,9 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
                 cachedExpression = msg.expression;
                 return;
             }
-            if (msg && msg.command === 'updateChart' && msg.chartBodyHtml) {
-                var chartDiv = document.getElementById('chart');
-                if (chartDiv) {
-                    // Compute target dimensions for the new chart
-                    var arValue = getComputedStyle(chartDiv).getPropertyValue('--chart-aspect-ratio').trim();
-                    var availW = chartDiv.clientWidth;
-                    var availH = chartDiv.clientHeight;
-                    var preset = chartDiv.getAttribute('data-text-size') || '';
-                    var targetW = availW, targetH = availH;
-                    var centerLeft = null, centerTop = null;
-                    if (arValue) {
-                        var parts = arValue.split('/').map(Number);
-                        if (parts.length === 2 && parts[0] > 0 && parts[1] > 0) {
-                            var ratio = parts[0] / parts[1];
-                            if (availW / availH > ratio) {
-                                targetH = availH;
-                                targetW = Math.round(targetH * ratio);
-                            } else {
-                                targetW = availW;
-                                targetH = Math.round(targetW / ratio);
-                            }
-                            centerLeft = Math.round((availW - targetW) / 2);
-                            centerTop = Math.round((availH - targetH) / 2);
-                        }
-                    }
-
-                    // Monkey-patch Plotly.newPlot to inject font/size overrides into the first call
-                    var origNewPlot = Plotly.newPlot;
-                    Plotly.newPlot = function(div, data, layout, config) {
-                        Plotly.newPlot = origNewPlot; // restore immediately
-                        var merged = Object.assign({}, layout, { width: targetW, height: targetH }, applyFontOverrides(layout || {}, targetW, targetH, preset));
-                        return origNewPlot.call(Plotly, div, data, merged, config);
-                    };
-
-                    chartDiv.innerHTML = msg.chartBodyHtml;
-
-                    // Position the wrapper div for aspect ratio centering
-                    var wrapperDiv = chartDiv.firstElementChild;
-                    if (wrapperDiv) {
-                        if (centerLeft !== null) {
-                            wrapperDiv.style.position = 'absolute';
-                            wrapperDiv.style.left = centerLeft + 'px';
-                            wrapperDiv.style.top = centerTop + 'px';
-                            wrapperDiv.style.width = targetW + 'px';
-                            wrapperDiv.style.height = targetH + 'px';
-                            wrapperDiv.style.margin = '';
-                        } else {
-                            wrapperDiv.style.position = '';
-                            wrapperDiv.style.left = '';
-                            wrapperDiv.style.top = '';
-                            wrapperDiv.style.width = availW + 'px';
-                            wrapperDiv.style.height = availH + 'px';
-                        }
-                        wrapperDiv.style.visibility = 'visible';
-                    }
-                    lastAppliedW = availW;
-                    lastAppliedH = availH;
-
-                    // Re-execute any script tags in the new content (Plotly.newPlot is patched)
-                    chartDiv.querySelectorAll('script').forEach(function(oldScript) {
-                        var newScript = document.createElement('script');
-                        if (oldScript.src) {
-                            newScript.src = oldScript.src;
-                        } else {
-                            newScript.textContent = oldScript.textContent;
-                        }
-                        oldScript.parentNode.replaceChild(newScript, oldScript);
-                    });
-
-                    // Restore in case the script didn't call Plotly.newPlot
-                    Plotly.newPlot = origNewPlot;
-                }
-            }
         });
     </script>
+    ${chartScripts}
 </body>
 </html>`;
     }
@@ -2636,16 +2512,6 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
             `<div class="table-content${i === 0 ? ' active' : ''}">${t.html}</div>`
         ).join('');
         return `<div class="table-tabs">${tabs}</div>${contents}`;
-    }
-
-    extractBody(html: string): string {
-        const match = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-        return match?.[1] ?? html;
-    }
-
-    extractHead(html: string): string {
-        const match = html.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
-        return match?.[1] ?? '';
     }
 
     escapeHtml(text: string): string {
