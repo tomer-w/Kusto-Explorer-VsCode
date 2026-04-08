@@ -28,7 +28,6 @@ public class Server : LspServer, ILogger, ISettingSource, IStorage
     private readonly IDocumentManager _documentManager;
     private readonly IDiagnosticsManager _diagnosticsManager;
     private readonly IQueryManager _queryManager;
-    private readonly IChartManager _chartManager;
     private readonly IEntityManager _entityManager;
     private readonly ImmutableList<string> _args;
 
@@ -43,7 +42,6 @@ public class Server : LspServer, ILogger, ISettingSource, IStorage
         IDocumentManager documentManager,
         IDiagnosticsManager diagnosticsManager,
         IQueryManager queryManager,
-        IChartManager chartManager,
         IEntityManager entityManager)
         : base(input, output)
     {
@@ -58,7 +56,6 @@ public class Server : LspServer, ILogger, ISettingSource, IStorage
         _documentManager = documentManager;
         _diagnosticsManager = diagnosticsManager;
         _queryManager = queryManager;
-        _chartManager = chartManager;
         _entityManager = entityManager;
         InitEvents();
     }
@@ -81,7 +78,6 @@ public class Server : LspServer, ILogger, ISettingSource, IStorage
         _documentManager = new DocumentManager(_symbolManager, _logger);
         _diagnosticsManager = new DiagnosticsManager(_documentManager, _logger);
         _queryManager = new QueryManager(_connectionManager, _symbolManager, _documentManager, _optionsManager, _logger);
-        _chartManager = new PlotlyChartManager();
         _entityManager = new EntityManager(_schemaManager, _optionsManager);
         InitEvents();
     }
@@ -2212,72 +2208,6 @@ public class Server : LspServer, ILogger, ISettingSource, IStorage
     #endregion
 
     #region Results
-
-    #region Chart As Html
-
-    [JsonRpcMethod("kusto/getChartAsHtml", UseSingleObjectParameterDeserialization = true)]
-    public Task<GetChartAsHtmlResult?> OnGetChartAsHtml(GetChartAsHtmlParams @params, CancellationToken cancellationToken)
-    {
-        try
-        {
-            if (@params.Data != null)
-            {
-                var executeResult = @params.Data.ToExecuteResult();
-
-                if (executeResult != null
-                    && executeResult.Tables != null
-                    && executeResult.Tables.Count > 0
-                    && executeResult.ChartOptions != null
-                    && executeResult.ChartOptions.Type != ChartType.None)
-                {
-                    var chartOptions = executeResult.ChartOptions.WithDefaults(_optionsManager.DefaultChartOptions);
-                    var effectiveDarkMode = chartOptions.Mode switch
-                    {
-                        ChartMode.Light => false,
-                        ChartMode.Dark => true,
-                        _ => @params.DarkMode
-                    };
-                    var chartHtml = RenderChartAsHtml(executeResult.Tables[0], chartOptions, effectiveDarkMode);
-                    return Task.FromResult<GetChartAsHtmlResult?>(
-                        new GetChartAsHtmlResult
-                        {
-                            Html = chartHtml
-                        });
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _ = this.SendWindowLogMessageAsync(ex.Message);
-        }
-
-        return Task.FromResult<GetChartAsHtmlResult?>(null);
-    }
-
-    private string RenderChartAsHtml(DataTable data, ChartOptions chartOptions, bool darkMode = false)
-    {
-        return _chartManager.RenderChartToHtmlDocument(data, chartOptions, darkMode)
-            ?? "<html>chart style not implemented yet</html>";
-    }
-
-    [DataContract]
-    public class GetChartAsHtmlParams
-    {
-        [DataMember(Name = "data")]
-        public required ResultData Data { get; init; }
-
-        [DataMember(Name = "darkMode")]
-        public bool DarkMode { get; init; }
-    }
-
-    [DataContract]
-    public class GetChartAsHtmlResult
-    {
-        [DataMember(Name = "html")]
-        public required string Html { get; init; }
-    }
-
-    #endregion
 
     #region Kusto Expression
 

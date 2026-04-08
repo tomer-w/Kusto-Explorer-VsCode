@@ -212,7 +212,7 @@ public class ChartOptions
     {
         return new ChartOptions
         {
-            Type = options.Visualization.ToString(),
+            Type = VisualizationToChartType(options.Visualization),
             Kind = options.Mode.ToString(),
             Title = options.Title,
             XTitle = options.XTitle,
@@ -282,5 +282,12 @@ public class ChartOptions
             float f when float.IsNegativeInfinity(f) => float.MinValue,
             _ => value
         };
+    }
+
+    private static string VisualizationToChartType(VisualizationKind kind)
+    {
+        return kind == VisualizationKind.ThreeDChart
+            ? ChartType.ThreeDChart
+            : kind.ToString();
     }
 }

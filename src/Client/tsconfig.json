@@ -23,7 +23,7 @@
     "isolatedModules": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
-    "moduleResolution": "node"
+    "moduleResolution": "bundler"
   },
   "include": [ "**/*.ts" ],
   "exclude": [ "node_modules", "out", "tests" ]
