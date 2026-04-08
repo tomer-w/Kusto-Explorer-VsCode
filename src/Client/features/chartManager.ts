@@ -7,6 +7,7 @@
  */
 
 import type { ChartOptions, ResultColumn, ResultTable } from './server';
+import type { IWebView } from './webview';
 
 // ─── Chart Constants ────────────────────────────────────────────────────────
 
@@ -960,6 +961,7 @@ function createHtmlDocument(chartDiv: string, darkMode = false): string {
     <script>
     ${scriptContent}
     </script>
+    ${plotlyChartCopyScript}
 </body>
 </html>`;
 }
@@ -1057,12 +1059,126 @@ function convertToNumeric(values: unknown[]): number[] {
 
 // ─── Chart Manager ──────────────────────────────────────────────────────────
 
+/**
+ * Controller for interacting with a chart rendered inside a webview.
+ * Created by IChartManager.createController().
+ *
+ * The host sets `onCopyResult` / `onCopyError` to receive copy outcomes.
+ */
+export interface IChartController {
+    /** Trigger the chart copy flow (extension → webview → extension). */
+    copyChart(): void;
+    /** Update the chart with new body HTML (sent to the webview). */
+    updateChart(chartBodyHtml: string): void;
+    /** Called when the webview produces a chart image for copying. */
+    onCopyResult: ((pngDataUrl: string, svgDataUrl?: string) => void) | undefined;
+    /** Called when the webview chart copy fails. */
+    onCopyError: ((error: string) => void) | undefined;
+    /** Release handlers and resources. */
+    dispose(): void;
+}
+
 export interface IChartManager {
     renderChartToHtmlDiv(data: ResultTable, options: ChartOptions, darkMode?: boolean): string | undefined;
     renderChartToHtmlDocument(data: ResultTable, options: ChartOptions, darkMode?: boolean): string | undefined;
+    /** Creates a controller for interacting with a chart in a webview. */
+    createController(webview: IWebView): IChartController;
+}
+
+/** Plotly-specific script embedded in chart HTML for copy support. */
+const plotlyChartCopyScript = `
+<script>
+    (function() {
+        window.addEventListener('message', async event => {
+            const message = event.data;
+
+            if (message.command === 'copyChart') {
+                const vscodeApi = window._vscodeApi;
+                if (!vscodeApi) return;
+                try {
+                    // Find the Plotly chart div
+                    const plotDiv = document.querySelector('.js-plotly-plot') || document.querySelector('.plotly-graph-div');
+                    if (plotDiv && typeof Plotly !== 'undefined') {
+                        // Use aspect ratio for consistent copy dimensions if set
+                        const chartDiv = document.getElementById('chart');
+                        const arValue = chartDiv ? getComputedStyle(chartDiv).getPropertyValue('--chart-aspect-ratio').trim() : '';
+                        let width = plotDiv.offsetWidth;
+                        let height = plotDiv.offsetHeight;
+                        if (arValue) {
+                            const parts = arValue.split('/').map(Number);
+                            if (parts.length === 2 && parts[0] > 0 && parts[1] > 0) {
+                                width = 800;
+                                height = Math.round(800 * parts[1] / parts[0]);
+                            }
+                        }
+                        const layout = plotDiv.layout || {};
+
+                        // PNG: copy as-is (scale 2x for readability)
+                        const pngDataUrl = await Plotly.toImage(plotDiv, { format: 'png', width: width, height: height, scale: 2 });
+
+                        // SVG: use transparent background so it layers well in documents
+                        var savedPaperBg = layout.paper_bgcolor || '#fff';
+                        var savedPlotBg = layout.plot_bgcolor || '#fff';
+                        await Plotly.relayout(plotDiv, { paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)' });
+                        const svgDataUrl = await Plotly.toImage(plotDiv, { format: 'svg', width: width, height: height });
+                        await Plotly.relayout(plotDiv, { paper_bgcolor: savedPaperBg, plot_bgcolor: savedPlotBg });
+
+                        vscodeApi.postMessage({ command: 'copyChartResult', pngDataUrl: pngDataUrl, svgDataUrl: svgDataUrl });
+                    } else {
+                        // Fallback: use canvas if available
+                        const canvas = document.querySelector('canvas');
+                        if (canvas) {
+                            const dataUrl = canvas.toDataURL('image/png');
+                            vscodeApi.postMessage({ command: 'copyChartResult', pngDataUrl: dataUrl });
+                        }
+                    }
+                } catch (err) {
+                    vscodeApi.postMessage({ command: 'copyChartError', error: String(err) });
+                }
+            }
+        });
+    })();
+</script>`;
+
+/** Controller for Plotly charts rendered inside a webview. */
+class PlotlyChartController implements IChartController {
+    onCopyResult: ((pngDataUrl: string, svgDataUrl?: string) => void) | undefined;
+    onCopyError: ((error: string) => void) | undefined;
+    private readonly subscription: { dispose(): void };
+
+    constructor(private readonly webview: IWebView) {
+        this.subscription = webview.handle((message) => {
+            if (message.command === 'copyChartResult') {
+                const pngDataUrl = message.pngDataUrl as string;
+                const svgDataUrl = message.svgDataUrl as string | undefined;
+                if (pngDataUrl) {
+                    this.onCopyResult?.(pngDataUrl, svgDataUrl);
+                }
+            }
+            if (message.command === 'copyChartError') {
+                this.onCopyError?.(String(message.error ?? 'Unknown error'));
+            }
+        });
+    }
+
+    copyChart(): void {
+        this.webview.invoke('copyChart');
+    }
+
+    updateChart(chartBodyHtml: string): void {
+        this.webview.invoke('updateChart', { chartBodyHtml });
+    }
+
+    dispose(): void {
+        this.subscription.dispose();
+    }
 }
 
 export class PlotlyChartManager implements IChartManager {
+
+    createController(webview: IWebView): IChartController {
+        return new PlotlyChartController(webview);
+    }
 
     renderChartToHtmlDiv(data: ResultTable, options: ChartOptions, darkMode = false): string | undefined {
         if (options.type === ChartType.Plotly) {

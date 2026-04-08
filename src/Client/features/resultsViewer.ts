@@ -14,7 +14,8 @@ import type { ClipboardItem } from './clipboard';
 import { formatCfHtml } from './clipboard';
 import { resultDataToMarkdown } from './markdown';
 import { resultDataToHtml, DataAsHtml, HtmlTable } from './html';
-import type { IChartManager } from './chartManager';
+import type { IChartManager, IChartController } from './chartManager';
+import { WebViewAdapter } from './webview';
 
 /** The view type used for the custom results viewer. */
 const resultViewerViewType = 'kusto.resultViewer';
@@ -161,68 +162,13 @@ const webviewMessageHandlerScript = `
     })();
 </script>`;
 
-/** Chart-specific script for Plotly copy commands. Only injected when a chart is present. */
-const chartCopyScript = `
-<script>
-    (function() {
-        const vscodeApi = window._vscodeApi;
-        if (!vscodeApi) return;
 
-        window.addEventListener('message', async event => {
-            const message = event.data;
-
-            if (message.command === 'copyChart') {
-                try {
-                    // Find the Plotly chart div
-                    const plotDiv = document.querySelector('.js-plotly-plot') || document.querySelector('.plotly-graph-div');
-                    if (plotDiv && typeof Plotly !== 'undefined') {
-                        // Use aspect ratio for consistent copy dimensions if set
-                        const chartDiv = document.getElementById('chart');
-                        const arValue = chartDiv ? getComputedStyle(chartDiv).getPropertyValue('--chart-aspect-ratio').trim() : '';
-                        let width = plotDiv.offsetWidth;
-                        let height = plotDiv.offsetHeight;
-                        if (arValue) {
-                            const parts = arValue.split('/').map(Number);
-                            if (parts.length === 2 && parts[0] > 0 && parts[1] > 0) {
-                                width = 800;
-                                height = Math.round(800 * parts[1] / parts[0]);
-                            }
-                        }
-                        const layout = plotDiv.layout || {};
-
-                        // PNG: copy as-is (scale 2x for readability)
-                        const pngDataUrl = await Plotly.toImage(plotDiv, { format: 'png', width: width, height: height, scale: 2 });
-
-                        // SVG: use transparent background so it layers well in documents
-                        var savedPaperBg = layout.paper_bgcolor || '#fff';
-                        var savedPlotBg = layout.plot_bgcolor || '#fff';
-                        await Plotly.relayout(plotDiv, { paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)' });
-                        const svgDataUrl = await Plotly.toImage(plotDiv, { format: 'svg', width: width, height: height });
-                        await Plotly.relayout(plotDiv, { paper_bgcolor: savedPaperBg, plot_bgcolor: savedPlotBg });
-
-                        vscodeApi.postMessage({ command: 'copyChartResult', pngDataUrl: pngDataUrl, svgDataUrl: svgDataUrl });
-                    } else {
-                        // Fallback: use canvas if available
-                        const canvas = document.querySelector('canvas');
-                        if (canvas) {
-                            const dataUrl = canvas.toDataURL('image/png');
-                            vscodeApi.postMessage({ command: 'copyChartResult', pngDataUrl: dataUrl });
-                        }
-                    }
-                } catch (err) {
-                    vscodeApi.postMessage({ command: 'copyChartError', error: String(err) });
-                }
-            }
-        });
-    })();
-</script>`;
 
 /**
- * Injects webview message handler scripts into result HTML content.
- * Always injects the base handler; only includes chart copy script when hasChart is true.
+ * Injects the base webview message handler script into result HTML content.
  * Also adds data-vscode-context to suppress default context menu items.
  */
-function injectMessageHandlerScripts(html: string, hasChart: boolean): string {
+function injectMessageHandlerScripts(html: string): string {
     // Add data-vscode-context to suppress default Cut/Copy/Paste context menu items
     let result = html;
     const contextAttr = ` data-vscode-context='{"preventDefaultContextMenuItems": true}'`;
@@ -235,17 +181,13 @@ function injectMessageHandlerScripts(html: string, hasChart: boolean): string {
         }
     }
 
-    const scripts = hasChart
-        ? webviewMessageHandlerScript + chartCopyScript
-        : webviewMessageHandlerScript;
-
     if (result.includes('</html>')) {
-        return result.replace('</html>', scripts + '</html>');
+        return result.replace('</html>', webviewMessageHandlerScript + '</html>');
     }
     if (result.includes('</body>')) {
-        return result.replace('</body>', scripts + '</body>');
+        return result.replace('</body>', webviewMessageHandlerScript + '</body>');
     }
-    return result + scripts;
+    return result + webviewMessageHandlerScript;
 }
 
 /**
@@ -340,6 +282,7 @@ export class ResultsViewer {
     private lastPanelTableNames: string[] = [];
     private panelActiveTabIndex = 0;
     private waitForPanelReady: (() => Promise<void>) | undefined;
+    private panelChartController: IChartController | undefined;
 
     // ─── Singleton view state ───────────────────────────────────────────
     private singletonView: vscode.WebviewPanel | undefined;
@@ -349,6 +292,10 @@ export class ResultsViewer {
     private singletonBackingUri: vscode.Uri | undefined;
     private singletonWriteBackTimer: ReturnType<typeof setTimeout> | undefined;
     private singletonMode: ResultViewMode | undefined;
+    private singletonChartController: IChartController | undefined;
+
+    // ─── Chart controllers for document views ───────────────────────────
+    private readonly chartControllers = new Map<vscode.WebviewPanel, IChartController>();
 
     constructor(context: vscode.ExtensionContext, server: IServer, clipboard: Clipboard, chartManager: IChartManager) {
         this.server = server;
@@ -395,7 +342,14 @@ export class ResultsViewer {
                     enableScripts: true,
                     enableForms: false
                 };
+
+                // Create chart controller for the bottom panel
+                this.panelChartController = this.chartManager.createController(new WebViewAdapter(webviewView.webview));
+                this.wireChartController(this.panelChartController);
+
                 webviewView.onDidDispose(() => {
+                    this.panelChartController?.dispose();
+                    this.panelChartController = undefined;
                     this.resultsPanel = undefined;
                 });
                 webviewView.webview.onDidReceiveMessage((message) => {
@@ -413,7 +367,6 @@ export class ResultsViewer {
                     if (message.command === 'copyText' && typeof message.text === 'string') {
                         vscode.env.clipboard.writeText(message.text);
                     }
-                    this.handleChartWebviewMessage(message);
                 });
                 webviewView.webview.html = '<html>no results</html>';
             }
@@ -471,20 +424,11 @@ export class ResultsViewer {
     }
 
     /**
-     * Handles chart webview messages for copy commands.
-     * Call this from any webview's onDidReceiveMessage to support chart copy.
-     * Returns true if the message was handled.
+     * Wires up the copy result/error callbacks on a chart controller.
      */
-    private handleChartWebviewMessage(message: { command?: string; pngDataUrl?: string; svgDataUrl?: string; error?: string }): boolean {
-        if (message.command === 'copyChartError') {
-            vscode.window.showErrorMessage(`Chart copy failed in webview: ${message.error}`);
-            return true;
-        }
-        if (message.command === 'copyChartResult' && message.pngDataUrl) {
-            this.onCopyChartMessage(message.pngDataUrl, message.svgDataUrl);
-            return true;
-        }
-        return false;
+    private wireChartController(controller: IChartController): void {
+        controller.onCopyResult = (pngDataUrl, svgDataUrl) => this.onCopyChartMessage(pngDataUrl, svgDataUrl);
+        controller.onCopyError = (error) => vscode.window.showErrorMessage(`Chart copy failed in webview: ${error}`);
     }
 
     /**
@@ -526,7 +470,7 @@ export class ResultsViewer {
             resultData.query, resultData.cluster, resultData.database, resultData.tables);
 
         const totalRows = (dataResult?.tables ?? []).reduce((sum: number, t: HtmlTable) => sum + t.rowCount, 0);
-        await this.showPanelHtml(injectMessageHandlerScripts(html, hasChart), totalRows);
+        await this.showPanelHtml(injectMessageHandlerScripts(html), totalRows);
         this.sendExpressionToResultsPanel();
     }
 
@@ -579,7 +523,7 @@ export class ResultsViewer {
         const html = this.htmlBuilder.BuildMultiTabbedHtml(dataResult, chartResult?.html, hasChart, mode, chartOptions, columnNames,
             resultData.query, resultData.cluster, resultData.database, resultData.tables);
 
-        this.showSingletonView(injectMessageHandlerScripts(html, hasChart), resultData, (dataResult?.tables ?? []).map((t: HtmlTable) => t.name), beside, mode);
+        this.showSingletonView(injectMessageHandlerScripts(html), resultData, (dataResult?.tables ?? []).map((t: HtmlTable) => t.name), beside, mode);
     }
 
 
@@ -613,7 +557,8 @@ export class ResultsViewer {
      * Targets whichever tab view (singleton or document) is currently focused.
      */
     copyChart(): void {
-        this.activeResultWebview?.webview.postMessage({ command: 'copyChart' });
+        const controller = this.getActiveChartController();
+        controller?.copyChart();
     }
 
     /**
@@ -727,6 +672,10 @@ export class ResultsViewer {
             vscode.commands.executeCommand('kusto.singletonViewStateChanged');
             this.registerResultWebview(this.singletonView);
 
+            // Create chart controller for the singleton view
+            this.singletonChartController = this.chartManager.createController(new WebViewAdapter(this.singletonView.webview));
+            this.wireChartController(this.singletonChartController);
+
             this.singletonView.onDidChangeViewState(() => {
                 if (this.singletonView?.active) {
                     const state = this.viewerStates.get(this.singletonView);
@@ -781,12 +730,13 @@ export class ResultsViewer {
                     }
                     return;
                 }
-                this.handleChartWebviewMessage(message);
             });
 
             this.singletonView.onDidDispose(() => {
                 if (this.singletonChartOptionsTimer) { clearTimeout(this.singletonChartOptionsTimer); }
                 this.flushSingletonWriteBack();
+                this.singletonChartController?.dispose();
+                this.singletonChartController = undefined;
                 this.viewerStates.delete(this.singletonView!);
                 this.singletonView = undefined;
                 this.singletonResultData = undefined;
@@ -832,10 +782,7 @@ export class ResultsViewer {
         const darkMode = isDarkMode();
         const chartResult = getChartAsHtml(this.chartManager, modifiedData, darkMode);
         if (chartResult?.html) {
-            this.singletonView.webview.postMessage({
-                command: 'updateChart',
-                chartBodyHtml: this.htmlBuilder.extractBody(chartResult.html)
-            });
+            this.singletonChartController?.updateChart(this.htmlBuilder.extractBody(chartResult.html));
         }
     }
 
@@ -889,7 +836,7 @@ export class ResultsViewer {
                 const columnNames = updated.tables[0]?.columns?.map(c => c.name) ?? [];
                 const html = this.htmlBuilder.BuildMultiTabbedHtml(dataResult, undefined, false, this.singletonMode ?? 'all', undefined, columnNames,
                     updated.query, updated.cluster, updated.database, updated.tables);
-                this.singletonView!.webview.html = injectMessageHandlerScripts(html, false);
+                this.singletonView!.webview.html = injectMessageHandlerScripts(html);
 
                 this.viewerStates.set(this.singletonView!, {
                     resultData: updated,
@@ -945,6 +892,16 @@ export class ResultsViewer {
             return undefined;
         }
         return this.viewerStates.get(this.activeResultWebview);
+    }
+
+    private getActiveChartController(): IChartController | undefined {
+        if (!this.activeResultWebview?.active) {
+            return undefined;
+        }
+        if (this.activeResultWebview === this.singletonView) {
+            return this.singletonChartController;
+        }
+        return this.chartControllers.get(this.activeResultWebview);
     }
 
     private getActiveTableName(state: ResultViewerState): string | undefined {
@@ -1232,6 +1189,11 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         // Track document association for rerun support
         this.viewer['webviewDocuments'].set(webviewPanel, document.uri);
 
+        // Create chart controller for this document view
+        const docChartController = this.chartManager.createController(new WebViewAdapter(webviewPanel.webview));
+        this.viewer['wireChartController'](docChartController);
+        (this.viewer['chartControllers'] as Map<vscode.WebviewPanel, IChartController>).set(webviewPanel, docChartController);
+
         // Update context key when this panel gains/loses focus
         const updateChartContext = () => {
             if (webviewPanel.active) {
@@ -1319,7 +1281,6 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
                 }
                 return;
             }
-            this.viewer['handleChartWebviewMessage'](message);
         });
 
         // Render from the document content
@@ -1343,6 +1304,8 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
 
         webviewPanel.onDidDispose(() => {
             if (chartOptionsTimer) { clearTimeout(chartOptionsTimer); }
+            docChartController.dispose();
+            (this.viewer['chartControllers'] as Map<vscode.WebviewPanel, IChartController>).delete(webviewPanel);
             this.viewer['viewerStates'].delete(webviewPanel);
             this.viewer['webviewDocuments'].delete(webviewPanel);
             vscode.commands.executeCommand('setContext', 'kusto.resultViewerHasChart', false);
@@ -1407,7 +1370,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         const columnNames = resultData.tables[0]?.columns?.map(c => c.name) ?? [];
         const html = this.BuildMultiTabbedHtml(dataResult, chartResult?.html, hasChart, 'all', chartOptions, columnNames,
             resultData.query, resultData.cluster, resultData.database, resultData.tables);
-        webviewPanel.webview.html = injectMessageHandlerScripts(html, hasChart);
+        webviewPanel.webview.html = injectMessageHandlerScripts(html);
     }
 
     private async updateChartOnly(state: ResultViewerState, webviewPanel: vscode.WebviewPanel): Promise<void> {
@@ -1421,10 +1384,8 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         const darkMode = isDarkMode();
         const chartResult = getChartAsHtml(this.chartManager, modifiedData, darkMode);
         if (chartResult?.html) {
-            webviewPanel.webview.postMessage({
-                command: 'updateChart',
-                chartBodyHtml: this.extractBody(chartResult.html)
-            });
+            const controller = (this.viewer['chartControllers'] as Map<vscode.WebviewPanel, IChartController>).get(webviewPanel);
+            controller?.updateChart(this.extractBody(chartResult.html));
         }
     }
 
