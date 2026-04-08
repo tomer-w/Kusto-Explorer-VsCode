@@ -2,7 +2,7 @@
   "compilerOptions": {
     "outDir": "./out",
     "rootDir": ".",
-    "module": "commonjs",
+    "module": "nodenext",
     "target": "ES2020",
     "lib": [ "ES2020" ],
     "types": [ "node", "mocha" ],
@@ -11,7 +11,7 @@
     "isolatedModules": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
-    "moduleResolution": "node"
+    "moduleResolution": "nodenext"
   },
   "include": [ "tests/integration/**/*.ts" ]
 }
