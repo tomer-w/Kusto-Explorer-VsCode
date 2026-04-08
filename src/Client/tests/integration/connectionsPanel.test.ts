@@ -10,7 +10,7 @@ import type { ServerInfo, ServerGroupInfo } from '../../features/connectionManag
 
 /** Get the extension's exported ConnectionManager instance. */
 async function getConnectionManager(): Promise<ConnectionManager> {
-    const ext = vscode.extensions.getExtension('Microsoft.kusto-explorer-vscode')!;
+    const ext = vscode.extensions.getExtension('ms-kusto.kusto-explorer-vscode')!;
     const exports = ext.isActive ? ext.exports : await ext.activate();
     return (exports as any).connectionManager as ConnectionManager;
 }

@@ -10,7 +10,7 @@ import type { ResultData } from '../../features/server';
 
 /** Get the extension's exported ResultsViewer instance. */
 async function getResultsViewer(): Promise<ResultsViewer> {
-    const ext = vscode.extensions.getExtension('Microsoft.kusto-explorer-vscode')!;
+    const ext = vscode.extensions.getExtension('ms-kusto.kusto-explorer-vscode')!;
     const exports = ext.isActive ? ext.exports : await ext.activate();
     return (exports as any).resultsViewer as ResultsViewer;
 }

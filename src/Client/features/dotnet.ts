@@ -70,7 +70,7 @@ async function acquireDotnetFromExtension(): Promise<string | undefined> {
         // Use the dotnet.acquire command to acquire the runtime
         const result = await vscode.commands.executeCommand<IDotnetAcquireResult>(
             'dotnet.acquire',
-            { version: '10.0', requestingExtensionId: 'Microsoft.kusto-explorer-vscode' }
+            { version: '10.0', requestingExtensionId: 'ms-kusto.kusto-explorer-vscode' }
         );
         
         if (result?.dotnetPath) {
