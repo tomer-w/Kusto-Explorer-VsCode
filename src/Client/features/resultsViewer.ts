@@ -16,6 +16,7 @@ import { resultDataToMarkdown } from './markdown';
 import { resultDataToHtml, DataAsHtml, HtmlTable } from './html';
 import type { IChartProvider, IChartView } from './chartProvider';
 import type { IChartEditorProvider, IChartEditorView } from './chartEditorProvider';
+import type { IDataTableProvider, IDataTableView } from './dataTableProvider';
 import type { IWebView } from './webview';
 
 /** The view type used for the custom results viewer. */
@@ -139,29 +140,11 @@ const webviewMessageHandlerScript = `
         // Expose for edit panel script
         window._vscodeApi = vscodeApi;
 
-        // Track the element under the cursor when context menu opens (for copyCell)
-        let lastContextTarget = null;
-        document.addEventListener('contextmenu', function(event) {
-            lastContextTarget = event.target;
-        });
-
         // Notify the extension when the active view tab changes
         document.addEventListener('click', function(e) {
             const btn = e.target.closest ? e.target.closest('.view-toggle button[data-view]') : null;
             if (btn) {
                 vscodeApi.postMessage({ command: 'viewChanged', viewId: btn.getAttribute('data-view') });
-            }
-        });
-
-        window.addEventListener('message', async event => {
-            const message = event.data;
-
-            if (message.command === 'copyCell') {
-                const cell = lastContextTarget ? lastContextTarget.closest('td, th') : null;
-                if (cell) {
-                    vscodeApi.postMessage({ command: 'copyText', text: cell.innerText });
-                }
-                return;
             }
         });
     })();
@@ -259,6 +242,7 @@ export class ResultsViewer {
     private readonly clipboard: Clipboard;
     private readonly chartProvider: IChartProvider;
     private readonly chartEditorProvider: IChartEditorProvider;
+    private readonly dataTableProvider: IDataTableProvider;
     private readonly htmlBuilder: DocumentViewProvider;
 
     /** Map from webview to its viewer state. */
@@ -283,6 +267,8 @@ export class ResultsViewer {
     private panelWebView: WebViewAdapter | undefined;
     private panelEditorView: IChartEditorView | undefined;
     private panelEditorWebView: WebViewAdapter | undefined;
+    private panelTableViews: IDataTableView[] = [];
+    private panelTableWebViews: WebViewAdapter[] = [];
 
     // ─── Singleton view state ───────────────────────────────────────────
     private singletonView: vscode.WebviewPanel | undefined;
@@ -296,19 +282,24 @@ export class ResultsViewer {
     private singletonWebView: WebViewAdapter | undefined;
     private singletonEditorView: IChartEditorView | undefined;
     private singletonEditorWebView: WebViewAdapter | undefined;
+    private singletonTableViews: IDataTableView[] = [];
+    private singletonTableWebViews: WebViewAdapter[] = [];
 
     // ─── Chart views for document views ───────────────────────────────
     private readonly chartViews = new Map<vscode.WebviewPanel, IChartView>();
     private readonly chartWebViews = new Map<vscode.WebviewPanel, WebViewAdapter>();
     private readonly editorViews = new Map<vscode.WebviewPanel, IChartEditorView>();
     private readonly editorWebViews = new Map<vscode.WebviewPanel, WebViewAdapter>();
+    private readonly dataTableViews = new Map<vscode.WebviewPanel, IDataTableView[]>();
+    private readonly dataTableWebViews = new Map<vscode.WebviewPanel, WebViewAdapter[]>();
 
-    constructor(context: vscode.ExtensionContext, server: IServer, clipboard: Clipboard, chartProvider: IChartProvider, chartEditorProvider: IChartEditorProvider) {
+    constructor(context: vscode.ExtensionContext, server: IServer, clipboard: Clipboard, chartProvider: IChartProvider, chartEditorProvider: IChartEditorProvider, dataTableProvider: IDataTableProvider) {
         this.server = server;
         this.clipboard = clipboard;
         this.chartProvider = chartProvider;
         this.chartEditorProvider = chartEditorProvider;
-        this.htmlBuilder = new DocumentViewProvider(this, server, chartProvider, chartEditorProvider);
+        this.dataTableProvider = dataTableProvider;
+        this.htmlBuilder = new DocumentViewProvider(this, server, chartProvider, chartEditorProvider, dataTableProvider);
 
         context.subscriptions.push(
             vscode.window.registerCustomEditorProvider(
@@ -368,6 +359,9 @@ export class ResultsViewer {
                     this.panelEditorView?.dispose();
                     this.panelEditorView = undefined;
                     this.panelEditorWebView = undefined;
+                    this.panelTableViews.forEach(v => v.dispose());
+                    this.panelTableViews = [];
+                    this.panelTableWebViews = [];
                     this.resultsPanel = undefined;
                 });
                 webviewView.webview.onDidReceiveMessage((message) => {
@@ -378,12 +372,6 @@ export class ResultsViewer {
                         }
                         vscode.commands.executeCommand('setContext', 'kusto.panelShowingData', message.viewId !== 'query');
                         this.sendExpressionToResultsPanel();
-                    }
-                    if (message.command === 'requestExpression') {
-                        this.sendExpressionToResultsPanel();
-                    }
-                    if (message.command === 'copyText' && typeof message.text === 'string') {
-                        vscode.env.clipboard.writeText(message.text);
                     }
                 });
                 webviewView.webview.html = '<html>no results</html>';
@@ -480,8 +468,24 @@ export class ResultsViewer {
 
         const chartOptions = resultData.chartOptions ? applyChartDefaults(resultData.chartOptions) : undefined;
         const columnNames = resultData.tables[0]?.columns?.map(c => c.name) ?? [];
+
+        // Create table views for each result table (dispose previous ones first)
+        this.panelTableViews.forEach(v => v.dispose());
+        this.panelTableViews = [];
+        this.panelTableWebViews = [];
+        if (hasTable && this.resultsPanel) {
+            for (let i = 0; i < resultData.tables.length; i++) {
+                const adapter = new WebViewAdapter(this.resultsPanel.webview, `setTableContent-${i}`);
+                const view = this.dataTableProvider.createView(adapter);
+                view.onCopyText = (text) => vscode.env.clipboard.writeText(text);
+                view.onRequestExpression = () => this.sendExpressionToResultsPanel();
+                this.panelTableViews.push(view);
+                this.panelTableWebViews.push(adapter);
+            }
+        }
+
         const html = this.htmlBuilder.BuildMultiTabbedHtml(dataResult, hasChart, mode, this.panelWebView, this.panelEditorWebView, chartOptions, columnNames,
-            resultData.query, resultData.cluster, resultData.database, resultData.tables);
+            resultData.query, resultData.cluster, resultData.database, resultData.tables, this.panelTableWebViews);
 
         const totalRows = (dataResult?.tables ?? []).reduce((sum: number, t: HtmlTable) => sum + t.rowCount, 0);
         await this.showPanelHtml(injectMessageHandlerScripts(html), totalRows);
@@ -493,6 +497,11 @@ export class ResultsViewer {
                 this.panelChartView?.renderChart(table, chartOptions, darkMode);
             }
             this.panelEditorView?.setOptions(chartOptions, columnNames);
+        }
+
+        // Populate tables via controller messages after page is set
+        for (let i = 0; i < resultData.tables.length; i++) {
+            this.panelTableViews[i]?.renderTable(resultData.tables[i]!);
         }
 
         this.sendExpressionToResultsPanel();
@@ -541,11 +550,26 @@ export class ResultsViewer {
         // HTML so that BuildMultiTabbedHtml can read the adapter's headHtml/scriptsHtml.
         this.ensureSingletonView(beside, mode);
 
+        // Create table views for each result table (dispose previous ones first)
+        this.singletonTableViews.forEach(v => v.dispose());
+        this.singletonTableViews = [];
+        this.singletonTableWebViews = [];
+        if (this.singletonView) {
+            for (let i = 0; i < resultData.tables.length; i++) {
+                const adapter = new WebViewAdapter(this.singletonView.webview, `setTableContent-${i}`);
+                const view = this.dataTableProvider.createView(adapter);
+                view.onCopyText = (text) => vscode.env.clipboard.writeText(text);
+                view.onRequestExpression = () => this.sendExpressionToResultsView(this.singletonView!);
+                this.singletonTableViews.push(view);
+                this.singletonTableWebViews.push(adapter);
+            }
+        }
+
         const dataResult = resultDataToHtml(resultData);
         const hasChart = !!chartOptions;
         const columnNames = resultData.tables[0]?.columns?.map(c => c.name) ?? [];
         const html = this.htmlBuilder.BuildMultiTabbedHtml(dataResult, hasChart, mode, this.singletonWebView, this.singletonEditorWebView, chartOptions, columnNames,
-            resultData.query, resultData.cluster, resultData.database, resultData.tables);
+            resultData.query, resultData.cluster, resultData.database, resultData.tables, this.singletonTableWebViews);
 
         this.showSingletonView(injectMessageHandlerScripts(html), resultData, (dataResult?.tables ?? []).map((t: HtmlTable) => t.name), beside, mode);
 
@@ -556,6 +580,11 @@ export class ResultsViewer {
                 this.singletonChartView?.renderChart(table, chartOptions, darkMode);
             }
             this.singletonEditorView?.setOptions(chartOptions, columnNames);
+        }
+
+        // Populate tables via controller messages after page is set
+        for (let i = 0; i < resultData.tables.length; i++) {
+            this.singletonTableViews[i]?.renderTable(resultData.tables[i]!);
         }
     }
 
@@ -606,9 +635,14 @@ export class ResultsViewer {
      */
     toggleSearch(): void {
         if (this.activeResultWebview?.active) {
-            this.activeResultWebview.webview.postMessage({ command: 'toggleSearch' });
-        } else if (this.resultsPanel) {
-            this.resultsPanel.webview.postMessage({ command: 'toggleSearch' });
+            const state = this.viewerStates.get(this.activeResultWebview);
+            if (state) {
+                const tableIndex = this.getActiveTableIndex(state);
+                const views = this.getTableViewsForWebview(this.activeResultWebview);
+                views?.[tableIndex]?.toggleSearch();
+            }
+        } else {
+            this.panelTableViews[this.panelActiveTabIndex]?.toggleSearch();
         }
     }
 
@@ -675,14 +709,14 @@ export class ResultsViewer {
     }
 
     private async sendExpressionToResultsPanel(): Promise<void> {
-        if (!this.resultsPanel || !this.server || !this.lastPanelResultData) {
+        if (!this.server || !this.lastPanelResultData) {
             return;
         }
         try {
             const tableName = this.lastPanelTableNames[this.panelActiveTabIndex];
             const result = await this.server.getDataAsExpression(this.lastPanelResultData, tableName);
-            if (result?.expression && this.resultsPanel) {
-                this.resultsPanel.webview.postMessage({ command: 'setExpression', expression: result.expression });
+            if (result?.expression) {
+                this.panelTableViews[this.panelActiveTabIndex]?.setExpression(result.expression);
             }
         } catch {
             // Ignore
@@ -753,14 +787,6 @@ export class ResultsViewer {
                 }
                 return;
             }
-            if (message.command === 'requestExpression') {
-                this.sendExpressionToResultsView(this.singletonView!);
-                return;
-            }
-            if (message.command === 'copyText' && typeof message.text === 'string') {
-                vscode.env.clipboard.writeText(message.text);
-                return;
-            }
             if (message.command === 'editPanelToggled' && typeof message.visible === 'boolean') {
                 if (message.visible) {
                     this.singletonView?.reveal(vscode.ViewColumn.One, false);
@@ -780,6 +806,9 @@ export class ResultsViewer {
             this.singletonEditorView?.dispose();
             this.singletonEditorView = undefined;
             this.singletonEditorWebView = undefined;
+            this.singletonTableViews.forEach(v => v.dispose());
+            this.singletonTableViews = [];
+            this.singletonTableWebViews = [];
             this.viewerStates.delete(this.singletonView!);
             this.singletonView = undefined;
             this.singletonResultData = undefined;
@@ -885,7 +914,7 @@ export class ResultsViewer {
                 const tableNames = (dataResult?.tables ?? []).map(t => t.name);
                 const columnNames = updated.tables[0]?.columns?.map(c => c.name) ?? [];
                 const html = this.htmlBuilder.BuildMultiTabbedHtml(dataResult, false, this.singletonMode ?? 'all', this.singletonWebView, this.singletonEditorWebView, undefined, columnNames,
-                    updated.query, updated.cluster, updated.database, updated.tables);
+                    updated.query, updated.cluster, updated.database, updated.tables, this.singletonTableWebViews);
                 this.singletonView!.webview.html = injectMessageHandlerScripts(html);
 
                 this.viewerStates.set(this.singletonView!, {
@@ -954,6 +983,16 @@ export class ResultsViewer {
         return this.chartViews.get(this.activeResultWebview);
     }
 
+    private getActiveTableIndex(state: ResultViewerState): number {
+        const match = state.activeView.match(/^table-(\d+)$/);
+        return match ? parseInt(match[1]!, 10) : 0;
+    }
+
+    private getTableViewsForWebview(panel: vscode.WebviewPanel): IDataTableView[] | undefined {
+        if (panel === this.singletonView) return this.singletonTableViews;
+        return this.dataTableViews.get(panel);
+    }
+
     private getActiveTableName(state: ResultViewerState): string | undefined {
         const match = state.activeView.match(/^table-(\d+)$/);
         if (match) {
@@ -970,7 +1009,9 @@ export class ResultsViewer {
             const tableName = this.getActiveTableName(state);
             const result = await this.server.getDataAsExpression(state.resultData, tableName);
             if (result?.expression) {
-                webview.webview.postMessage({ command: 'setExpression', expression: result.expression });
+                const tableIndex = this.getActiveTableIndex(state);
+                const views = this.getTableViewsForWebview(webview);
+                views?.[tableIndex]?.setExpression(result.expression);
             }
         } catch {
             // Ignore — drag will just not work until expression is available
@@ -983,13 +1024,13 @@ export class ResultsViewer {
     copyCell(): void {
         const state = this.getActiveViewerState();
         if (state && this.activeResultWebview) {
-            this.activeResultWebview.webview.postMessage({ command: 'copyCell' });
+            const tableIndex = this.getActiveTableIndex(state);
+            const views = this.getTableViewsForWebview(this.activeResultWebview);
+            views?.[tableIndex]?.copyCell();
             return;
         }
         // Fall back to bottom view
-        if (this.resultsPanel) {
-            this.resultsPanel.webview.postMessage({ command: 'copyCell' });
-        }
+        this.panelTableViews[this.panelActiveTabIndex]?.copyCell();
     }
 
     /**
@@ -1221,7 +1262,7 @@ function singletonTitleForMode(mode: ResultViewMode): string {
  */
 class DocumentViewProvider implements vscode.CustomTextEditorProvider {
 
-    constructor(private readonly viewer: ResultsViewer, private readonly server: IServer, private readonly chartProvider: IChartProvider, private readonly chartEditorProvider: IChartEditorProvider) {
+    constructor(private readonly viewer: ResultsViewer, private readonly server: IServer, private readonly chartProvider: IChartProvider, private readonly chartEditorProvider: IChartEditorProvider, private readonly dataTableProvider: IDataTableProvider) {
     }
 
     async resolveCustomTextEditor(
@@ -1311,14 +1352,6 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
                 }
                 return;
             }
-            if (message.command === 'requestExpression') {
-                this.viewer['sendExpressionToResultsView'](webviewPanel);
-                return;
-            }
-            if (message.command === 'copyText' && typeof message.text === 'string') {
-                vscode.env.clipboard.writeText(message.text);
-                return;
-            }
             if (message.command === 'editPanelToggled' && typeof message.visible === 'boolean') {
                 if (message.visible) {
                     // Opening edit panel: remember if we were in beside mode, then move to main.
@@ -1362,10 +1395,14 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
             if (chartOptionsTimer) { clearTimeout(chartOptionsTimer); }
             docChartView.dispose();
             docEditorView.dispose();
+            const tableViews = (this.viewer['dataTableViews'] as Map<vscode.WebviewPanel, IDataTableView[]>).get(webviewPanel);
+            tableViews?.forEach(v => v.dispose());
             (this.viewer['chartViews'] as Map<vscode.WebviewPanel, IChartView>).delete(webviewPanel);
             (this.viewer['chartWebViews'] as Map<vscode.WebviewPanel, WebViewAdapter>).delete(webviewPanel);
             (this.viewer['editorViews'] as Map<vscode.WebviewPanel, IChartEditorView>).delete(webviewPanel);
             (this.viewer['editorWebViews'] as Map<vscode.WebviewPanel, WebViewAdapter>).delete(webviewPanel);
+            (this.viewer['dataTableViews'] as Map<vscode.WebviewPanel, IDataTableView[]>).delete(webviewPanel);
+            (this.viewer['dataTableWebViews'] as Map<vscode.WebviewPanel, WebViewAdapter[]>).delete(webviewPanel);
             this.viewer['viewerStates'].delete(webviewPanel);
             this.viewer['webviewDocuments'].delete(webviewPanel);
             vscode.commands.executeCommand('setContext', 'kusto.resultViewerHasChart', false);
@@ -1426,8 +1463,25 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         const columnNames = resultData.tables[0]?.columns?.map(c => c.name) ?? [];
         const docWebView = (this.viewer['chartWebViews'] as Map<vscode.WebviewPanel, WebViewAdapter>).get(webviewPanel);
         const docEditorWebView = (this.viewer['editorWebViews'] as Map<vscode.WebviewPanel, WebViewAdapter>).get(webviewPanel);
+
+        // Create table views for each result table (dispose previous ones first)
+        const prevTableViews = (this.viewer['dataTableViews'] as Map<vscode.WebviewPanel, IDataTableView[]>).get(webviewPanel);
+        prevTableViews?.forEach(v => v.dispose());
+        const docTableViews: IDataTableView[] = [];
+        const docTableWebViews: WebViewAdapter[] = [];
+        for (let i = 0; i < resultData.tables.length; i++) {
+            const adapter = new WebViewAdapter(webviewPanel.webview, `setTableContent-${i}`);
+            const view = this.dataTableProvider.createView(adapter);
+            view.onCopyText = (text) => vscode.env.clipboard.writeText(text);
+            view.onRequestExpression = () => this.viewer['sendExpressionToResultsView'](webviewPanel);
+            docTableViews.push(view);
+            docTableWebViews.push(adapter);
+        }
+        (this.viewer['dataTableViews'] as Map<vscode.WebviewPanel, IDataTableView[]>).set(webviewPanel, docTableViews);
+        (this.viewer['dataTableWebViews'] as Map<vscode.WebviewPanel, WebViewAdapter[]>).set(webviewPanel, docTableWebViews);
+
         const html = this.BuildMultiTabbedHtml(dataResult, hasChart, 'all', docWebView, docEditorWebView, chartOptions, columnNames,
-            resultData.query, resultData.cluster, resultData.database, resultData.tables);
+            resultData.query, resultData.cluster, resultData.database, resultData.tables, docTableWebViews);
         webviewPanel.webview.html = injectMessageHandlerScripts(html);
 
         // Populate chart and editor via controller messages after page is set
@@ -1439,6 +1493,11 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
             }
             const editorView = (this.viewer['editorViews'] as Map<vscode.WebviewPanel, IChartEditorView>).get(webviewPanel);
             editorView?.setOptions(chartOptions, columnNames);
+        }
+
+        // Populate tables via controller messages after page is set
+        for (let i = 0; i < resultData.tables.length; i++) {
+            docTableViews[i]?.renderTable(resultData.tables[i]!);
         }
     }
 
@@ -1472,7 +1531,8 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         queryText?: string,
         cluster?: string,
         database?: string,
-        resultTables?: server.ResultTable[]
+        resultTables?: server.ResultTable[],
+        tableWebViews?: WebViewAdapter[]
     ): string {
         const tables = dataResult?.tables ?? [];
 
@@ -1487,18 +1547,12 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
             (showQuery ? 1 : 0);
         const showTabs = visibleTabCount > 1;
 
-        // Build individual table divs (empty containers — filled by Simple-DataTables)
+        // Build individual table divs (empty containers — content pushed by DataTableView)
         const tableContents = showTables
             ? tables.map((_t, i) =>
-                `<div id="table-${i}" class="view-content" data-vscode-context='{"chartVisible": false, "queryVisible": false, "preventDefaultContextMenuItems": true}'><table id="grid-${i}"></table></div>`
+                `<div id="table-${i}" class="view-content" data-vscode-context='{"chartVisible": false, "queryVisible": false, "preventDefaultContextMenuItems": true}'></div>`
             ).join('')
             : '';
-
-        // Embed raw table data as JSON for client-side rendering
-        const tableDataJson = showTables && resultTables
-            ? JSON.stringify(resultTables.map(t => ({ columns: t.columns, rows: t.rows })))
-                .replace(/<\//g, '<\\/')
-            : '[]';
 
         // Get chart page dependencies from the webview adapter
         const chartHead = showChart ? (webview?.headHtml ?? '') : '';
@@ -1553,14 +1607,34 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         // When only a single item is visible, mark it active and use full height
         const mainAreaHeight = showTabs ? 'calc(100vh - 33px)' : '100vh';
 
+        // Get data table page dependencies from the first table adapter
+        const tableHead = showTables && tableWebViews?.length ? (tableWebViews[0]!.headHtml ?? '') : '';
+
+        // Build content dispatch handlers for each table container
+        const tableDispatchHandlers = showTables
+            ? tables.map((_t, i) =>
+                `if (msg.command === 'setTableContent-${i}' && typeof msg.html === 'string') {
+                    var div = document.getElementById('table-${i}');
+                    if (div) {
+                        div.innerHTML = msg.html;
+                        div.querySelectorAll('script').forEach(function(old) {
+                            var s = document.createElement('script');
+                            s.textContent = old.textContent;
+                            old.parentNode.replaceChild(s, old);
+                        });
+                    }
+                    return;
+                }`
+            ).join('\n                ')
+            : '';
+
         return `<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
     ${chartHead}
     ${editorHead}
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/simple-datatables@9/dist/style.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/simple-datatables@9/dist/umd/simple-datatables.min.js"><\/script>
+    ${tableHead}
     <style>
         body {
             margin: 0;
@@ -1615,101 +1689,6 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
             visibility: hidden;
         }
         #chart-view { padding: 0; }
-        /* Simple-DataTables overrides for VS Code theme */
-        .datatable-wrapper {
-            padding: 0;
-            display: flex;
-            flex-direction: column;
-            height: 100%;
-        }
-        .datatable-top {
-            padding: 4px 8px;
-            background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
-            color: var(--vscode-foreground);
-            border-bottom: 1px solid var(--vscode-panel-border, #444);
-            flex-shrink: 0;
-            display: flex;
-            justify-content: flex-end;
-            gap: 8px;
-        }
-        .datatable-container {
-            flex: 1;
-            overflow: auto;
-        }
-        .datatable-bottom {
-            padding: 4px 8px;
-            background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
-            color: var(--vscode-foreground);
-            border-top: 1px solid var(--vscode-panel-border, #444);
-            flex-shrink: 0;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 8px;
-        }
-        .datatable-bottom::after { display: none; }
-        /* Hide search by default; show when toggled */
-        .datatable-search { display: none !important; }
-        .search-visible .datatable-search { display: block !important; }
-        .datatable-info { color: var(--vscode-descriptionForeground, var(--vscode-foreground)); }
-        .datatable-input {
-            background: var(--vscode-input-background, #3c3c3c);
-            color: var(--vscode-input-foreground, var(--vscode-foreground));
-            border: 1px solid var(--vscode-input-border, #555);
-            border-radius: 2px;
-            padding: 2px 6px;
-            font-family: inherit;
-            font-size: inherit;
-        }
-        .datatable-selector {
-            background: var(--vscode-input-background, #3c3c3c);
-            color: var(--vscode-input-foreground, var(--vscode-foreground));
-            border: 1px solid var(--vscode-input-border, #555);
-            border-radius: 2px;
-            padding: 2px 4px;
-        }
-        .datatable-pagination a, .datatable-pagination button {
-            color: var(--vscode-foreground);
-            background: transparent;
-            border: 1px solid var(--vscode-panel-border, #444);
-        }
-        .datatable-pagination .datatable-active a,
-        .datatable-pagination .datatable-active button {
-            background: var(--vscode-focusBorder, #007acc);
-            color: #fff;
-        }
-        table { border-collapse: collapse; width: fit-content !important; max-width: 100%; }
-        th, td {
-            padding: 4px 8px;
-            text-align: left;
-            border: 1px solid var(--vscode-editorGroup-border, var(--vscode-panel-border, #666));
-            white-space: nowrap;
-            max-width: 500px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        th {
-            position: sticky;
-            top: 0;
-            background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
-            z-index: 1;
-            font-weight: 600;
-            cursor: pointer;
-        }
-        /* Sort indicator styling */
-        .datatable-sorter { color: var(--vscode-foreground); }
-        .datatable-sorter::before, .datatable-sorter::after {
-            border-left-color: transparent;
-            border-right-color: transparent;
-        }
-        /* Row selection */
-        tbody tr { cursor: pointer; }
-        tbody tr.row-selected {
-            background: var(--vscode-list-activeSelectionBackground, #094771) !important;
-            color: var(--vscode-list-activeSelectionForeground, #fff);
-        }
-        .datatable-sorter::before { border-top-color: var(--vscode-foreground); }
-        .datatable-sorter::after { border-bottom-color: var(--vscode-foreground); }
         /* Query tab styles */
         .query-info {
             padding: 8px 12px;
@@ -1752,68 +1731,6 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         ${editPanelHtml}
     </div>
     <script>
-        // ─── Initialize Simple-DataTables grids from embedded data ───
-        var _tableData = ${tableDataJson};
-        var _grids = [];
-
-        function formatCellValue(value) {
-            if (value === null || value === undefined) return '';
-            if (typeof value === 'object') return JSON.stringify(value);
-            return String(value);
-        }
-
-        function initGrids(tables) {
-            for (var i = 0; i < tables.length; i++) {
-                var tableEl = document.getElementById('grid-' + i);
-                if (!tableEl) continue;
-                var td = tables[i];
-                var headings = td.columns.map(function(c) { return c.name; });
-                var data = td.rows.map(function(row) {
-                    return row.map(function(cell) { return formatCellValue(cell); });
-                });
-                var grid = new simpleDatatables.DataTable(tableEl, {
-                    data: { headings: headings, data: data },
-                    perPage: 100,
-                    perPageSelect: [50, 100, 500, 1000],
-                    searchable: true,
-                    sortable: true,
-                    paging: td.rows.length > 100,
-                    labels: {
-                        placeholder: 'Search...',
-                        noRows: 'No results',
-                        info: 'Showing {start} to {end} of {rows} rows'
-                    }
-                });
-                _grids.push(grid);
-
-                // Move the per-page selector from top bar to bottom bar
-                var wrapper = tableEl.closest('.datatable-wrapper');
-                if (wrapper) {
-                    var selector = wrapper.querySelector('.datatable-top .datatable-dropdown');
-                    var bottom = wrapper.querySelector('.datatable-bottom');
-                    if (selector && bottom) {
-                        bottom.insertBefore(selector, bottom.firstChild);
-                    }
-                }
-            }
-            makeTablesDraggable();
-        }
-
-        // Initialize grids synchronously from embedded data
-        initGrids(_tableData);
-
-        var _searchVisible = false;
-        function toggleSearch() {
-            _searchVisible = !_searchVisible;
-            document.querySelectorAll('.datatable-wrapper').forEach(function(wrapper) {
-                wrapper.classList.toggle('search-visible', _searchVisible);
-            });
-            if (_searchVisible) {
-                var active = document.querySelector('.view-content.active .datatable-input');
-                if (active) active.focus();
-            }
-        }
-
         // Set initial active table view
         (function() {
             var first = document.getElementById('${firstActiveView}');
@@ -1823,53 +1740,13 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         // Track whether the user wants the edit panel open
         var editPanelUserVisible = false;
 
-        // Drag & drop: cache the KQL datatable expression for the active table
-        var cachedExpression = '';
-
-        // Row selection on click
-        document.addEventListener('click', function(e) {
-            var tr = e.target.closest ? e.target.closest('tbody tr') : null;
-            if (!tr) return;
-            var prev = document.querySelector('tr.row-selected');
-            if (prev && prev !== tr) prev.classList.remove('row-selected');
-            tr.classList.toggle('row-selected');
-        });
-
-        function makeTablesDraggable() {
-            var activeContent = document.querySelector('.view-content.active');
-            if (activeContent) {
-                activeContent.querySelectorAll('table').forEach(function(tbl) {
-                    tbl.setAttribute('draggable', 'true');
-                });
-            }
-        }
-        makeTablesDraggable();
-
-        document.addEventListener('dragstart', function(e) {
-            var tbl = e.target.closest ? e.target.closest('table') : null;
-            if (!tbl) { return; }
-            if (cachedExpression) {
-                e.dataTransfer.setData('text/plain', cachedExpression);
-                e.dataTransfer.effectAllowed = 'copy';
-            } else {
-                if (window._vscodeApi) {
-                    window._vscodeApi.postMessage({ command: 'requestExpression' });
-                }
-                e.preventDefault();
-            }
-        });
-
         function switchView(viewId) {
-            cachedExpression = '';
             document.querySelectorAll('.view-content').forEach(function(el) { el.classList.remove('active'); });
             document.querySelectorAll('.view-toggle button[data-view]').forEach(function(el) { el.classList.remove('active'); });
             var target = document.getElementById(viewId);
             if (target) target.classList.add('active');
             var btn = document.querySelector('.view-toggle button[data-view="' + viewId + '"]');
             if (btn) btn.classList.add('active');
-            if (viewId.startsWith('table-')) {
-                makeTablesDraggable();
-            }
             // Hide/restore edit panel based on view and user preference
             var editPanel = document.getElementById('edit-panel');
             if (editPanel) {
@@ -1907,7 +1784,10 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         // Listen for messages from the extension
         window.addEventListener('message', function(event) {
             var msg = event.data;
-            if (msg && msg.command === 'setChartHtml' && typeof msg.html === 'string') {
+            if (!msg) return;
+
+            // ── Chart content dispatch ──
+            if (msg.command === 'setChartHtml' && typeof msg.html === 'string') {
                 var chartDiv = document.getElementById('chart');
                 if (!chartDiv) return;
                 chartDiv.innerHTML = msg.html;
@@ -1922,24 +1802,20 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
                 if (window._chartUpdated) window._chartUpdated();
                 return;
             }
-            if (msg && msg.command === 'toggleSearch') {
-                toggleSearch();
-                return;
-            }
-            if (msg && msg.command === 'toggleEditPanel') {
+
+            // ── Table content dispatch ──
+            ${tableDispatchHandlers}
+
+            if (msg.command === 'toggleEditPanel') {
                 toggleEditPanel();
                 return;
             }
-            if (msg && msg.command === 'setEditPanelVisible') {
+            if (msg.command === 'setEditPanelVisible') {
                 var panel = document.getElementById('edit-panel');
                 if (panel) {
                     editPanelUserVisible = msg.visible;
                     panel.classList.toggle('visible', msg.visible);
                 }
-                return;
-            }
-            if (msg && msg.command === 'setExpression' && typeof msg.expression === 'string') {
-                cachedExpression = msg.expression;
                 return;
             }
         });
