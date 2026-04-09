@@ -14,7 +14,8 @@ import type { ClipboardItem } from './clipboard';
 import { formatCfHtml } from './clipboard';
 import { resultDataToMarkdown } from './markdown';
 import { resultDataToHtml, DataAsHtml, HtmlTable } from './html';
-import type { IChartManager, IChartController, IChartWebView } from './chartManager';
+import type { IChartManager, IChartController } from './chartManager';
+import type { IWebView } from './webview';
 
 /** The view type used for the custom results viewer. */
 const resultViewerViewType = 'kusto.resultViewer';
@@ -58,11 +59,11 @@ const textSizes = ['Extra Small', 'Small', 'Medium', 'Large', 'Extra Large'];
 export type ResultViewMode = 'chart' | 'data' | 'detail' | 'all';
 
 /**
- * Adapts a VS Code `Webview` to the `IChartWebView` interface.
+ * Adapts a VS Code `Webview` to the `IWebView` interface for the chart region.
  * Stores page-level setup content (headHtml, scriptsHtml) for the page builder to read.
- * Implements `setChart()` by posting a message to the page handler.
+ * Implements `setContent()` by posting a `setChartHtml` message to the page handler.
  */
-class ChartWebViewAdapter implements IChartWebView {
+class ChartWebViewAdapter implements IWebView {
     private readonly webview: vscode.Webview;
     headHtml = '';
     scriptsHtml = '';
@@ -76,7 +77,7 @@ class ChartWebViewAdapter implements IChartWebView {
         this.scriptsHtml = scriptsHtml;
     }
 
-    setChart(html: string): void {
+    setContent(html: string): void {
         this.webview.postMessage({ command: 'setChartHtml', html });
     }
 

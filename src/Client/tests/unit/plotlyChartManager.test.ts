@@ -3,14 +3,15 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PlotlyChartManager } from '../../features/plotlyChartManager';
-import type { IChartWebView, IChartController } from '../../features/chartManager';
+import type { IChartController } from '../../features/chartManager';
+import type { IWebView } from '../../features/webview';
 import type { ResultTable, ChartOptions } from '../../features/server';
 
-// ─── Mock IChartWebView ─────────────────────────────────────────────────────
+// ─── Mock IWebView ──────────────────────────────────────────────────────────
 
-function createMockWebView(): IChartWebView & {
+function createMockWebView(): IWebView & {
     setup: ReturnType<typeof vi.fn>;
-    setChart: ReturnType<typeof vi.fn>;
+    setContent: ReturnType<typeof vi.fn>;
     invoke: ReturnType<typeof vi.fn>;
     /** Simulate a message from the webview. */
     simulateMessage: (message: Record<string, unknown>) => void;
@@ -18,7 +19,7 @@ function createMockWebView(): IChartWebView & {
     const handlers: ((message: Record<string, unknown>) => void)[] = [];
     return {
         setup: vi.fn(),
-        setChart: vi.fn(),
+        setContent: vi.fn(),
         invoke: vi.fn(),
         handle: vi.fn((handler: (message: Record<string, unknown>) => void) => {
             handlers.push(handler);
@@ -178,10 +179,10 @@ describe('PlotlyChartManager', () => {
         });
 
         describe('renderChart', () => {
-            it('calls webview.setChart() with chart HTML', () => {
+            it('calls webview.setContent() with chart HTML', () => {
                 controller.renderChart(make2dTable(), { type: 'ColumnChart' }, false);
-                expect(webview.setChart).toHaveBeenCalledOnce();
-                const html = webview.setChart.mock.calls[0]![0] as string;
+                expect(webview.setContent).toHaveBeenCalledOnce();
+                const html = webview.setContent.mock.calls[0]![0] as string;
                 expect(html).toContain('plotly-chart');
                 expect(html).toContain('Plotly.newPlot');
             });
@@ -192,8 +193,8 @@ describe('PlotlyChartManager', () => {
                     [],
                 );
                 controller.renderChart(emptyTable, { type: 'ColumnChart' }, false);
-                expect(webview.setChart).toHaveBeenCalledOnce();
-                const html = webview.setChart.mock.calls[0]![0] as string;
+                expect(webview.setContent).toHaveBeenCalledOnce();
+                const html = webview.setContent.mock.calls[0]![0] as string;
                 const traces = html.match(/var data = (\[[\s\S]*?\]);\s*var layout/);
                 expect(traces).toBeTruthy();
                 const parsed = JSON.parse(traces![1]!) as { x: unknown[]; y: unknown[] }[];
@@ -201,9 +202,9 @@ describe('PlotlyChartManager', () => {
                 expect(parsed[0]!.y).toEqual([]);
             });
 
-            it('does not call setChart for unsupported chart type', () => {
+            it('does not call setContent for unsupported chart type', () => {
                 controller.renderChart(make2dTable(), { type: 'UnknownChart' }, false);
-                expect(webview.setChart).not.toHaveBeenCalled();
+                expect(webview.setContent).not.toHaveBeenCalled();
             });
         });
     });
@@ -219,11 +220,11 @@ describe('PlotlyChartManager', () => {
             controller = manager.createController(webview);
         });
 
-        /** Helper to render and return the HTML sent to setChart. */
+        /** Helper to render and return the HTML sent to setContent. */
         function renderAndGetHtml(table: ResultTable, options: ChartOptions, darkMode = false): string | undefined {
             controller.renderChart(table, options, darkMode);
-            if (webview.setChart.mock.calls.length === 0) return undefined;
-            return webview.setChart.mock.calls[0]![0] as string;
+            if (webview.setContent.mock.calls.length === 0) return undefined;
+            return webview.setContent.mock.calls[0]![0] as string;
         }
 
         /** Helper to parse the Plotly data array from the rendered HTML. */

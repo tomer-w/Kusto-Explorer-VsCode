@@ -8,7 +8,7 @@
 
 import type { ChartOptions, ResultColumn, ResultTable } from './server';
 import { ChartType, ChartKind, ChartAxis, ChartSortOrder, ChartLegendPosition } from './chartManager';
-import type { IChartController, IChartWebView, IChartManager } from './chartManager';
+import type { IChartController, IWebView, IChartManager } from './chartManager';
 
 // ─── Plotly Constants ───────────────────────────────────────────────────────
 
@@ -1196,7 +1196,7 @@ class PlotlyChartController implements IChartController {
     private readonly subscription: { dispose(): void };
 
     constructor(
-        private readonly webview: IChartWebView,
+        private readonly webview: IWebView,
         private readonly render: (data: ResultTable, options: ChartOptions, darkMode: boolean) => string | undefined
     ) {
         this.subscription = webview.handle((message) => {
@@ -1220,7 +1220,7 @@ class PlotlyChartController implements IChartController {
     renderChart(data: ResultTable, options: ChartOptions, darkMode: boolean): void {
         const bodyHtml = this.render(data, options, darkMode);
         if (bodyHtml) {
-            this.webview.setChart(bodyHtml);
+            this.webview.setContent(bodyHtml);
         }
     }
 
@@ -1231,7 +1231,7 @@ class PlotlyChartController implements IChartController {
 
 export class PlotlyChartManager implements IChartManager {
 
-    createController(webview: IChartWebView): IChartController {
+    createController(webview: IWebView): IChartController {
         webview.setup(
             `<script src="${PlotlyJsCdn}" charset="utf-8"></script>`,
             plotlyChartScripts
