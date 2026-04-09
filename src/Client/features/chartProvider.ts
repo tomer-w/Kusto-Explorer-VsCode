@@ -2,20 +2,24 @@
 // Licensed under the MIT license.
 
 /**
- * Chart manager interfaces and constants.
+ * Chart provider interfaces and constants.
  */
 
 import type { ChartOptions, ResultTable } from './server';
+import type { IWebView } from './webview';
+
+// Re-export so consumers can import from chartProvider
+export type { IWebView } from './webview';
 
 // ─── Interfaces ────────────────────────────────────────────────────────
 
 /**
- * Controller for interacting with a chart rendered inside a webview.
- * Created by IChartManager.createController().
+ * View for interacting with a chart rendered inside a webview.
+ * Created by IChartProvider.createView().
  *
  * The host sets `onCopyResult` / `onCopyError` to receive copy outcomes.
  */
-export interface IChartController {
+export interface IChartView {
     /** Render the chart with the given data/options and push to the webview. */
     renderChart(data: ResultTable, options: ChartOptions, darkMode: boolean): void;
     /** Trigger the chart copy flow (extension → webview → extension). */
@@ -29,30 +33,12 @@ export interface IChartController {
 }
 
 /**
- * Abstraction for the chart region within a logical web view.
- * 
- * The chart manager calls `setup()` once to provide page-level dependencies,
- * then calls `setChart()` to push rendered chart HTML into the page.
- * `invoke()`/`handle()` are for chart-specific messaging (copy, etc.).
+ * Provider for creating chart views in webviews. The main implementation is PlotlyChartProvider, which renders charts using Plotly.js.
  */
-export interface IChartWebView {
-    /** One-time setup: provide HTML for the page <head> and end-of-body scripts. */
-    setup(headHtml: string, scriptsHtml: string): void;
-    /** Push chart body HTML into the chart region of the page. */
-    setChart(html: string): void;
-    /** Send a command message to the webview (e.g. copyChart). This should be handled by scripts set up in `setup()`. */
-    invoke(command: string, args?: Record<string, unknown>): void;
-    /** Subscribe to messages from the webview that are sent by scripts set up in `setup()`. Returns a disposable to unsubscribe. */
-    handle(handler: (message: Record<string, unknown>) => void): { dispose(): void };
-}
-
-/**
- * Manager for creating and controlling charts in webviews. The main implementation is PlotlyChartManager, which renders charts using Plotly.js.
- */
-export interface IChartManager {
-    /** Creates a controller for interacting with a chart in a webview.
+export interface IChartProvider {
+    /** Creates a chart view bound to a webview region.
      *  Calls `webview.setup()` to provide page-level dependencies. */
-    createController(webview: IChartWebView): IChartController;
+    createView(webview: IWebView): IChartView;
 }
 
 

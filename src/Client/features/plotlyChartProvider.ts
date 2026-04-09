@@ -7,8 +7,8 @@
  */
 
 import type { ChartOptions, ResultColumn, ResultTable } from './server';
-import { ChartType, ChartKind, ChartAxis, ChartSortOrder, ChartLegendPosition } from './chartManager';
-import type { IChartController, IChartWebView, IChartManager } from './chartManager';
+import { ChartType, ChartKind, ChartAxis, ChartSortOrder, ChartLegendPosition } from './chartProvider';
+import type { IChartView, IWebView, IChartProvider } from './chartProvider';
 
 // ─── Plotly Constants ───────────────────────────────────────────────────────
 
@@ -1189,14 +1189,14 @@ const plotlyChartScripts = `
 })();
 </script>`;
 
-/** Controller for Plotly charts rendered inside a webview. */
-class PlotlyChartController implements IChartController {
+/** View for Plotly charts rendered inside a webview. */
+class PlotlyChartView implements IChartView {
     onCopyResult: ((pngDataUrl: string, svgDataUrl?: string) => void) | undefined;
     onCopyError: ((error: string) => void) | undefined;
     private readonly subscription: { dispose(): void };
 
     constructor(
-        private readonly webview: IChartWebView,
+        private readonly webview: IWebView,
         private readonly render: (data: ResultTable, options: ChartOptions, darkMode: boolean) => string | undefined
     ) {
         this.subscription = webview.handle((message) => {
@@ -1220,7 +1220,7 @@ class PlotlyChartController implements IChartController {
     renderChart(data: ResultTable, options: ChartOptions, darkMode: boolean): void {
         const bodyHtml = this.render(data, options, darkMode);
         if (bodyHtml) {
-            this.webview.setChart(bodyHtml);
+            this.webview.setContent(bodyHtml);
         }
     }
 
@@ -1229,14 +1229,14 @@ class PlotlyChartController implements IChartController {
     }
 }
 
-export class PlotlyChartManager implements IChartManager {
+export class PlotlyChartProvider implements IChartProvider {
 
-    createController(webview: IChartWebView): IChartController {
+    createView(webview: IWebView): IChartView {
         webview.setup(
             `<script src="${PlotlyJsCdn}" charset="utf-8"></script>`,
             plotlyChartScripts
         );
-        return new PlotlyChartController(webview, (data, options, darkMode) => this.renderChartToHtmlDiv(data, options, darkMode));
+        return new PlotlyChartView(webview, (data, options, darkMode) => this.renderChartToHtmlDiv(data, options, darkMode));
     }
 
     private renderChartToHtmlDiv(data: ResultTable, options: ChartOptions, darkMode = false): string | undefined {

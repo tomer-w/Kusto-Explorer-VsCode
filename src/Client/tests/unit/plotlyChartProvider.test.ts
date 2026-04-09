@@ -2,15 +2,16 @@
 // Licensed under the MIT license.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { PlotlyChartManager } from '../../features/plotlyChartManager';
-import type { IChartWebView, IChartController } from '../../features/chartManager';
+import { PlotlyChartProvider } from '../../features/plotlyChartProvider';
+import type { IChartView } from '../../features/chartProvider';
+import type { IWebView } from '../../features/webview';
 import type { ResultTable, ChartOptions } from '../../features/server';
 
-// ─── Mock IChartWebView ─────────────────────────────────────────────────────
+// ─── Mock IWebView ──────────────────────────────────────────────────────────
 
-function createMockWebView(): IChartWebView & {
+function createMockWebView(): IWebView & {
     setup: ReturnType<typeof vi.fn>;
-    setChart: ReturnType<typeof vi.fn>;
+    setContent: ReturnType<typeof vi.fn>;
     invoke: ReturnType<typeof vi.fn>;
     /** Simulate a message from the webview. */
     simulateMessage: (message: Record<string, unknown>) => void;
@@ -18,7 +19,7 @@ function createMockWebView(): IChartWebView & {
     const handlers: ((message: Record<string, unknown>) => void)[] = [];
     return {
         setup: vi.fn(),
-        setChart: vi.fn(),
+        setContent: vi.fn(),
         invoke: vi.fn(),
         handle: vi.fn((handler: (message: Record<string, unknown>) => void) => {
             handlers.push(handler);
@@ -61,19 +62,19 @@ function makePieTable(): ResultTable {
     );
 }
 
-// ─── createController ───────────────────────────────────────────────────────
+// ─── createView ─────────────────────────────────────────────────────────
 
-describe('PlotlyChartManager', () => {
-    let manager: PlotlyChartManager;
+describe('PlotlyChartProvider', () => {
+    let provider: PlotlyChartProvider;
 
     beforeEach(() => {
-        manager = new PlotlyChartManager();
+        provider = new PlotlyChartProvider();
     });
 
-    describe('createController', () => {
+    describe('createView', () => {
         it('calls webview.setup() with Plotly CDN and scripts', () => {
             const webview = createMockWebView();
-            manager.createController(webview);
+            provider.createView(webview);
 
             expect(webview.setup).toHaveBeenCalledOnce();
             const [headHtml, scriptsHtml] = webview.setup.mock.calls[0]!;
@@ -82,38 +83,38 @@ describe('PlotlyChartManager', () => {
             expect(scriptsHtml).toContain('<script>');
         });
 
-        it('returns an IChartController', () => {
+        it('returns an IChartView', () => {
             const webview = createMockWebView();
-            const controller = manager.createController(webview);
+            const view = provider.createView(webview);
 
-            expect(controller).toBeDefined();
-            expect(typeof controller.renderChart).toBe('function');
-            expect(typeof controller.copyChart).toBe('function');
-            expect(typeof controller.dispose).toBe('function');
+            expect(view).toBeDefined();
+            expect(typeof view.renderChart).toBe('function');
+            expect(typeof view.copyChart).toBe('function');
+            expect(typeof view.dispose).toBe('function');
         });
 
         it('subscribes to webview messages', () => {
             const webview = createMockWebView();
-            manager.createController(webview);
+            provider.createView(webview);
 
             expect(webview.handle).toHaveBeenCalledOnce();
         });
     });
 
-    // ─── IChartController behavior ──────────────────────────────────────
+    // ─── IChartView behavior ────────────────────────────────────────────
 
-    describe('IChartController', () => {
+    describe('IChartView', () => {
         let webview: ReturnType<typeof createMockWebView>;
-        let controller: IChartController;
+        let view: IChartView;
 
         beforeEach(() => {
             webview = createMockWebView();
-            controller = manager.createController(webview);
+            view = provider.createView(webview);
         });
 
         describe('copyChart', () => {
             it('invokes copyChart command on the webview', () => {
-                controller.copyChart();
+                view.copyChart();
                 expect(webview.invoke).toHaveBeenCalledWith('copyChart');
             });
         });
@@ -121,7 +122,7 @@ describe('PlotlyChartManager', () => {
         describe('onCopyResult', () => {
             it('fires when webview sends copyChartResult message', () => {
                 const callback = vi.fn();
-                controller.onCopyResult = callback;
+                view.onCopyResult = callback;
 
                 webview.simulateMessage({
                     command: 'copyChartResult',
@@ -137,7 +138,7 @@ describe('PlotlyChartManager', () => {
 
             it('does not fire when pngDataUrl is missing', () => {
                 const callback = vi.fn();
-                controller.onCopyResult = callback;
+                view.onCopyResult = callback;
 
                 webview.simulateMessage({ command: 'copyChartResult' });
                 expect(callback).not.toHaveBeenCalled();
@@ -147,7 +148,7 @@ describe('PlotlyChartManager', () => {
         describe('onCopyError', () => {
             it('fires when webview sends copyChartError message', () => {
                 const callback = vi.fn();
-                controller.onCopyError = callback;
+                view.onCopyError = callback;
 
                 webview.simulateMessage({ command: 'copyChartError', error: 'Export failed' });
                 expect(callback).toHaveBeenCalledWith('Export failed');
@@ -155,7 +156,7 @@ describe('PlotlyChartManager', () => {
 
             it('uses fallback string when error is undefined', () => {
                 const callback = vi.fn();
-                controller.onCopyError = callback;
+                view.onCopyError = callback;
 
                 webview.simulateMessage({ command: 'copyChartError' });
                 expect(callback).toHaveBeenCalledWith('Unknown error');
@@ -165,9 +166,9 @@ describe('PlotlyChartManager', () => {
         describe('dispose', () => {
             it('unsubscribes from webview messages', () => {
                 const callback = vi.fn();
-                controller.onCopyResult = callback;
+                view.onCopyResult = callback;
 
-                controller.dispose();
+                view.dispose();
 
                 webview.simulateMessage({
                     command: 'copyChartResult',
@@ -178,10 +179,10 @@ describe('PlotlyChartManager', () => {
         });
 
         describe('renderChart', () => {
-            it('calls webview.setChart() with chart HTML', () => {
-                controller.renderChart(make2dTable(), { type: 'ColumnChart' }, false);
-                expect(webview.setChart).toHaveBeenCalledOnce();
-                const html = webview.setChart.mock.calls[0]![0] as string;
+            it('calls webview.setContent() with chart HTML', () => {
+                view.renderChart(make2dTable(), { type: 'ColumnChart' }, false);
+                expect(webview.setContent).toHaveBeenCalledOnce();
+                const html = webview.setContent.mock.calls[0]![0] as string;
                 expect(html).toContain('plotly-chart');
                 expect(html).toContain('Plotly.newPlot');
             });
@@ -191,9 +192,9 @@ describe('PlotlyChartManager', () => {
                     [{ name: 'X', type: 'string' }, { name: 'Y', type: 'real' }],
                     [],
                 );
-                controller.renderChart(emptyTable, { type: 'ColumnChart' }, false);
-                expect(webview.setChart).toHaveBeenCalledOnce();
-                const html = webview.setChart.mock.calls[0]![0] as string;
+                view.renderChart(emptyTable, { type: 'ColumnChart' }, false);
+                expect(webview.setContent).toHaveBeenCalledOnce();
+                const html = webview.setContent.mock.calls[0]![0] as string;
                 const traces = html.match(/var data = (\[[\s\S]*?\]);\s*var layout/);
                 expect(traces).toBeTruthy();
                 const parsed = JSON.parse(traces![1]!) as { x: unknown[]; y: unknown[] }[];
@@ -201,9 +202,9 @@ describe('PlotlyChartManager', () => {
                 expect(parsed[0]!.y).toEqual([]);
             });
 
-            it('does not call setChart for unsupported chart type', () => {
-                controller.renderChart(make2dTable(), { type: 'UnknownChart' }, false);
-                expect(webview.setChart).not.toHaveBeenCalled();
+            it('does not call setContent for unsupported chart type', () => {
+                view.renderChart(make2dTable(), { type: 'UnknownChart' }, false);
+                expect(webview.setContent).not.toHaveBeenCalled();
             });
         });
     });
@@ -212,18 +213,18 @@ describe('PlotlyChartManager', () => {
 
     describe('chart rendering', () => {
         let webview: ReturnType<typeof createMockWebView>;
-        let controller: IChartController;
+        let view: IChartView;
 
         beforeEach(() => {
             webview = createMockWebView();
-            controller = manager.createController(webview);
+            view = provider.createView(webview);
         });
 
-        /** Helper to render and return the HTML sent to setChart. */
+        /** Helper to render and return the HTML sent to setContent. */
         function renderAndGetHtml(table: ResultTable, options: ChartOptions, darkMode = false): string | undefined {
-            controller.renderChart(table, options, darkMode);
-            if (webview.setChart.mock.calls.length === 0) return undefined;
-            return webview.setChart.mock.calls[0]![0] as string;
+            view.renderChart(table, options, darkMode);
+            if (webview.setContent.mock.calls.length === 0) return undefined;
+            return webview.setContent.mock.calls[0]![0] as string;
         }
 
         /** Helper to parse the Plotly data array from the rendered HTML. */
