@@ -26,8 +26,6 @@ import { resultTableToMarkdown } from './markdown';
  * Created by `IDataTableProvider.createView()`.
  */
 export interface IDataTableView {
-    /** Render the given table data into the grid. */
-    renderTable(table: ResultTable): void;
     /** Request the webview to copy the cell under the cursor. */
     copyCell(): void;
     /** Copy the entire table as a KQL datatable expression to the clipboard. */
@@ -42,7 +40,7 @@ export interface IDataTableView {
 
 /** Provider for creating data table views bound to webview regions. */
 export interface IDataTableProvider {
-    createView(webview: IWebView): IDataTableView;
+    createView(webview: IWebView, table: ResultTable): IDataTableView;
 }
 
 // ─── Implementation ─────────────────────────────────────────────────────────
@@ -64,12 +62,13 @@ class DataTableView implements IDataTableView {
     private readonly clipboard: IClipboard;
     private readonly token: string;
     private readonly subscription: { dispose(): void };
-    private table: ResultTable | undefined;
+    private readonly table: ResultTable;
 
-    constructor(webview: IWebView, server: IServer, clipboard: IClipboard) {
+    constructor(webview: IWebView, server: IServer, clipboard: IClipboard, table: ResultTable) {
         this.webview = webview;
         this.server = server;
         this.clipboard = clipboard;
+        this.table = table;
         this.token = makeToken();
         webview.setup(DataTableView.buildHeadHtml(), '');
         this.subscription = webview.handle((msg) => {
@@ -81,17 +80,13 @@ class DataTableView implements IDataTableView {
                 this.resolveExpression();
             }
         });
-    }
 
-    renderTable(table: ResultTable): void {
-        this.table = table;
         const data = {
             columns: table.columns,
             rows: table.rows.map(row => row.map(cell => formatCellValue(cell)))
         };
         const json = JSON.stringify(data).replace(/<\//g, '<\\/');
-        const html = `<table></table>${this.buildInitScript(json)}`;
-        this.webview.setContent(html);
+        webview.setContent(`<table></table>${this.buildInitScript(json)}`);
         this.resolveExpression();
     }
 
@@ -100,7 +95,6 @@ class DataTableView implements IDataTableView {
     }
 
     async copyTableAsExpression(): Promise<void> {
-        if (!this.table) return;
         const expression = await this.server.getTableAsExpression(this.table);
         if (expression) {
             await this.clipboard.copyText(expression);
@@ -108,7 +102,6 @@ class DataTableView implements IDataTableView {
     }
 
     async copyTableAsText(): Promise<void> {
-        if (!this.table) return;
         const html = resultTableToHtml(this.table);
         const markdown = resultTableToMarkdown(this.table);
         if (html) {
@@ -126,7 +119,6 @@ class DataTableView implements IDataTableView {
     }
 
     private resolveExpression(): void {
-        if (!this.table) return;
         this.server.getTableAsExpression(this.table).then(
             expression => { if (expression) this.webview.invoke('setExpression', { expression }); },
             () => { /* ignore errors — drag will just not work until next attempt */ }
@@ -253,6 +245,7 @@ class DataTableView implements IDataTableView {
     var tableEl = container.querySelector('table');
     if (!tableEl) return;
 
+    function init() {
     // Clean up previous instance if re-rendered
     if (container._dtCleanup) container._dtCleanup();
 
@@ -362,8 +355,17 @@ class DataTableView implements IDataTableView {
         window.removeEventListener('message', onMessage);
         if (grid) grid.destroy();
     };
+    } // end init
+
+    // Defer if the Simple-DataTables CDN script hasn't loaded yet
+    if (typeof simpleDatatables !== 'undefined') {
+        init();
+    } else {
+        var cdnScript = document.querySelector('script[src*="simple-datatables"]');
+        if (cdnScript) { cdnScript.addEventListener('load', init); }
+    }
 })();
-<\\/script>`;
+<\/script>`;
     }
 }
 
@@ -376,7 +378,7 @@ export class DataTableProvider implements IDataTableProvider {
         this.clipboard = clipboard;
     }
 
-    createView(webview: IWebView): IDataTableView {
-        return new DataTableView(webview, this.server, this.clipboard);
+    createView(webview: IWebView, table: ResultTable): IDataTableView {
+        return new DataTableView(webview, this.server, this.clipboard, table);
     }
 }

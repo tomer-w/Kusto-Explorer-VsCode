@@ -38,6 +38,7 @@ class WebViewAdapter implements IWebView {
     private readonly contentCommand: string;
     headHtml = '';
     scriptsHtml = '';
+    contentHtml = '';
 
     constructor(webview: vscode.Webview, contentCommand = 'setChartHtml') {
         this.webview = webview;
@@ -50,6 +51,7 @@ class WebViewAdapter implements IWebView {
     }
 
     setContent(html: string): void {
+        this.contentHtml = html;
         this.webview.postMessage({ command: this.contentCommand, html });
     }
 
@@ -466,6 +468,18 @@ export class ResultsViewer {
         const chartOptions = resultData.chartOptions ? applyChartDefaults(resultData.chartOptions) : undefined;
         const columnNames = resultData.tables[0]?.columns?.map(c => c.name) ?? [];
 
+        // Ensure the panel is ready before creating table adapters that need panel.webview
+        if (!this.resultsPanel) {
+            const isBesideMode = getResultsViewDisplayLocation() === 'beside';
+            if (isBesideMode) {
+                // In beside mode, don't force the panel open
+            } else if (this.waitForPanelReady) {
+                await this.waitForPanelReady();
+            } else {
+                await vscode.commands.executeCommand('kusto.resultsView.focus');
+            }
+        }
+
         // Create table views for each result table (dispose previous ones first)
         this.panelTableViews.forEach(v => v.dispose());
         this.panelTableViews = [];
@@ -473,7 +487,7 @@ export class ResultsViewer {
         if (hasTable && this.resultsPanel) {
             for (let i = 0; i < resultData.tables.length; i++) {
                 const adapter = new WebViewAdapter(this.resultsPanel.webview, `setTableContent-${i}`);
-                const view = this.dataTableProvider.createView(adapter);
+                const view = this.dataTableProvider.createView(adapter, resultData.tables[i]!);
                 this.panelTableViews.push(view);
                 this.panelTableWebViews.push(adapter);
             }
@@ -492,11 +506,6 @@ export class ResultsViewer {
                 this.panelChartView?.renderChart(table, chartOptions, darkMode);
             }
             this.panelEditorView?.setOptions(chartOptions, columnNames);
-        }
-
-        // Populate tables via controller messages after page is set
-        for (let i = 0; i < resultData.tables.length; i++) {
-            this.panelTableViews[i]?.renderTable(resultData.tables[i]!);
         }
     }
 
@@ -550,7 +559,7 @@ export class ResultsViewer {
         if (this.singletonView) {
             for (let i = 0; i < resultData.tables.length; i++) {
                 const adapter = new WebViewAdapter(this.singletonView.webview, `setTableContent-${i}`);
-                const view = this.dataTableProvider.createView(adapter);
+                const view = this.dataTableProvider.createView(adapter, resultData.tables[i]!);
                 this.singletonTableViews.push(view);
                 this.singletonTableWebViews.push(adapter);
             }
@@ -571,11 +580,6 @@ export class ResultsViewer {
                 this.singletonChartView?.renderChart(table, chartOptions, darkMode);
             }
             this.singletonEditorView?.setOptions(chartOptions, columnNames);
-        }
-
-        // Populate tables via controller messages after page is set
-        for (let i = 0; i < resultData.tables.length; i++) {
-            this.singletonTableViews[i]?.renderTable(resultData.tables[i]!);
         }
     }
 
@@ -1380,7 +1384,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         const docTableWebViews: WebViewAdapter[] = [];
         for (let i = 0; i < resultData.tables.length; i++) {
             const adapter = new WebViewAdapter(webviewPanel.webview, `setTableContent-${i}`);
-            const view = this.dataTableProvider.createView(adapter);
+            const view = this.dataTableProvider.createView(adapter, resultData.tables[i]!);
             docTableViews.push(view);
             docTableWebViews.push(adapter);
         }
@@ -1400,11 +1404,6 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
             }
             const editorView = (this.viewer['editorViews'] as Map<vscode.WebviewPanel, IChartEditorView>).get(webviewPanel);
             editorView?.setOptions(chartOptions, columnNames);
-        }
-
-        // Populate tables via controller messages after page is set
-        for (let i = 0; i < resultData.tables.length; i++) {
-            docTableViews[i]?.renderTable(resultData.tables[i]!);
         }
     }
 
@@ -1454,10 +1453,10 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
             (showQuery ? 1 : 0);
         const showTabs = visibleTabCount > 1;
 
-        // Build individual table divs (empty containers — content pushed by DataTableView)
+        // Build individual table divs with inline content from DataTableView
         const tableContents = showTables
             ? tables.map((_t, i) =>
-                `<div id="table-${i}" class="view-content" data-vscode-context='{"chartVisible": false, "queryVisible": false, "preventDefaultContextMenuItems": true}'></div>`
+                `<div id="table-${i}" class="view-content" data-vscode-context='{"chartVisible": false, "queryVisible": false, "preventDefaultContextMenuItems": true}'>${tableWebViews?.[i]?.contentHtml ?? ''}</div>`
             ).join('')
             : '';
 
@@ -1516,24 +1515,6 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
 
         // Get data table page dependencies from the first table adapter
         const tableHead = showTables && tableWebViews?.length ? (tableWebViews[0]!.headHtml ?? '') : '';
-
-        // Build content dispatch handlers for each table container
-        const tableDispatchHandlers = showTables
-            ? tables.map((_t, i) =>
-                `if (msg.command === 'setTableContent-${i}' && typeof msg.html === 'string') {
-                    var div = document.getElementById('table-${i}');
-                    if (div) {
-                        div.innerHTML = msg.html;
-                        div.querySelectorAll('script').forEach(function(old) {
-                            var s = document.createElement('script');
-                            s.textContent = old.textContent;
-                            old.parentNode.replaceChild(s, old);
-                        });
-                    }
-                    return;
-                }`
-            ).join('\n                ')
-            : '';
 
         return `<!DOCTYPE html>
 <html>
@@ -1709,9 +1690,6 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
                 if (window._chartUpdated) window._chartUpdated();
                 return;
             }
-
-            // ── Table content dispatch ──
-            ${tableDispatchHandlers}
 
             if (msg.command === 'toggleEditPanel') {
                 toggleEditPanel();

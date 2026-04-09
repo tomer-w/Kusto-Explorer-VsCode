@@ -75,7 +75,7 @@ describe('SimpleDataTableProvider', () => {
     describe('createView', () => {
         it('calls webview.setup() with CDN link and CSS', () => {
             const webview = createMockWebView();
-            provider.createView(webview);
+            provider.createView(webview, make2dTable());
 
             expect(webview.setup).toHaveBeenCalledOnce();
             const [headHtml, scriptsHtml] = webview.setup.mock.calls[0]!;
@@ -87,10 +87,9 @@ describe('SimpleDataTableProvider', () => {
 
         it('returns an IDataTableView', () => {
             const webview = createMockWebView();
-            const view = provider.createView(webview);
+            const view = provider.createView(webview, make2dTable());
 
             expect(view).toBeDefined();
-            expect(typeof view.renderTable).toBe('function');
             expect(typeof view.copyCell).toBe('function');
             expect(typeof view.toggleSearch).toBe('function');
             expect(typeof view.dispose).toBe('function');
@@ -98,25 +97,14 @@ describe('SimpleDataTableProvider', () => {
 
         it('subscribes to webview messages', () => {
             const webview = createMockWebView();
-            provider.createView(webview);
+            provider.createView(webview, make2dTable());
 
             expect(webview.handle).toHaveBeenCalledOnce();
         });
-    });
-
-    // ─── renderTable ────────────────────────────────────────────────────
-
-    describe('renderTable', () => {
-        let webview: ReturnType<typeof createMockWebView>;
-        let view: IDataTableView;
-
-        beforeEach(() => {
-            webview = createMockWebView();
-            view = provider.createView(webview);
-        });
 
         it('calls webview.setContent with HTML containing a table and script', () => {
-            view.renderTable(make2dTable());
+            const webview = createMockWebView();
+            provider.createView(webview, make2dTable());
 
             expect(webview.setContent).toHaveBeenCalledOnce();
             const html: string = webview.setContent.mock.calls[0]![0];
@@ -125,7 +113,8 @@ describe('SimpleDataTableProvider', () => {
         });
 
         it('embeds column names in the content', () => {
-            view.renderTable(make2dTable());
+            const webview = createMockWebView();
+            provider.createView(webview, make2dTable());
             const html: string = webview.setContent.mock.calls[0]![0];
 
             expect(html).toContain('Category');
@@ -133,7 +122,8 @@ describe('SimpleDataTableProvider', () => {
         });
 
         it('embeds row data in the content', () => {
-            view.renderTable(make2dTable());
+            const webview = createMockWebView();
+            provider.createView(webview, make2dTable());
             const html: string = webview.setContent.mock.calls[0]![0];
 
             expect(html).toContain('"A"');
@@ -146,7 +136,8 @@ describe('SimpleDataTableProvider', () => {
                 [{ name: 'Col', type: 'string' }],
                 [[null], [undefined]],
             );
-            view.renderTable(table);
+            const webview = createMockWebView();
+            provider.createView(webview, table);
             const html: string = webview.setContent.mock.calls[0]![0];
 
             // Both null and undefined become empty strings in the JSON
@@ -158,7 +149,8 @@ describe('SimpleDataTableProvider', () => {
                 [{ name: 'Col', type: 'dynamic' }],
                 [[{ a: 1 }]],
             );
-            view.renderTable(table);
+            const webview = createMockWebView();
+            provider.createView(webview, table);
             const html: string = webview.setContent.mock.calls[0]![0];
 
             // formatCellValue produces '{"a":1}', then JSON.stringify double-encodes it
@@ -170,15 +162,20 @@ describe('SimpleDataTableProvider', () => {
                 [{ name: 'Col', type: 'string' }],
                 [['</script>']],
             );
-            view.renderTable(table);
+            const webview = createMockWebView();
+            provider.createView(webview, table);
             const html: string = webview.setContent.mock.calls[0]![0];
 
-            // The </ in JSON data must be escaped to prevent premature script closing
-            expect(html).not.toContain('</script>');
+            // The </ in JSON data must be escaped to prevent premature script closing.
+            // Only the real closing </script> tag should appear (at the very end).
+            const matches = html.match(/<\/script>/g);
+            expect(matches).toHaveLength(1);
+            expect(html).toContain('<\\/script>'); // escaped form in JSON data
         });
 
         it('includes Simple-DataTables initialization in the script', () => {
-            view.renderTable(make2dTable());
+            const webview = createMockWebView();
+            provider.createView(webview, make2dTable());
             const html: string = webview.setContent.mock.calls[0]![0];
 
             expect(html).toContain('simpleDatatables.DataTable');
@@ -186,27 +183,17 @@ describe('SimpleDataTableProvider', () => {
         });
 
         it('includes container-relative DOM queries in the script', () => {
-            view.renderTable(make2dTable());
+            const webview = createMockWebView();
+            provider.createView(webview, make2dTable());
             const html: string = webview.setContent.mock.calls[0]![0];
 
             expect(html).toContain('document.currentScript.parentElement');
             expect(html).toContain('container.querySelector');
         });
 
-        it('can be called multiple times to re-render', () => {
-            const table1 = makeTable([{ name: 'A', type: 'string' }], [['x']]);
-            const table2 = makeTable([{ name: 'B', type: 'string' }], [['y']]);
-
-            view.renderTable(table1);
-            view.renderTable(table2);
-
-            expect(webview.setContent).toHaveBeenCalledTimes(2);
-            const html2: string = webview.setContent.mock.calls[1]![0];
-            expect(html2).toContain('"B"');
-        });
-
         it('includes cleanup support for re-render', () => {
-            view.renderTable(make2dTable());
+            const webview = createMockWebView();
+            provider.createView(webview, make2dTable());
             const html: string = webview.setContent.mock.calls[0]![0];
 
             expect(html).toContain('_dtCleanup');
@@ -218,7 +205,7 @@ describe('SimpleDataTableProvider', () => {
     describe('copyCell', () => {
         it('invokes copyCell command on the webview', () => {
             const webview = createMockWebView();
-            const view = provider.createView(webview);
+            const view = provider.createView(webview, make2dTable());
 
             view.copyCell();
 
@@ -229,7 +216,7 @@ describe('SimpleDataTableProvider', () => {
     describe('toggleSearch', () => {
         it('invokes toggleSearch command on the webview', () => {
             const webview = createMockWebView();
-            const view = provider.createView(webview);
+            const view = provider.createView(webview, make2dTable());
 
             view.toggleSearch();
 
@@ -238,14 +225,13 @@ describe('SimpleDataTableProvider', () => {
     });
 
     describe('expression resolver', () => {
-        it('calls the server with the table after renderTable', async () => {
+        it('calls the server with the table on creation', async () => {
             const mockGetExpr = vi.fn(async () => 'datatable(x:int)[1]');
             const p = new DataTableProvider(createMockServer(mockGetExpr), clipboard);
             const webview = createMockWebView();
-            const view = p.createView(webview);
             const table = make2dTable();
+            p.createView(webview, table);
 
-            view.renderTable(table);
             await Promise.resolve();
 
             expect(mockGetExpr).toHaveBeenCalledWith(table);
@@ -256,8 +242,7 @@ describe('SimpleDataTableProvider', () => {
             const mockGetExpr = vi.fn(async () => 'expr');
             const p = new DataTableProvider(createMockServer(mockGetExpr), clipboard);
             const webview = createMockWebView();
-            const view = p.createView(webview);
-            view.renderTable(make2dTable());
+            p.createView(webview, make2dTable());
 
             await Promise.resolve();
             webview.invoke.mockClear();
@@ -277,9 +262,8 @@ describe('SimpleDataTableProvider', () => {
         it('does not invoke setExpression when server returns null', async () => {
             const p = new DataTableProvider(createMockServer(async () => null), clipboard);
             const webview = createMockWebView();
-            const view = p.createView(webview);
+            p.createView(webview, make2dTable());
 
-            view.renderTable(make2dTable());
             await Promise.resolve();
 
             expect(webview.invoke).not.toHaveBeenCalledWith('setExpression', expect.anything());
@@ -288,32 +272,19 @@ describe('SimpleDataTableProvider', () => {
         it('does not throw when server rejects', async () => {
             const p = new DataTableProvider(createMockServer(async () => { throw new Error('server error'); }), clipboard);
             const webview = createMockWebView();
-            const view = p.createView(webview);
+            p.createView(webview, make2dTable());
 
-            view.renderTable(make2dTable());
             await Promise.resolve();
             // no error thrown
         });
 
         it('does not invoke setExpression when server returns null (NullServer)', async () => {
             const webview = createMockWebView();
-            const view = provider.createView(webview);
+            provider.createView(webview, make2dTable());
 
-            view.renderTable(make2dTable());
             await Promise.resolve();
 
             expect(webview.invoke).not.toHaveBeenCalledWith('setExpression', expect.anything());
-        });
-
-        it('does not call server before renderTable', async () => {
-            const mockGetExpr = vi.fn(async () => 'expr');
-            const p = new DataTableProvider(createMockServer(mockGetExpr), clipboard);
-            const webview = createMockWebView();
-            p.createView(webview);
-
-            await Promise.resolve();
-
-            expect(mockGetExpr).not.toHaveBeenCalled();
         });
     });
 
@@ -324,10 +295,9 @@ describe('SimpleDataTableProvider', () => {
             const mockGetExpr = vi.fn(async () => 'datatable(x:int)[1]');
             const p = new DataTableProvider(createMockServer(mockGetExpr), clipboard);
             const webview = createMockWebView();
-            const view = p.createView(webview);
             const table = make2dTable();
+            const view = p.createView(webview, table);
 
-            view.renderTable(table);
             await view.copyTableAsExpression();
 
             expect(mockGetExpr).toHaveBeenCalledWith(table);
@@ -337,23 +307,10 @@ describe('SimpleDataTableProvider', () => {
         it('does not copy when server returns null', async () => {
             const p = new DataTableProvider(createMockServer(async () => null), clipboard);
             const webview = createMockWebView();
-            const view = p.createView(webview);
-
-            view.renderTable(make2dTable());
-            await view.copyTableAsExpression();
-
-            expect(clipboard.copyText).not.toHaveBeenCalled();
-        });
-
-        it('does nothing before renderTable', async () => {
-            const mockGetExpr = vi.fn(async () => 'expr');
-            const p = new DataTableProvider(createMockServer(mockGetExpr), clipboard);
-            const webview = createMockWebView();
-            const view = p.createView(webview);
+            const view = p.createView(webview, make2dTable());
 
             await view.copyTableAsExpression();
 
-            expect(mockGetExpr).not.toHaveBeenCalled();
             expect(clipboard.copyText).not.toHaveBeenCalled();
         });
     });
@@ -363,9 +320,8 @@ describe('SimpleDataTableProvider', () => {
     describe('copyTableAsText', () => {
         it('copies HTML and markdown to clipboard', async () => {
             const webview = createMockWebView();
-            const view = provider.createView(webview);
+            const view = provider.createView(webview, make2dTable());
 
-            view.renderTable(make2dTable());
             await view.copyTableAsText();
 
             expect(clipboard.copyItems).toHaveBeenCalledOnce();
@@ -375,16 +331,6 @@ describe('SimpleDataTableProvider', () => {
             expect(items[1].format).toBe('Text');
             // Text item should be markdown
             expect(items[1].data).toContain('|');
-        });
-
-        it('does nothing before renderTable', async () => {
-            const webview = createMockWebView();
-            const view = provider.createView(webview);
-
-            await view.copyTableAsText();
-
-            expect(clipboard.copyItems).not.toHaveBeenCalled();
-            expect(clipboard.copyText).not.toHaveBeenCalled();
         });
     });
 
@@ -397,9 +343,8 @@ describe('SimpleDataTableProvider', () => {
 
         beforeEach(() => {
             webview = createMockWebView();
-            view = provider.createView(webview);
+            view = provider.createView(webview, make2dTable());
             // Extract the token from the rendered content
-            view.renderTable(make2dTable());
             const html: string = webview.setContent.mock.calls[0]![0];
             const match = html.match(/var token = '(dt-[a-z0-9]+)'/);
             token = match![1]!;
@@ -438,11 +383,8 @@ describe('SimpleDataTableProvider', () => {
         it('generates unique tokens for different views', () => {
             const webview1 = createMockWebView();
             const webview2 = createMockWebView();
-            const view1 = provider.createView(webview1);
-            const view2 = provider.createView(webview2);
-
-            view1.renderTable(make2dTable());
-            view2.renderTable(make2dTable());
+            provider.createView(webview1, make2dTable());
+            provider.createView(webview2, make2dTable());
 
             const html1: string = webview1.setContent.mock.calls[0]![0];
             const html2: string = webview2.setContent.mock.calls[0]![0];
@@ -455,10 +397,9 @@ describe('SimpleDataTableProvider', () => {
 
         it('only the matching view copies to clipboard when sharing a webview', () => {
             const webview = createMockWebView();
-            const view1 = provider.createView(webview);
-            provider.createView(webview);
+            provider.createView(webview, make2dTable());
+            provider.createView(webview, make2dTable());
 
-            view1.renderTable(make2dTable());
             // Extract token from first view
             const html1: string = webview.setContent.mock.calls[0]![0];
             const match1 = html1.match(/var token = '(dt-[a-z0-9]+)'/);
@@ -477,9 +418,8 @@ describe('SimpleDataTableProvider', () => {
     describe('dispose', () => {
         it('unsubscribes the message handler', () => {
             const webview = createMockWebView();
-            const view = provider.createView(webview);
+            const view = provider.createView(webview, make2dTable());
 
-            view.renderTable(make2dTable());
             const html: string = webview.setContent.mock.calls[0]![0];
             const match = html.match(/var token = '(dt-[a-z0-9]+)'/);
             const token = match![1]!;
@@ -496,8 +436,7 @@ describe('SimpleDataTableProvider', () => {
     describe('in-page script', () => {
         it('includes row selection handling', () => {
             const webview = createMockWebView();
-            const view = provider.createView(webview);
-            view.renderTable(make2dTable());
+            provider.createView(webview, make2dTable());
             const html: string = webview.setContent.mock.calls[0]![0];
 
             expect(html).toContain('row-selected');
@@ -505,8 +444,7 @@ describe('SimpleDataTableProvider', () => {
 
         it('includes drag-drop support', () => {
             const webview = createMockWebView();
-            const view = provider.createView(webview);
-            view.renderTable(make2dTable());
+            provider.createView(webview, make2dTable());
             const html: string = webview.setContent.mock.calls[0]![0];
 
             expect(html).toContain('dragstart');
@@ -515,8 +453,7 @@ describe('SimpleDataTableProvider', () => {
 
         it('includes context menu tracking for copyCell', () => {
             const webview = createMockWebView();
-            const view = provider.createView(webview);
-            view.renderTable(make2dTable());
+            provider.createView(webview, make2dTable());
             const html: string = webview.setContent.mock.calls[0]![0];
 
             expect(html).toContain('contextmenu');
@@ -525,8 +462,7 @@ describe('SimpleDataTableProvider', () => {
 
         it('checks active class before responding to commands', () => {
             const webview = createMockWebView();
-            const view = provider.createView(webview);
-            view.renderTable(make2dTable());
+            provider.createView(webview, make2dTable());
             const html: string = webview.setContent.mock.calls[0]![0];
 
             expect(html).toContain("container.classList.contains('active')");
@@ -534,8 +470,7 @@ describe('SimpleDataTableProvider', () => {
 
         it('includes search toggle support', () => {
             const webview = createMockWebView();
-            const view = provider.createView(webview);
-            view.renderTable(make2dTable());
+            provider.createView(webview, make2dTable());
             const html: string = webview.setContent.mock.calls[0]![0];
 
             expect(html).toContain('toggleSearch');
