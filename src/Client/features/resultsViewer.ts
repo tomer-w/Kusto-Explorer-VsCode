@@ -9,10 +9,8 @@
 import * as vscode from 'vscode';
 import type { IServer } from './server';
 import * as server from './server';
-import { Clipboard } from './clipboard';
+import type { IClipboard } from './clipboard';
 import type { ClipboardItem } from './clipboard';
-import { formatCfHtml } from './clipboard';
-import { resultDataToMarkdown } from './markdown';
 import { resultDataToHtml, DataAsHtml, HtmlTable } from './html';
 import type { IChartProvider, IChartView } from './chartProvider';
 import type { IChartEditorProvider, IChartEditorView } from './chartEditorProvider';
@@ -239,7 +237,7 @@ async function saveResults(source: { data: server.ResultData }): Promise<{ uri: 
 export class ResultsViewer {
 
     private readonly server: IServer;
-    private readonly clipboard: Clipboard;
+    private readonly clipboard: IClipboard;
     private readonly chartProvider: IChartProvider;
     private readonly chartEditorProvider: IChartEditorProvider;
     private readonly dataTableProvider: IDataTableProvider;
@@ -293,7 +291,7 @@ export class ResultsViewer {
     private readonly dataTableViews = new Map<vscode.WebviewPanel, IDataTableView[]>();
     private readonly dataTableWebViews = new Map<vscode.WebviewPanel, WebViewAdapter[]>();
 
-    constructor(context: vscode.ExtensionContext, server: IServer, clipboard: Clipboard, chartProvider: IChartProvider, chartEditorProvider: IChartEditorProvider, dataTableProvider: IDataTableProvider) {
+    constructor(context: vscode.ExtensionContext, server: IServer, clipboard: IClipboard, chartProvider: IChartProvider, chartEditorProvider: IChartEditorProvider, dataTableProvider: IDataTableProvider) {
         this.server = server;
         this.clipboard = clipboard;
         this.chartProvider = chartProvider;
@@ -371,7 +369,6 @@ export class ResultsViewer {
                             this.panelActiveTabIndex = parseInt(match[1]!, 10);
                         }
                         vscode.commands.executeCommand('setContext', 'kusto.panelShowingData', message.viewId !== 'query');
-                        this.sendExpressionToResultsPanel();
                     }
                 });
                 webviewView.webview.html = '<html>no results</html>';
@@ -477,8 +474,6 @@ export class ResultsViewer {
             for (let i = 0; i < resultData.tables.length; i++) {
                 const adapter = new WebViewAdapter(this.resultsPanel.webview, `setTableContent-${i}`);
                 const view = this.dataTableProvider.createView(adapter);
-                view.onCopyText = (text) => vscode.env.clipboard.writeText(text);
-                view.onRequestExpression = () => this.sendExpressionToResultsPanel();
                 this.panelTableViews.push(view);
                 this.panelTableWebViews.push(adapter);
             }
@@ -503,8 +498,6 @@ export class ResultsViewer {
         for (let i = 0; i < resultData.tables.length; i++) {
             this.panelTableViews[i]?.renderTable(resultData.tables[i]!);
         }
-
-        this.sendExpressionToResultsPanel();
     }
 
     /**
@@ -558,8 +551,6 @@ export class ResultsViewer {
             for (let i = 0; i < resultData.tables.length; i++) {
                 const adapter = new WebViewAdapter(this.singletonView.webview, `setTableContent-${i}`);
                 const view = this.dataTableProvider.createView(adapter);
-                view.onCopyText = (text) => vscode.env.clipboard.writeText(text);
-                view.onRequestExpression = () => this.sendExpressionToResultsView(this.singletonView!);
                 this.singletonTableViews.push(view);
                 this.singletonTableWebViews.push(adapter);
             }
@@ -606,7 +597,7 @@ export class ResultsViewer {
                 items.push({ format: 'image/svg+xml', data: svgText });
             }
 
-            this.clipboard.copy(items).catch(error => {
+            this.clipboard.copyItems(items).catch(error => {
                 vscode.window.showErrorMessage(`Failed to copy chart to clipboard: ${error}`);
             });
         } catch (error) {
@@ -708,21 +699,6 @@ export class ResultsViewer {
         this.lastPanelTableNames = [];
     }
 
-    private async sendExpressionToResultsPanel(): Promise<void> {
-        if (!this.server || !this.lastPanelResultData) {
-            return;
-        }
-        try {
-            const tableName = this.lastPanelTableNames[this.panelActiveTabIndex];
-            const result = await this.server.getDataAsExpression(this.lastPanelResultData, tableName);
-            if (result?.expression) {
-                this.panelTableViews[this.panelActiveTabIndex]?.setExpression(result.expression);
-            }
-        } catch {
-            // Ignore
-        }
-    }
-
     /** Ensures the singleton webview panel exists, creating it (with chart adapter) if needed. */
     private ensureSingletonView(beside: boolean, mode: ResultViewMode): void {
         if (this.singletonView) { return; }
@@ -782,9 +758,6 @@ export class ResultsViewer {
                 const state = this.viewerStates.get(this.singletonView!);
                 if (state) { state.activeView = message.viewId; }
                 vscode.commands.executeCommand('setContext', 'kusto.resultViewerChartActive', message.viewId === 'chart');
-                if (message.viewId.startsWith('table-')) {
-                    this.sendExpressionToResultsView(this.singletonView!);
-                }
                 return;
             }
             if (message.command === 'editPanelToggled' && typeof message.visible === 'boolean') {
@@ -840,7 +813,6 @@ export class ResultsViewer {
         this.singletonView!.title = title;
         this.singletonView!.webview.html = html;
         this.singletonView!.reveal(viewColumn, true);
-        this.sendExpressionToResultsView(this.singletonView!);
     }
 
     private async updateChartInSingletonView(): Promise<void> {
@@ -1002,22 +974,6 @@ export class ResultsViewer {
         return state.tableNames[0];
     }
 
-    private async sendExpressionToResultsView(webview: vscode.WebviewPanel): Promise<void> {
-        const state = this.viewerStates.get(webview);
-        if (!state) { return; }
-        try {
-            const tableName = this.getActiveTableName(state);
-            const result = await this.server.getDataAsExpression(state.resultData, tableName);
-            if (result?.expression) {
-                const tableIndex = this.getActiveTableIndex(state);
-                const views = this.getTableViewsForWebview(webview);
-                views?.[tableIndex]?.setExpression(result.expression);
-            }
-        } catch {
-            // Ignore — drag will just not work until expression is available
-        }
-    }
-
     /**
      * Copies the table cell under the cursor in the active results view.
      */
@@ -1038,41 +994,15 @@ export class ResultsViewer {
      */
     async copyData(): Promise<void> {
         const state = this.getActiveViewerState();
-        if (state) {
-            const tableName = this.getActiveTableName(state);
-            const htmlResult = resultDataToHtml(state.resultData, tableName);
-            const html = htmlResult?.tables[0]?.html;
-            const markdown = resultDataToMarkdown(state.resultData, tableName);
-
-            if (html) {
-                this.clipboard.copy([
-                    { format: 'HTML Format', data: formatCfHtml(html), encoding: 'utf8' },
-                    { format: 'Text', data: markdown || html, encoding: 'text' },
-                ]);
-            } else if (markdown) {
-                vscode.env.clipboard.writeText(markdown);
-            }
+        if (state && this.activeResultWebview) {
+            const tableIndex = this.getActiveTableIndex(state);
+            const views = this.getTableViewsForWebview(this.activeResultWebview);
+            await views?.[tableIndex]?.copyTableAsText();
             return;
         }
 
-        // Fall back to bottom view data
-        if (!this.server || !this.lastPanelResultData) {
-            return;
-        }
-
-        const tableName = this.lastPanelTableNames[this.panelActiveTabIndex];
-        const htmlResult = resultDataToHtml(this.lastPanelResultData, tableName);
-        const html = htmlResult?.tables[0]?.html;
-        const markdown = resultDataToMarkdown(this.lastPanelResultData, tableName);
-
-        if (html) {
-            this.clipboard.copy([
-                { format: 'HTML Format', data: formatCfHtml(html), encoding: 'utf8' },
-                { format: 'Text', data: markdown || html, encoding: 'text' },
-            ]);
-        } else if (markdown) {
-            vscode.env.clipboard.writeText(markdown);
-        }
+        // Fall back to bottom view
+        await this.panelTableViews[this.panelActiveTabIndex]?.copyTableAsText();
     }
 
     /**
@@ -1080,32 +1010,15 @@ export class ResultsViewer {
      */
     async copyTableAsExpression(): Promise<void> {
         const state = this.getActiveViewerState();
-        if (state) {
-            try {
-                const tableName = this.getActiveTableName(state);
-                const result = await this.server.getDataAsExpression(state.resultData, tableName);
-                if (result?.expression) {
-                    await vscode.env.clipboard.writeText(result.expression);
-                }
-            } catch (error) {
-                vscode.window.showErrorMessage(`Failed to copy as expression: ${error}`);
-            }
+        if (state && this.activeResultWebview) {
+            const tableIndex = this.getActiveTableIndex(state);
+            const views = this.getTableViewsForWebview(this.activeResultWebview);
+            await views?.[tableIndex]?.copyTableAsExpression();
             return;
         }
 
-        if (!this.lastPanelResultData) {
-            return;
-        }
-
-        try {
-            const tableName = this.lastPanelTableNames[this.panelActiveTabIndex];
-            const result = await this.server.getDataAsExpression(this.lastPanelResultData, tableName);
-            if (result?.expression) {
-                await vscode.env.clipboard.writeText(result.expression);
-            }
-        } catch (error) {
-            vscode.window.showErrorMessage(`Failed to copy as expression: ${error}`);
-        }
+        // Fall back to bottom view
+        await this.panelTableViews[this.panelActiveTabIndex]?.copyTableAsExpression();
     }
 
     /**
@@ -1347,9 +1260,6 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
                     state.activeView = message.viewId;
                 }
                 vscode.commands.executeCommand('setContext', 'kusto.resultViewerChartActive', message.viewId === 'chart');
-                if (message.viewId.startsWith('table-')) {
-                    this.viewer['sendExpressionToResultsView'](webviewPanel);
-                }
                 return;
             }
             if (message.command === 'editPanelToggled' && typeof message.visible === 'boolean') {
@@ -1374,7 +1284,6 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
 
         // Render from the document content
         await this.updateWebview(document, webviewPanel);
-        this.viewer['sendExpressionToResultsView'](webviewPanel);
 
         // Re-render when the document content changes (e.g. external edit)
         const changeSubscription = vscode.workspace.onDidChangeTextDocument(async e => {
@@ -1472,8 +1381,6 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         for (let i = 0; i < resultData.tables.length; i++) {
             const adapter = new WebViewAdapter(webviewPanel.webview, `setTableContent-${i}`);
             const view = this.dataTableProvider.createView(adapter);
-            view.onCopyText = (text) => vscode.env.clipboard.writeText(text);
-            view.onRequestExpression = () => this.viewer['sendExpressionToResultsView'](webviewPanel);
             docTableViews.push(view);
             docTableWebViews.push(adapter);
         }

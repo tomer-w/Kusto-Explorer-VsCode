@@ -2,10 +2,12 @@
 // Licensed under the MIT license.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { SimpleDataTableProvider } from '../../features/dataTableProvider';
+import { DataTableProvider } from '../../features/dataTableProvider';
 import type { IDataTableView } from '../../features/dataTableProvider';
 import type { IWebView } from '../../features/webview';
-import type { ResultTable } from '../../features/server';
+import { NullServer } from '../../features/server';
+import type { IServer, ResultTable } from '../../features/server';
+import type { IClipboard } from '../../features/clipboard';
 
 // ─── Mock IWebView ──────────────────────────────────────────────────────────
 
@@ -30,6 +32,14 @@ function createMockWebView(): IWebView & {
     };
 }
 
+function createMockServer(getTableAsExpression?: (table: ResultTable) => Promise<string | null>): IServer {
+    const server = new NullServer();
+    if (getTableAsExpression) {
+        server.getTableAsExpression = getTableAsExpression;
+    }
+    return server;
+}
+
 // ─── Test Helpers ───────────────────────────────────────────────────────────
 
 function makeTable(columns: { name: string; type: string }[], rows: unknown[][]): ResultTable {
@@ -46,10 +56,18 @@ function make2dTable(): ResultTable {
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 describe('SimpleDataTableProvider', () => {
-    let provider: SimpleDataTableProvider;
+    let provider: DataTableProvider;
+    let clipboard: IClipboard;
 
     beforeEach(() => {
-        provider = new SimpleDataTableProvider();
+        clipboard = {
+            setContext: vi.fn(),
+            getContext: vi.fn(),
+            clearContext: vi.fn(),
+            copyItems: vi.fn(),
+            copyText: vi.fn(),
+        };
+        provider = new DataTableProvider(new NullServer(), clipboard);
     });
 
     // ─── createView ─────────────────────────────────────────────────────
@@ -75,7 +93,6 @@ describe('SimpleDataTableProvider', () => {
             expect(typeof view.renderTable).toBe('function');
             expect(typeof view.copyCell).toBe('function');
             expect(typeof view.toggleSearch).toBe('function');
-            expect(typeof view.setExpression).toBe('function');
             expect(typeof view.dispose).toBe('function');
         });
 
@@ -220,14 +237,154 @@ describe('SimpleDataTableProvider', () => {
         });
     });
 
-    describe('setExpression', () => {
-        it('invokes setExpression with expression on the webview', () => {
+    describe('expression resolver', () => {
+        it('calls the server with the table after renderTable', async () => {
+            const mockGetExpr = vi.fn(async () => 'datatable(x:int)[1]');
+            const p = new DataTableProvider(createMockServer(mockGetExpr), clipboard);
+            const webview = createMockWebView();
+            const view = p.createView(webview);
+            const table = make2dTable();
+
+            view.renderTable(table);
+            await Promise.resolve();
+
+            expect(mockGetExpr).toHaveBeenCalledWith(table);
+            expect(webview.invoke).toHaveBeenCalledWith('setExpression', { expression: 'datatable(x:int)[1]' });
+        });
+
+        it('calls the server on requestExpression message', async () => {
+            const mockGetExpr = vi.fn(async () => 'expr');
+            const p = new DataTableProvider(createMockServer(mockGetExpr), clipboard);
+            const webview = createMockWebView();
+            const view = p.createView(webview);
+            view.renderTable(make2dTable());
+
+            await Promise.resolve();
+            webview.invoke.mockClear();
+            mockGetExpr.mockClear();
+
+            const html: string = webview.setContent.mock.calls[0]![0];
+            const match = html.match(/var token = '(dt-[a-z0-9]+)'/);
+            const token = match![1]!;
+
+            webview.simulateMessage({ command: 'requestExpression', _token: token });
+            await Promise.resolve();
+
+            expect(mockGetExpr).toHaveBeenCalledOnce();
+            expect(webview.invoke).toHaveBeenCalledWith('setExpression', { expression: 'expr' });
+        });
+
+        it('does not invoke setExpression when server returns null', async () => {
+            const p = new DataTableProvider(createMockServer(async () => null), clipboard);
+            const webview = createMockWebView();
+            const view = p.createView(webview);
+
+            view.renderTable(make2dTable());
+            await Promise.resolve();
+
+            expect(webview.invoke).not.toHaveBeenCalledWith('setExpression', expect.anything());
+        });
+
+        it('does not throw when server rejects', async () => {
+            const p = new DataTableProvider(createMockServer(async () => { throw new Error('server error'); }), clipboard);
+            const webview = createMockWebView();
+            const view = p.createView(webview);
+
+            view.renderTable(make2dTable());
+            await Promise.resolve();
+            // no error thrown
+        });
+
+        it('does not invoke setExpression when server returns null (NullServer)', async () => {
             const webview = createMockWebView();
             const view = provider.createView(webview);
 
-            view.setExpression('datatable(x:int)[1,2,3]');
+            view.renderTable(make2dTable());
+            await Promise.resolve();
 
-            expect(webview.invoke).toHaveBeenCalledWith('setExpression', { expression: 'datatable(x:int)[1,2,3]' });
+            expect(webview.invoke).not.toHaveBeenCalledWith('setExpression', expect.anything());
+        });
+
+        it('does not call server before renderTable', async () => {
+            const mockGetExpr = vi.fn(async () => 'expr');
+            const p = new DataTableProvider(createMockServer(mockGetExpr), clipboard);
+            const webview = createMockWebView();
+            p.createView(webview);
+
+            await Promise.resolve();
+
+            expect(mockGetExpr).not.toHaveBeenCalled();
+        });
+    });
+
+    // ─── copyTableAsExpression ────────────────────────────────────────
+
+    describe('copyTableAsExpression', () => {
+        it('copies expression to clipboard', async () => {
+            const mockGetExpr = vi.fn(async () => 'datatable(x:int)[1]');
+            const p = new DataTableProvider(createMockServer(mockGetExpr), clipboard);
+            const webview = createMockWebView();
+            const view = p.createView(webview);
+            const table = make2dTable();
+
+            view.renderTable(table);
+            await view.copyTableAsExpression();
+
+            expect(mockGetExpr).toHaveBeenCalledWith(table);
+            expect(clipboard.copyText).toHaveBeenCalledWith('datatable(x:int)[1]');
+        });
+
+        it('does not copy when server returns null', async () => {
+            const p = new DataTableProvider(createMockServer(async () => null), clipboard);
+            const webview = createMockWebView();
+            const view = p.createView(webview);
+
+            view.renderTable(make2dTable());
+            await view.copyTableAsExpression();
+
+            expect(clipboard.copyText).not.toHaveBeenCalled();
+        });
+
+        it('does nothing before renderTable', async () => {
+            const mockGetExpr = vi.fn(async () => 'expr');
+            const p = new DataTableProvider(createMockServer(mockGetExpr), clipboard);
+            const webview = createMockWebView();
+            const view = p.createView(webview);
+
+            await view.copyTableAsExpression();
+
+            expect(mockGetExpr).not.toHaveBeenCalled();
+            expect(clipboard.copyText).not.toHaveBeenCalled();
+        });
+    });
+
+    // ─── copyTableAsText ────────────────────────────────────────────────
+
+    describe('copyTableAsText', () => {
+        it('copies HTML and markdown to clipboard', async () => {
+            const webview = createMockWebView();
+            const view = provider.createView(webview);
+
+            view.renderTable(make2dTable());
+            await view.copyTableAsText();
+
+            expect(clipboard.copyItems).toHaveBeenCalledOnce();
+            const items = (clipboard.copyItems as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+            expect(items).toHaveLength(2);
+            expect(items[0].format).toBe('HTML Format');
+            expect(items[1].format).toBe('Text');
+            // Text item should be markdown
+            expect(items[1].data).toContain('|');
+        });
+
+        it('does nothing before renderTable', async () => {
+            const webview = createMockWebView();
+            const view = provider.createView(webview);
+
+            await view.copyTableAsText();
+
+            expect(clipboard.copyItems).not.toHaveBeenCalled();
+            expect(clipboard.copyText).not.toHaveBeenCalled();
         });
     });
 
@@ -248,53 +405,23 @@ describe('SimpleDataTableProvider', () => {
             token = match![1]!;
         });
 
-        it('fires onCopyText when copyText message matches token', () => {
-            const callback = vi.fn();
-            view.onCopyText = callback;
-
+        it('copies text to clipboard when copyText message matches token', () => {
             webview.simulateMessage({ command: 'copyText', text: 'hello', _token: token });
 
-            expect(callback).toHaveBeenCalledOnce();
-            expect(callback).toHaveBeenCalledWith('hello');
+            expect(clipboard.copyText).toHaveBeenCalledOnce();
+            expect(clipboard.copyText).toHaveBeenCalledWith('hello');
         });
 
-        it('does not fire onCopyText for mismatched token', () => {
-            const callback = vi.fn();
-            view.onCopyText = callback;
-
+        it('does not copy to clipboard for mismatched token', () => {
             webview.simulateMessage({ command: 'copyText', text: 'hello', _token: 'wrong-token' });
 
-            expect(callback).not.toHaveBeenCalled();
-        });
-
-        it('fires onRequestExpression when requestExpression message matches token', () => {
-            const callback = vi.fn();
-            view.onRequestExpression = callback;
-
-            webview.simulateMessage({ command: 'requestExpression', _token: token });
-
-            expect(callback).toHaveBeenCalledOnce();
-        });
-
-        it('does not fire onRequestExpression for mismatched token', () => {
-            const callback = vi.fn();
-            view.onRequestExpression = callback;
-
-            webview.simulateMessage({ command: 'requestExpression', _token: 'wrong-token' });
-
-            expect(callback).not.toHaveBeenCalled();
+            expect(clipboard.copyText).not.toHaveBeenCalled();
         });
 
         it('does not fire for unrelated messages', () => {
-            const copyCallback = vi.fn();
-            const exprCallback = vi.fn();
-            view.onCopyText = copyCallback;
-            view.onRequestExpression = exprCallback;
-
             webview.simulateMessage({ command: 'someOtherCommand', _token: token });
 
-            expect(copyCallback).not.toHaveBeenCalled();
-            expect(exprCallback).not.toHaveBeenCalled();
+            expect(clipboard.copyText).not.toHaveBeenCalled();
         });
 
         it('does not throw when callbacks are not set', () => {
@@ -326,10 +453,10 @@ describe('SimpleDataTableProvider', () => {
             expect(match1![1]).not.toBe(match2![1]);
         });
 
-        it('only the matching view fires callbacks when sharing a webview', () => {
+        it('only the matching view copies to clipboard when sharing a webview', () => {
             const webview = createMockWebView();
             const view1 = provider.createView(webview);
-            const view2 = provider.createView(webview);
+            provider.createView(webview);
 
             view1.renderTable(make2dTable());
             // Extract token from first view
@@ -337,16 +464,11 @@ describe('SimpleDataTableProvider', () => {
             const match1 = html1.match(/var token = '(dt-[a-z0-9]+)'/);
             const token1 = match1![1]!;
 
-            const callback1 = vi.fn();
-            const callback2 = vi.fn();
-            view1.onCopyText = callback1;
-            view2.onCopyText = callback2;
-
-            // Send with view1's token — only view1 should fire
+            // Send with view1's token — clipboard should be called once
             webview.simulateMessage({ command: 'copyText', text: 'test', _token: token1 });
 
-            expect(callback1).toHaveBeenCalledOnce();
-            expect(callback2).not.toHaveBeenCalled();
+            expect(clipboard.copyText).toHaveBeenCalledOnce();
+            expect(clipboard.copyText).toHaveBeenCalledWith('test');
         });
     });
 
@@ -362,13 +484,10 @@ describe('SimpleDataTableProvider', () => {
             const match = html.match(/var token = '(dt-[a-z0-9]+)'/);
             const token = match![1]!;
 
-            const callback = vi.fn();
-            view.onCopyText = callback;
-
             view.dispose();
 
             webview.simulateMessage({ command: 'copyText', text: 'hello', _token: token });
-            expect(callback).not.toHaveBeenCalled();
+            expect(clipboard.copyText).not.toHaveBeenCalled();
         });
     });
 

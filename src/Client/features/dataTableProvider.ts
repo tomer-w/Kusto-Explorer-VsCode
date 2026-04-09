@@ -12,8 +12,12 @@
  * content by mapping the adapter's content command to a specific div.
  */
 
-import type { ResultTable } from './server';
+import type { IServer, ResultTable } from './server';
 import type { IWebView } from './webview';
+import type { IClipboard } from './clipboard';
+import { formatCfHtml } from './clipboard';
+import { resultTableToHtml } from './html';
+import { resultTableToMarkdown } from './markdown';
 
 // ─── Interfaces ─────────────────────────────────────────────────────────────
 
@@ -26,14 +30,12 @@ export interface IDataTableView {
     renderTable(table: ResultTable): void;
     /** Request the webview to copy the cell under the cursor. */
     copyCell(): void;
+    /** Copy the entire table as a KQL datatable expression to the clipboard. */
+    copyTableAsExpression(): Promise<void>;
+    /** Copy the table as rich HTML + markdown text to the clipboard. */
+    copyTableAsText(): Promise<void>;
     /** Toggle search box visibility. */
     toggleSearch(): void;
-    /** Cache a KQL expression for drag-drop. */
-    setExpression(expression: string): void;
-    /** Fires when the user right-clicks a cell and the webview resolves its text. */
-    onCopyText: ((text: string) => void) | undefined;
-    /** Fires when the webview needs a KQL expression (e.g. drag before cache is ready). */
-    onRequestExpression: (() => void) | undefined;
     /** Release handlers and resources. */
     dispose(): void;
 }
@@ -58,27 +60,31 @@ function makeToken(): string {
 
 class DataTableView implements IDataTableView {
     private readonly webview: IWebView;
+    private readonly server: IServer;
+    private readonly clipboard: IClipboard;
     private readonly token: string;
     private readonly subscription: { dispose(): void };
-    onCopyText: ((text: string) => void) | undefined;
-    onRequestExpression: (() => void) | undefined;
+    private table: ResultTable | undefined;
 
-    constructor(webview: IWebView) {
+    constructor(webview: IWebView, server: IServer, clipboard: IClipboard) {
         this.webview = webview;
+        this.server = server;
+        this.clipboard = clipboard;
         this.token = makeToken();
         webview.setup(DataTableView.buildHeadHtml(), '');
         this.subscription = webview.handle((msg) => {
             if (msg._token !== this.token) return;
             if (msg.command === 'copyText' && typeof msg.text === 'string') {
-                this.onCopyText?.(msg.text);
+                this.clipboard.copyText(msg.text);
             }
             if (msg.command === 'requestExpression') {
-                this.onRequestExpression?.();
+                this.resolveExpression();
             }
         });
     }
 
     renderTable(table: ResultTable): void {
+        this.table = table;
         const data = {
             columns: table.columns,
             rows: table.rows.map(row => row.map(cell => formatCellValue(cell)))
@@ -86,18 +92,45 @@ class DataTableView implements IDataTableView {
         const json = JSON.stringify(data).replace(/<\//g, '<\\/');
         const html = `<table></table>${this.buildInitScript(json)}`;
         this.webview.setContent(html);
+        this.resolveExpression();
     }
 
     copyCell(): void {
         this.webview.invoke('copyCell');
     }
 
+    async copyTableAsExpression(): Promise<void> {
+        if (!this.table) return;
+        const expression = await this.server.getTableAsExpression(this.table);
+        if (expression) {
+            await this.clipboard.copyText(expression);
+        }
+    }
+
+    async copyTableAsText(): Promise<void> {
+        if (!this.table) return;
+        const html = resultTableToHtml(this.table);
+        const markdown = resultTableToMarkdown(this.table);
+        if (html) {
+            await this.clipboard.copyItems([
+                { format: 'HTML Format', data: formatCfHtml(html), encoding: 'utf8' },
+                { format: 'Text', data: markdown || html, encoding: 'text' },
+            ]);
+        } else if (markdown) {
+            await this.clipboard.copyText(markdown);
+        }
+    }
+
     toggleSearch(): void {
         this.webview.invoke('toggleSearch');
     }
 
-    setExpression(expression: string): void {
-        this.webview.invoke('setExpression', { expression });
+    private resolveExpression(): void {
+        if (!this.table) return;
+        this.server.getTableAsExpression(this.table).then(
+            expression => { if (expression) this.webview.invoke('setExpression', { expression }); },
+            () => { /* ignore errors — drag will just not work until next attempt */ }
+        );
     }
 
     dispose(): void {
@@ -334,8 +367,16 @@ class DataTableView implements IDataTableView {
     }
 }
 
-export class SimpleDataTableProvider implements IDataTableProvider {
+export class DataTableProvider implements IDataTableProvider {
+    private readonly server: IServer;
+    private readonly clipboard: IClipboard;
+
+    constructor(server: IServer, clipboard: IClipboard) {
+        this.server = server;
+        this.clipboard = clipboard;
+    }
+
     createView(webview: IWebView): IDataTableView {
-        return new DataTableView(webview);
+        return new DataTableView(webview, this.server, this.clipboard);
     }
 }
