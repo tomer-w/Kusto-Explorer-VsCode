@@ -15,40 +15,11 @@ import { formatCfHtml } from './clipboard';
 import { resultDataToMarkdown } from './markdown';
 import { resultDataToHtml, DataAsHtml, HtmlTable } from './html';
 import type { IChartManager, IChartController } from './chartManager';
+import type { IChartEditor, IChartEditorController } from './chartEditor';
 import type { IWebView } from './webview';
 
 /** The view type used for the custom results viewer. */
 const resultViewerViewType = 'kusto.resultViewer';
-
-/** Known chart types for the edit panel dropdown (must match server-side ChartType constants). */
-const chartTypes = [
-    'AreaChart', 'BarChart', 'Card', 'ColumnChart', 'Graph',
-    'LineChart', 'PieChart', 'PivotChart', 'Plotly', 'Sankey',
-    'ScatterChart', 'StackedAreaChart', '3DChart',
-    'TimeLadderChart', 'TimeLineChart', 'TimeLineWithAnomalyChart',
-    'TimePivot', 'TreeMap'
-];
-
-/** Known chart kinds (must match server-side ChartKind constants). */
-const chartKinds = ['Default', 'Unstacked', 'Stacked', 'Stacked100'];
-
-/** Known legend position options (must match server-side ChartLegendPosition constants). */
-const legendPositions = ['Right', 'Bottom', 'Hidden'];
-
-/** Known axis type options (must match server-side ChartAxis constants). */
-const axisTypes = ['Linear', 'Log'];
-
-/** Known sort order options (must match server-side ChartSortOrder constants). */
-const sortOrders = ['Default', 'Ascending', 'Descending'];
-
-/** Known color mode options (must match server-side ChartMode constants). */
-const chartModes = ['Light', 'Dark'];
-
-/** Known aspect ratio presets (must match server-side ChartAspectRatio constants). */
-const aspectRatios = ['16:9', '3:2', '4:3', '1:1', '3:4', '2:3', '9:16'];
-
-/** Known text size presets (must match server-side ChartTextSize constants). */
-const textSizes = ['Extra Small', 'Small', 'Medium', 'Large', 'Extra Large'];
 
 /**
  * Controls which content sections are shown in a result view.
@@ -59,17 +30,19 @@ const textSizes = ['Extra Small', 'Small', 'Medium', 'Large', 'Extra Large'];
 export type ResultViewMode = 'chart' | 'data' | 'detail' | 'all';
 
 /**
- * Adapts a VS Code `Webview` to the `IWebView` interface for the chart region.
+ * Adapts a VS Code `Webview` to the `IWebView` interface for a named region.
  * Stores page-level setup content (headHtml, scriptsHtml) for the page builder to read.
- * Implements `setContent()` by posting a `setChartHtml` message to the page handler.
+ * `setContent()` posts the given `contentCommand` message to the page handler.
  */
-class ChartWebViewAdapter implements IWebView {
+class WebViewAdapter implements IWebView {
     private readonly webview: vscode.Webview;
+    private readonly contentCommand: string;
     headHtml = '';
     scriptsHtml = '';
 
-    constructor(webview: vscode.Webview) {
+    constructor(webview: vscode.Webview, contentCommand = 'setChartHtml') {
         this.webview = webview;
+        this.contentCommand = contentCommand;
     }
 
     setup(headHtml: string, scriptsHtml: string): void {
@@ -78,7 +51,7 @@ class ChartWebViewAdapter implements IWebView {
     }
 
     setContent(html: string): void {
-        this.webview.postMessage({ command: 'setChartHtml', html });
+        this.webview.postMessage({ command: this.contentCommand, html });
     }
 
     invoke(command: string, args?: Record<string, unknown>): void {
@@ -285,6 +258,7 @@ export class ResultsViewer {
     private readonly server: IServer;
     private readonly clipboard: Clipboard;
     private readonly chartManager: IChartManager;
+    private readonly chartEditor: IChartEditor;
     private readonly htmlBuilder: DocumentViewProvider;
 
     /** Map from webview to its viewer state. */
@@ -306,7 +280,9 @@ export class ResultsViewer {
     private panelActiveTabIndex = 0;
     private waitForPanelReady: (() => Promise<void>) | undefined;
     private panelChartController: IChartController | undefined;
-    private panelWebView: ChartWebViewAdapter | undefined;
+    private panelWebView: WebViewAdapter | undefined;
+    private panelEditorController: IChartEditorController | undefined;
+    private panelEditorWebView: WebViewAdapter | undefined;
 
     // ─── Singleton view state ───────────────────────────────────────────
     private singletonView: vscode.WebviewPanel | undefined;
@@ -317,17 +293,22 @@ export class ResultsViewer {
     private singletonWriteBackTimer: ReturnType<typeof setTimeout> | undefined;
     private singletonMode: ResultViewMode | undefined;
     private singletonChartController: IChartController | undefined;
-    private singletonWebView: ChartWebViewAdapter | undefined;
+    private singletonWebView: WebViewAdapter | undefined;
+    private singletonEditorController: IChartEditorController | undefined;
+    private singletonEditorWebView: WebViewAdapter | undefined;
 
     // ─── Chart controllers for document views ───────────────────────────
     private readonly chartControllers = new Map<vscode.WebviewPanel, IChartController>();
-    private readonly chartWebViews = new Map<vscode.WebviewPanel, ChartWebViewAdapter>();
+    private readonly chartWebViews = new Map<vscode.WebviewPanel, WebViewAdapter>();
+    private readonly editorControllers = new Map<vscode.WebviewPanel, IChartEditorController>();
+    private readonly editorWebViews = new Map<vscode.WebviewPanel, WebViewAdapter>();
 
-    constructor(context: vscode.ExtensionContext, server: IServer, clipboard: Clipboard, chartManager: IChartManager) {
+    constructor(context: vscode.ExtensionContext, server: IServer, clipboard: Clipboard, chartManager: IChartManager, chartEditor: IChartEditor) {
         this.server = server;
         this.clipboard = clipboard;
         this.chartManager = chartManager;
-        this.htmlBuilder = new DocumentViewProvider(this, server, chartManager);
+        this.chartEditor = chartEditor;
+        this.htmlBuilder = new DocumentViewProvider(this, server, chartManager, chartEditor);
 
         context.subscriptions.push(
             vscode.window.registerCustomEditorProvider(
@@ -370,15 +351,23 @@ export class ResultsViewer {
                 };
 
                 // Create chart controller for the bottom panel
-                const panelAdapter = new ChartWebViewAdapter(webviewView.webview);
+                const panelAdapter = new WebViewAdapter(webviewView.webview);
                 this.panelChartController = this.chartManager.createController(panelAdapter);
                 this.panelWebView = panelAdapter;
                 this.wireChartController(this.panelChartController);
+
+                // Create chart editor controller for the bottom panel
+                const panelEditorAdapter = new WebViewAdapter(webviewView.webview, 'setEditPanelContent');
+                this.panelEditorController = this.chartEditor.createController(panelEditorAdapter);
+                this.panelEditorWebView = panelEditorAdapter;
 
                 webviewView.onDidDispose(() => {
                     this.panelChartController?.dispose();
                     this.panelChartController = undefined;
                     this.panelWebView = undefined;
+                    this.panelEditorController?.dispose();
+                    this.panelEditorController = undefined;
+                    this.panelEditorWebView = undefined;
                     this.resultsPanel = undefined;
                 });
                 webviewView.webview.onDidReceiveMessage((message) => {
@@ -491,18 +480,19 @@ export class ResultsViewer {
 
         const chartOptions = resultData.chartOptions ? applyChartDefaults(resultData.chartOptions) : undefined;
         const columnNames = resultData.tables[0]?.columns?.map(c => c.name) ?? [];
-        const html = this.htmlBuilder.BuildMultiTabbedHtml(dataResult, hasChart, mode, this.panelWebView, chartOptions, columnNames,
+        const html = this.htmlBuilder.BuildMultiTabbedHtml(dataResult, hasChart, mode, this.panelWebView, this.panelEditorWebView, chartOptions, columnNames,
             resultData.query, resultData.cluster, resultData.database, resultData.tables);
 
         const totalRows = (dataResult?.tables ?? []).reduce((sum: number, t: HtmlTable) => sum + t.rowCount, 0);
         await this.showPanelHtml(injectMessageHandlerScripts(html), totalRows);
 
-        // Populate chart via controller message after page is set
+        // Populate chart and editor via controller messages after page is set
         if (hasChart && chartOptions) {
             const table = resultData.tables[0];
             if (table) {
                 this.panelChartController?.renderChart(table, chartOptions, darkMode);
             }
+            this.panelEditorController?.setOptions(chartOptions, columnNames);
         }
 
         this.sendExpressionToResultsPanel();
@@ -554,17 +544,18 @@ export class ResultsViewer {
         const dataResult = resultDataToHtml(resultData);
         const hasChart = !!chartOptions;
         const columnNames = resultData.tables[0]?.columns?.map(c => c.name) ?? [];
-        const html = this.htmlBuilder.BuildMultiTabbedHtml(dataResult, hasChart, mode, this.singletonWebView, chartOptions, columnNames,
+        const html = this.htmlBuilder.BuildMultiTabbedHtml(dataResult, hasChart, mode, this.singletonWebView, this.singletonEditorWebView, chartOptions, columnNames,
             resultData.query, resultData.cluster, resultData.database, resultData.tables);
 
         this.showSingletonView(injectMessageHandlerScripts(html), resultData, (dataResult?.tables ?? []).map((t: HtmlTable) => t.name), beside, mode);
 
-        // Populate chart via controller message after page is set
+        // Populate chart and editor via controller messages after page is set
         if (hasChart && chartOptions) {
             const table = resultData.tables[0];
             if (table) {
                 this.singletonChartController?.renderChart(table, chartOptions, darkMode);
             }
+            this.singletonEditorController?.setOptions(chartOptions, columnNames);
         }
     }
 
@@ -717,10 +708,31 @@ export class ResultsViewer {
         this.registerResultWebview(this.singletonView);
 
         // Create chart controller for the singleton view
-        const singletonAdapter = new ChartWebViewAdapter(this.singletonView.webview);
+        const singletonAdapter = new WebViewAdapter(this.singletonView.webview);
         this.singletonChartController = this.chartManager.createController(singletonAdapter);
         this.singletonWebView = singletonAdapter;
         this.wireChartController(this.singletonChartController);
+
+        // Create chart editor controller for the singleton view
+        const singletonEditorAdapter = new WebViewAdapter(this.singletonView.webview, 'setEditPanelContent');
+        this.singletonEditorController = this.chartEditor.createController(singletonEditorAdapter);
+        this.singletonEditorWebView = singletonEditorAdapter;
+        this.singletonEditorController.onOptionsChanged = (options, clientOnly) => {
+            this.singletonChartOptionsOverride = options;
+            if (this.singletonResultData) {
+                this.singletonResultData = { ...this.singletonResultData, chartOptions: this.singletonChartOptionsOverride };
+            }
+            const state = this.viewerStates.get(this.singletonView!);
+            if (state) {
+                state.chartOptionsOverride = this.singletonChartOptionsOverride;
+                state.resultData = this.singletonResultData ?? state.resultData;
+            }
+            if (this.singletonChartOptionsTimer) { clearTimeout(this.singletonChartOptionsTimer); }
+            if (!clientOnly) {
+                this.singletonChartOptionsTimer = setTimeout(() => this.updateChartInSingletonView(), 600);
+            }
+            this.scheduleSingletonWriteBack();
+        };
 
         this.singletonView.onDidChangeViewState(() => {
             if (this.singletonView?.active) {
@@ -749,25 +761,6 @@ export class ResultsViewer {
                 vscode.env.clipboard.writeText(message.text);
                 return;
             }
-            if (message.command === 'chartOptionsChanged' && message.chartOptions) {
-                this.singletonChartOptionsOverride = message.chartOptions as server.ChartOptions;
-                // Keep singletonResultData in sync so it is always authoritative
-                if (this.singletonResultData) {
-                    this.singletonResultData = { ...this.singletonResultData, chartOptions: this.singletonChartOptionsOverride };
-                }
-                const state = this.viewerStates.get(this.singletonView!);
-                if (state) {
-                    state.chartOptionsOverride = this.singletonChartOptionsOverride;
-                    state.resultData = this.singletonResultData ?? state.resultData;
-                }
-                if (this.singletonChartOptionsTimer) { clearTimeout(this.singletonChartOptionsTimer); }
-                if (!message.clientOnly) {
-                    this.singletonChartOptionsTimer = setTimeout(() => this.updateChartInSingletonView(), 600);
-                }
-                // Write back to the backing file
-                this.scheduleSingletonWriteBack();
-                return;
-            }
             if (message.command === 'editPanelToggled' && typeof message.visible === 'boolean') {
                 if (message.visible) {
                     this.singletonView?.reveal(vscode.ViewColumn.One, false);
@@ -784,6 +777,9 @@ export class ResultsViewer {
             this.singletonChartController?.dispose();
             this.singletonChartController = undefined;
             this.singletonWebView = undefined;
+            this.singletonEditorController?.dispose();
+            this.singletonEditorController = undefined;
+            this.singletonEditorWebView = undefined;
             this.viewerStates.delete(this.singletonView!);
             this.singletonView = undefined;
             this.singletonResultData = undefined;
@@ -888,7 +884,7 @@ export class ResultsViewer {
                 const dataResult = resultDataToHtml(updated);
                 const tableNames = (dataResult?.tables ?? []).map(t => t.name);
                 const columnNames = updated.tables[0]?.columns?.map(c => c.name) ?? [];
-                const html = this.htmlBuilder.BuildMultiTabbedHtml(dataResult, false, this.singletonMode ?? 'all', this.singletonWebView, undefined, columnNames,
+                const html = this.htmlBuilder.BuildMultiTabbedHtml(dataResult, false, this.singletonMode ?? 'all', this.singletonWebView, this.singletonEditorWebView, undefined, columnNames,
                     updated.query, updated.cluster, updated.database, updated.tables);
                 this.singletonView!.webview.html = injectMessageHandlerScripts(html);
 
@@ -1225,7 +1221,7 @@ function singletonTitleForMode(mode: ResultViewMode): string {
  */
 class DocumentViewProvider implements vscode.CustomTextEditorProvider {
 
-    constructor(private readonly viewer: ResultsViewer, private readonly server: IServer, private readonly chartManager: IChartManager) {
+    constructor(private readonly viewer: ResultsViewer, private readonly server: IServer, private readonly chartManager: IChartManager, private readonly chartEditor: IChartEditor) {
     }
 
     async resolveCustomTextEditor(
@@ -1244,11 +1240,17 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         this.viewer['webviewDocuments'].set(webviewPanel, document.uri);
 
         // Create chart controller for this document view
-        const docAdapter = new ChartWebViewAdapter(webviewPanel.webview);
+        const docAdapter = new WebViewAdapter(webviewPanel.webview);
         const docChartController = this.chartManager.createController(docAdapter);
         this.viewer['wireChartController'](docChartController);
         (this.viewer['chartControllers'] as Map<vscode.WebviewPanel, IChartController>).set(webviewPanel, docChartController);
-        (this.viewer['chartWebViews'] as Map<vscode.WebviewPanel, ChartWebViewAdapter>).set(webviewPanel, docAdapter);
+        (this.viewer['chartWebViews'] as Map<vscode.WebviewPanel, WebViewAdapter>).set(webviewPanel, docAdapter);
+
+        // Create chart editor controller for this document view
+        const docEditorAdapter = new WebViewAdapter(webviewPanel.webview, 'setEditPanelContent');
+        const docEditorController = this.chartEditor.createController(docEditorAdapter);
+        (this.viewer['editorControllers'] as Map<vscode.WebviewPanel, IChartEditorController>).set(webviewPanel, docEditorController);
+        (this.viewer['editorWebViews'] as Map<vscode.WebviewPanel, WebViewAdapter>).set(webviewPanel, docEditorAdapter);
 
         // Update context key when this panel gains/loses focus
         const updateChartContext = () => {
@@ -1265,6 +1267,32 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         // Debounce timer for chart options updates
         let chartOptionsTimer: ReturnType<typeof setTimeout> | undefined;
         let ignoringSelfEdit = false;
+
+        // Wire chart editor options callback
+        docEditorController.onOptionsChanged = async (options, clientOnly) => {
+            const state = this.viewer['viewerStates'].get(webviewPanel);
+            if (!state) { return; }
+            state.chartOptionsOverride = options;
+            state.resultData = { ...state.resultData, chartOptions: state.chartOptionsOverride };
+            const content = JSON.stringify(state.resultData, null, 2);
+            const fullRange = new vscode.Range(
+                document.positionAt(0),
+                document.positionAt(document.getText().length)
+            );
+            const edit = new vscode.WorkspaceEdit();
+            edit.replace(document.uri, fullRange, content);
+            ignoringSelfEdit = true;
+            await vscode.workspace.applyEdit(edit);
+            ignoringSelfEdit = false;
+            if (chartOptionsTimer) { clearTimeout(chartOptionsTimer); }
+            chartOptionsTimer = setTimeout(async () => {
+                if (!clientOnly) {
+                    await this.updateChartOnly(state, webviewPanel);
+                }
+                ignoringSelfEdit = true;
+                try { await document.save(); } finally { ignoringSelfEdit = false; }
+            }, 600);
+        };
 
         // Track whether the editor was in beside mode before the edit panel was opened,
         // so we only move it back when closing the edit panel if it was beside originally.
@@ -1289,34 +1317,6 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
             }
             if (message.command === 'copyText' && typeof message.text === 'string') {
                 vscode.env.clipboard.writeText(message.text);
-                return;
-            }
-            if (message.command === 'chartOptionsChanged' && message.chartOptions) {
-                const state = this.viewer['viewerStates'].get(webviewPanel);
-                if (!state) { return; }
-                state.chartOptionsOverride = message.chartOptions as server.ChartOptions;
-                // Keep resultData in sync so it is always authoritative
-                state.resultData = { ...state.resultData, chartOptions: state.chartOptionsOverride };
-                // Update the document buffer immediately so it survives webview reconstruction
-                const content = JSON.stringify(state.resultData, null, 2);
-                const fullRange = new vscode.Range(
-                    document.positionAt(0),
-                    document.positionAt(document.getText().length)
-                );
-                const edit = new vscode.WorkspaceEdit();
-                edit.replace(document.uri, fullRange, content);
-                ignoringSelfEdit = true;
-                await vscode.workspace.applyEdit(edit);
-                ignoringSelfEdit = false;
-                // Debounce chart re-render and disk save (skip re-render for client-only changes)
-                if (chartOptionsTimer) { clearTimeout(chartOptionsTimer); }
-                chartOptionsTimer = setTimeout(async () => {
-                    if (!message.clientOnly) {
-                        await this.updateChartOnly(state, webviewPanel);
-                    }
-                    ignoringSelfEdit = true;
-                    try { await document.save(); } finally { ignoringSelfEdit = false; }
-                }, 600);
                 return;
             }
             if (message.command === 'editPanelToggled' && typeof message.visible === 'boolean') {
@@ -1361,8 +1361,11 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         webviewPanel.onDidDispose(() => {
             if (chartOptionsTimer) { clearTimeout(chartOptionsTimer); }
             docChartController.dispose();
+            docEditorController.dispose();
             (this.viewer['chartControllers'] as Map<vscode.WebviewPanel, IChartController>).delete(webviewPanel);
-            (this.viewer['chartWebViews'] as Map<vscode.WebviewPanel, ChartWebViewAdapter>).delete(webviewPanel);
+            (this.viewer['chartWebViews'] as Map<vscode.WebviewPanel, WebViewAdapter>).delete(webviewPanel);
+            (this.viewer['editorControllers'] as Map<vscode.WebviewPanel, IChartEditorController>).delete(webviewPanel);
+            (this.viewer['editorWebViews'] as Map<vscode.WebviewPanel, WebViewAdapter>).delete(webviewPanel);
             this.viewer['viewerStates'].delete(webviewPanel);
             this.viewer['webviewDocuments'].delete(webviewPanel);
             vscode.commands.executeCommand('setContext', 'kusto.resultViewerHasChart', false);
@@ -1421,18 +1424,21 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         const rawChartOptions = existingState?.chartOptionsOverride ?? resultData.chartOptions;
         const chartOptions = rawChartOptions ? applyChartDefaults(rawChartOptions) : undefined;
         const columnNames = resultData.tables[0]?.columns?.map(c => c.name) ?? [];
-        const docWebView = (this.viewer['chartWebViews'] as Map<vscode.WebviewPanel, ChartWebViewAdapter>).get(webviewPanel);
-        const html = this.BuildMultiTabbedHtml(dataResult, hasChart, 'all', docWebView, chartOptions, columnNames,
+        const docWebView = (this.viewer['chartWebViews'] as Map<vscode.WebviewPanel, WebViewAdapter>).get(webviewPanel);
+        const docEditorWebView = (this.viewer['editorWebViews'] as Map<vscode.WebviewPanel, WebViewAdapter>).get(webviewPanel);
+        const html = this.BuildMultiTabbedHtml(dataResult, hasChart, 'all', docWebView, docEditorWebView, chartOptions, columnNames,
             resultData.query, resultData.cluster, resultData.database, resultData.tables);
         webviewPanel.webview.html = injectMessageHandlerScripts(html);
 
-        // Populate chart via controller message after page is set
+        // Populate chart and editor via controller messages after page is set
         if (hasChart && chartOptions) {
             const table = resultData.tables[0];
             if (table) {
                 const controller = (this.viewer['chartControllers'] as Map<vscode.WebviewPanel, IChartController>).get(webviewPanel);
                 controller?.renderChart(table, chartOptions, darkMode);
             }
+            const editorController = (this.viewer['editorControllers'] as Map<vscode.WebviewPanel, IChartEditorController>).get(webviewPanel);
+            editorController?.setOptions(chartOptions, columnNames);
         }
     }
 
@@ -1459,7 +1465,8 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         dataResult: DataAsHtml | null,
         hasChart: boolean,
         mode: ResultViewMode,
-        webview: ChartWebViewAdapter | undefined,
+        webview: WebViewAdapter | undefined,
+        editorWebView: WebViewAdapter | undefined,
         chartOptions?: server.ChartOptions,
         columnNames?: string[],
         queryText?: string,
@@ -1525,8 +1532,12 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
             tabButtons = chartButton + tableButtonsHtml + queryButton;
         }
 
-        // Build chart options edit panel
-        const editPanelHtml = showChart ? this.buildEditPanelHtml(chartOptions, columnNames ?? []) : '';
+        // Build chart options edit panel placeholder (populated by editor controller)
+        const editPanelHtml = showChart ? '<div id=\"edit-panel\" class=\"edit-panel\"></div>' : '';
+
+        // Get editor page dependencies from the editor adapter
+        const editorHead = showChart ? (editorWebView?.headHtml ?? '') : '';
+        const editorScripts = showChart ? (editorWebView?.scriptsHtml ?? '') : '';
 
         // Aspect ratio support
         const aspectRatio = chartOptions?.aspectRatio;
@@ -1547,6 +1558,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
 <head>
     <meta charset="UTF-8">
     ${chartHead}
+    ${editorHead}
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/simple-datatables@9/dist/style.min.css">
     <script src="https://cdn.jsdelivr.net/npm/simple-datatables@9/dist/umd/simple-datatables.min.js"><\/script>
     <style>
@@ -1603,169 +1615,6 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
             visibility: hidden;
         }
         #chart-view { padding: 0; }
-        /* Edit panel */
-        .edit-panel {
-            display: none;
-            width: 280px;
-            min-width: 280px;
-            border-left: 1px solid var(--vscode-panel-border, #444);
-            background: var(--vscode-sideBar-background, var(--vscode-editor-background));
-            overflow-y: auto;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        .edit-panel.visible { display: block; }
-        .edit-panel h3 {
-            margin: 0;
-            padding: 8px 12px;
-            font-size: 13px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            color: var(--vscode-foreground);
-            opacity: 0.8;
-            border-bottom: 1px solid var(--vscode-panel-border, #444);
-        }
-        .edit-panel .section-header {
-            display: flex;
-            align-items: center;
-            padding: 6px 12px;
-            cursor: pointer;
-            user-select: none;
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
-            color: var(--vscode-foreground);
-            background: var(--vscode-sideBarSectionHeader-background, transparent);
-            border-bottom: 1px solid var(--vscode-panel-border, #444);
-        }
-        .edit-panel .section-header:hover {
-            background: var(--vscode-list-hoverBackground, #2a2d2e);
-        }
-        .edit-panel .section-header .chevron {
-            margin-right: 6px;
-            font-size: 10px;
-            transition: transform 0.15s;
-            display: inline-block;
-            width: 10px;
-        }
-        .edit-panel .section-header.collapsed .chevron {
-            transform: rotate(-90deg);
-        }
-        .edit-panel .section-body {
-            padding: 8px 12px;
-            border-bottom: 1px solid var(--vscode-panel-border, #444);
-        }
-        .edit-panel .section-body.collapsed {
-            display: none;
-        }
-        .edit-panel .field { margin-bottom: 10px; }
-        .edit-panel .field:last-child { margin-bottom: 0; }
-        .edit-panel .field-row {
-            display: flex;
-            gap: 8px;
-        }
-        .edit-panel .field-row .field {
-            flex: 1;
-            min-width: 0;
-            margin-bottom: 10px;
-        }
-        .edit-panel label {
-            display: block;
-            margin-bottom: 3px;
-            font-size: 11px;
-            color: var(--vscode-descriptionForeground, var(--vscode-foreground));
-        }
-        .edit-panel select,
-        .edit-panel input[type="text"],
-        .edit-panel input[type="number"] {
-            width: 100%;
-            padding: 4px 6px;
-            background: var(--vscode-input-background, #3c3c3c);
-            color: var(--vscode-input-foreground, var(--vscode-foreground));
-            border: 1px solid var(--vscode-input-border, #555);
-            border-radius: 2px;
-            font-family: inherit;
-            font-size: inherit;
-            box-sizing: border-box;
-        }
-        .edit-panel select:focus,
-        .edit-panel input[type="text"]:focus,
-        .edit-panel input[type="number"]:focus {
-            outline: 1px solid var(--vscode-focusBorder, #007acc);
-            outline-offset: -1px;
-        }
-        .edit-panel .checkbox-field {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .edit-panel .checkbox-field label {
-            display: inline;
-            margin-bottom: 0;
-        }
-        .edit-panel .column-picker {
-            display: flex;
-            gap: 4px;
-        }
-        .edit-panel .column-picker select {
-            flex: 1;
-            min-width: 0;
-        }
-        .edit-panel .column-picker button {
-            padding: 2px 8px;
-            cursor: pointer;
-            background: var(--vscode-button-background, #0e639c);
-            color: var(--vscode-button-foreground, #fff);
-            border: none;
-            border-radius: 2px;
-            font-size: inherit;
-        }
-        .edit-panel .column-picker button:hover {
-            background: var(--vscode-button-hoverBackground, #1177bb);
-        }
-        .edit-panel .column-list {
-            list-style: none;
-            padding: 0;
-            margin: 4px 0 0 0;
-            max-height: 120px;
-            overflow-y: auto;
-            border: 1px solid var(--vscode-input-border, #555);
-            border-radius: 2px;
-            background: var(--vscode-input-background, #3c3c3c);
-        }
-        .edit-panel .column-list:empty {
-            display: none;
-        }
-        .edit-panel .column-list li {
-            display: flex;
-            align-items: center;
-            padding: 2px 4px;
-            gap: 2px;
-        }
-        .edit-panel .column-list li:hover {
-            background: var(--vscode-list-hoverBackground, #2a2d2e);
-        }
-        .edit-panel .column-list li span {
-            flex: 1;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        .edit-panel .column-list li button {
-            background: none;
-            border: none;
-            color: var(--vscode-foreground, #ccc);
-            cursor: pointer;
-            padding: 0 2px;
-            font-size: 14px;
-            line-height: 1;
-            opacity: 0.7;
-        }
-        .edit-panel .column-list li button:hover {
-            opacity: 1;
-        }
         /* Simple-DataTables overrides for VS Code theme */
         .datatable-wrapper {
             padding: 0;
@@ -2038,58 +1887,6 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
             }
         }
 
-        function addColumnItem(pickerId, listId) {
-            var picker = document.getElementById(pickerId);
-            var list = document.getElementById(listId);
-            if (!picker || !list || !picker.value) return;
-            var val = picker.value;
-            var li = document.createElement('li');
-            var span = document.createElement('span');
-            span.textContent = val;
-            li.appendChild(span);
-            var upBtn = document.createElement('button');
-            upBtn.innerHTML = '&uarr;';
-            upBtn.title = 'Move up';
-            upBtn.onclick = function() { moveColumnItem(upBtn, -1); };
-            li.appendChild(upBtn);
-            var downBtn = document.createElement('button');
-            downBtn.innerHTML = '&darr;';
-            downBtn.title = 'Move down';
-            downBtn.onclick = function() { moveColumnItem(downBtn, 1); };
-            li.appendChild(downBtn);
-            var removeBtn = document.createElement('button');
-            removeBtn.innerHTML = '&times;';
-            removeBtn.title = 'Remove';
-            removeBtn.onclick = function() { removeColumnItem(removeBtn); };
-            li.appendChild(removeBtn);
-            list.appendChild(li);
-            picker.selectedIndex = 0;
-            onChartOptionChanged();
-        }
-
-        function removeColumnItem(btn) {
-            var li = btn.closest('li');
-            if (li) { li.remove(); onChartOptionChanged(); }
-        }
-
-        function moveColumnItem(btn, dir) {
-            var li = btn.closest('li');
-            if (!li) return;
-            var list = li.parentNode;
-            if (dir === -1 && li.previousElementSibling) {
-                list.insertBefore(li, li.previousElementSibling);
-            } else if (dir === 1 && li.nextElementSibling) {
-                list.insertBefore(li.nextElementSibling, li);
-            }
-            onChartOptionChanged();
-        }
-
-        function toggleSection(headerEl) {
-            headerEl.classList.toggle('collapsed');
-            var body = headerEl.nextElementSibling;
-            if (body) body.classList.toggle('collapsed');
-        }
-
         function toggleEditPanel() {
             var panel = document.getElementById('edit-panel');
             if (!panel) return;
@@ -2105,110 +1902,6 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
             setTimeout(function() {
                 if (window._chartResize) window._chartResize();
             }, 50);
-        }
-
-        // Collect current chart options from the edit panel form
-        function collectChartOptions() {
-            var opts = {};
-            var chartType = document.getElementById('opt-type');
-            if (chartType) opts.type = chartType.value;
-            var kind = document.getElementById('opt-kind');
-            if (kind && kind.value) opts.kind = kind.value;
-            var legendPos = document.getElementById('opt-legendPosition');
-            if (legendPos && legendPos.value) {
-                if (legendPos.value === 'Hidden') { opts.showLegend = false; }
-                else { opts.showLegend = true; opts.legendPosition = legendPos.value; }
-            }
-            var sort = document.getElementById('opt-sort');
-            if (sort && sort.value) opts.sort = sort.value;
-            var mode = document.getElementById('opt-mode');
-            if (mode && mode.value) opts.mode = mode.value;
-            var aspectRatio = document.getElementById('opt-aspectRatio');
-            if (aspectRatio && aspectRatio.value) opts.aspectRatio = aspectRatio.value;
-            var textSize = document.getElementById('opt-textSize');
-            if (textSize && textSize.value) opts.textSize = textSize.value;
-            var showValues = document.getElementById('opt-showValues');
-            if (showValues) opts.showValues = showValues.checked;
-            var title = document.getElementById('opt-title');
-            if (title && title.value) opts.title = title.value;
-            var xTitle = document.getElementById('opt-xTitle');
-            if (xTitle && xTitle.value) opts.xTitle = xTitle.value;
-            var yTitle = document.getElementById('opt-yTitle');
-            if (yTitle && yTitle.value) opts.yTitle = yTitle.value;
-            var zTitle = document.getElementById('opt-zTitle');
-            if (zTitle && zTitle.value) opts.zTitle = zTitle.value;
-            var xColumn = document.getElementById('opt-xColumn');
-            if (xColumn && xColumn.value) opts.xColumn = xColumn.value;
-            var yColList = document.getElementById('opt-yColumns-list');
-            if (yColList) { var items = Array.from(yColList.querySelectorAll('li span')).map(function(s) { return s.textContent; }); if (items.length) opts.yColumns = items; }
-            var seriesList = document.getElementById('opt-series-list');
-            if (seriesList) { var si = Array.from(seriesList.querySelectorAll('li span')).map(function(s) { return s.textContent; }); if (si.length) opts.series = si; }
-            var accumulate = document.getElementById('opt-accumulate');
-            if (accumulate) opts.accumulate = accumulate.checked;
-            var xAxis = document.getElementById('opt-xAxis');
-            if (xAxis && xAxis.value) opts.xAxis = xAxis.value;
-            var yAxis = document.getElementById('opt-yAxis');
-            if (yAxis && yAxis.value) opts.yAxis = yAxis.value;
-            var xmin = document.getElementById('opt-xmin');
-            if (xmin && xmin.value) opts.xmin = xmin.value;
-            var xmax = document.getElementById('opt-xmax');
-            if (xmax && xmax.value) opts.xmax = xmax.value;
-            var ymin = document.getElementById('opt-ymin');
-            if (ymin && ymin.value) opts.ymin = ymin.value;
-            var ymax = document.getElementById('opt-ymax');
-            if (ymax && ymax.value) opts.ymax = ymax.value;
-            var xShowTicks = document.getElementById('opt-xShowTicks');
-            if (xShowTicks) opts.xShowTicks = xShowTicks.checked;
-            var yShowTicks = document.getElementById('opt-yShowTicks');
-            if (yShowTicks) opts.yShowTicks = yShowTicks.checked;
-            var xShowGrid = document.getElementById('opt-xShowGrid');
-            if (xShowGrid) opts.xShowGrid = xShowGrid.checked;
-            var yShowGrid = document.getElementById('opt-yShowGrid');
-            if (yShowGrid) opts.yShowGrid = yShowGrid.checked;
-            var xTickAngle = document.getElementById('opt-xTickAngle');
-            if (xTickAngle && xTickAngle.value !== '') opts.xTickAngle = Number(xTickAngle.value);
-            var yTickAngle = document.getElementById('opt-yTickAngle');
-            if (yTickAngle && yTickAngle.value !== '') opts.yTickAngle = Number(yTickAngle.value);
-            return opts;
-        }
-
-        // Notify extension when any chart option changes
-        function onChartOptionChanged() {
-            applyClientSideOptions();
-            if (window._vscodeApi) {
-                window._vscodeApi.postMessage({ command: 'chartOptionsChanged', chartOptions: collectChartOptions() });
-            }
-        }
-
-        // Handle client-only option changes (text size, aspect ratio) without server round-trip
-        function onClientOnlyOptionChanged() {
-            applyClientSideOptions();
-            // Still persist the option value but skip chart re-render from server
-            if (window._vscodeApi) {
-                window._vscodeApi.postMessage({ command: 'chartOptionsChanged', chartOptions: collectChartOptions(), clientOnly: true });
-            }
-        }
-
-        function applyClientSideOptions() {
-            var chartDiv = document.getElementById('chart');
-            var arSelect = document.getElementById('opt-aspectRatio');
-            var tsSelect = document.getElementById('opt-textSize');
-            if (chartDiv) {
-                var arValue = arSelect ? arSelect.value : '';
-                if (arValue) {
-                    chartDiv.classList.add('has-aspect-ratio');
-                    chartDiv.style.setProperty('--chart-aspect-ratio', arValue.replace(':', '/'));
-                } else {
-                    chartDiv.classList.remove('has-aspect-ratio');
-                    chartDiv.style.removeProperty('--chart-aspect-ratio');
-                }
-                // Store text size preset
-                chartDiv.setAttribute('data-text-size', tsSelect ? tsSelect.value : '');
-                // Trigger aspect-ratio-aware resize
-                setTimeout(function() {
-                    if (window._chartResize) window._chartResize();
-                }, 50);
-            }
         }
 
         // Listen for messages from the extension
@@ -2251,255 +1944,10 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
             }
         });
     </script>
+    ${editorScripts}
     ${chartScripts}
 </body>
 </html>`;
-    }
-
-    buildEditPanelHtml(chartOptions: server.ChartOptions | undefined, columnNames: string[]): string {
-        const opts = chartOptions ?? { type: 'ColumnChart' };
-
-        // Ensure the current type is always present in the dropdown
-        const allTypes = chartTypes.includes(opts.type) ? chartTypes : [opts.type, ...chartTypes];
-        const typeOptions = allTypes.map(t =>
-            `<option value="${t}"${t === opts.type ? ' selected' : ''}>${this.escapeHtml(t)}</option>`
-        ).join('');
-
-        // Ensure the current kind is always present in the dropdown
-        const currentKind = opts.kind ?? '';
-        const allKinds = !currentKind || chartKinds.includes(currentKind) ? chartKinds : [currentKind, ...chartKinds];
-        const kindOptions = ['', ...allKinds].map(k =>
-            `<option value="${k}"${k === currentKind ? ' selected' : ''}>${k || '(default)'}</option>`
-        ).join('');
-
-        // Combined legend: map legacy legend + legendPosition into one value
-        const currentLegend = (opts.showLegend === false) ? 'Hidden' : (opts.legendPosition ?? '');
-        const legendPosOptions = ['', ...legendPositions].map(p =>
-            `<option value="${p}"${p === currentLegend ? ' selected' : ''}>${p || '(default)'}</option>`
-        ).join('');
-
-        // Sort order
-        const currentSort = opts.sort ?? '';
-        const sortOptions = ['', ...sortOrders].map(s =>
-            `<option value="${s}"${s === currentSort ? ' selected' : ''}>${s || '(default)'}</option>`
-        ).join('');
-
-        // Color mode
-        const currentMode = opts.mode ?? '';
-        const modeOptions = ['', ...chartModes].map(m =>
-            `<option value="${m}"${m === currentMode ? ' selected' : ''}>${m || '(auto)'}</option>`
-        ).join('');
-
-        // Aspect ratio
-        const currentAspectRatio = opts.aspectRatio ?? '';
-        const aspectRatioOptions = ['', ...aspectRatios].map(r =>
-            `<option value="${r}"${r === currentAspectRatio ? ' selected' : ''}>${r || '(fill)'}</option>`
-        ).join('');
-
-        // Text size
-        const currentTextSize = opts.textSize ?? '';
-        const textSizeOptions = ['', ...textSizes].map(s =>
-            `<option value="${s}"${s === currentTextSize ? ' selected' : ''}>${s || '(medium)'}</option>`
-        ).join('');
-
-        // Show values
-        const showValuesChecked = opts.showValues === true ? ' checked' : '';
-
-        // Column pickers
-        const xColOptions = ['', ...columnNames].map(c =>
-            `<option value="${this.escapeHtml(c)}"${c === (opts.xColumn ?? '') ? ' selected' : ''}>${c || '(auto)'}</option>`
-        ).join('');
-
-        const allColOptions = `<option value="" disabled selected>Pick a column</option>` + columnNames.map(c =>
-            `<option value="${this.escapeHtml(c)}">${this.escapeHtml(c)}</option>`
-        ).join('');
-
-        const yColumnsItems = (opts.yColumns ?? []).map(c =>
-            `<li><span>${this.escapeHtml(c)}</span><button onclick="moveColumnItem(this,-1)" title="Move up">&uarr;</button><button onclick="moveColumnItem(this,1)" title="Move down">&darr;</button><button onclick="removeColumnItem(this)" title="Remove">&times;</button></li>`
-        ).join('');
-
-        const seriesItems = (opts.series ?? []).map(c =>
-            `<li><span>${this.escapeHtml(c)}</span><button onclick="moveColumnItem(this,-1)" title="Move up">&uarr;</button><button onclick="moveColumnItem(this,1)" title="Move down">&darr;</button><button onclick="removeColumnItem(this)" title="Remove">&times;</button></li>`
-        ).join('');
-
-        // Axis types
-        const currentXAxis = opts.xAxis ?? '';
-        const allAxisTypes = currentXAxis && !axisTypes.includes(currentXAxis) ? [currentXAxis, ...axisTypes] : axisTypes;
-        const xAxisOptions = ['', ...allAxisTypes].map(a =>
-            `<option value="${a}"${a === currentXAxis ? ' selected' : ''}>${a || '(default)'}</option>`
-        ).join('');
-
-        const currentYAxis = opts.yAxis ?? '';
-        const allYAxisTypes = currentYAxis && !axisTypes.includes(currentYAxis) ? [currentYAxis, ...axisTypes] : axisTypes;
-        const yAxisOptions = ['', ...allYAxisTypes].map(a =>
-            `<option value="${a}"${a === currentYAxis ? ' selected' : ''}>${a || '(default)'}</option>`
-        ).join('');
-
-        // Per-axis display options
-        const xShowTicksChecked = opts.xShowTicks === true ? ' checked' : '';
-        const yShowTicksChecked = opts.yShowTicks === true ? ' checked' : '';
-        const xShowGridChecked = opts.xShowGrid === false ? '' : ' checked';
-        const yShowGridChecked = opts.yShowGrid === false ? '' : ' checked';
-        const xTickAngleValue = opts.xTickAngle != null ? String(opts.xTickAngle) : '';
-        const yTickAngleValue = opts.yTickAngle != null ? String(opts.yTickAngle) : '';
-
-        return `<div id="edit-panel" class="edit-panel">
-            <h3>Chart Options</h3>
-
-            <div class="section-header" onclick="toggleSection(this)">
-                <span class="chevron">&#9662;</span>General
-            </div>
-            <div class="section-body">
-                <div class="field">
-                    <label for="opt-type">Type</label>
-                    <select id="opt-type" onchange="onChartOptionChanged()">${typeOptions}</select>
-                </div>
-                <div class="field">
-                    <label for="opt-kind">Kind</label>
-                    <select id="opt-kind" onchange="onChartOptionChanged()">${kindOptions}</select>
-                </div>
-                <div class="field">
-                    <label for="opt-legendPosition">Legend</label>
-                    <select id="opt-legendPosition" onchange="onChartOptionChanged()">${legendPosOptions}</select>
-                </div>
-                <div class="field">
-                    <label for="opt-sort">Sort</label>
-                    <select id="opt-sort" onchange="onChartOptionChanged()">${sortOptions}</select>
-                </div>
-                <div class="field">
-                    <label for="opt-mode">Mode</label>
-                    <select id="opt-mode" onchange="onChartOptionChanged()">${modeOptions}</select>
-                </div>
-                <div class="field">
-                    <label for="opt-aspectRatio">Aspect Ratio</label>
-                    <select id="opt-aspectRatio" onchange="onClientOnlyOptionChanged()">${aspectRatioOptions}</select>
-                </div>
-                <div class="field">
-                    <label for="opt-textSize">Text Size</label>
-                    <select id="opt-textSize" onchange="onClientOnlyOptionChanged()">${textSizeOptions}</select>
-                </div>
-                <div class="field checkbox-field">
-                    <input type="checkbox" id="opt-showValues"${showValuesChecked} onchange="onChartOptionChanged()">
-                    <label for="opt-showValues">Show Values</label>
-                </div>
-            </div>
-
-            <div class="section-header collapsed" onclick="toggleSection(this)">
-                <span class="chevron">&#9662;</span>Data
-            </div>
-            <div class="section-body collapsed">
-                <div class="field">
-                    <label for="opt-xColumn">X Column</label>
-                    <select id="opt-xColumn" onchange="onChartOptionChanged()">${xColOptions}</select>
-                </div>
-                <div class="field">
-                    <label>Y Columns</label>
-                    <div class="column-picker">
-                        <select id="opt-yColumns-picker">${allColOptions}</select>
-                        <button onclick="addColumnItem('opt-yColumns-picker','opt-yColumns-list')">Add</button>
-                    </div>
-                    <ul id="opt-yColumns-list" class="column-list">${yColumnsItems}</ul>
-                </div>
-                <div class="field">
-                    <label>Series</label>
-                    <div class="column-picker">
-                        <select id="opt-series-picker">${allColOptions}</select>
-                        <button onclick="addColumnItem('opt-series-picker','opt-series-list')">Add</button>
-                    </div>
-                    <ul id="opt-series-list" class="column-list">${seriesItems}</ul>
-                </div>
-                <div class="field checkbox-field">
-                    <input type="checkbox" id="opt-accumulate"${opts.accumulate ? ' checked' : ''} onchange="onChartOptionChanged()">
-                    <label for="opt-accumulate">Accumulate</label>
-                </div>
-            </div>
-
-            <div class="section-header collapsed" onclick="toggleSection(this)">
-                <span class="chevron">&#9662;</span>Titles
-            </div>
-            <div class="section-body collapsed">
-                <div class="field">
-                    <label for="opt-title">Title</label>
-                    <input type="text" id="opt-title" value="${this.escapeHtml(opts.title ?? '')}" oninput="onChartOptionChanged()">
-                </div>
-                <div class="field">
-                    <label for="opt-xTitle">X-Axis Title</label>
-                    <input type="text" id="opt-xTitle" value="${this.escapeHtml(opts.xTitle ?? '')}" oninput="onChartOptionChanged()">
-                </div>
-                <div class="field">
-                    <label for="opt-yTitle">Y-Axis Title</label>
-                    <input type="text" id="opt-yTitle" value="${this.escapeHtml(opts.yTitle ?? '')}" oninput="onChartOptionChanged()">
-                </div>
-                <div class="field">
-                    <label for="opt-zTitle">Z-Axis Title</label>
-                    <input type="text" id="opt-zTitle" value="${this.escapeHtml(opts.zTitle ?? '')}" oninput="onChartOptionChanged()">
-                </div>
-            </div>
-
-            <div class="section-header collapsed" onclick="toggleSection(this)">
-                <span class="chevron">&#9662;</span>X Axis
-            </div>
-            <div class="section-body collapsed">
-                <div class="field">
-                    <label for="opt-xAxis">Type</label>
-                    <select id="opt-xAxis" onchange="onChartOptionChanged()">${xAxisOptions}</select>
-                </div>
-                <div class="field-row">
-                    <div class="field">
-                        <label for="opt-xmin">Min</label>
-                        <input type="text" id="opt-xmin" value="${this.escapeHtml(String(opts.xmin ?? ''))}" oninput="onChartOptionChanged()">
-                    </div>
-                    <div class="field">
-                        <label for="opt-xmax">Max</label>
-                        <input type="text" id="opt-xmax" value="${this.escapeHtml(String(opts.xmax ?? ''))}" oninput="onChartOptionChanged()">
-                    </div>
-                </div>
-                <div class="field checkbox-field">
-                    <input type="checkbox" id="opt-xShowTicks"${xShowTicksChecked} onchange="onChartOptionChanged()">
-                    <label for="opt-xShowTicks">Show Tick Marks</label>
-                </div>
-                <div class="field checkbox-field">
-                    <input type="checkbox" id="opt-xShowGrid"${xShowGridChecked} onchange="onChartOptionChanged()">
-                    <label for="opt-xShowGrid">Show Grid Lines</label>
-                </div>
-                <div class="field">
-                    <label for="opt-xTickAngle">Tick Label Angle</label>
-                    <input type="number" id="opt-xTickAngle" value="${this.escapeHtml(xTickAngleValue)}" placeholder="auto" oninput="onChartOptionChanged()">
-                </div>
-            </div>
-
-            <div class="section-header collapsed" onclick="toggleSection(this)">
-                <span class="chevron">&#9662;</span>Y Axis
-            </div>
-            <div class="section-body collapsed">
-                <div class="field">
-                    <label for="opt-yAxis">Type</label>
-                    <select id="opt-yAxis" onchange="onChartOptionChanged()">${yAxisOptions}</select>
-                </div>
-                <div class="field-row">
-                    <div class="field">
-                        <label for="opt-ymin">Min</label>
-                        <input type="text" id="opt-ymin" value="${this.escapeHtml(String(opts.ymin ?? ''))}" oninput="onChartOptionChanged()">
-                    </div>
-                    <div class="field">
-                        <label for="opt-ymax">Max</label>
-                        <input type="text" id="opt-ymax" value="${this.escapeHtml(String(opts.ymax ?? ''))}" oninput="onChartOptionChanged()">
-                    </div>
-                </div>
-                <div class="field checkbox-field">
-                    <input type="checkbox" id="opt-yShowTicks"${yShowTicksChecked} onchange="onChartOptionChanged()">
-                    <label for="opt-yShowTicks">Show Tick Marks</label>
-                </div>
-                <div class="field checkbox-field">
-                    <input type="checkbox" id="opt-yShowGrid"${yShowGridChecked} onchange="onChartOptionChanged()">
-                    <label for="opt-yShowGrid">Show Grid Lines</label>
-                </div>
-                <div class="field">
-                    <label for="opt-yTickAngle">Tick Label Angle</label>
-                    <input type="number" id="opt-yTickAngle" value="${this.escapeHtml(yTickAngleValue)}" placeholder="auto" oninput="onChartOptionChanged()">
-                </div>
-            </div>
-        </div>`;
     }
 
     buildTabbedTableHtml(tables: HtmlTable[]): string {
