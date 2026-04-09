@@ -11,7 +11,6 @@ import type { IServer } from './server';
 import * as server from './server';
 import type { IClipboard } from './clipboard';
 import type { ClipboardItem } from './clipboard';
-import { resultDataToHtml, DataAsHtml, HtmlTable } from './html';
 import type { IChartProvider, IChartView } from './chartProvider';
 import type { IChartEditorProvider, IChartEditorView } from './chartEditorProvider';
 import type { IDataTableProvider, IDataTableView } from './dataTableProvider';
@@ -455,10 +454,9 @@ export class ResultsViewer {
 
         const darkMode = isDarkMode();
 
-        const dataResult = resultDataToHtml(resultData);
         const hasChart = !!((mode === 'chart' || mode === 'all') && resultData.chartOptions);
-        const hasTable = !!dataResult?.tables?.length;
-        this.lastPanelTableNames = (dataResult?.tables ?? []).map((t: HtmlTable) => t.name);
+        const hasTable = !!resultData.tables.length;
+        this.lastPanelTableNames = resultData.tables.map(t => t.name);
 
         if (!hasTable && !hasChart) {
             await this.showPanelHtml('<html><body>no results</body></html>');
@@ -493,10 +491,10 @@ export class ResultsViewer {
             }
         }
 
-        const html = this.htmlBuilder.BuildMultiTabbedHtml(dataResult, hasChart, mode, this.panelWebView, this.panelEditorWebView, chartOptions, columnNames,
+        const html = this.htmlBuilder.BuildMultiTabbedHtml(hasChart, mode, this.panelWebView, this.panelEditorWebView, chartOptions, columnNames,
             resultData.query, resultData.cluster, resultData.database, resultData.tables, this.panelTableWebViews);
 
-        const totalRows = (dataResult?.tables ?? []).reduce((sum: number, t: HtmlTable) => sum + t.rowCount, 0);
+        const totalRows = resultData.tables.reduce((sum, t) => sum + t.rows.length, 0);
         await this.showPanelHtml(injectMessageHandlerScripts(html), totalRows);
 
         // Populate chart and editor via controller messages after page is set
@@ -565,13 +563,12 @@ export class ResultsViewer {
             }
         }
 
-        const dataResult = resultDataToHtml(resultData);
         const hasChart = !!chartOptions;
         const columnNames = resultData.tables[0]?.columns?.map(c => c.name) ?? [];
-        const html = this.htmlBuilder.BuildMultiTabbedHtml(dataResult, hasChart, mode, this.singletonWebView, this.singletonEditorWebView, chartOptions, columnNames,
+        const html = this.htmlBuilder.BuildMultiTabbedHtml(hasChart, mode, this.singletonWebView, this.singletonEditorWebView, chartOptions, columnNames,
             resultData.query, resultData.cluster, resultData.database, resultData.tables, this.singletonTableWebViews);
 
-        this.showSingletonView(injectMessageHandlerScripts(html), resultData, (dataResult?.tables ?? []).map((t: HtmlTable) => t.name), beside, mode);
+        this.showSingletonView(injectMessageHandlerScripts(html), resultData, resultData.tables.map(t => t.name), beside, mode);
 
         // Populate chart and editor via controller messages after page is set
         if (hasChart && chartOptions) {
@@ -886,10 +883,9 @@ export class ResultsViewer {
                 this.disposeSingletonView();
             } else {
                 // Re-render without the chart
-                const dataResult = resultDataToHtml(updated);
-                const tableNames = (dataResult?.tables ?? []).map(t => t.name);
+                const tableNames = updated.tables.map(t => t.name);
                 const columnNames = updated.tables[0]?.columns?.map(c => c.name) ?? [];
-                const html = this.htmlBuilder.BuildMultiTabbedHtml(dataResult, false, this.singletonMode ?? 'all', this.singletonWebView, this.singletonEditorWebView, undefined, columnNames,
+                const html = this.htmlBuilder.BuildMultiTabbedHtml(false, this.singletonMode ?? 'all', this.singletonWebView, this.singletonEditorWebView, undefined, columnNames,
                     updated.query, updated.cluster, updated.database, updated.tables, this.singletonTableWebViews);
                 this.singletonView!.webview.html = injectMessageHandlerScripts(html);
 
@@ -1344,9 +1340,8 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
 
         const darkMode = isDarkMode();
 
-        const dataResult = resultDataToHtml(resultData);
         const hasChart = !!resultData.chartOptions;
-        const hasTable = !!dataResult?.tables?.length;
+        const hasTable = !!resultData.tables.length;
 
         if (!hasTable && !hasChart) {
             webviewPanel.webview.html = '<html><body><p>Failed to render results.</p></body></html>';
@@ -1354,7 +1349,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         }
 
         // Track viewer state for copy commands
-        const tableNames = (dataResult?.tables ?? []).map((t: HtmlTable) => t.name);
+        const tableNames = resultData.tables.map(t => t.name);
         const firstActiveView = hasChart ? 'chart' : 'table-0';
         const existingState = this.viewer['viewerStates'].get(webviewPanel);
         this.viewer['viewerStates'].set(webviewPanel, {
@@ -1391,7 +1386,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         (this.viewer['dataTableViews'] as Map<vscode.WebviewPanel, IDataTableView[]>).set(webviewPanel, docTableViews);
         (this.viewer['dataTableWebViews'] as Map<vscode.WebviewPanel, WebViewAdapter[]>).set(webviewPanel, docTableWebViews);
 
-        const html = this.BuildMultiTabbedHtml(dataResult, hasChart, 'all', docWebView, docEditorWebView, chartOptions, columnNames,
+        const html = this.BuildMultiTabbedHtml(hasChart, 'all', docWebView, docEditorWebView, chartOptions, columnNames,
             resultData.query, resultData.cluster, resultData.database, resultData.tables, docTableWebViews);
         webviewPanel.webview.html = injectMessageHandlerScripts(html);
 
@@ -1427,7 +1422,6 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
     * Builds the HTML for a multi-tabbed view showing chart, data tables, and query, with toggle buttons.   
     */
     BuildMultiTabbedHtml(
-        dataResult: DataAsHtml | null,
         hasChart: boolean,
         mode: ResultViewMode,
         webview: WebViewAdapter | undefined,
@@ -1440,7 +1434,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         resultTables?: server.ResultTable[],
         tableWebViews?: WebViewAdapter[]
     ): string {
-        const tables = dataResult?.tables ?? [];
+        const tables = resultTables ?? [];
 
         const showChart = hasChart && (mode === 'chart' || mode === 'all');
         const showTables = mode === 'data' || mode === 'detail' || mode === 'all';
@@ -1480,7 +1474,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
                     tableButtonsHtml = `<button${showChart ? '' : ' class="active"'} data-view="table-0" onclick="switchView('table-0')">Data</button>`;
                 } else {
                     tableButtonsHtml = tables.map((t, i) =>
-                        `<button${!showChart && i === 0 ? ' class="active"' : ''} data-view="table-${i}" onclick="switchView('table-${i}')">${this.escapeHtml(t.name)} (${t.rowCount})</button>`
+                        `<button${!showChart && i === 0 ? ' class="active"' : ''} data-view="table-${i}" onclick="switchView('table-${i}')">${this.escapeHtml(t.name)} (${t.rows.length})</button>`
                     ).join('');
                 }
             }
@@ -1709,19 +1703,6 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
     ${chartScripts}
 </body>
 </html>`;
-    }
-
-    buildTabbedTableHtml(tables: HtmlTable[]): string {
-        if (tables.length === 1) {
-            return tables[0]!.html;
-        }
-        const tabs = tables.map((t, i) =>
-            `<button class="table-tab${i === 0 ? ' active' : ''}" onclick="switchTable(${i})">${this.escapeHtml(t.name)} (${t.rowCount})</button>`
-        ).join('');
-        const contents = tables.map((t, i) =>
-            `<div class="table-content${i === 0 ? ' active' : ''}">${t.html}</div>`
-        ).join('');
-        return `<div class="table-tabs">${tabs}</div>${contents}`;
     }
 
     escapeHtml(text: string): string {

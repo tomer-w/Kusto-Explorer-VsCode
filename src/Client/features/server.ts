@@ -409,7 +409,7 @@ export class NullServer implements IServer {
     getEntityAsExpression(): Promise<string | null> { return Promise.resolve(null); }
     getQueryAsHtml(): Promise<QueryAsHtmlResult | null> { return Promise.resolve(null); }
     getDataAsExpression(): Promise<DataAsExpression | null> { return Promise.resolve(null); }
-    getTableAsExpression(): Promise<string | null> { return Promise.resolve(null); }
+    getTableAsExpression(_table: ResultTable): Promise<string | null> { return Promise.resolve(null); }
     getEntityDefinitionContent(): Promise<EntityDefinitionContentResult | null> { return Promise.resolve(null); }
     transformPaste(): Promise<string | null> { return Promise.resolve(null); }
     refreshSchema(): Promise<void> { return Promise.resolve(); }
