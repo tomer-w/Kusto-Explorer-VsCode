@@ -10,7 +10,7 @@
 
 import * as vscode from 'vscode';
 import type { IServer } from './server';
-import { Clipboard } from './clipboard';
+import type { IClipboard } from './clipboard';
 import { type ConnectionManager, isServerGroup, getDisplayName } from './connectionManager';
 import type { ServerInfo, ServerGroupInfo } from './connectionManager';
 import type { DatabaseTableInfo, DatabaseColumnInfo, DatabaseFunctionInfo, DatabaseEntityGroupInfo, DatabaseGraphModelInfo } from './server';
@@ -39,7 +39,7 @@ export class ConnectionsPanel {
     constructor(
         context: vscode.ExtensionContext,
         private readonly server: IServer,
-        private readonly clipboard: Clipboard,
+        private readonly clipboard: IClipboard,
         importer: Importer,
         private readonly connections: ConnectionManager
     ) {

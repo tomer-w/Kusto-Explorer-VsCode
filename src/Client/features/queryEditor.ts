@@ -11,7 +11,7 @@ import type { ConnectionManager } from './connectionManager';
 import { ResultsViewer } from './resultsViewer';
 import { ResultsCache } from './resultsCache';
 import { HistoryManager } from './historyManager';
-import { Clipboard } from './clipboard';
+import type { IClipboard } from './clipboard';
 import type { ClipboardItem } from './clipboard';
 import { ENTITY_DEFINITION_SCHEME } from './entityDefinitionProvider';
 
@@ -43,7 +43,7 @@ export class QueryEditor {
     private readonly codeLensProvider: KustoCodeLensProvider;
     private readonly server: IServer;
     private readonly cache: ResultsCache;
-    private readonly clipboard: Clipboard;
+    private readonly clipboard: IClipboard;
     private readonly history: HistoryManager;
     private readonly connections: ConnectionManager;
     private readonly resultsViewer: ResultsViewer;
@@ -53,7 +53,7 @@ export class QueryEditor {
         context: vscode.ExtensionContext, 
         server: IServer, 
         resultsCache: ResultsCache, 
-        clipboard: Clipboard, 
+        clipboard: IClipboard, 
         historyManager: HistoryManager, 
         connectionManager: ConnectionManager, 
         resultsViewer: ResultsViewer) {
@@ -302,7 +302,7 @@ export class QueryEditor {
                     { format: 'Text', data: plainText, encoding: 'text' }
                 ];
 
-                await this.clipboard.copy(items);
+                await this.clipboard.copyItems(items);
             } else {
                 // Save the current selection
                 const previousSelection = editor.selection;
@@ -493,7 +493,7 @@ class KustoCodeLensProvider implements vscode.CodeLensProvider {
 
 class KustoPasteEditProvider implements vscode.DocumentPasteEditProvider {
 
-    constructor(private readonly server: IServer, private readonly clipboard: Clipboard) {
+    constructor(private readonly server: IServer, private readonly clipboard: IClipboard) {
     }
 
     async provideDocumentPasteEdits(
