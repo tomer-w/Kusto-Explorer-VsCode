@@ -14,8 +14,8 @@ import type { ClipboardItem } from './clipboard';
 import { formatCfHtml } from './clipboard';
 import { resultDataToMarkdown } from './markdown';
 import { resultDataToHtml, DataAsHtml, HtmlTable } from './html';
-import type { IChartManager, IChartController } from './chartManager';
-import type { IChartEditor, IChartEditorController } from './chartEditor';
+import type { IChartProvider, IChartView } from './chartProvider';
+import type { IChartEditorProvider, IChartEditorView } from './chartEditorProvider';
 import type { IWebView } from './webview';
 
 /** The view type used for the custom results viewer. */
@@ -257,8 +257,8 @@ export class ResultsViewer {
 
     private readonly server: IServer;
     private readonly clipboard: Clipboard;
-    private readonly chartManager: IChartManager;
-    private readonly chartEditor: IChartEditor;
+    private readonly chartProvider: IChartProvider;
+    private readonly chartEditorProvider: IChartEditorProvider;
     private readonly htmlBuilder: DocumentViewProvider;
 
     /** Map from webview to its viewer state. */
@@ -279,9 +279,9 @@ export class ResultsViewer {
     private lastPanelTableNames: string[] = [];
     private panelActiveTabIndex = 0;
     private waitForPanelReady: (() => Promise<void>) | undefined;
-    private panelChartController: IChartController | undefined;
+    private panelChartView: IChartView | undefined;
     private panelWebView: WebViewAdapter | undefined;
-    private panelEditorController: IChartEditorController | undefined;
+    private panelEditorView: IChartEditorView | undefined;
     private panelEditorWebView: WebViewAdapter | undefined;
 
     // ─── Singleton view state ───────────────────────────────────────────
@@ -292,23 +292,23 @@ export class ResultsViewer {
     private singletonBackingUri: vscode.Uri | undefined;
     private singletonWriteBackTimer: ReturnType<typeof setTimeout> | undefined;
     private singletonMode: ResultViewMode | undefined;
-    private singletonChartController: IChartController | undefined;
+    private singletonChartView: IChartView | undefined;
     private singletonWebView: WebViewAdapter | undefined;
-    private singletonEditorController: IChartEditorController | undefined;
+    private singletonEditorView: IChartEditorView | undefined;
     private singletonEditorWebView: WebViewAdapter | undefined;
 
-    // ─── Chart controllers for document views ───────────────────────────
-    private readonly chartControllers = new Map<vscode.WebviewPanel, IChartController>();
+    // ─── Chart views for document views ───────────────────────────────
+    private readonly chartViews = new Map<vscode.WebviewPanel, IChartView>();
     private readonly chartWebViews = new Map<vscode.WebviewPanel, WebViewAdapter>();
-    private readonly editorControllers = new Map<vscode.WebviewPanel, IChartEditorController>();
+    private readonly editorViews = new Map<vscode.WebviewPanel, IChartEditorView>();
     private readonly editorWebViews = new Map<vscode.WebviewPanel, WebViewAdapter>();
 
-    constructor(context: vscode.ExtensionContext, server: IServer, clipboard: Clipboard, chartManager: IChartManager, chartEditor: IChartEditor) {
+    constructor(context: vscode.ExtensionContext, server: IServer, clipboard: Clipboard, chartProvider: IChartProvider, chartEditorProvider: IChartEditorProvider) {
         this.server = server;
         this.clipboard = clipboard;
-        this.chartManager = chartManager;
-        this.chartEditor = chartEditor;
-        this.htmlBuilder = new DocumentViewProvider(this, server, chartManager, chartEditor);
+        this.chartProvider = chartProvider;
+        this.chartEditorProvider = chartEditorProvider;
+        this.htmlBuilder = new DocumentViewProvider(this, server, chartProvider, chartEditorProvider);
 
         context.subscriptions.push(
             vscode.window.registerCustomEditorProvider(
@@ -350,23 +350,23 @@ export class ResultsViewer {
                     enableForms: false
                 };
 
-                // Create chart controller for the bottom panel
+                // Create chart view for the bottom panel
                 const panelAdapter = new WebViewAdapter(webviewView.webview);
-                this.panelChartController = this.chartManager.createController(panelAdapter);
+                this.panelChartView = this.chartProvider.createView(panelAdapter);
                 this.panelWebView = panelAdapter;
-                this.wireChartController(this.panelChartController);
+                this.wireChartView(this.panelChartView);
 
-                // Create chart editor controller for the bottom panel
+                // Create chart editor view for the bottom panel
                 const panelEditorAdapter = new WebViewAdapter(webviewView.webview, 'setEditPanelContent');
-                this.panelEditorController = this.chartEditor.createController(panelEditorAdapter);
+                this.panelEditorView = this.chartEditorProvider.createView(panelEditorAdapter);
                 this.panelEditorWebView = panelEditorAdapter;
 
                 webviewView.onDidDispose(() => {
-                    this.panelChartController?.dispose();
-                    this.panelChartController = undefined;
+                    this.panelChartView?.dispose();
+                    this.panelChartView = undefined;
                     this.panelWebView = undefined;
-                    this.panelEditorController?.dispose();
-                    this.panelEditorController = undefined;
+                    this.panelEditorView?.dispose();
+                    this.panelEditorView = undefined;
                     this.panelEditorWebView = undefined;
                     this.resultsPanel = undefined;
                 });
@@ -442,11 +442,11 @@ export class ResultsViewer {
     }
 
     /**
-     * Wires up the copy result/error callbacks on a chart controller.
+     * Wires up the copy result/error callbacks on a chart view.
      */
-    private wireChartController(controller: IChartController): void {
-        controller.onCopyResult = (pngDataUrl, svgDataUrl) => this.onCopyChartMessage(pngDataUrl, svgDataUrl);
-        controller.onCopyError = (error) => vscode.window.showErrorMessage(`Chart copy failed in webview: ${error}`);
+    private wireChartView(view: IChartView): void {
+        view.onCopyResult = (pngDataUrl, svgDataUrl) => this.onCopyChartMessage(pngDataUrl, svgDataUrl);
+        view.onCopyError = (error) => vscode.window.showErrorMessage(`Chart copy failed in webview: ${error}`);
     }
 
     /**
@@ -490,9 +490,9 @@ export class ResultsViewer {
         if (hasChart && chartOptions) {
             const table = resultData.tables[0];
             if (table) {
-                this.panelChartController?.renderChart(table, chartOptions, darkMode);
+                this.panelChartView?.renderChart(table, chartOptions, darkMode);
             }
-            this.panelEditorController?.setOptions(chartOptions, columnNames);
+            this.panelEditorView?.setOptions(chartOptions, columnNames);
         }
 
         this.sendExpressionToResultsPanel();
@@ -553,9 +553,9 @@ export class ResultsViewer {
         if (hasChart && chartOptions) {
             const table = resultData.tables[0];
             if (table) {
-                this.singletonChartController?.renderChart(table, chartOptions, darkMode);
+                this.singletonChartView?.renderChart(table, chartOptions, darkMode);
             }
-            this.singletonEditorController?.setOptions(chartOptions, columnNames);
+            this.singletonEditorView?.setOptions(chartOptions, columnNames);
         }
     }
 
@@ -590,8 +590,8 @@ export class ResultsViewer {
      * Targets whichever tab view (singleton or document) is currently focused.
      */
     copyChart(): void {
-        const controller = this.getActiveChartController();
-        controller?.copyChart();
+        const view = this.getActiveChartView();
+        view?.copyChart();
     }
 
     /**
@@ -707,17 +707,17 @@ export class ResultsViewer {
         vscode.commands.executeCommand('kusto.singletonViewStateChanged');
         this.registerResultWebview(this.singletonView);
 
-        // Create chart controller for the singleton view
+        // Create chart view for the singleton view
         const singletonAdapter = new WebViewAdapter(this.singletonView.webview);
-        this.singletonChartController = this.chartManager.createController(singletonAdapter);
+        this.singletonChartView = this.chartProvider.createView(singletonAdapter);
         this.singletonWebView = singletonAdapter;
-        this.wireChartController(this.singletonChartController);
+        this.wireChartView(this.singletonChartView);
 
-        // Create chart editor controller for the singleton view
+        // Create chart editor view for the singleton view
         const singletonEditorAdapter = new WebViewAdapter(this.singletonView.webview, 'setEditPanelContent');
-        this.singletonEditorController = this.chartEditor.createController(singletonEditorAdapter);
+        this.singletonEditorView = this.chartEditorProvider.createView(singletonEditorAdapter);
         this.singletonEditorWebView = singletonEditorAdapter;
-        this.singletonEditorController.onOptionsChanged = (options, clientOnly) => {
+        this.singletonEditorView.onOptionsChanged = (options, clientOnly) => {
             this.singletonChartOptionsOverride = options;
             if (this.singletonResultData) {
                 this.singletonResultData = { ...this.singletonResultData, chartOptions: this.singletonChartOptionsOverride };
@@ -774,11 +774,11 @@ export class ResultsViewer {
         this.singletonView.onDidDispose(() => {
             if (this.singletonChartOptionsTimer) { clearTimeout(this.singletonChartOptionsTimer); }
             this.flushSingletonWriteBack();
-            this.singletonChartController?.dispose();
-            this.singletonChartController = undefined;
+            this.singletonChartView?.dispose();
+            this.singletonChartView = undefined;
             this.singletonWebView = undefined;
-            this.singletonEditorController?.dispose();
-            this.singletonEditorController = undefined;
+            this.singletonEditorView?.dispose();
+            this.singletonEditorView = undefined;
             this.singletonEditorWebView = undefined;
             this.viewerStates.delete(this.singletonView!);
             this.singletonView = undefined;
@@ -832,7 +832,7 @@ export class ResultsViewer {
         const darkMode = isDarkMode();
         const table = modifiedData.tables[0];
         if (table && chartOptions) {
-            this.singletonChartController?.renderChart(table, chartOptions, darkMode);
+            this.singletonChartView?.renderChart(table, chartOptions, darkMode);
         }
     }
 
@@ -944,14 +944,14 @@ export class ResultsViewer {
         return this.viewerStates.get(this.activeResultWebview);
     }
 
-    private getActiveChartController(): IChartController | undefined {
+    private getActiveChartView(): IChartView | undefined {
         if (!this.activeResultWebview?.active) {
             return undefined;
         }
         if (this.activeResultWebview === this.singletonView) {
-            return this.singletonChartController;
+            return this.singletonChartView;
         }
-        return this.chartControllers.get(this.activeResultWebview);
+        return this.chartViews.get(this.activeResultWebview);
     }
 
     private getActiveTableName(state: ResultViewerState): string | undefined {
@@ -1221,7 +1221,7 @@ function singletonTitleForMode(mode: ResultViewMode): string {
  */
 class DocumentViewProvider implements vscode.CustomTextEditorProvider {
 
-    constructor(private readonly viewer: ResultsViewer, private readonly server: IServer, private readonly chartManager: IChartManager, private readonly chartEditor: IChartEditor) {
+    constructor(private readonly viewer: ResultsViewer, private readonly server: IServer, private readonly chartProvider: IChartProvider, private readonly chartEditorProvider: IChartEditorProvider) {
     }
 
     async resolveCustomTextEditor(
@@ -1239,17 +1239,17 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         // Track document association for rerun support
         this.viewer['webviewDocuments'].set(webviewPanel, document.uri);
 
-        // Create chart controller for this document view
+        // Create chart view for this document view
         const docAdapter = new WebViewAdapter(webviewPanel.webview);
-        const docChartController = this.chartManager.createController(docAdapter);
-        this.viewer['wireChartController'](docChartController);
-        (this.viewer['chartControllers'] as Map<vscode.WebviewPanel, IChartController>).set(webviewPanel, docChartController);
+        const docChartView = this.chartProvider.createView(docAdapter);
+        this.viewer['wireChartView'](docChartView);
+        (this.viewer['chartViews'] as Map<vscode.WebviewPanel, IChartView>).set(webviewPanel, docChartView);
         (this.viewer['chartWebViews'] as Map<vscode.WebviewPanel, WebViewAdapter>).set(webviewPanel, docAdapter);
 
-        // Create chart editor controller for this document view
+        // Create chart editor view for this document view
         const docEditorAdapter = new WebViewAdapter(webviewPanel.webview, 'setEditPanelContent');
-        const docEditorController = this.chartEditor.createController(docEditorAdapter);
-        (this.viewer['editorControllers'] as Map<vscode.WebviewPanel, IChartEditorController>).set(webviewPanel, docEditorController);
+        const docEditorView = this.chartEditorProvider.createView(docEditorAdapter);
+        (this.viewer['editorViews'] as Map<vscode.WebviewPanel, IChartEditorView>).set(webviewPanel, docEditorView);
         (this.viewer['editorWebViews'] as Map<vscode.WebviewPanel, WebViewAdapter>).set(webviewPanel, docEditorAdapter);
 
         // Update context key when this panel gains/loses focus
@@ -1269,7 +1269,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         let ignoringSelfEdit = false;
 
         // Wire chart editor options callback
-        docEditorController.onOptionsChanged = async (options, clientOnly) => {
+        docEditorView.onOptionsChanged = async (options, clientOnly) => {
             const state = this.viewer['viewerStates'].get(webviewPanel);
             if (!state) { return; }
             state.chartOptionsOverride = options;
@@ -1360,11 +1360,11 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
 
         webviewPanel.onDidDispose(() => {
             if (chartOptionsTimer) { clearTimeout(chartOptionsTimer); }
-            docChartController.dispose();
-            docEditorController.dispose();
-            (this.viewer['chartControllers'] as Map<vscode.WebviewPanel, IChartController>).delete(webviewPanel);
+            docChartView.dispose();
+            docEditorView.dispose();
+            (this.viewer['chartViews'] as Map<vscode.WebviewPanel, IChartView>).delete(webviewPanel);
             (this.viewer['chartWebViews'] as Map<vscode.WebviewPanel, WebViewAdapter>).delete(webviewPanel);
-            (this.viewer['editorControllers'] as Map<vscode.WebviewPanel, IChartEditorController>).delete(webviewPanel);
+            (this.viewer['editorViews'] as Map<vscode.WebviewPanel, IChartEditorView>).delete(webviewPanel);
             (this.viewer['editorWebViews'] as Map<vscode.WebviewPanel, WebViewAdapter>).delete(webviewPanel);
             this.viewer['viewerStates'].delete(webviewPanel);
             this.viewer['webviewDocuments'].delete(webviewPanel);
@@ -1434,11 +1434,11 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         if (hasChart && chartOptions) {
             const table = resultData.tables[0];
             if (table) {
-                const controller = (this.viewer['chartControllers'] as Map<vscode.WebviewPanel, IChartController>).get(webviewPanel);
+                const controller = (this.viewer['chartViews'] as Map<vscode.WebviewPanel, IChartView>).get(webviewPanel);
                 controller?.renderChart(table, chartOptions, darkMode);
             }
-            const editorController = (this.viewer['editorControllers'] as Map<vscode.WebviewPanel, IChartEditorController>).get(webviewPanel);
-            editorController?.setOptions(chartOptions, columnNames);
+            const editorView = (this.viewer['editorViews'] as Map<vscode.WebviewPanel, IChartEditorView>).get(webviewPanel);
+            editorView?.setOptions(chartOptions, columnNames);
         }
     }
 
@@ -1453,7 +1453,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         const darkMode = isDarkMode();
         const table = modifiedData.tables[0];
         if (table) {
-            const controller = (this.viewer['chartControllers'] as Map<vscode.WebviewPanel, IChartController>).get(webviewPanel);
+            const controller = (this.viewer['chartViews'] as Map<vscode.WebviewPanel, IChartView>).get(webviewPanel);
             controller?.renderChart(table, chartOptions, darkMode);
         }
     }

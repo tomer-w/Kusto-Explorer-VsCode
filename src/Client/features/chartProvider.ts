@@ -2,24 +2,24 @@
 // Licensed under the MIT license.
 
 /**
- * Chart manager interfaces and constants.
+ * Chart provider interfaces and constants.
  */
 
 import type { ChartOptions, ResultTable } from './server';
 import type { IWebView } from './webview';
 
-// Re-export so consumers can import from chartManager
+// Re-export so consumers can import from chartProvider
 export type { IWebView } from './webview';
 
 // ─── Interfaces ────────────────────────────────────────────────────────
 
 /**
- * Controller for interacting with a chart rendered inside a webview.
- * Created by IChartManager.createController().
+ * View for interacting with a chart rendered inside a webview.
+ * Created by IChartProvider.createView().
  *
  * The host sets `onCopyResult` / `onCopyError` to receive copy outcomes.
  */
-export interface IChartController {
+export interface IChartView {
     /** Render the chart with the given data/options and push to the webview. */
     renderChart(data: ResultTable, options: ChartOptions, darkMode: boolean): void;
     /** Trigger the chart copy flow (extension → webview → extension). */
@@ -33,12 +33,12 @@ export interface IChartController {
 }
 
 /**
- * Manager for creating and controlling charts in webviews. The main implementation is PlotlyChartManager, which renders charts using Plotly.js.
+ * Provider for creating chart views in webviews. The main implementation is PlotlyChartProvider, which renders charts using Plotly.js.
  */
-export interface IChartManager {
-    /** Creates a controller for interacting with a chart in a webview.
+export interface IChartProvider {
+    /** Creates a chart view bound to a webview region.
      *  Calls `webview.setup()` to provide page-level dependencies. */
-    createController(webview: IWebView): IChartController;
+    createView(webview: IWebView): IChartView;
 }
 
 

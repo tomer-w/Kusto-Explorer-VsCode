@@ -7,8 +7,8 @@
  */
 
 import type { ChartOptions, ResultColumn, ResultTable } from './server';
-import { ChartType, ChartKind, ChartAxis, ChartSortOrder, ChartLegendPosition } from './chartManager';
-import type { IChartController, IWebView, IChartManager } from './chartManager';
+import { ChartType, ChartKind, ChartAxis, ChartSortOrder, ChartLegendPosition } from './chartProvider';
+import type { IChartView, IWebView, IChartProvider } from './chartProvider';
 
 // ─── Plotly Constants ───────────────────────────────────────────────────────
 
@@ -1189,8 +1189,8 @@ const plotlyChartScripts = `
 })();
 </script>`;
 
-/** Controller for Plotly charts rendered inside a webview. */
-class PlotlyChartController implements IChartController {
+/** View for Plotly charts rendered inside a webview. */
+class PlotlyChartView implements IChartView {
     onCopyResult: ((pngDataUrl: string, svgDataUrl?: string) => void) | undefined;
     onCopyError: ((error: string) => void) | undefined;
     private readonly subscription: { dispose(): void };
@@ -1229,14 +1229,14 @@ class PlotlyChartController implements IChartController {
     }
 }
 
-export class PlotlyChartManager implements IChartManager {
+export class PlotlyChartProvider implements IChartProvider {
 
-    createController(webview: IWebView): IChartController {
+    createView(webview: IWebView): IChartView {
         webview.setup(
             `<script src="${PlotlyJsCdn}" charset="utf-8"></script>`,
             plotlyChartScripts
         );
-        return new PlotlyChartController(webview, (data, options, darkMode) => this.renderChartToHtmlDiv(data, options, darkMode));
+        return new PlotlyChartView(webview, (data, options, darkMode) => this.renderChartToHtmlDiv(data, options, darkMode));
     }
 
     private renderChartToHtmlDiv(data: ResultTable, options: ChartOptions, darkMode = false): string | undefined {

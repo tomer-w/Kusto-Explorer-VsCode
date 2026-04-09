@@ -35,10 +35,10 @@ const textSizes = ['Extra Small', 'Small', 'Medium', 'Large', 'Extra Large'];
 // ─── Interfaces ─────────────────────────────────────────────────────────────
 
 /**
- * Controller for the chart-options edit panel in a webview.
- * Created by `IChartEditor.createController()`.
+ * View for the chart-options edit panel in a webview.
+ * Created by `IChartEditorProvider.createView()`.
  */
-export interface IChartEditorController {
+export interface IChartEditorView {
     /** Populate (or re-populate) the edit panel with the given options and column names. */
     setOptions(options: ChartOptions, columnNames: string[]): void;
     /** Fires when the user changes any chart option in the edit panel. */
@@ -47,9 +47,9 @@ export interface IChartEditorController {
     dispose(): void;
 }
 
-/** Factory for creating chart-editor controllers bound to webview regions. */
-export interface IChartEditor {
-    createController(webview: IWebView): IChartEditorController;
+/** Provider for creating chart editor views bound to webview regions. */
+export interface IChartEditorProvider {
+    createView(webview: IWebView): IChartEditorView;
 }
 
 // ─── Implementation ─────────────────────────────────────────────────────────
@@ -58,7 +58,7 @@ function escapeHtml(text: string): string {
     return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-class ChartEditorController implements IChartEditorController {
+class ChartEditorView implements IChartEditorView {
     private readonly webview: IWebView;
     private readonly subscription: { dispose(): void };
     onOptionsChanged: ((options: ChartOptions, clientOnly: boolean) => void) | undefined;
@@ -647,8 +647,8 @@ class ChartEditorController implements IChartEditorController {
     }
 }
 
-export class ChartEditor implements IChartEditor {
-    createController(webview: IWebView): IChartEditorController {
-        return new ChartEditorController(webview);
+export class ChartEditorProvider implements IChartEditorProvider {
+    createView(webview: IWebView): IChartEditorView {
+        return new ChartEditorView(webview);
     }
 }
