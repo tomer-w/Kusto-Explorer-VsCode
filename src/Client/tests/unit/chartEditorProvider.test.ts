@@ -33,7 +33,7 @@ function createMockWebView(): IWebView & {
 // ─── Test Helpers ───────────────────────────────────────────────────────────
 
 function defaultOptions(overrides: Partial<ChartOptions> = {}): ChartOptions {
-    return { type: 'ColumnChart', ...overrides };
+    return { type: 'columnchart', ...overrides };
 }
 
 const sampleColumns = ['Category', 'Value', 'Count'];
@@ -98,14 +98,14 @@ describe('ChartEditorProvider', () => {
         // ── Chart type dropdown ─────────────────────────────────────────
 
         it('renders the chart type dropdown with the current type selected', () => {
-            view.setOptions(defaultOptions({ type: 'PieChart' }), sampleColumns);
+            view.setOptions(defaultOptions({ type: 'piechart' }), sampleColumns);
             const html: string = webview.setContent.mock.calls[0]![0];
 
             expect(html).toContain('<select id="opt-type"');
-            expect(html).toContain('<option value="PieChart" selected>PieChart</option>');
+            expect(html).toContain('<option value="piechart" selected>Pie (piechart)</option>');
             // Other types present but not selected
-            expect(html).toContain('<option value="ColumnChart">ColumnChart</option>');
-            expect(html).not.toContain('<option value="ColumnChart" selected');
+            expect(html).toContain('<option value="columnchart">Column (columnchart)</option>');
+            expect(html).not.toContain('<option value="columnchart" selected');
         });
 
         it('includes an unknown chart type at the beginning of the dropdown', () => {
@@ -114,7 +114,7 @@ describe('ChartEditorProvider', () => {
 
             expect(html).toContain('<option value="CustomChart" selected>CustomChart</option>');
             // Standard types still present
-            expect(html).toContain('<option value="ColumnChart">');
+            expect(html).toContain('<option value="columnchart">');
         });
 
         // ── Kind dropdown ───────────────────────────────────────────────
@@ -336,19 +336,19 @@ describe('ChartEditorProvider', () => {
         });
 
         it('renders tick angle values', () => {
-            view.setOptions(defaultOptions({ xTickAngle: 45, yTickAngle: -90 }), []);
+            view.setOptions(defaultOptions({ xTickAngle: -45, yTickAngle: -90 }), []);
             const html: string = webview.setContent.mock.calls[0]![0];
 
-            expect(html).toMatch(/id="opt-xTickAngle"[^>]*value="45"/);
-            expect(html).toMatch(/id="opt-yTickAngle"[^>]*value="-90"/);
+            expect(html).toContain('<option value="-45" selected>-45°</option>');
+            expect(html).toContain('<option value="-90" selected>-90°</option>');
         });
 
         it('renders empty tick angle when not set', () => {
             view.setOptions(defaultOptions(), []);
             const html: string = webview.setContent.mock.calls[0]![0];
 
-            expect(html).toMatch(/id="opt-xTickAngle"[^>]*value=""/);
-            expect(html).toMatch(/id="opt-yTickAngle"[^>]*value=""/);
+            expect(html).toMatch(/id="opt-xTickAngle"[^>]*>.*<option value="" selected>\(auto\)/s);
+            expect(html).toMatch(/id="opt-yTickAngle"[^>]*>.*<option value="" selected>\(auto\)/s);
         });
 
         // ── HTML escaping ───────────────────────────────────────────────
@@ -378,12 +378,12 @@ describe('ChartEditorProvider', () => {
         // ── Re-populate ─────────────────────────────────────────────────
 
         it('can be called multiple times to re-populate', () => {
-            view.setOptions(defaultOptions({ type: 'BarChart' }), sampleColumns);
-            view.setOptions(defaultOptions({ type: 'PieChart' }), ['Fruit', 'Count']);
+            view.setOptions(defaultOptions({ type: 'barchart' }), sampleColumns);
+            view.setOptions(defaultOptions({ type: 'piechart' }), ['Fruit', 'Count']);
 
             expect(webview.setContent).toHaveBeenCalledTimes(2);
             const html: string = webview.setContent.mock.calls[1]![0];
-            expect(html).toContain('<option value="PieChart" selected>');
+            expect(html).toContain('<option value="piechart" selected>');
             expect(html).toContain('<option value="Fruit"');
         });
 
@@ -431,7 +431,7 @@ describe('ChartEditorProvider', () => {
             const callback = vi.fn();
             view.onOptionsChanged = callback;
 
-            const opts = { type: 'BarChart', kind: 'Stacked' };
+            const opts = { type: 'barchart', kind: 'Stacked' };
             webview.simulateMessage({ command: 'chartOptionsChanged', chartOptions: opts });
 
             expect(callback).toHaveBeenCalledOnce();
@@ -442,7 +442,7 @@ describe('ChartEditorProvider', () => {
             const callback = vi.fn();
             view.onOptionsChanged = callback;
 
-            const opts = { type: 'ColumnChart', aspectRatio: '4:3' };
+            const opts = { type: 'columnchart', aspectRatio: '4:3' };
             webview.simulateMessage({ command: 'chartOptionsChanged', chartOptions: opts, clientOnly: true });
 
             expect(callback).toHaveBeenCalledOnce();
@@ -453,9 +453,9 @@ describe('ChartEditorProvider', () => {
             const callback = vi.fn();
             view.onOptionsChanged = callback;
 
-            webview.simulateMessage({ command: 'chartOptionsChanged', chartOptions: { type: 'PieChart' } });
+            webview.simulateMessage({ command: 'chartOptionsChanged', chartOptions: { type: 'piechart' } });
 
-            expect(callback).toHaveBeenCalledWith({ type: 'PieChart' }, false);
+            expect(callback).toHaveBeenCalledWith({ type: 'piechart' }, false);
         });
 
         it('does not fire for unrelated messages', () => {
@@ -478,7 +478,7 @@ describe('ChartEditorProvider', () => {
 
         it('does not throw when onOptionsChanged is not set', () => {
             expect(() => {
-                webview.simulateMessage({ command: 'chartOptionsChanged', chartOptions: { type: 'BarChart' } });
+                webview.simulateMessage({ command: 'chartOptionsChanged', chartOptions: { type: 'barchart' } });
             }).not.toThrow();
         });
     });
@@ -494,7 +494,7 @@ describe('ChartEditorProvider', () => {
 
             view.dispose();
 
-            webview.simulateMessage({ command: 'chartOptionsChanged', chartOptions: { type: 'BarChart' } });
+            webview.simulateMessage({ command: 'chartOptionsChanged', chartOptions: { type: 'barchart' } });
             expect(callback).not.toHaveBeenCalled();
         });
     });

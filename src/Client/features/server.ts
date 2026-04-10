@@ -588,6 +588,10 @@ export interface ChartOptions {
     mode?: string;
     aspectRatio?: string;
     textSize?: string;
+    anomalyColumns?: string[];
+    markerShape?: string;
+    cycleMarkerShapes?: boolean;
+    markerSize?: string;
 }
 
 /** Position in a document. */

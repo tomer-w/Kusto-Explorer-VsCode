@@ -785,6 +785,133 @@
             ],
             "default": "",
             "description": "Default aspect ratio for chart display"
+          },
+          "kusto.chart.xTickAngle": {
+            "type": "string",
+            "enum": [
+              "",
+              "0",
+              "15",
+              "30",
+              "45",
+              "60",
+              "75",
+              "90",
+              "-15",
+              "-30",
+              "-45",
+              "-60",
+              "-75",
+              "-90"
+            ],
+            "enumItemLabels": [
+              "(default)",
+              "0°",
+              "15°",
+              "30°",
+              "45°",
+              "60°",
+              "75°",
+              "90°",
+              "-15°",
+              "-30°",
+              "-45°",
+              "-60°",
+              "-75°",
+              "-90°"
+            ],
+            "default": "",
+            "description": "Default X-axis tick label angle for charts"
+          },
+          "kusto.chart.yTickAngle": {
+            "type": "string",
+            "enum": [
+              "",
+              "0",
+              "15",
+              "30",
+              "45",
+              "60",
+              "75",
+              "90",
+              "-15",
+              "-30",
+              "-45",
+              "-60",
+              "-75",
+              "-90"
+            ],
+            "enumItemLabels": [
+              "(default)",
+              "0°",
+              "15°",
+              "30°",
+              "45°",
+              "60°",
+              "75°",
+              "90°",
+              "-15°",
+              "-30°",
+              "-45°",
+              "-60°",
+              "-75°",
+              "-90°"
+            ],
+            "default": "",
+            "description": "Default Y-axis tick label angle for charts"
+          },
+          "kusto.chart.markerShape": {
+            "type": "string",
+            "enum": [
+              "",
+              "circle",
+              "diamond",
+              "square",
+              "triangle-up",
+              "cross",
+              "star",
+              "x"
+            ],
+            "enumItemLabels": [
+              "(default)",
+              "circle",
+              "diamond",
+              "square",
+              "triangle-up",
+              "cross",
+              "star",
+              "x"
+            ],
+            "default": "",
+            "description": "Default marker shape for scatter and anomaly charts"
+          },
+          "kusto.chart.markerShapesCycle": {
+            "type": "string",
+            "enum": ["", "yes", "no"],
+            "enumItemLabels": ["(default)", "Yes", "No"],
+            "default": "",
+            "description": "Marker Shapes Cycle: cycle through shapes across traces by default"
+          },
+          "kusto.chart.markerSize": {
+            "type": "string",
+            "enum": [
+              "",
+              "Extra Small",
+              "Small",
+              "Medium",
+              "Large",
+              "Extra Large"
+            ],
+            "enumItemLabels": [
+              "(default)",
+              "Extra Small",
+              "Small",
+              "Medium",
+              "Large",
+              "Extra Large"
+            ],
+            "default": "",
+            "description": "Default marker size for scatter and anomaly charts"
           }
         }
       },

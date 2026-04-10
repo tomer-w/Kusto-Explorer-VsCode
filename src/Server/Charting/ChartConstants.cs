@@ -8,25 +8,25 @@ namespace Kusto.Vscode;
 /// </summary>
 public static class ChartType
 {
-    public const string None = "None";
-    public const string AreaChart = "AreaChart";
-    public const string BarChart = "BarChart";
-    public const string Card = "Card";
-    public const string ColumnChart = "ColumnChart";
-    public const string Graph = "Graph";
-    public const string LineChart = "LineChart";
-    public const string PieChart = "PieChart";
-    public const string PivotChart = "PivotChart";
-    public const string Plotly = "Plotly";
-    public const string Sankey = "Sankey";
-    public const string ScatterChart = "ScatterChart";
-    public const string StackedAreaChart = "StackedAreaChart";
-    public const string ThreeDChart = "3DChart";
-    public const string TimeLadderChart = "TimeLadderChart";
-    public const string TimeLineChart = "TimeLineChart";
-    public const string TimeLineWithAnomalyChart = "TimeLineWithAnomalyChart";
-    public const string TimePivot = "TimePivot";
-    public const string TreeMap = "TreeMap";
+    public const string None = "none";
+    public const string AreaChart = "areachart";
+    public const string BarChart = "barchart";
+    public const string Card = "card";
+    public const string ColumnChart = "columnchart";
+    public const string Graph = "graph";
+    public const string LineChart = "linechart";
+    public const string PieChart = "piechart";
+    public const string PivotChart = "pivotchart";
+    public const string Plotly = "plotly";
+    public const string Sankey = "sankey";
+    public const string ScatterChart = "scatterchart";
+    public const string StackedAreaChart = "stackedareachart";
+    public const string ThreeDChart = "3Dchart";
+    public const string TimeLadderChart = "ladderchart";
+    public const string TimeLineChart = "timechart";
+    public const string TimeLineWithAnomalyChart = "anomalychart";
+    public const string TimePivot = "timepivot";
+    public const string TreeMap = "treemap";
 }
 
 /// <summary>
