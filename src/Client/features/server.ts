@@ -588,6 +588,7 @@ export interface ChartOptions {
     mode?: string;
     aspectRatio?: string;
     textSize?: string;
+    anomalyColumns?: string[];
 }
 
 /** Position in a document. */

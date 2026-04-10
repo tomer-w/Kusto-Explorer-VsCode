@@ -144,7 +144,7 @@
     }
   ],
   "chartOptions": {
-    "type": "LineChart",
+    "type": "linechart",
     "kind": "Default",
     "aspectRatio": "3:2",
     "textSize": "Large",

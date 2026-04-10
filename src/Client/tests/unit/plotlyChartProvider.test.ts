@@ -180,7 +180,7 @@ describe('PlotlyChartProvider', () => {
 
         describe('renderChart', () => {
             it('calls webview.setContent() with chart HTML', () => {
-                view.renderChart(make2dTable(), { type: 'ColumnChart' }, false);
+                view.renderChart(make2dTable(), { type: 'columnchart' }, false);
                 expect(webview.setContent).toHaveBeenCalledOnce();
                 const html = webview.setContent.mock.calls[0]![0] as string;
                 expect(html).toContain('plotly-chart');
@@ -192,7 +192,7 @@ describe('PlotlyChartProvider', () => {
                     [{ name: 'X', type: 'string' }, { name: 'Y', type: 'real' }],
                     [],
                 );
-                view.renderChart(emptyTable, { type: 'ColumnChart' }, false);
+                view.renderChart(emptyTable, { type: 'columnchart' }, false);
                 expect(webview.setContent).toHaveBeenCalledOnce();
                 const html = webview.setContent.mock.calls[0]![0] as string;
                 const traces = html.match(/var data = (\[[\s\S]*?\]);\s*var layout/);
@@ -241,9 +241,9 @@ describe('PlotlyChartProvider', () => {
             return JSON.parse(layoutMatch![1]!) as Record<string, unknown>;
         }
 
-        describe('ColumnChart', () => {
+        describe('columnchart', () => {
             it('renders bar traces with vertical orientation', () => {
-                const html = renderAndGetHtml(make2dTable(), { type: 'ColumnChart' });
+                const html = renderAndGetHtml(make2dTable(), { type: 'columnchart' });
                 expect(html).toBeDefined();
                 const traces = parseTraces(html!);
                 expect(traces.length).toBe(1);
@@ -255,7 +255,7 @@ describe('PlotlyChartProvider', () => {
             });
 
             it('renders multiple series as separate traces', () => {
-                const html = renderAndGetHtml(makeMultiSeriesTable(), { type: 'ColumnChart' });
+                const html = renderAndGetHtml(makeMultiSeriesTable(), { type: 'columnchart' });
                 expect(html).toBeDefined();
                 const traces = parseTraces(html!);
                 expect(traces.length).toBe(2);
@@ -266,7 +266,7 @@ describe('PlotlyChartProvider', () => {
             it('respects xColumn and yColumns options', () => {
                 const table = makeMultiSeriesTable();
                 const html = renderAndGetHtml(table, {
-                    type: 'ColumnChart',
+                    type: 'columnchart',
                     xColumn: 'Month',
                     yColumns: ['Profit'],
                 });
@@ -277,9 +277,9 @@ describe('PlotlyChartProvider', () => {
             });
         });
 
-        describe('BarChart', () => {
+        describe('barchart', () => {
             it('renders bar traces with horizontal orientation', () => {
-                const html = renderAndGetHtml(make2dTable(), { type: 'BarChart' });
+                const html = renderAndGetHtml(make2dTable(), { type: 'barchart' });
                 expect(html).toBeDefined();
                 const trace = parseTraces(html!)[0] as Record<string, unknown>;
                 expect(trace.type).toBe('bar');
@@ -287,9 +287,9 @@ describe('PlotlyChartProvider', () => {
             });
         });
 
-        describe('LineChart', () => {
+        describe('linechart', () => {
             it('renders scatter traces with lines mode', () => {
-                const html = renderAndGetHtml(make2dTable(), { type: 'LineChart' });
+                const html = renderAndGetHtml(make2dTable(), { type: 'linechart' });
                 expect(html).toBeDefined();
                 const trace = parseTraces(html!)[0] as Record<string, unknown>;
                 expect(trace.type).toBe('scatter');
@@ -297,9 +297,9 @@ describe('PlotlyChartProvider', () => {
             });
         });
 
-        describe('ScatterChart', () => {
+        describe('scatterchart', () => {
             it('renders scatter traces with markers mode', () => {
-                const html = renderAndGetHtml(make2dTable(), { type: 'ScatterChart' });
+                const html = renderAndGetHtml(make2dTable(), { type: 'scatterchart' });
                 expect(html).toBeDefined();
                 const trace = parseTraces(html!)[0] as Record<string, unknown>;
                 expect(trace.type).toBe('scatter');
@@ -307,9 +307,9 @@ describe('PlotlyChartProvider', () => {
             });
         });
 
-        describe('AreaChart', () => {
+        describe('areachart', () => {
             it('renders scatter traces with fill', () => {
-                const html = renderAndGetHtml(make2dTable(), { type: 'AreaChart' });
+                const html = renderAndGetHtml(make2dTable(), { type: 'areachart' });
                 expect(html).toBeDefined();
                 const trace = parseTraces(html!)[0] as Record<string, unknown>;
                 expect(trace.type).toBe('scatter');
@@ -317,7 +317,7 @@ describe('PlotlyChartProvider', () => {
             });
 
             it('renders stacked area when kind is Stacked', () => {
-                const html = renderAndGetHtml(makeMultiSeriesTable(), { type: 'AreaChart', kind: 'Stacked' });
+                const html = renderAndGetHtml(makeMultiSeriesTable(), { type: 'areachart', kind: 'Stacked' });
                 expect(html).toBeDefined();
                 const trace = parseTraces(html!)[0] as Record<string, unknown>;
                 expect(trace.stackgroup).toBe('1');
@@ -325,9 +325,9 @@ describe('PlotlyChartProvider', () => {
             });
         });
 
-        describe('StackedAreaChart', () => {
+        describe('stackedareachart', () => {
             it('renders stacked area traces', () => {
-                const html = renderAndGetHtml(makeMultiSeriesTable(), { type: 'StackedAreaChart' });
+                const html = renderAndGetHtml(makeMultiSeriesTable(), { type: 'stackedareachart' });
                 expect(html).toBeDefined();
                 const traces = parseTraces(html!);
                 for (const t of traces) {
@@ -336,9 +336,9 @@ describe('PlotlyChartProvider', () => {
             });
         });
 
-        describe('PieChart', () => {
+        describe('piechart', () => {
             it('renders a pie trace with labels and values', () => {
-                const html = renderAndGetHtml(makePieTable(), { type: 'PieChart' });
+                const html = renderAndGetHtml(makePieTable(), { type: 'piechart' });
                 expect(html).toBeDefined();
                 const trace = parseTraces(html!)[0] as Record<string, unknown>;
                 expect(trace.type).toBe('pie');
@@ -347,13 +347,13 @@ describe('PlotlyChartProvider', () => {
             });
         });
 
-        describe('Card', () => {
+        describe('card', () => {
             it('renders an indicator trace with a numeric value', () => {
                 const table = makeTable(
                     [{ name: 'Metric', type: 'real' }],
                     [[42]],
                 );
-                const html = renderAndGetHtml(table, { type: 'Card' });
+                const html = renderAndGetHtml(table, { type: 'card' });
                 expect(html).toBeDefined();
                 const trace = parseTraces(html!)[0] as Record<string, unknown>;
                 expect(trace.type).toBe('indicator');
@@ -366,12 +366,12 @@ describe('PlotlyChartProvider', () => {
                     [{ name: 'Name', type: 'string' }],
                     [['hello']],
                 );
-                const html = renderAndGetHtml(table, { type: 'Card' });
+                const html = renderAndGetHtml(table, { type: 'card' });
                 expect(html).toBeUndefined();
             });
         });
 
-        describe('TreeMap', () => {
+        describe('treemap', () => {
             it('renders a treemap trace', () => {
                 const table = makeTable(
                     [
@@ -385,7 +385,7 @@ describe('PlotlyChartProvider', () => {
                         ['South', 'Widget', 150],
                     ],
                 );
-                const html = renderAndGetHtml(table, { type: 'TreeMap' });
+                const html = renderAndGetHtml(table, { type: 'treemap' });
                 expect(html).toBeDefined();
                 const trace = parseTraces(html!)[0] as Record<string, unknown>;
                 expect(trace.type).toBe('treemap');
@@ -394,7 +394,7 @@ describe('PlotlyChartProvider', () => {
             });
         });
 
-        describe('Sankey', () => {
+        describe('sankey', () => {
             it('renders a sankey trace with nodes and links', () => {
                 const table = makeTable(
                     [
@@ -408,7 +408,7 @@ describe('PlotlyChartProvider', () => {
                         ['B', 'C', 5],
                     ],
                 );
-                const html = renderAndGetHtml(table, { type: 'Sankey' });
+                const html = renderAndGetHtml(table, { type: 'sankey' });
                 expect(html).toBeDefined();
                 const trace = parseTraces(html!)[0] as Record<string, unknown>;
                 expect(trace.type).toBe('sankey');
@@ -417,7 +417,63 @@ describe('PlotlyChartProvider', () => {
             });
         });
 
-        describe('Plotly (raw)', () => {
+        describe('anomalychart', () => {
+            it('renders line traces with anomaly scatter points', () => {
+                const table = makeTable(
+                    [
+                        { name: 'timestamp', type: 'datetime' },
+                        { name: 'value', type: 'real' },
+                        { name: 'anomalies', type: 'real' },
+                    ],
+                    [
+                        ['2024-01-01', 10, 0],
+                        ['2024-01-02', 20, 1],
+                        ['2024-01-03', 15, 0],
+                        ['2024-01-04', 50, -1],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'anomalychart',
+                    yColumns: ['value', 'anomalies'],
+                    anomalyColumns: ['anomalies'],
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                // First trace: line for 'value'
+                expect(traces.length).toBe(2);
+                const line = traces[0] as Record<string, unknown>;
+                expect(line.type).toBe('scatter');
+                expect(line.mode).toBe('lines');
+                // Second trace: scatter for anomaly points
+                const anomaly = traces[1] as Record<string, unknown>;
+                expect(anomaly.type).toBe('scatter');
+                expect(anomaly.mode).toBe('markers');
+                expect(anomaly.x).toEqual(['2024-01-02', '2024-01-04']);
+                expect(anomaly.y).toEqual([20, 50]);
+            });
+
+            it('falls back to line chart when no anomalyColumns specified', () => {
+                const table = makeTable(
+                    [
+                        { name: 'timestamp', type: 'datetime' },
+                        { name: 'value', type: 'real' },
+                    ],
+                    [
+                        ['2024-01-01', 10],
+                        ['2024-01-02', 20],
+                    ],
+                );
+                const html = renderAndGetHtml(table, { type: 'anomalychart' });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                expect(traces.length).toBe(1);
+                const trace = traces[0] as Record<string, unknown>;
+                expect(trace.type).toBe('scatter');
+                expect(trace.mode).toBe('lines');
+            });
+        });
+
+        describe('plotly (raw)', () => {
             it('renders raw Plotly JSON from first cell', () => {
                 const plotlyJson = JSON.stringify({
                     data: [{ type: 'bar', x: [1, 2], y: [3, 4] }],
@@ -427,7 +483,7 @@ describe('PlotlyChartProvider', () => {
                     [{ name: 'plotly_json', type: 'string' }],
                     [[plotlyJson]],
                 );
-                const html = renderAndGetHtml(table, { type: 'Plotly' });
+                const html = renderAndGetHtml(table, { type: 'plotly' });
                 expect(html).toBeDefined();
                 expect(html).toContain('Plotly.newPlot');
                 const traces = parseTraces(html!);
@@ -439,7 +495,7 @@ describe('PlotlyChartProvider', () => {
                     [{ name: 'plotly_json', type: 'string' }],
                     [['not valid json']],
                 );
-                const html = renderAndGetHtml(table, { type: 'Plotly' });
+                const html = renderAndGetHtml(table, { type: 'plotly' });
                 expect(html).toBeUndefined();
             });
 
@@ -448,7 +504,7 @@ describe('PlotlyChartProvider', () => {
                     [{ name: 'plotly_json', type: 'string' }],
                     [[JSON.stringify({ layout: {} })]],
                 );
-                const html = renderAndGetHtml(table, { type: 'Plotly' });
+                const html = renderAndGetHtml(table, { type: 'plotly' });
                 expect(html).toBeUndefined();
             });
         });
@@ -457,7 +513,7 @@ describe('PlotlyChartProvider', () => {
 
         describe('chart options', () => {
             it('includes title in layout', () => {
-                const html = renderAndGetHtml(make2dTable(), { type: 'ColumnChart', title: 'My Chart' });
+                const html = renderAndGetHtml(make2dTable(), { type: 'columnchart', title: 'My Chart' });
                 expect(html).toBeDefined();
                 const layout = parseLayout(html!);
                 expect((layout.title as Record<string, unknown>)?.text).toBe('My Chart');
@@ -465,7 +521,7 @@ describe('PlotlyChartProvider', () => {
 
             it('includes axis titles in layout', () => {
                 const html = renderAndGetHtml(make2dTable(), {
-                    type: 'ColumnChart',
+                    type: 'columnchart',
                     xTitle: 'Categories',
                     yTitle: 'Values',
                 });
@@ -476,21 +532,21 @@ describe('PlotlyChartProvider', () => {
             });
 
             it('hides legend when showLegend is false', () => {
-                const html = renderAndGetHtml(make2dTable(), { type: 'ColumnChart', showLegend: false });
+                const html = renderAndGetHtml(make2dTable(), { type: 'columnchart', showLegend: false });
                 expect(html).toBeDefined();
                 const layout = parseLayout(html!);
                 expect(layout.showlegend).toBe(false);
             });
 
             it('sets stacked bar mode for Stacked kind', () => {
-                const html = renderAndGetHtml(makeMultiSeriesTable(), { type: 'ColumnChart', kind: 'Stacked' });
+                const html = renderAndGetHtml(makeMultiSeriesTable(), { type: 'columnchart', kind: 'Stacked' });
                 expect(html).toBeDefined();
                 const layout = parseLayout(html!);
                 expect(layout.barmode).toBe('stack');
             });
 
             it('sets log scale on x axis', () => {
-                const html = renderAndGetHtml(make2dTable(), { type: 'ColumnChart', xAxis: 'Log' });
+                const html = renderAndGetHtml(make2dTable(), { type: 'columnchart', xAxis: 'Log' });
                 expect(html).toBeDefined();
                 const layout = parseLayout(html!);
                 expect((layout.xaxis as Record<string, unknown>)?.type).toBe('log');
@@ -498,7 +554,7 @@ describe('PlotlyChartProvider', () => {
 
             it('sets axis range from xmin/xmax', () => {
                 const html = renderAndGetHtml(make2dTable(), {
-                    type: 'ColumnChart',
+                    type: 'columnchart',
                     xmin: 0,
                     xmax: 100,
                 });
@@ -509,7 +565,7 @@ describe('PlotlyChartProvider', () => {
 
             it('sets tick visibility', () => {
                 const html = renderAndGetHtml(make2dTable(), {
-                    type: 'ColumnChart',
+                    type: 'columnchart',
                     xShowTicks: true,
                     yShowTicks: false,
                 });
@@ -521,7 +577,7 @@ describe('PlotlyChartProvider', () => {
 
             it('sets grid visibility', () => {
                 const html = renderAndGetHtml(make2dTable(), {
-                    type: 'ColumnChart',
+                    type: 'columnchart',
                     xShowGrid: false,
                     yShowGrid: true,
                 });
@@ -532,14 +588,14 @@ describe('PlotlyChartProvider', () => {
             });
 
             it('sets category sort order', () => {
-                const html = renderAndGetHtml(make2dTable(), { type: 'ColumnChart', sort: 'Ascending' });
+                const html = renderAndGetHtml(make2dTable(), { type: 'columnchart', sort: 'Ascending' });
                 expect(html).toBeDefined();
                 const layout = parseLayout(html!);
                 expect((layout.xaxis as Record<string, unknown>)?.categoryorder).toBe('total ascending');
             });
 
             it('sets legend position to bottom', () => {
-                const html = renderAndGetHtml(make2dTable(), { type: 'ColumnChart', legendPosition: 'Bottom' });
+                const html = renderAndGetHtml(make2dTable(), { type: 'columnchart', legendPosition: 'Bottom' });
                 expect(html).toBeDefined();
                 const layout = parseLayout(html!);
                 const legend = layout.legend as Record<string, unknown>;
@@ -551,7 +607,7 @@ describe('PlotlyChartProvider', () => {
 
         describe('dark mode', () => {
             it('applies dark mode colors to layout', () => {
-                const html = renderAndGetHtml(make2dTable(), { type: 'ColumnChart' }, true);
+                const html = renderAndGetHtml(make2dTable(), { type: 'columnchart' }, true);
                 expect(html).toBeDefined();
                 const layout = parseLayout(html!);
                 expect(layout.paper_bgcolor).toBe('#1e1e1e');
@@ -568,7 +624,7 @@ describe('PlotlyChartProvider', () => {
                     [{ name: 'json', type: 'string' }],
                     [[plotlyJson]],
                 );
-                const html = renderAndGetHtml(table, { type: 'Plotly' }, true);
+                const html = renderAndGetHtml(table, { type: 'plotly' }, true);
                 expect(html).toBeDefined();
                 const layout = parseLayout(html!);
                 expect(layout.paper_bgcolor).toBe('#1e1e1e');

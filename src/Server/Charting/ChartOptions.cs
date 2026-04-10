@@ -14,7 +14,7 @@ namespace Kusto.Vscode;
 public class ChartOptions
 {
     /// <summary>
-    /// Chart type. Use <see cref="ChartType"/> constants (e.g., "LineChart", "BarChart", "PieChart", "ScatterChart").
+    /// Chart type. Use <see cref="ChartType"/> constants (e.g., "linechart", "barchart", "piechart", "scatterchart").
     /// </summary>
     [DataMember(Name = "type")]
     public required string Type { get; init; }
@@ -206,6 +206,13 @@ public class ChartOptions
     public string? TextSize { get; init; }
 
     /// <summary>
+    /// Column names to render as anomaly points on an anomaly chart.
+    /// Only applies to the anomalychart visualization type.
+    /// </summary>
+    [DataMember(Name = "anomalyColumns")]
+    public ImmutableList<string>? AnomalyColumns { get; init; }
+
+    /// <summary>
     /// Converts a <see cref="ChartVisualizationOptions"/> from the Kusto SDK to a <see cref="ChartOptions"/>.
     /// </summary>
     public static ChartOptions FromChartVisualizationOptions(ChartVisualizationOptions options)
@@ -227,7 +234,8 @@ public class ChartOptions
             Xmax = ConvertNanToNull(options.Xmax),
             Ymin = ConvertNanToNull(options.Ymin),
             Ymax = ConvertNanToNull(options.Ymax),
-            Accumulate = options.Accumulate
+            Accumulate = options.Accumulate,
+            AnomalyColumns = options.AnomalyColumns?.ToImmutableList(),
         };
     }
 
@@ -286,8 +294,27 @@ public class ChartOptions
 
     private static string VisualizationToChartType(VisualizationKind kind)
     {
-        return kind == VisualizationKind.ThreeDChart
-            ? ChartType.ThreeDChart
-            : kind.ToString();
+        return kind switch
+        {
+            VisualizationKind.AreaChart => ChartType.AreaChart,
+            VisualizationKind.BarChart => ChartType.BarChart,
+            VisualizationKind.Card => ChartType.Card,
+            VisualizationKind.ColumnChart => ChartType.ColumnChart,
+            VisualizationKind.Graph => ChartType.Graph,
+            VisualizationKind.LineChart => ChartType.LineChart,
+            VisualizationKind.PieChart => ChartType.PieChart,
+            VisualizationKind.PivotChart => ChartType.PivotChart,
+            VisualizationKind.Plotly => ChartType.Plotly,
+            VisualizationKind.Sankey => ChartType.Sankey,
+            VisualizationKind.ScatterChart => ChartType.ScatterChart,
+            VisualizationKind.StackedAreaChart => ChartType.StackedAreaChart,
+            VisualizationKind.ThreeDChart => ChartType.ThreeDChart,
+            VisualizationKind.TimeLadderChart => ChartType.TimeLadderChart,
+            VisualizationKind.TimeLineChart => ChartType.TimeLineChart,
+            VisualizationKind.TimeLineWithAnomalyChart => ChartType.TimeLineWithAnomalyChart,
+            VisualizationKind.TimePivot => ChartType.TimePivot,
+            VisualizationKind.TreeMap => ChartType.TreeMap,
+            _ => ChartType.None,
+        };
     }
 }

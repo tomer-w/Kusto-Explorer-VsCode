@@ -100,7 +100,7 @@ suite('Query Editor Integration Tests', () => {
                         ['Kansas', 30]
                     ]
                 }],
-                chartOptions: { type: 'ColumnChart' }
+                chartOptions: { type: 'columnchart' }
             }
         };
 

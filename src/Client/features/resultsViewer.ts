@@ -1059,7 +1059,7 @@ export class ResultsViewer {
         }
         const chartData: server.ResultData = {
             ...this.lastPanelResultData,
-            chartOptions: this.lastPanelResultData.chartOptions ?? { type: 'ColumnChart' }
+            chartOptions: this.lastPanelResultData.chartOptions ?? { type: 'columnchart' }
         };
         await this.displayResultsInSingletonView(chartData, 'chart', true);
     }
