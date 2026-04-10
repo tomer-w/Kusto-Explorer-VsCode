@@ -336,19 +336,19 @@ describe('ChartEditorProvider', () => {
         });
 
         it('renders tick angle values', () => {
-            view.setOptions(defaultOptions({ xTickAngle: 45, yTickAngle: -90 }), []);
+            view.setOptions(defaultOptions({ xTickAngle: -45, yTickAngle: -90 }), []);
             const html: string = webview.setContent.mock.calls[0]![0];
 
-            expect(html).toMatch(/id="opt-xTickAngle"[^>]*value="45"/);
-            expect(html).toMatch(/id="opt-yTickAngle"[^>]*value="-90"/);
+            expect(html).toContain('<option value="-45" selected>-45°</option>');
+            expect(html).toContain('<option value="-90" selected>-90°</option>');
         });
 
         it('renders empty tick angle when not set', () => {
             view.setOptions(defaultOptions(), []);
             const html: string = webview.setContent.mock.calls[0]![0];
 
-            expect(html).toMatch(/id="opt-xTickAngle"[^>]*value=""/);
-            expect(html).toMatch(/id="opt-yTickAngle"[^>]*value=""/);
+            expect(html).toMatch(/id="opt-xTickAngle"[^>]*>.*<option value="" selected>\(auto\)/s);
+            expect(html).toMatch(/id="opt-yTickAngle"[^>]*>.*<option value="" selected>\(auto\)/s);
         });
 
         // ── HTML escaping ───────────────────────────────────────────────

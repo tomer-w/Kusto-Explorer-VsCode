@@ -213,6 +213,28 @@ public class ChartOptions
     public ImmutableList<string>? AnomalyColumns { get; init; }
 
     /// <summary>
+    /// Marker shape for scatter points. Use Plotly marker symbol names: "circle", "diamond", "square", "triangle-up", "cross", "star", "hexagon", "x".
+    /// If null, defaults to "circle".
+    /// </summary>
+    [DataMember(Name = "markerShape")]
+    public string? MarkerShape { get; init; }
+
+    /// <summary>
+    /// Whether to cycle through different marker shapes for each trace.
+    /// When true, each trace uses a different shape starting from <see cref="MarkerShape"/>.
+    /// When false or null, all traces use the same shape.
+    /// </summary>
+    [DataMember(Name = "cycleMarkerShapes")]
+    public bool? CycleMarkerShapes { get; init; }
+
+    /// <summary>
+    /// Marker size preset. Use "Extra Small", "Small", "Medium", "Large", "Extra Large".
+    /// If null, defaults to Plotly's built-in marker size.
+    /// </summary>
+    [DataMember(Name = "markerSize")]
+    public string? MarkerSize { get; init; }
+
+    /// <summary>
     /// Converts a <see cref="ChartVisualizationOptions"/> from the Kusto SDK to a <see cref="ChartOptions"/>.
     /// </summary>
     public static ChartOptions FromChartVisualizationOptions(ChartVisualizationOptions options)

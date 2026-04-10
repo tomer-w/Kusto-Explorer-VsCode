@@ -100,6 +100,7 @@ interface PlotlyMarker {
     color?: string | undefined;
     size?: number | undefined;
     opacity?: number | undefined;
+    symbol?: string | undefined;
 }
 
 interface PlotlyLine {
@@ -544,7 +545,10 @@ class PlotlyChartBuilder {
         y: unknown[],
         name?: string,
         yAxisId?: string,
+        markerSymbol?: string,
+        markerSize?: number,
     ): PlotlyChartBuilder {
+        const hasMarker = markerSymbol != null || markerSize != null;
         const trace: ScatterTrace = {
             type: 'scatter',
             x,
@@ -552,6 +556,7 @@ class PlotlyChartBuilder {
             mode: PlotlyScatterModes.Markers,
             name,
             yaxis: yAxisId,
+            marker: hasMarker ? { symbol: markerSymbol, size: markerSize } : undefined,
         };
         return this.addTrace(trace);
     }
@@ -901,6 +906,38 @@ function isTimeChartType(type: string): boolean {
         || type === ChartType.TimeLineWithAnomalyChart
         || type === ChartType.TimeLadderChart
         || type === ChartType.TimePivot;
+}
+
+/** Ordered set of marker shapes for cycling. */
+const markerShapes = ['circle', 'diamond', 'square', 'triangle-up', 'cross', 'star', 'x'] as const;
+
+/** Marker size presets mapped to pixel values. */
+const markerSizePresets: Record<string, number> = {
+    'Extra Small': 4,
+    'Small': 6,
+    'Medium': 8,
+    'Large': 10,
+    'Extra Large': 14,
+};
+
+/**
+ * Returns the marker shape for a given trace index, based on chart options.
+ * - If no markerShape is set and cycleMarkerShapes is off, returns undefined (Plotly default).
+ * - If markerShape is set but cycleMarkerShapes is false, returns that shape for all traces.
+ * - If cycleMarkerShapes is true, cycles through shapes starting from the selected shape.
+ */
+function getMarkerShape(options: ChartOptions, traceIndex: number): string | undefined {
+    if (!options.markerShape && !options.cycleMarkerShapes) return undefined;
+    const startIndex = markerShapes.indexOf((options.markerShape ?? markerShapes[0]) as typeof markerShapes[number]);
+    const base = startIndex >= 0 ? startIndex : 0;
+    if (!options.cycleMarkerShapes) return markerShapes[base];
+    return markerShapes[(base + traceIndex) % markerShapes.length];
+}
+
+/** Resolves the marker size preset to a pixel value, or undefined if not set. */
+function getMarkerSize(options: ChartOptions): number | undefined {
+    if (!options.markerSize) return undefined;
+    return markerSizePresets[options.markerSize];
 }
 
 function toNumber(value: unknown): number {
@@ -1470,6 +1507,7 @@ export class PlotlyChartProvider implements IChartProvider {
         // Overlay anomaly points: for each anomaly column, show markers where flag != 0
         const xValues = getColumnValues(data, xColumn);
 
+        let anomalyTraceIndex = allYColumns.length;
         for (const anomalyColName of anomalySet) {
             const anomalyCol = getColumnRef(data, anomalyColName);
             if (!anomalyCol) continue;
@@ -1493,7 +1531,9 @@ export class PlotlyChartProvider implements IChartProvider {
             }
 
             if (anomalyX.length > 0) {
-                builder = builder.add2DScatterTrace(anomalyX, anomalyY, anomalyColName);
+                const shape = getMarkerShape(options, anomalyTraceIndex);
+                builder = builder.add2DScatterTrace(anomalyX, anomalyY, anomalyColName, undefined, shape, getMarkerSize(options));
+                anomalyTraceIndex++;
             }
         }
 
@@ -1502,7 +1542,7 @@ export class PlotlyChartProvider implements IChartProvider {
 
     private buildScatterChart(data: ResultTable, options: ChartOptions): PlotlyChartBuilder | undefined {
         return this.build2dChart(new PlotlyChartBuilder(), data, options,
-            (b, x, y, name, yAxis) => b.add2DScatterTrace(x, y, name, yAxis));
+            (b, x, y, name, yAxis, traceIndex) => b.add2DScatterTrace(x, y, name, yAxis, getMarkerShape(options, traceIndex), getMarkerSize(options)));
     }
 
     private buildAreaChart(data: ResultTable, options: ChartOptions): PlotlyChartBuilder | undefined {
@@ -1824,7 +1864,7 @@ export class PlotlyChartProvider implements IChartProvider {
         builder: PlotlyChartBuilder,
         data: ResultTable,
         options: ChartOptions,
-        addTrace: (b: PlotlyChartBuilder, x: unknown[], y: number[], name: string, yAxis?: string) => PlotlyChartBuilder,
+        addTrace: (b: PlotlyChartBuilder, x: unknown[], y: number[], name: string, yAxis: string | undefined, traceIndex: number) => PlotlyChartBuilder,
     ): PlotlyChartBuilder | undefined {
         const xColumn = this.get2dXColumn(data, options);
         if (!xColumn) return undefined;
@@ -1852,10 +1892,12 @@ export class PlotlyChartProvider implements IChartProvider {
         if (options.showLegend === false) builder = builder.hideLegend();
         builder = applyCommonOptions(builder, options);
 
+        let traceIndex = 0;
         for (const valueColumn of yColumns) {
             const result = this.get2DChartData(data, xColumn, valueColumn);
             if (result) {
-                builder = addTrace(builder, result.x, result.y, valueColumn.column.name, undefined);
+                builder = addTrace(builder, result.x, result.y, valueColumn.column.name, undefined, traceIndex);
+                traceIndex++;
             }
         }
 

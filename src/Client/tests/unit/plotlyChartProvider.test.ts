@@ -305,6 +305,56 @@ describe('PlotlyChartProvider', () => {
                 expect(trace.type).toBe('scatter');
                 expect(trace.mode).toBe('markers');
             });
+
+            it('applies markerShape to all traces when cycleMarkerShapes is off', () => {
+                const html = renderAndGetHtml(makeMultiSeriesTable(), { type: 'scatterchart', markerShape: 'diamond' });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                expect(traces.length).toBe(2);
+                expect((traces[0] as Record<string, unknown>).marker).toEqual({ symbol: 'diamond' });
+                expect((traces[1] as Record<string, unknown>).marker).toEqual({ symbol: 'diamond' });
+            });
+
+            it('cycles marker shapes when cycleMarkerShapes is true', () => {
+                const html = renderAndGetHtml(makeMultiSeriesTable(), { type: 'scatterchart', markerShape: 'diamond', cycleMarkerShapes: true });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                expect(traces.length).toBe(2);
+                expect((traces[0] as Record<string, unknown>).marker).toEqual({ symbol: 'diamond' });
+                expect((traces[1] as Record<string, unknown>).marker).toEqual({ symbol: 'square' });
+            });
+
+            it('does not set marker when markerShape is not specified', () => {
+                const html = renderAndGetHtml(make2dTable(), { type: 'scatterchart' });
+                expect(html).toBeDefined();
+                const trace = parseTraces(html!)[0] as Record<string, unknown>;
+                expect(trace.marker).toBeUndefined();
+            });
+
+            it('cycles shapes from circle when cycleMarkerShapes is true but no markerShape set', () => {
+                const html = renderAndGetHtml(makeMultiSeriesTable(), { type: 'scatterchart', cycleMarkerShapes: true });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                expect(traces.length).toBe(2);
+                expect((traces[0] as Record<string, unknown>).marker).toEqual({ symbol: 'circle' });
+                expect((traces[1] as Record<string, unknown>).marker).toEqual({ symbol: 'diamond' });
+            });
+
+            it('applies markerSize preset to scatter traces', () => {
+                const html = renderAndGetHtml(makeMultiSeriesTable(), { type: 'scatterchart', markerSize: 'Large' });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                expect(traces.length).toBe(2);
+                expect((traces[0] as Record<string, unknown>).marker).toEqual({ size: 10 });
+                expect((traces[1] as Record<string, unknown>).marker).toEqual({ size: 10 });
+            });
+
+            it('applies both markerShape and markerSize', () => {
+                const html = renderAndGetHtml(make2dTable(), { type: 'scatterchart', markerShape: 'star', markerSize: 'Medium' });
+                expect(html).toBeDefined();
+                const trace = parseTraces(html!)[0] as Record<string, unknown>;
+                expect(trace.marker).toEqual({ symbol: 'star', size: 8 });
+            });
         });
 
         describe('areachart', () => {
@@ -470,6 +520,30 @@ describe('PlotlyChartProvider', () => {
                 const trace = traces[0] as Record<string, unknown>;
                 expect(trace.type).toBe('scatter');
                 expect(trace.mode).toBe('lines');
+            });
+
+            it('applies markerShape to anomaly scatter points', () => {
+                const table = makeTable(
+                    [
+                        { name: 'timestamp', type: 'datetime' },
+                        { name: 'value', type: 'real' },
+                        { name: 'anomalies', type: 'real' },
+                    ],
+                    [
+                        ['2024-01-01', 10, 0],
+                        ['2024-01-02', 20, 1],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'anomalychart',
+                    yColumns: ['value', 'anomalies'],
+                    anomalyColumns: ['anomalies'],
+                    markerShape: 'star',
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                const anomaly = traces[1] as Record<string, unknown>;
+                expect(anomaly.marker).toEqual({ symbol: 'star' });
             });
         });
 
