@@ -111,6 +111,17 @@ function getChartDefaults(): Partial<server.ChartOptions> {
     if (textSize) { defaults.textSize = textSize; }
     const aspectRatio = config.get<string>('aspectRatio');
     if (aspectRatio) { defaults.aspectRatio = aspectRatio; }
+    const xTickAngle = config.get<string>('xTickAngle');
+    if (xTickAngle) { defaults.xTickAngle = Number(xTickAngle); }
+    const yTickAngle = config.get<string>('yTickAngle');
+    if (yTickAngle) { defaults.yTickAngle = Number(yTickAngle); }
+    const markerShape = config.get<string>('markerShape');
+    if (markerShape) { defaults.markerShape = markerShape; }
+    const cycleMarkerShapes = config.get<string>('markerShapesCycle');
+    if (cycleMarkerShapes === 'yes') { defaults.cycleMarkerShapes = true; }
+    else if (cycleMarkerShapes === 'no') { defaults.cycleMarkerShapes = false; }
+    const markerSize = config.get<string>('markerSize');
+    if (markerSize) { defaults.markerSize = markerSize; }
     return defaults;
 }
 
