@@ -24,6 +24,7 @@ export interface IServer {
     getEntityAsExpression(cluster: string, database: string, entityType: string, entityName: string, uri: string | null): Promise<string | null>;
     getQueryAsHtml(query: string, cluster?: string, database?: string, darkMode?: boolean): Promise<QueryAsHtmlResult | null>;
     getDataAsExpression(data: ResultData, tableName?: string): Promise<DataAsExpression | null>;
+    getTableAsExpression(table: ResultTable): Promise<string | null>;
     getEntityDefinitionContent(uri: string, token?: CancellationToken): Promise<EntityDefinitionContentResult | null>;
     transformPaste(text: string, kind: string, targetUri: string, targetPosition: Position, entityCluster?: string, entityDatabase?: string, entityType?: string, entityName?: string): Promise<string | null>;
     refreshSchema(cluster: string, database?: string): Promise<void>;
@@ -233,6 +234,14 @@ export class Server implements IServer {
     }
 
     /**
+     * Gets a single table as a KQL datatable expression.
+     */
+    async getTableAsExpression(table: ResultTable): Promise<string | null> {
+        const result = await this.getDataAsExpression({ tables: [table] }, table.name);
+        return result?.expression ?? null;
+    }
+
+    /**
      * Gets the content of a virtual entity definition document.
      */
     getEntityDefinitionContent(uri: string, token?: CancellationToken): Promise<EntityDefinitionContentResult | null> {
@@ -400,6 +409,7 @@ export class NullServer implements IServer {
     getEntityAsExpression(): Promise<string | null> { return Promise.resolve(null); }
     getQueryAsHtml(): Promise<QueryAsHtmlResult | null> { return Promise.resolve(null); }
     getDataAsExpression(): Promise<DataAsExpression | null> { return Promise.resolve(null); }
+    getTableAsExpression(_table: ResultTable): Promise<string | null> { return Promise.resolve(null); }
     getEntityDefinitionContent(): Promise<EntityDefinitionContentResult | null> { return Promise.resolve(null); }
     transformPaste(): Promise<string | null> { return Promise.resolve(null); }
     refreshSchema(): Promise<void> { return Promise.resolve(); }

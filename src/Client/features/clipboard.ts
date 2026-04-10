@@ -33,10 +33,19 @@ export interface ClipboardItem {
     encoding?: 'base64' | 'utf8' | 'text';
 }
 
+/** Interface for clipboard operations with rich context metadata. */
+export interface IClipboard {
+    setContext(context: ClipboardContext): void;
+    getContext(): ClipboardContext | undefined;
+    clearContext(): void;
+    copyItems(items: ClipboardItem[]): Promise<void>;
+    copyText(text: string): Promise<void>;
+}
+
 /**
  * Manages clipboard operations with rich context metadata.
  */
-export class Clipboard {
+export class Clipboard implements IClipboard {
     /** Stored clipboard context from the last copy operation with context. */
     private clipboardContext: ClipboardContext | undefined;
 
@@ -67,12 +76,19 @@ export class Clipboard {
      * On Windows, uses PowerShell to set multiple clipboard formats (HTML, PNG, etc.).
      * On other platforms, falls back to plain text only using VS Code's clipboard API.
      */
-    async copy(items: ClipboardItem[]): Promise<void> {
+    async copyItems(items: ClipboardItem[]): Promise<void> {
         if (process.platform === 'win32') {
             return copyToClipboardWindows(items);
         } else {
             return copyToClipboardFallback(items);
         }
+    }
+
+    /**
+     * Copies plain text to the system clipboard.
+     */
+    async copyText(text: string): Promise<void> {
+        await vscode.env.clipboard.writeText(text);
     }
 }
 

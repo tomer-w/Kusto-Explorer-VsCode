@@ -2,64 +2,13 @@
 // Licensed under the MIT license.
 
 /**
- * Client-side chart rendering using Plotly.js.
+ * Plotly.js chart rendering implementation.
  * Ported from Server/Charting C# implementation.
  */
 
 import type { ChartOptions, ResultColumn, ResultTable } from './server';
-
-// ─── Chart Constants ────────────────────────────────────────────────────────
-
-export const ChartType = {
-    None: 'None',
-    AreaChart: 'AreaChart',
-    BarChart: 'BarChart',
-    Card: 'Card',
-    ColumnChart: 'ColumnChart',
-    Graph: 'Graph',
-    LineChart: 'LineChart',
-    PieChart: 'PieChart',
-    PivotChart: 'PivotChart',
-    Plotly: 'Plotly',
-    Sankey: 'Sankey',
-    ScatterChart: 'ScatterChart',
-    StackedAreaChart: 'StackedAreaChart',
-    ThreeDChart: '3DChart',
-    TimeLadderChart: 'TimeLadderChart',
-    TimeLineChart: 'TimeLineChart',
-    TimeLineWithAnomalyChart: 'TimeLineWithAnomalyChart',
-    TimePivot: 'TimePivot',
-    TreeMap: 'TreeMap',
-} as const;
-
-export const ChartKind = {
-    Default: 'Default',
-    Stacked: 'Stacked',
-    Stacked100: 'Stacked100',
-    Unstacked: 'Unstacked',
-} as const;
-
-export const ChartAxis = {
-    Linear: 'Linear',
-    Log: 'Log',
-} as const;
-
-export const ChartSortOrder = {
-    Default: 'Default',
-    Ascending: 'Ascending',
-    Descending: 'Descending',
-} as const;
-
-export const ChartLegendPosition = {
-    Right: 'Right',
-    Bottom: 'Bottom',
-    Hidden: 'Hidden',
-} as const;
-
-export const ChartMode = {
-    Light: 'Light',
-    Dark: 'Dark',
-} as const;
+import { ChartType, ChartKind, ChartAxis, ChartSortOrder, ChartLegendPosition } from './chartProvider';
+import type { IChartView, IWebView, IChartProvider } from './chartProvider';
 
 // ─── Plotly Constants ───────────────────────────────────────────────────────
 
@@ -429,7 +378,7 @@ interface SankeyTrace extends PlotlyTraceBase {
 
 type PlotlyTrace = BarTrace | ScatterTrace | PieTrace | IndicatorTrace | SurfaceTrace | TreeMapTrace | SankeyTrace;
 
-// ─── Chart Builder ──────────────────────────────────────────────────────────
+// ─── Plotly Chart Builder ──────────────────────────────────────────────────────────
 
 class PlotlyChartBuilder {
     private readonly _traces: PlotlyTrace[];
@@ -915,55 +864,6 @@ try {
 </script>`;
 }
 
-function createHtmlDocument(chartDiv: string, darkMode = false): string {
-    const backgroundColor = darkMode ? '#1e1e1e' : '#ffffff';
-    const textColor = darkMode ? '#f2f5fa' : '#000000';
-
-    // Extract script content from chartDiv
-    const scriptStart = chartDiv.indexOf('<script>');
-    const scriptEnd = chartDiv.indexOf('</script>');
-
-    let divPart: string;
-    let scriptContent: string;
-
-    if (scriptStart >= 0 && scriptEnd > scriptStart) {
-        divPart = chartDiv.substring(0, scriptStart).trim();
-        scriptContent = chartDiv.substring(scriptStart + 8, scriptEnd);
-    } else {
-        divPart = chartDiv;
-        scriptContent = '';
-    }
-
-    return `<!DOCTYPE html>
-<html style="height: 100%;">
-<head>
-    <meta charset="utf-8">
-    <style>
-        html, body {
-            margin: 0;
-            padding: 0;
-            height: 100%;
-            width: 100%;
-            overflow: hidden;
-            background-color: ${backgroundColor};
-            color: ${textColor};
-        }
-        #plotly-chart {
-            width: 100%;
-            height: 100%;
-        }
-    </style>
-</head>
-<body>
-    ${divPart}
-    <script src="${PlotlyJsCdn}" charset="utf-8"></script>
-    <script>
-    ${scriptContent}
-    </script>
-</body>
-</html>`;
-}
-
 // ─── Utility Functions ──────────────────────────────────────────────────────
 
 function hexToRgba(hex: string, opacity: number): string {
@@ -1055,27 +955,297 @@ function convertToNumeric(values: unknown[]): number[] {
     return values.map(v => sanitizeDouble(toNumber(v)));
 }
 
-// ─── Chart Manager ──────────────────────────────────────────────────────────
+// ─── Plotly Chart Manager ──────────────────────────────────────────────────────────
 
-export interface IChartManager {
-    renderChartToHtmlDiv(data: ResultTable, options: ChartOptions, darkMode?: boolean): string | undefined;
-    renderChartToHtmlDocument(data: ResultTable, options: ChartOptions, darkMode?: boolean): string | undefined;
+/**
+ * Plotly-specific client-side scripts for chart lifecycle management.
+ * Handles resize, aspect ratio, font overrides, and copy-to-clipboard.
+ * Expects the chart container to be `#chart` with optional `--chart-aspect-ratio` CSS var
+ * and `data-text-size` attribute.
+ * Exposes `window._chartResize()` for host-initiated resize (tab switch, edit panel toggle).
+ * Exposes `window._chartUpdated()` — called by the page handler after chart HTML is inserted.
+ */
+const plotlyChartScripts = `
+<script>
+(function() {
+    // ── Font size helpers ──────────────────────────────────────────────
+    function computeFontSizes(chartW, chartH, preset) {
+        var scale = preset === 'Extra Small' ? 0.5 : preset === 'Small' ? 0.75 : preset === 'Large' ? 1.5 : preset === 'Extra Large' ? 2.0 : 1.0;
+        var base = Math.min(chartW, chartH);
+        var titleSize = Math.round(Math.max(10, Math.min(36, base * 0.04)) * scale);
+        var axisSize = Math.round(Math.max(8, Math.min(24, base * 0.028)) * scale);
+        var tickSize = Math.round(Math.max(7, Math.min(16, base * 0.018)) * scale);
+        return { titleSize: titleSize, axisSize: axisSize, tickSize: tickSize };
+    }
+
+    function applyFontOverrides(layout, w, h, preset) {
+        var fonts = computeFontSizes(w, h, preset);
+        var overrides = {};
+        var titleObj = layout.title;
+        if (titleObj && typeof titleObj === 'object') {
+            overrides.title = Object.assign({}, titleObj, { font: Object.assign({}, titleObj.font || {}, { size: fonts.titleSize }) });
+        } else if (typeof titleObj === 'string') {
+            overrides.title = { text: titleObj, font: { size: fonts.titleSize } };
+        }
+        var xaxis = layout.xaxis;
+        if (xaxis) {
+            overrides.xaxis = Object.assign({}, xaxis, {
+                automargin: true,
+                title: Object.assign({}, xaxis.title || {}, { font: Object.assign({}, (xaxis.title && xaxis.title.font) || {}, { size: fonts.axisSize }), standoff: fonts.tickSize }),
+                tickfont: Object.assign({}, xaxis.tickfont || {}, { size: fonts.tickSize })
+            });
+        }
+        var yaxis = layout.yaxis;
+        if (yaxis) {
+            overrides.yaxis = Object.assign({}, yaxis, {
+                automargin: true,
+                title: Object.assign({}, yaxis.title || {}, { font: Object.assign({}, (yaxis.title && yaxis.title.font) || {}, { size: fonts.axisSize }), standoff: fonts.tickSize }),
+                tickfont: Object.assign({}, yaxis.tickfont || {}, { size: fonts.tickSize })
+            });
+        }
+        var legend = layout.legend || {};
+        overrides.legend = Object.assign({}, legend, {
+            font: Object.assign({}, legend.font || {}, { size: fonts.tickSize })
+        });
+        return overrides;
+    }
+
+    // ── Resize / aspect ratio ─────────────────────────────────────────
+    var lastAppliedW = 0;
+    var lastAppliedH = 0;
+    var resizeTimer = null;
+
+    function resizeChart() {
+        var chartDiv = document.getElementById('chart');
+        if (!chartDiv) return;
+        var plotDiv = chartDiv.querySelector('.js-plotly-plot') || chartDiv.querySelector('.plotly-graph-div');
+        if (!plotDiv || typeof Plotly === 'undefined') return;
+        var wrapperDiv = chartDiv.firstElementChild;
+        if (!wrapperDiv) return;
+        var arValue = getComputedStyle(chartDiv).getPropertyValue('--chart-aspect-ratio').trim();
+        var availW = chartDiv.clientWidth;
+        var availH = chartDiv.clientHeight;
+        var preset = chartDiv.getAttribute('data-text-size') || '';
+
+        function buildLayoutOverrides(w, h) {
+            var overrides = { width: w, height: h };
+            if (plotDiv.layout) {
+                Object.assign(overrides, applyFontOverrides(plotDiv.layout, w, h, preset));
+            }
+            return overrides;
+        }
+
+        if (!arValue) {
+            wrapperDiv.style.position = '';
+            wrapperDiv.style.left = '';
+            wrapperDiv.style.top = '';
+            wrapperDiv.style.width = availW + 'px';
+            wrapperDiv.style.height = availH + 'px';
+            wrapperDiv.style.visibility = 'visible';
+            lastAppliedW = chartDiv.clientWidth;
+            lastAppliedH = chartDiv.clientHeight;
+            Plotly.newPlot(plotDiv, plotDiv.data, Object.assign({}, plotDiv.layout, buildLayoutOverrides(availW, availH)), plotDiv._context);
+            return;
+        }
+        var parts = arValue.split('/').map(Number);
+        if (parts.length !== 2 || parts[0] <= 0 || parts[1] <= 0) {
+            Plotly.Plots.resize(plotDiv);
+            return;
+        }
+        var ratio = parts[0] / parts[1];
+        var w, h;
+        if (availW / availH > ratio) {
+            h = availH;
+            w = Math.round(h * ratio);
+        } else {
+            w = availW;
+            h = Math.round(w / ratio);
+        }
+        wrapperDiv.style.position = 'absolute';
+        wrapperDiv.style.left = Math.round((availW - w) / 2) + 'px';
+        wrapperDiv.style.top = Math.round((availH - h) / 2) + 'px';
+        wrapperDiv.style.width = w + 'px';
+        wrapperDiv.style.height = h + 'px';
+        wrapperDiv.style.margin = '';
+        wrapperDiv.style.visibility = 'visible';
+        lastAppliedW = chartDiv.clientWidth;
+        lastAppliedH = chartDiv.clientHeight;
+        Plotly.newPlot(plotDiv, plotDiv.data, Object.assign({}, plotDiv.layout, buildLayoutOverrides(w, h)), plotDiv._context);
+    }
+
+    // Expose for host code (tab switching, edit panel toggle, etc.)
+    window._chartResize = function() {
+        lastAppliedW = 0; lastAppliedH = 0;
+        resizeChart();
+    };
+
+    // Observe chart container resizes
+    var chartContainer = document.getElementById('chart');
+    if (chartContainer) {
+        new ResizeObserver(function() {
+            var w = chartContainer.clientWidth;
+            var h = chartContainer.clientHeight;
+            if (w === lastAppliedW && h === lastAppliedH) return;
+            if (resizeTimer) clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(function() { resizeChart(); }, 30);
+        }).observe(chartContainer);
+    }
+
+    // ── Post-update hook (called by the page handler after chart HTML is inserted) ──
+    window._chartUpdated = function() {
+        var chartDiv = document.getElementById('chart');
+        if (!chartDiv) return;
+        var plotDiv = chartDiv.querySelector('.js-plotly-plot') || chartDiv.querySelector('.plotly-graph-div');
+        if (!plotDiv || typeof Plotly === 'undefined') return;
+
+        var arValue = getComputedStyle(chartDiv).getPropertyValue('--chart-aspect-ratio').trim();
+        var availW = chartDiv.clientWidth;
+        var availH = chartDiv.clientHeight;
+        var preset = chartDiv.getAttribute('data-text-size') || '';
+        var targetW = availW, targetH = availH;
+        var centerLeft = null, centerTop = null;
+        if (arValue) {
+            var parts = arValue.split('/').map(Number);
+            if (parts.length === 2 && parts[0] > 0 && parts[1] > 0) {
+                var ratio = parts[0] / parts[1];
+                if (availW / availH > ratio) {
+                    targetH = availH;
+                    targetW = Math.round(targetH * ratio);
+                } else {
+                    targetW = availW;
+                    targetH = Math.round(targetW / ratio);
+                }
+                centerLeft = Math.round((availW - targetW) / 2);
+                centerTop = Math.round((availH - targetH) / 2);
+            }
+        }
+
+        var wrapperDiv = chartDiv.firstElementChild;
+        if (wrapperDiv) {
+            if (centerLeft !== null) {
+                wrapperDiv.style.position = 'absolute';
+                wrapperDiv.style.left = centerLeft + 'px';
+                wrapperDiv.style.top = centerTop + 'px';
+                wrapperDiv.style.width = targetW + 'px';
+                wrapperDiv.style.height = targetH + 'px';
+                wrapperDiv.style.margin = '';
+            } else {
+                wrapperDiv.style.position = '';
+                wrapperDiv.style.left = '';
+                wrapperDiv.style.top = '';
+                wrapperDiv.style.width = availW + 'px';
+                wrapperDiv.style.height = availH + 'px';
+            }
+            wrapperDiv.style.visibility = 'visible';
+        }
+
+        // Apply font/size overrides to the already-rendered plot
+        var overrides = Object.assign({ width: targetW, height: targetH }, applyFontOverrides(plotDiv.layout || {}, targetW, targetH, preset));
+        Plotly.relayout(plotDiv, overrides);
+
+        lastAppliedW = availW;
+        lastAppliedH = availH;
+    };
+
+    // ── Copy chart ────────────────────────────────────────────────────
+    window.addEventListener('message', async function(event) {
+        var message = event.data;
+        if (!(message && message.command === 'copyChart')) return;
+        var vscodeApi = window._vscodeApi;
+        if (!vscodeApi) return;
+        try {
+            var plotDiv = document.querySelector('.js-plotly-plot') || document.querySelector('.plotly-graph-div');
+            if (plotDiv && typeof Plotly !== 'undefined') {
+                var chartDiv = document.getElementById('chart');
+                var arValue = chartDiv ? getComputedStyle(chartDiv).getPropertyValue('--chart-aspect-ratio').trim() : '';
+                var width = plotDiv.offsetWidth;
+                var height = plotDiv.offsetHeight;
+                if (arValue) {
+                    var parts = arValue.split('/').map(Number);
+                    if (parts.length === 2 && parts[0] > 0 && parts[1] > 0) {
+                        width = 800;
+                        height = Math.round(800 * parts[1] / parts[0]);
+                    }
+                }
+                var layout = plotDiv.layout || {};
+                var pngDataUrl = await Plotly.toImage(plotDiv, { format: 'png', width: width, height: height, scale: 2 });
+                var savedPaperBg = layout.paper_bgcolor || '#fff';
+                var savedPlotBg = layout.plot_bgcolor || '#fff';
+                await Plotly.relayout(plotDiv, { paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)' });
+                var svgDataUrl = await Plotly.toImage(plotDiv, { format: 'svg', width: width, height: height });
+                await Plotly.relayout(plotDiv, { paper_bgcolor: savedPaperBg, plot_bgcolor: savedPlotBg });
+                vscodeApi.postMessage({ command: 'copyChartResult', pngDataUrl: pngDataUrl, svgDataUrl: svgDataUrl });
+            } else {
+                var canvas = document.querySelector('canvas');
+                if (canvas) {
+                    var dataUrl = canvas.toDataURL('image/png');
+                    vscodeApi.postMessage({ command: 'copyChartResult', pngDataUrl: dataUrl });
+                }
+            }
+        } catch (err) {
+            vscodeApi.postMessage({ command: 'copyChartError', error: String(err) });
+        }
+    });
+})();
+</script>`;
+
+/** View for Plotly charts rendered inside a webview. */
+class PlotlyChartView implements IChartView {
+    onCopyResult: ((pngDataUrl: string, svgDataUrl?: string) => void) | undefined;
+    onCopyError: ((error: string) => void) | undefined;
+    private readonly subscription: { dispose(): void };
+
+    constructor(
+        private readonly webview: IWebView,
+        private readonly render: (data: ResultTable, options: ChartOptions, darkMode: boolean) => string | undefined
+    ) {
+        this.subscription = webview.handle((message) => {
+            if (message.command === 'copyChartResult') {
+                const pngDataUrl = message.pngDataUrl as string;
+                const svgDataUrl = message.svgDataUrl as string | undefined;
+                if (pngDataUrl) {
+                    this.onCopyResult?.(pngDataUrl, svgDataUrl);
+                }
+            }
+            if (message.command === 'copyChartError') {
+                this.onCopyError?.(String(message.error ?? 'Unknown error'));
+            }
+        });
+    }
+
+    copyChart(): void {
+        this.webview.invoke('copyChart');
+    }
+
+    renderChart(data: ResultTable, options: ChartOptions, darkMode: boolean): void {
+        const bodyHtml = this.render(data, options, darkMode);
+        if (bodyHtml) {
+            this.webview.setContent(bodyHtml);
+        }
+    }
+
+    dispose(): void {
+        this.subscription.dispose();
+    }
 }
 
-export class PlotlyChartManager implements IChartManager {
+export class PlotlyChartProvider implements IChartProvider {
 
-    renderChartToHtmlDiv(data: ResultTable, options: ChartOptions, darkMode = false): string | undefined {
+    createView(webview: IWebView): IChartView {
+        webview.setup(
+            `<script src="${PlotlyJsCdn}" charset="utf-8"></script>`,
+            plotlyChartScripts
+        );
+        return new PlotlyChartView(webview, (data, options, darkMode) => this.renderChartToHtmlDiv(data, options, darkMode));
+    }
+
+    private renderChartToHtmlDiv(data: ResultTable, options: ChartOptions, darkMode = false): string | undefined {
         if (options.type === ChartType.Plotly) {
             return this.renderRawPlotlyChart(data, darkMode);
         }
 
         const builder = this.buildChart(data, options, darkMode);
         return builder?.toHtmlDiv();
-    }
-
-    renderChartToHtmlDocument(data: ResultTable, options: ChartOptions, darkMode = false): string | undefined {
-        const chartDiv = this.renderChartToHtmlDiv(data, options, darkMode);
-        return chartDiv != null ? createHtmlDocument(chartDiv, darkMode) : undefined;
     }
 
     // ─── Raw Plotly ─────────────────────────────────────────────────────
