@@ -424,7 +424,7 @@ async function runQuery(input: { query: string; cluster?: string; database?: str
     }
 
     if (input.showResults) {
-        await resultsViewer.displayResultsInSingletonView(result.data, 'all', true);
+        await resultsViewer.displayResultsInSingletonView(result.data, 'all');
     }
 
     return resultTableToMarkdown(result.data.tables[0]!);

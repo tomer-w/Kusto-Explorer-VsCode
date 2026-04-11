@@ -363,24 +363,34 @@
           "group": "navigation@1"
         },
         {
-          "command": "kusto.copyData",
-          "when": "view == kusto.resultsView && kusto.panelShowingData",
+          "command": "kusto.copyChart",
+          "when": "view == kusto.resultsView && kusto.panelChartActive",
           "group": "navigation@1"
+        },
+        {
+          "command": "kusto.copyData",
+          "when": "view == kusto.resultsView && kusto.panelShowingData && !kusto.panelChartActive",
+          "group": "navigation@1"
+        },
+        {
+          "command": "kusto.toggleChartEditor",
+          "when": "view == kusto.resultsView && kusto.panelHasChart && kusto.panelChartActive",
+          "group": "navigation@2"
         },
         {
           "command": "kusto.savePanelResults",
           "when": "view == kusto.resultsView",
-          "group": "navigation@2"
-        },
-        {
-          "command": "kusto.chartPanelResults",
-          "when": "view == kusto.resultsView && !kusto.hasSingletonView",
           "group": "navigation@3"
         },
         {
-          "command": "kusto.toggleSearch",
-          "when": "view == kusto.resultsView && kusto.panelShowingData",
+          "command": "kusto.chartPanelResults",
+          "when": "view == kusto.resultsView && !kusto.panelHasChart",
           "group": "navigation@4"
+        },
+        {
+          "command": "kusto.toggleSearch",
+          "when": "view == kusto.resultsView && kusto.panelShowingData && !kusto.panelChartActive",
+          "group": "navigation@5"
         }
       ],
       "view/item/context": [
@@ -1057,10 +1067,21 @@
             "type": "string",
             "enum": [
               "panel",
-              "beside"
+              "beside",
+              "main"
             ],
             "default": "panel",
-            "markdownDescription": "Where query results are displayed.\n- `panel`: In the Results tab of the bottom panel\n- `beside`: In an editor column beside your query"
+            "markdownDescription": "Where query results are displayed.\n- `panel`: In the Results tab of the bottom panel\n- `beside`: In a singleton editor beside your query\n- `main`: In a singleton editor in the main area"
+          },
+          "kusto.results.chartDisplay": {
+            "type": "string",
+            "enum": [
+              "beside",
+              "main",
+              "results"
+            ],
+            "default": "beside",
+            "markdownDescription": "Where charts are displayed when results are in the bottom panel.\n- `beside`: In a singleton editor beside your query\n- `main`: In a singleton editor in the main area\n- `results`: Inline with results in the bottom panel\n\nWhen results display is `beside` or `main`, charts always appear as a tab in the same singleton view."
           }
         }
       },
