@@ -272,6 +272,8 @@ export class ResultsViewer {
     private lastPanelResultData: server.ResultData | undefined;
     private lastPanelTableNames: string[] = [];
     private panelActiveTabIndex = 0;
+    private panelActiveView: string = 'table-0';
+    private panelHasChart = false;
     private waitForPanelReady: (() => Promise<void>) | undefined;
     private panelChartView: IChartView | undefined;
     private panelWebView: WebViewAdapter | undefined;
@@ -361,6 +363,14 @@ export class ResultsViewer {
                 const panelEditorAdapter = new WebViewAdapter(webviewView.webview, 'setEditPanelContent');
                 this.panelEditorView = this.chartEditorProvider.createView(panelEditorAdapter);
                 this.panelEditorWebView = panelEditorAdapter;
+                this.panelEditorView.onOptionsChanged = (options, clientOnly) => {
+                    if (this.lastPanelResultData) {
+                        this.lastPanelResultData = { ...this.lastPanelResultData, chartOptions: options };
+                    }
+                    if (!clientOnly) {
+                        this.updateChartInPanel();
+                    }
+                };
 
                 webviewView.onDidDispose(() => {
                     this.panelChartView?.dispose();
@@ -380,7 +390,9 @@ export class ResultsViewer {
                         if (match) {
                             this.panelActiveTabIndex = parseInt(match[1]!, 10);
                         }
+                        this.panelActiveView = message.viewId;
                         vscode.commands.executeCommand('setContext', 'kusto.panelShowingData', message.viewId !== 'query');
+                        vscode.commands.executeCommand('setContext', 'kusto.panelChartActive', message.viewId === 'chart');
                     }
                 });
                 webviewView.webview.html = '<html>no results</html>';
@@ -392,7 +404,7 @@ export class ResultsViewer {
         });
 
         // Open the results view on start up when in panel mode
-        if (getResultsViewDisplayLocation() === 'panel') {
+        if (getResultsDisplayLocation() === 'panel') {
             vscode.commands.executeCommand('kusto.resultsView.focus');
         }
     }
@@ -466,6 +478,10 @@ export class ResultsViewer {
         const darkMode = isDarkMode();
 
         const hasChart = !!((mode === 'chart' || mode === 'all') && resultData.chartOptions);
+        this.panelHasChart = hasChart;
+        this.panelActiveView = hasChart ? 'chart' : 'table-0';
+        vscode.commands.executeCommand('setContext', 'kusto.panelHasChart', hasChart);
+        vscode.commands.executeCommand('setContext', 'kusto.panelChartActive', hasChart);
         const hasTable = !!resultData.tables.length;
         this.lastPanelTableNames = resultData.tables.map(t => t.name);
 
@@ -479,9 +495,9 @@ export class ResultsViewer {
 
         // Ensure the panel is ready before creating table adapters that need panel.webview
         if (!this.resultsPanel) {
-            const isBesideMode = getResultsViewDisplayLocation() === 'beside';
-            if (isBesideMode) {
-                // In beside mode, don't force the panel open
+            const isSingletonMode = getResultsDisplayLocation() !== 'panel';
+            if (isSingletonMode) {
+                // In beside/main mode, don't force the panel open
             } else if (this.waitForPanelReady) {
                 await this.waitForPanelReady();
             } else {
@@ -519,6 +535,43 @@ export class ResultsViewer {
     }
 
     /**
+     * Orchestrates display of query results and charts based on user settings.
+     * - Results go to the bottom panel or a singleton view depending on kusto.results.display.
+     * - Charts go inline with results or to a singleton view depending on kusto.results.chartDisplay.
+     * - When results are in beside/main, charts are shown as a tab in the same singleton.
+     */
+    async displayResults(resultData: server.ResultData | undefined): Promise<void> {
+        const resultsLocation = getResultsDisplayLocation();
+        const hasChart = !!resultData?.chartOptions;
+
+        if (resultsLocation === 'panel') {
+            // Results in bottom panel
+            const chartLocation = getChartDisplayLocation();
+
+            if (hasChart && chartLocation === 'results') {
+                // Chart shown inline with results in bottom panel
+                await this.displayResultsInBottomPanel(resultData, 'all');
+                this.disposeSingletonView();
+            } else {
+                // Data in bottom panel, chart (if any) in singleton
+                await this.displayResultsInBottomPanel(resultData, 'data');
+                if (hasChart) {
+                    await this.displayResultsInSingletonView(resultData, 'chart');
+                } else {
+                    this.disposeSingletonView();
+                }
+            }
+        } else {
+            // Results in singleton view (beside or main) — chart is just another tab
+            if (hasChart) {
+                await this.displayResultsInSingletonView(resultData, 'all');
+            } else {
+                await this.displayResultsInSingletonView(resultData, 'data');
+            }
+        }
+    }
+
+    /**
      * Displays a query error in the bottom view and closes any singleton view.
      */
     async displayErrorInBottomView(error: server.QueryDiagnostic): Promise<void> {
@@ -531,12 +584,11 @@ export class ResultsViewer {
 
     /**
      * Displays the result data in the singleton view.
-     * @param beside If true, opens in a beside area; if false, opens in the main editor area.
+     * The view column (beside or main) is resolved from settings.
      */
     async displayResultsInSingletonView(
         resultData: server.ResultData | undefined,
-        mode: ResultViewMode,
-        beside: boolean
+        mode: ResultViewMode
     ): Promise<void> {
         // Always update result data before any early-return dispose paths,
         // so that a write-back in disposeSingletonView won't write stale
@@ -557,9 +609,16 @@ export class ResultsViewer {
         const darkMode = isDarkMode();
         const chartOptions = resultData.chartOptions ? applyChartDefaults(resultData.chartOptions) : undefined;
 
+        // Resolve where the singleton should appear.
+        // For chart mode, use chart display setting; otherwise use results display setting.
+        // If location resolves to 'panel' or 'results' (bottom panel), default to 'beside'
+        // since this method always creates a singleton editor panel.
+        const rawLocation = mode === 'chart' ? getChartDisplayLocation() : getResultsDisplayLocation();
+        const singletonLocation: 'beside' | 'main' = (rawLocation === 'beside' || rawLocation === 'main') ? rawLocation : 'beside';
+
         // Ensure the singleton view (and its chart adapter) exist before building
         // HTML so that BuildMultiTabbedHtml can read the adapter's headHtml/scriptsHtml.
-        this.ensureSingletonView(beside, mode);
+        this.ensureSingletonView(singletonLocation, mode);
 
         // Create table views for each result table (dispose previous ones first)
         this.singletonTableViews.forEach(v => v.dispose());
@@ -579,7 +638,7 @@ export class ResultsViewer {
         const html = this.htmlBuilder.BuildMultiTabbedHtml(hasChart, mode, this.singletonWebView, this.singletonEditorWebView, chartOptions, columnNames,
             resultData.query, resultData.cluster, resultData.database, resultData.tables, this.singletonTableWebViews);
 
-        this.showSingletonView(injectMessageHandlerScripts(html), resultData, resultData.tables.map(t => t.name), beside, mode);
+        this.showSingletonView(injectMessageHandlerScripts(html), resultData, resultData.tables.map(t => t.name), singletonLocation, mode);
 
         // Populate chart and editor via controller messages after page is set
         if (hasChart && chartOptions) {
@@ -619,18 +678,26 @@ export class ResultsViewer {
 
     /**
      * Copies the active chart in the active results viewer to the clipboard.
-     * Targets whichever tab view (singleton or document) is currently focused.
+     * Targets whichever view (singleton, document, or bottom panel) has a chart.
      */
     copyChart(): void {
         const view = this.getActiveChartView();
-        view?.copyChart();
+        if (view) {
+            view.copyChart();
+        } else if (this.panelHasChart && this.panelActiveView === 'chart') {
+            this.panelChartView?.copyChart();
+        }
     }
 
     /**
-     * Toggles the chart edit panel in the active tab view.
+     * Toggles the chart edit panel in the active tab view or bottom panel.
      */
     toggleChartEditor(): void {
-        this.activeResultWebview?.webview.postMessage({ command: 'toggleEditPanel' });
+        if (this.activeResultWebview?.active) {
+            this.activeResultWebview.webview.postMessage({ command: 'toggleEditPanel' });
+        } else if (this.resultsPanel && this.panelHasChart) {
+            this.resultsPanel.webview.postMessage({ command: 'toggleEditPanel' });
+        }
     }
 
     /**
@@ -650,11 +717,11 @@ export class ResultsViewer {
     }
 
     private async showPanelHtml(html: string, rowCount?: number, hasError?: boolean): Promise<void> {
-        const isBesideMode = getResultsViewDisplayLocation() === 'beside';
+        const isSingletonMode = getResultsDisplayLocation() !== 'panel';
 
         if (!this.resultsPanel) {
-            // In beside mode, don't force the panel open — just update if it exists
-            if (isBesideMode) {
+            // In beside/main mode, don't force the panel open — just update if it exists
+            if (isSingletonMode) {
                 return;
             }
             if (this.waitForPanelReady) {
@@ -680,11 +747,11 @@ export class ResultsViewer {
             }
 
             // Only auto-show the panel in panel mode
-            if (!isBesideMode) {
+            if (!isSingletonMode) {
                 this.resultsPanel.show(true);
             }
         } catch {
-            if (isBesideMode) {
+            if (isSingletonMode) {
                 return;
             }
             await vscode.commands.executeCommand('kusto.resultsView.focus');
@@ -709,13 +776,17 @@ export class ResultsViewer {
         }
         this.lastPanelResultData = undefined;
         this.lastPanelTableNames = [];
+        this.panelHasChart = false;
+        this.panelActiveView = 'table-0';
+        vscode.commands.executeCommand('setContext', 'kusto.panelHasChart', false);
+        vscode.commands.executeCommand('setContext', 'kusto.panelChartActive', false);
     }
 
     /** Ensures the singleton webview panel exists, creating it (with chart adapter) if needed. */
-    private ensureSingletonView(beside: boolean, mode: ResultViewMode): void {
+    private ensureSingletonView(location: 'beside' | 'main', mode: ResultViewMode): void {
         if (this.singletonView) { return; }
 
-        const viewColumn = beside ? vscode.ViewColumn.Beside : vscode.ViewColumn.One;
+        const viewColumn = getSingletonViewColumn(location);
         const title = singletonTitleForMode(mode);
         this.singletonMode = mode;
 
@@ -776,7 +847,8 @@ export class ResultsViewer {
                 if (message.visible) {
                     this.singletonView?.reveal(vscode.ViewColumn.One, false);
                 } else {
-                    this.singletonView?.reveal(getSingletonViewColumn(), false);
+                    const chartLoc = getChartDisplayLocation();
+                    this.singletonView?.reveal(getSingletonViewColumn(chartLoc === 'results' ? 'beside' : chartLoc), false);
                 }
                 return;
             }
@@ -805,12 +877,12 @@ export class ResultsViewer {
         });
     }
 
-    private showSingletonView(html: string, resultData: server.ResultData, tableNames: string[], beside: boolean, mode: ResultViewMode): void {
-        const viewColumn = beside ? vscode.ViewColumn.Beside : vscode.ViewColumn.One;
+    private showSingletonView(html: string, resultData: server.ResultData, tableNames: string[], location: 'beside' | 'main', mode: ResultViewMode): void {
+        const viewColumn = getSingletonViewColumn(location);
         const title = singletonTitleForMode(mode);
         this.singletonMode = mode;
 
-        this.ensureSingletonView(beside, mode);
+        this.ensureSingletonView(location, mode);
 
         // Track state for copy commands
         const hasChart = !!resultData.chartOptions;
@@ -846,6 +918,18 @@ export class ResultsViewer {
         const table = modifiedData.tables[0];
         if (table && chartOptions) {
             this.singletonChartView?.renderChart(table, chartOptions, darkMode);
+        }
+    }
+
+    private updateChartInPanel(): void {
+        if (!this.lastPanelResultData) { return; }
+        const chartOptions = this.lastPanelResultData.chartOptions
+            ? applyChartDefaults(this.lastPanelResultData.chartOptions)
+            : undefined;
+        if (!chartOptions) { return; }
+        const table = this.lastPanelResultData.tables[0];
+        if (table) {
+            this.panelChartView?.renderChart(table, chartOptions, isDarkMode());
         }
     }
 
@@ -1072,7 +1156,7 @@ export class ResultsViewer {
             ...this.lastPanelResultData,
             chartOptions: this.lastPanelResultData.chartOptions ?? { type: 'columnchart' }
         };
-        await this.displayResultsInSingletonView(chartData, 'chart', true);
+        await this.displayResultsInSingletonView(chartData, 'chart');
     }
 
     /**
@@ -1156,14 +1240,29 @@ export class ResultsViewer {
 // Module-level helpers
 // =============================================================================
 
-function getResultsViewDisplayLocation(): 'panel' | 'beside' {
-    return vscode.workspace.getConfiguration('kusto.results').get<string>('display', 'panel') === 'beside'
-        ? 'beside'
-        : 'panel';
+function getResultsDisplayLocation(): 'panel' | 'beside' | 'main' {
+    const value = vscode.workspace.getConfiguration('kusto.results').get<string>('display', 'panel');
+    if (value === 'beside') return 'beside';
+    if (value === 'main') return 'main';
+    return 'panel';
 }
 
-function getSingletonViewColumn(): vscode.ViewColumn {
-    return vscode.ViewColumn.Beside;
+/**
+ * Returns the effective chart display location.
+ * When results are in beside/main, chart is always in the same singleton (returns the results location).
+ * When results are in the bottom panel, uses the kusto.results.chartDisplay setting.
+ */
+function getChartDisplayLocation(): 'beside' | 'main' | 'results' {
+    const resultsLocation = getResultsDisplayLocation();
+    if (resultsLocation !== 'panel') return resultsLocation;
+    const value = vscode.workspace.getConfiguration('kusto.results').get<string>('chartDisplay', 'beside');
+    if (value === 'main') return 'main';
+    if (value === 'results') return 'results';
+    return 'beside';
+}
+
+function getSingletonViewColumn(location: 'beside' | 'main'): vscode.ViewColumn {
+    return location === 'main' ? vscode.ViewColumn.One : vscode.ViewColumn.Beside;
 }
 
 function singletonTitleForMode(mode: ResultViewMode): string {

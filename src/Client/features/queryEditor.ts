@@ -177,8 +177,7 @@ export class QueryEditor {
                 this.resultsViewer.setSingletonViewBackingUri(historyUri);
 
                 // Display result tables and chart from ResultData
-                await this.resultsViewer.displayResultsInBottomPanel(runResult.data, 'data');
-                await this.resultsViewer.displayResultsInSingletonView(runResult.data, 'chart', true);
+                await this.resultsViewer.displayResults(runResult.data);
             }
 
             // Refresh CodeLens to show/hide Results lens
@@ -217,8 +216,7 @@ export class QueryEditor {
             ));
             const cachedData = await this.cache.getFromCache(uri, queryText);
             if (cachedData) {
-                await this.resultsViewer.displayResultsInBottomPanel(cachedData, 'data');
-                await this.resultsViewer.displayResultsInSingletonView(cachedData, 'chart', true);
+                await this.resultsViewer.displayResults(cachedData);
             }
         } catch (error) {
             vscode.window.showErrorMessage(`Failed to show results: ${error}`);

@@ -88,7 +88,7 @@ suite('Results Viewer Integration Tests', () => {
 
         assert.strictEqual(resultsViewer.hasSingletonView(), false, 'Should start with no singleton');
 
-        await resultsViewer.displayResultsInSingletonView(data, 'data', true);
+        await resultsViewer.displayResultsInSingletonView(data, 'data');
 
         assert.strictEqual(resultsViewer.hasSingletonView(), true, 'Singleton view should exist');
     });
@@ -155,7 +155,7 @@ suite('Results Viewer Integration Tests', () => {
 
         const data = makeResultData();
         // Open singleton in beside column
-        await resultsViewer.displayResultsInSingletonView(data, 'data', true);
+        await resultsViewer.displayResultsInSingletonView(data, 'data');
         assert.strictEqual(resultsViewer.hasSingletonView(), true);
 
         // Find the singleton tab — should be in a beside group (group index > 0 or viewColumn > 1)
@@ -185,7 +185,7 @@ suite('Results Viewer Integration Tests', () => {
 
     test('Save singleton results creates and opens a .kqr file', async () => {
         const data = makeResultData();
-        await resultsViewer.displayResultsInSingletonView(data, 'data', true);
+        await resultsViewer.displayResultsInSingletonView(data, 'data');
         assert.strictEqual(resultsViewer.hasSingletonView(), true);
 
         const testWorkspace = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();

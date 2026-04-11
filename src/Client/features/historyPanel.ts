@@ -55,8 +55,7 @@ export class HistoryPanel {
 
         // Import dynamically to avoid circular dependency at module level
         this.resultsViewer.setSingletonViewBackingUri(uri);
-        await this.resultsViewer.displayResultsInBottomPanel(resultData, 'detail');
-        await this.resultsViewer.displayResultsInSingletonView(resultData, 'chart', true);
+        await this.resultsViewer.displayResults(resultData);
     }
 
     /** Deletes a history item after confirmation. */
