@@ -545,6 +545,35 @@ describe('PlotlyChartProvider', () => {
                 const anomaly = traces[1] as Record<string, unknown>;
                 expect(anomaly.marker).toEqual({ symbol: 'star' });
             });
+            it('renders anomaly traces on linechart when anomalyColumns specified', () => {
+                const table = makeTable(
+                    [
+                        { name: 'timestamp', type: 'datetime' },
+                        { name: 'value', type: 'real' },
+                        { name: 'anomalies', type: 'real' },
+                    ],
+                    [
+                        ['2024-01-01', 10, 0],
+                        ['2024-01-02', 20, 1],
+                        ['2024-01-03', 15, 0],
+                        ['2024-01-04', 50, -1],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'linechart',
+                    yColumns: ['value', 'anomalies'],
+                    anomalyColumns: ['anomalies'],
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                expect(traces.length).toBe(2);
+                const line = traces[0] as Record<string, unknown>;
+                expect(line.mode).toBe('lines');
+                const anomaly = traces[1] as Record<string, unknown>;
+                expect(anomaly.mode).toBe('markers');
+                expect(anomaly.x).toEqual(['2024-01-02', '2024-01-04']);
+                expect(anomaly.y).toEqual([20, 50]);
+            });
         });
 
         describe('plotly (raw)', () => {

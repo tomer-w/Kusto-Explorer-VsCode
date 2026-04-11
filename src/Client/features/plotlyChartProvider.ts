@@ -1342,10 +1342,8 @@ export class PlotlyChartProvider implements IChartProvider {
                 break;
             case ChartType.LineChart:
             case ChartType.TimeLineChart:
-                builder = this.buildLineChart(data, options);
-                break;
             case ChartType.TimeLineWithAnomalyChart:
-                builder = this.buildAnomalyChart(data, options);
+                builder = this.buildLineChart(data, options);
                 break;
             case ChartType.ScatterChart:
                 builder = this.buildScatterChart(data, options);
@@ -1476,64 +1474,57 @@ export class PlotlyChartProvider implements IChartProvider {
     // ─── Line / Scatter / Area ──────────────────────────────────────────
 
     private buildLineChart(data: ResultTable, options: ChartOptions): PlotlyChartBuilder | undefined {
-        return this.build2dChart(new PlotlyChartBuilder(), data, options,
-            (b, x, y, name, yAxis) => b.add2DLineTrace(x, y, name, false, yAxis));
-    }
-
-    private buildAnomalyChart(data: ResultTable, options: ChartOptions): PlotlyChartBuilder | undefined {
         const anomalySet = new Set(options.anomalyColumns ?? []);
 
-        // If no anomalyColumns specified, fall back to a plain line chart
-        if (anomalySet.size === 0) {
-            return this.buildLineChart(data, options);
-        }
+        // If anomalyColumns are specified, exclude them from y-columns so they don't render as lines
+        const effectiveOptions = anomalySet.size > 0
+            ? (() => {
+                const xColumn = this.get2dXColumn(data, options);
+                if (!xColumn) return options;
+                const filtered = this.get2dYColumns(data, options, xColumn)
+                    .filter(c => !anomalySet.has(c.column.name));
+                return { ...options, yColumns: filtered.map(c => c.column.name) } as ChartOptions;
+            })()
+            : options;
 
-        // Exclude anomaly columns from yColumns so they don't render as lines
-        const xColumn = this.get2dXColumn(data, options);
-        if (!xColumn) return undefined;
-
-        const allYColumns = this.get2dYColumns(data, options, xColumn)
-            .filter(c => !anomalySet.has(c.column.name));
-        const filteredOptions: ChartOptions = {
-            ...options,
-            yColumns: allYColumns.map(c => c.column.name),
-        };
-
-        // Build the line chart for non-anomaly columns
-        let builder = this.build2dChart(new PlotlyChartBuilder(), data, filteredOptions,
+        let builder = this.build2dChart(new PlotlyChartBuilder(), data, effectiveOptions,
             (b, x, y, name, yAxis) => b.add2DLineTrace(x, y, name, false, yAxis));
-        if (!builder) return undefined;
 
-        // Overlay anomaly points: for each anomaly column, show markers where flag != 0
-        const xValues = getColumnValues(data, xColumn);
+        // Overlay anomaly scatter points if anomalyColumns are present
+        if (builder && anomalySet.size > 0) {
+            const xColumn = this.get2dXColumn(data, options);
+            if (xColumn) {
+                const allYColumns = this.get2dYColumns(data, effectiveOptions, xColumn);
+                const xValues = getColumnValues(data, xColumn);
 
-        let anomalyTraceIndex = allYColumns.length;
-        for (const anomalyColName of anomalySet) {
-            const anomalyCol = getColumnRef(data, anomalyColName);
-            if (!anomalyCol) continue;
-            const anomalyFlags = getColumnValues(data, anomalyCol);
+                let anomalyTraceIndex = allYColumns.length;
+                for (const anomalyColName of anomalySet) {
+                    const anomalyCol = getColumnRef(data, anomalyColName);
+                    if (!anomalyCol) continue;
+                    const anomalyFlags = getColumnValues(data, anomalyCol);
 
-            // Find the corresponding y-column to plot anomaly points at (use the first one)
-            const yCol = allYColumns[0];
-            if (!yCol) continue;
-            const yValues = getColumnValues(data, yCol);
+                    // Plot anomaly points at the first y-column's values
+                    const yCol = allYColumns[0];
+                    if (!yCol) continue;
+                    const yValues = getColumnValues(data, yCol);
 
-            // Filter to only non-zero anomaly flag positions
-            const anomalyX: unknown[] = [];
-            const anomalyY: number[] = [];
-            const len = Math.min(xValues.length, anomalyFlags.length, yValues.length);
-            for (let i = 0; i < len; i++) {
-                const flag = toNumber(anomalyFlags[i]);
-                if (flag !== 0 && xValues[i] != null && yValues[i] != null) {
-                    anomalyX.push(xValues[i]);
-                    anomalyY.push(toNumber(yValues[i]));
+                    const anomalyX: unknown[] = [];
+                    const anomalyY: number[] = [];
+                    const len = Math.min(xValues.length, anomalyFlags.length, yValues.length);
+                    for (let i = 0; i < len; i++) {
+                        const flag = toNumber(anomalyFlags[i]);
+                        if (flag !== 0 && xValues[i] != null && yValues[i] != null) {
+                            anomalyX.push(xValues[i]);
+                            anomalyY.push(toNumber(yValues[i]));
+                        }
+                    }
+
+                    if (anomalyX.length > 0) {
+                        const shape = getMarkerShape(options, anomalyTraceIndex);
+                        builder = builder.add2DScatterTrace(anomalyX, anomalyY, anomalyColName, undefined, shape, getMarkerSize(options));
+                        anomalyTraceIndex++;
+                    }
                 }
-            }
-
-            if (anomalyX.length > 0) {
-                const shape = getMarkerShape(options, anomalyTraceIndex);
-                builder = builder.add2DScatterTrace(anomalyX, anomalyY, anomalyColName, undefined, shape, getMarkerSize(options));
-                anomalyTraceIndex++;
             }
         }
 
