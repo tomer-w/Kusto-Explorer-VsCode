@@ -22,7 +22,7 @@ const chartTypes: ReadonlyMap<string, string> = new Map([
     ['card', 'Card'],
     ['columnchart', 'Column'],
     ['graph', 'Graph'],
-    ['ladderchart', 'Time Ladder'],
+    ['ladderchart', 'Time - Ladder'],
     ['linechart', 'Line'],
     ['piechart', 'Pie'],
     ['pivotchart', 'Pivot'],
@@ -32,8 +32,8 @@ const chartTypes: ReadonlyMap<string, string> = new Map([
     ['stackedareachart', 'Area - Stacked'],
     ['3Dchart', '3D'],
     ['timechart', 'Time - Line'],
-    ['anomalychart', 'Time - w/ Anomaly'],
-    ['timepivot', 'Time Pivot'],
+    ['anomalychart', 'Time - Line w/ Anomalies'],
+    ['timepivot', 'Time - Pivot'],
     ['treemap', 'Tree Map'],
 ]);
 
@@ -451,10 +451,10 @@ class ChartEditorView implements IChartEditorView {
             return `<option value="${t}"${t === opts.type ? ' selected' : ''} title="${escapeHtml(t)}">${escapeHtml(display)}</option>`;
         }).join('');
 
-        const currentKind = opts.kind ?? '';
-        const allKinds = !currentKind || chartKinds.includes(currentKind) ? chartKinds : [currentKind, ...chartKinds];
-        const kindOptions = ['', ...allKinds].map(k =>
-            `<option value="${k}"${k === currentKind ? ' selected' : ''}>${k || '(default)'}</option>`
+        const currentKind = opts.kind || 'Default';
+        const allKinds = chartKinds.includes(currentKind) ? chartKinds : [currentKind, ...chartKinds];
+        const kindOptions = allKinds.map(k =>
+            `<option value="${k}"${k === currentKind ? ' selected' : ''}>${k === 'Default' ? '(default)' : escapeHtml(k)}</option>`
         ).join('');
 
         const currentLegend = (opts.showLegend === false) ? 'Hidden' : (opts.legendPosition ?? '');

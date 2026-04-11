@@ -892,11 +892,14 @@ export class ResultsViewer {
             activeView: hasChart ? 'chart' : 'table-0'
         });
 
+        vscode.commands.executeCommand('setContext', 'kusto.resultViewerHasChart', hasChart);
         vscode.commands.executeCommand('setContext', 'kusto.resultViewerChartActive', hasChart);
 
         this.singletonView!.title = title;
         this.singletonView!.webview.html = html;
-        this.singletonView!.reveal(viewColumn, true);
+        // In beside mode, keep focus on the query editor; in main mode, activate the panel
+        // so that activeWebviewPanelId is set and toolbar commands become available.
+        this.singletonView!.reveal(viewColumn, /*preserveFocus*/ location === 'beside');
     }
 
     private async updateChartInSingletonView(): Promise<void> {
