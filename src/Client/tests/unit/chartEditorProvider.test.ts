@@ -264,22 +264,22 @@ describe('ChartEditorProvider', () => {
             expect(html).toContain('<span>Count</span>');
         });
 
-        it('renders existing series as list items', () => {
-            view.setOptions(defaultOptions({ series: ['Category'] }), sampleColumns);
+        it('renders existing seriesColumns as list items', () => {
+            view.setOptions(defaultOptions({ seriesColumns: ['Category'] }), sampleColumns);
             const html: string = webview.setContent.mock.calls[0]![0];
 
-            expect(html).toContain('<ul id="opt-series-list"');
+            expect(html).toContain('<ul id="opt-seriesColumns-list"');
             expect(html).toContain('<span>Category</span>');
         });
 
-        it('renders empty yColumns and series lists when not set', () => {
+        it('renders empty yColumns and seriesColumns lists when not set', () => {
             view.setOptions(defaultOptions(), sampleColumns);
             const html: string = webview.setContent.mock.calls[0]![0];
 
             // Lists exist but have no li items
             expect(html).toContain('id="opt-yColumns-list"');
-            expect(html).toContain('id="opt-series-list"');
-            // No list items inside yColumns or series lists
+            expect(html).toContain('id="opt-seriesColumns-list"');
+            // No list items inside yColumns or seriesColumns lists
             const yColList = html.match(/<ul id="opt-yColumns-list"[^>]*>(.*?)<\/ul>/s);
             expect(yColList![1].trim()).toBe('');
         });
@@ -325,14 +325,14 @@ describe('ChartEditorProvider', () => {
         });
 
         it('renders axis min/max values', () => {
-            view.setOptions(defaultOptions({ xmin: 0, xmax: 100, ymin: -5, ymax: 50 }), []);
+            view.setOptions(defaultOptions({ xMin: 0, xMax: 100, yMin: -5, yMax: 50 }), []);
             const html: string = webview.setContent.mock.calls[0]![0];
 
-            expect(html).toContain('id="opt-xmin"');
-            expect(html).toMatch(/id="opt-xmin"[^>]*value="0"/);
-            expect(html).toMatch(/id="opt-xmax"[^>]*value="100"/);
-            expect(html).toMatch(/id="opt-ymin"[^>]*value="-5"/);
-            expect(html).toMatch(/id="opt-ymax"[^>]*value="50"/);
+            expect(html).toContain('id="opt-xMin"');
+            expect(html).toMatch(/id="opt-xMin"[^>]*value="0"/);
+            expect(html).toMatch(/id="opt-xMax"[^>]*value="100"/);
+            expect(html).toMatch(/id="opt-yMin"[^>]*value="-5"/);
+            expect(html).toMatch(/id="opt-yMax"[^>]*value="50"/);
         });
 
         it('renders tick angle values', () => {

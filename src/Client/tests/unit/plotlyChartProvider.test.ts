@@ -626,11 +626,11 @@ describe('PlotlyChartProvider', () => {
                 expect((layout.xaxis as Record<string, unknown>)?.type).toBe('log');
             });
 
-            it('sets axis range from xmin/xmax', () => {
+            it('sets axis range from xMin/xMax', () => {
                 const html = renderAndGetHtml(make2dTable(), {
                     type: 'columnchart',
-                    xmin: 0,
-                    xmax: 100,
+                    xMin: 0,
+                    xMax: 100,
                 });
                 expect(html).toBeDefined();
                 const layout = parseLayout(html!);

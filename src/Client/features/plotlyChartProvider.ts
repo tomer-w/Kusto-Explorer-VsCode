@@ -1877,14 +1877,14 @@ export class PlotlyChartProvider implements IChartProvider {
         if (options.xAxis === ChartAxis.Log) builder = builder.setLogX();
         if (options.yAxis === ChartAxis.Log) builder = builder.setLogY();
 
-        const xMinD = tryGetDouble(options.xmin);
-        const xMaxD = tryGetDouble(options.xmax);
+        const xMinD = tryGetDouble(options.xMin);
+        const xMaxD = tryGetDouble(options.xMax);
         if (xMinD !== undefined && xMaxD !== undefined) {
             builder = builder.setXAxisRange(xMinD, xMaxD);
         }
 
-        const yMinD = tryGetDouble(options.ymin);
-        const yMaxD = tryGetDouble(options.ymax);
+        const yMinD = tryGetDouble(options.yMin);
+        const yMaxD = tryGetDouble(options.yMax);
         if (yMinD !== undefined && yMaxD !== undefined) {
             builder = builder.setYAxisRange(yMinD, yMaxD);
         }

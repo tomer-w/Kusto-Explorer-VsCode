@@ -352,8 +352,8 @@ class ChartEditorView implements IChartEditorView {
             if (xColumn && xColumn.value) opts.xColumn = xColumn.value;
             var yColList = document.getElementById('opt-yColumns-list');
             if (yColList) { var items = Array.from(yColList.querySelectorAll('li span')).map(function(s) { return s.textContent; }); if (items.length) opts.yColumns = items; }
-            var seriesList = document.getElementById('opt-series-list');
-            if (seriesList) { var si = Array.from(seriesList.querySelectorAll('li span')).map(function(s) { return s.textContent; }); if (si.length) opts.series = si; }
+            var seriesList = document.getElementById('opt-seriesColumns-list');
+            if (seriesList) { var si = Array.from(seriesList.querySelectorAll('li span')).map(function(s) { return s.textContent; }); if (si.length) opts.seriesColumns = si; }
             var anomalyList = document.getElementById('opt-anomalyColumns-list');
             if (anomalyList) { var ai = Array.from(anomalyList.querySelectorAll('li span')).map(function(s) { return s.textContent; }); if (ai.length) opts.anomalyColumns = ai; }
             var markerShape = document.getElementById('opt-markerShape');
@@ -368,14 +368,14 @@ class ChartEditorView implements IChartEditorView {
             if (xAxis && xAxis.value) opts.xAxis = xAxis.value;
             var yAxis = document.getElementById('opt-yAxis');
             if (yAxis && yAxis.value) opts.yAxis = yAxis.value;
-            var xmin = document.getElementById('opt-xmin');
-            if (xmin && xmin.value) opts.xmin = xmin.value;
-            var xmax = document.getElementById('opt-xmax');
-            if (xmax && xmax.value) opts.xmax = xmax.value;
-            var ymin = document.getElementById('opt-ymin');
-            if (ymin && ymin.value) opts.ymin = ymin.value;
-            var ymax = document.getElementById('opt-ymax');
-            if (ymax && ymax.value) opts.ymax = ymax.value;
+            var xmin = document.getElementById('opt-xMin');
+            if (xmin && xmin.value) opts.xMin = xmin.value;
+            var xmax = document.getElementById('opt-xMax');
+            if (xmax && xmax.value) opts.xMax = xmax.value;
+            var ymin = document.getElementById('opt-yMin');
+            if (ymin && ymin.value) opts.yMin = ymin.value;
+            var ymax = document.getElementById('opt-yMax');
+            if (ymax && ymax.value) opts.yMax = ymax.value;
             var xShowTicks = document.getElementById('opt-xShowTicks');
             if (xShowTicks) opts.xShowTicks = xShowTicks.checked;
             var yShowTicks = document.getElementById('opt-yShowTicks');
@@ -496,7 +496,7 @@ class ChartEditorView implements IChartEditorView {
             `<li><span>${escapeHtml(c)}</span><button onclick="_editorMoveColumnItem(this,-1)" title="Move up">&uarr;</button><button onclick="_editorMoveColumnItem(this,1)" title="Move down">&darr;</button><button onclick="_editorRemoveColumnItem(this)" title="Remove">&times;</button></li>`
         ).join('');
 
-        const seriesItems = (opts.series ?? []).map(c =>
+        const seriesItems = (opts.seriesColumns ?? []).map(c =>
             `<li><span>${escapeHtml(c)}</span><button onclick="_editorMoveColumnItem(this,-1)" title="Move up">&uarr;</button><button onclick="_editorMoveColumnItem(this,1)" title="Move down">&darr;</button><button onclick="_editorRemoveColumnItem(this)" title="Remove">&times;</button></li>`
         ).join('');
 
@@ -597,12 +597,12 @@ class ChartEditorView implements IChartEditorView {
                     <ul id="opt-yColumns-list" class="column-list">${yColumnsItems}</ul>
                 </div>
                 <div class="field">
-                    <label>Series</label>
+                    <label>Series Columns</label>
                     <div class="column-picker">
-                        <select id="opt-series-picker">${allColOptions}</select>
-                        <button onclick="_editorAddColumnItem('opt-series-picker','opt-series-list')">Add</button>
+                        <select id="opt-seriesColumns-picker">${allColOptions}</select>
+                        <button onclick="_editorAddColumnItem('opt-seriesColumns-picker','opt-seriesColumns-list')">Add</button>
                     </div>
-                    <ul id="opt-series-list" class="column-list">${seriesItems}</ul>
+                    <ul id="opt-seriesColumns-list" class="column-list">${seriesItems}</ul>
                 </div>
                 <div class="field">
                     <label>Anomaly Columns</label>
@@ -668,12 +668,12 @@ class ChartEditorView implements IChartEditorView {
                 </div>
                 <div class="field-row">
                     <div class="field">
-                        <label for="opt-xmin">Min</label>
-                        <input type="text" id="opt-xmin" value="${escapeHtml(String(opts.xmin ?? ''))}" oninput="_editorOnChartOptionChanged()">
+                        <label for="opt-xMin">Min</label>
+                        <input type="text" id="opt-xMin" value="${escapeHtml(String(opts.xMin ?? ''))}" oninput="_editorOnChartOptionChanged()">
                     </div>
                     <div class="field">
-                        <label for="opt-xmax">Max</label>
-                        <input type="text" id="opt-xmax" value="${escapeHtml(String(opts.xmax ?? ''))}" oninput="_editorOnChartOptionChanged()">
+                        <label for="opt-xMax">Max</label>
+                        <input type="text" id="opt-xMax" value="${escapeHtml(String(opts.xMax ?? ''))}" oninput="_editorOnChartOptionChanged()">
                     </div>
                 </div>
                 <div class="field checkbox-field">
@@ -700,12 +700,12 @@ class ChartEditorView implements IChartEditorView {
                 </div>
                 <div class="field-row">
                     <div class="field">
-                        <label for="opt-ymin">Min</label>
-                        <input type="text" id="opt-ymin" value="${escapeHtml(String(opts.ymin ?? ''))}" oninput="_editorOnChartOptionChanged()">
+                        <label for="opt-yMin">Min</label>
+                        <input type="text" id="opt-yMin" value="${escapeHtml(String(opts.yMin ?? ''))}" oninput="_editorOnChartOptionChanged()">
                     </div>
                     <div class="field">
-                        <label for="opt-ymax">Max</label>
-                        <input type="text" id="opt-ymax" value="${escapeHtml(String(opts.ymax ?? ''))}" oninput="_editorOnChartOptionChanged()">
+                        <label for="opt-yMax">Max</label>
+                        <input type="text" id="opt-yMax" value="${escapeHtml(String(opts.yMax ?? ''))}" oninput="_editorOnChartOptionChanged()">
                     </div>
                 </div>
                 <div class="field checkbox-field">
