@@ -440,10 +440,15 @@ class ChartEditorView implements IChartEditorView {
         const opts = chartOptions;
 
         const allTypeKeys = chartTypes.has(opts.type) ? [...chartTypes.keys()] : [opts.type, ...chartTypes.keys()];
+        allTypeKeys.sort((a, b) => {
+            const la = chartTypes.get(a) ?? a;
+            const lb = chartTypes.get(b) ?? b;
+            return la.localeCompare(lb);
+        });
         const typeOptions = allTypeKeys.map(t => {
             const label = chartTypes.get(t);
-            const display = label ? `${label} (${t})` : t;
-            return `<option value="${t}"${t === opts.type ? ' selected' : ''}>${escapeHtml(display)}</option>`;
+            const display = label ?? t;
+            return `<option value="${t}"${t === opts.type ? ' selected' : ''} title="${escapeHtml(t)}">${escapeHtml(display)}</option>`;
         }).join('');
 
         const currentKind = opts.kind ?? '';

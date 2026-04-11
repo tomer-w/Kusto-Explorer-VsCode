@@ -102,9 +102,9 @@ describe('ChartEditorProvider', () => {
             const html: string = webview.setContent.mock.calls[0]![0];
 
             expect(html).toContain('<select id="opt-type"');
-            expect(html).toContain('<option value="piechart" selected>Pie (piechart)</option>');
+            expect(html).toContain('<option value="piechart" selected title="piechart">Pie</option>');
             // Other types present but not selected
-            expect(html).toContain('<option value="columnchart">Column (columnchart)</option>');
+            expect(html).toContain('<option value="columnchart" title="columnchart">Column</option>');
             expect(html).not.toContain('<option value="columnchart" selected');
         });
 
@@ -112,9 +112,9 @@ describe('ChartEditorProvider', () => {
             view.setOptions(defaultOptions({ type: 'CustomChart' }), []);
             const html: string = webview.setContent.mock.calls[0]![0];
 
-            expect(html).toContain('<option value="CustomChart" selected>CustomChart</option>');
+            expect(html).toContain('<option value="CustomChart" selected title="CustomChart">CustomChart</option>');
             // Standard types still present
-            expect(html).toContain('<option value="columnchart">');
+            expect(html).toContain('<option value="columnchart" title="columnchart">');
         });
 
         // ── Kind dropdown ───────────────────────────────────────────────
@@ -383,7 +383,7 @@ describe('ChartEditorProvider', () => {
 
             expect(webview.setContent).toHaveBeenCalledTimes(2);
             const html: string = webview.setContent.mock.calls[1]![0];
-            expect(html).toContain('<option value="piechart" selected>');
+            expect(html).toContain('<option value="piechart" selected title="piechart">');
             expect(html).toContain('<option value="Fruit"');
         });
 
