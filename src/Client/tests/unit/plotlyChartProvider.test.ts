@@ -545,6 +545,35 @@ describe('PlotlyChartProvider', () => {
                 const anomaly = traces[1] as Record<string, unknown>;
                 expect(anomaly.marker).toEqual({ symbol: 'star' });
             });
+            it('renders anomaly traces on linechart when anomalyColumns specified', () => {
+                const table = makeTable(
+                    [
+                        { name: 'timestamp', type: 'datetime' },
+                        { name: 'value', type: 'real' },
+                        { name: 'anomalies', type: 'real' },
+                    ],
+                    [
+                        ['2024-01-01', 10, 0],
+                        ['2024-01-02', 20, 1],
+                        ['2024-01-03', 15, 0],
+                        ['2024-01-04', 50, -1],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'linechart',
+                    yColumns: ['value', 'anomalies'],
+                    anomalyColumns: ['anomalies'],
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                expect(traces.length).toBe(2);
+                const line = traces[0] as Record<string, unknown>;
+                expect(line.mode).toBe('lines');
+                const anomaly = traces[1] as Record<string, unknown>;
+                expect(anomaly.mode).toBe('markers');
+                expect(anomaly.x).toEqual(['2024-01-02', '2024-01-04']);
+                expect(anomaly.y).toEqual([20, 50]);
+            });
         });
 
         describe('plotly (raw)', () => {
@@ -580,6 +609,186 @@ describe('PlotlyChartProvider', () => {
                 );
                 const html = renderAndGetHtml(table, { type: 'plotly' });
                 expect(html).toBeUndefined();
+            });
+        });
+
+        // ─── Series columns ────────────────────────────────────────────
+
+        describe('seriesColumns', () => {
+            it('pivots data by single series column into separate traces', () => {
+                const table = makeTable(
+                    [
+                        { name: 'timestamp', type: 'datetime' },
+                        { name: 'region', type: 'string' },
+                        { name: 'count', type: 'int' },
+                    ],
+                    [
+                        ['2024-01-01', 'East', 10],
+                        ['2024-01-01', 'West', 20],
+                        ['2024-01-02', 'East', 15],
+                        ['2024-01-02', 'West', 25],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'linechart',
+                    xColumn: 'timestamp',
+                    yColumns: ['count'],
+                    seriesColumns: ['region'],
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                expect(traces.length).toBe(2);
+
+                const east = traces[0] as Record<string, unknown>;
+                expect(east.name).toBe('East');
+                expect(east.x).toEqual(['2024-01-01', '2024-01-02']);
+                expect(east.y).toEqual([10, 15]);
+
+                const west = traces[1] as Record<string, unknown>;
+                expect(west.name).toBe('West');
+                expect(west.x).toEqual(['2024-01-01', '2024-01-02']);
+                expect(west.y).toEqual([20, 25]);
+            });
+
+            it('pivots by two series columns using combined key', () => {
+                const table = makeTable(
+                    [
+                        { name: 'timestamp', type: 'datetime' },
+                        { name: 'region', type: 'string' },
+                        { name: 'product', type: 'string' },
+                        { name: 'count', type: 'int' },
+                    ],
+                    [
+                        ['2024-01-01', 'East', 'Widget', 10],
+                        ['2024-01-01', 'West', 'Gadget', 20],
+                        ['2024-01-02', 'East', 'Widget', 15],
+                        ['2024-01-02', 'West', 'Gadget', 25],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'linechart',
+                    xColumn: 'timestamp',
+                    yColumns: ['count'],
+                    seriesColumns: ['region', 'product'],
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                expect(traces.length).toBe(2);
+                expect((traces[0] as Record<string, unknown>).name).toBe('East - Widget');
+                expect((traces[1] as Record<string, unknown>).name).toBe('West - Gadget');
+            });
+
+            it('creates series × yColumns traces when both are set', () => {
+                const table = makeTable(
+                    [
+                        { name: 'timestamp', type: 'datetime' },
+                        { name: 'region', type: 'string' },
+                        { name: 'sales', type: 'int' },
+                        { name: 'profit', type: 'int' },
+                    ],
+                    [
+                        ['2024-01-01', 'East', 10, 2],
+                        ['2024-01-01', 'West', 20, 5],
+                        ['2024-01-02', 'East', 15, 3],
+                        ['2024-01-02', 'West', 25, 7],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'columnchart',
+                    xColumn: 'timestamp',
+                    yColumns: ['sales', 'profit'],
+                    seriesColumns: ['region'],
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                expect(traces.length).toBe(4);
+                expect((traces[0] as Record<string, unknown>).name).toBe('East - sales');
+                expect((traces[1] as Record<string, unknown>).name).toBe('East - profit');
+                expect((traces[2] as Record<string, unknown>).name).toBe('West - sales');
+                expect((traces[3] as Record<string, unknown>).name).toBe('West - profit');
+            });
+
+            it('auto-excludes series columns from y-columns', () => {
+                const table = makeTable(
+                    [
+                        { name: 'timestamp', type: 'datetime' },
+                        { name: 'region', type: 'string' },
+                        { name: 'count', type: 'int' },
+                    ],
+                    [
+                        ['2024-01-01', 'East', 10],
+                        ['2024-01-01', 'West', 20],
+                    ],
+                );
+                // No explicit yColumns — should auto-detect 'count' only, not 'region'
+                const html = renderAndGetHtml(table, {
+                    type: 'linechart',
+                    xColumn: 'timestamp',
+                    seriesColumns: ['region'],
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                expect(traces.length).toBe(2);
+                expect((traces[0] as Record<string, unknown>).name).toBe('East');
+                expect((traces[1] as Record<string, unknown>).name).toBe('West');
+            });
+
+            it('works with bar chart', () => {
+                const table = makeTable(
+                    [
+                        { name: 'category', type: 'string' },
+                        { name: 'group', type: 'string' },
+                        { name: 'value', type: 'int' },
+                    ],
+                    [
+                        ['A', 'X', 10],
+                        ['A', 'Y', 20],
+                        ['B', 'X', 30],
+                        ['B', 'Y', 40],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'barchart',
+                    xColumn: 'category',
+                    yColumns: ['value'],
+                    seriesColumns: ['group'],
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                expect(traces.length).toBe(2);
+                expect((traces[0] as Record<string, unknown>).name).toBe('X');
+                expect((traces[1] as Record<string, unknown>).name).toBe('Y');
+            });
+
+            it('sorts data by x-value within each series group', () => {
+                const table = makeTable(
+                    [
+                        { name: 'timestamp', type: 'datetime' },
+                        { name: 'region', type: 'string' },
+                        { name: 'count', type: 'int' },
+                    ],
+                    [
+                        // Interleaved so East/West x-values are not in order within their groups
+                        ['2024-01-02', 'East', 15],
+                        ['2024-01-01', 'West', 20],
+                        ['2024-01-01', 'East', 10],
+                        ['2024-01-02', 'West', 25],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'linechart',
+                    xColumn: 'timestamp',
+                    yColumns: ['count'],
+                    seriesColumns: ['region'],
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                const east = traces[0] as Record<string, unknown>;
+                expect(east.x).toEqual(['2024-01-01', '2024-01-02']);
+                expect(east.y).toEqual([10, 15]);
+                const west = traces[1] as Record<string, unknown>;
+                expect(west.x).toEqual(['2024-01-01', '2024-01-02']);
+                expect(west.y).toEqual([20, 25]);
             });
         });
 
@@ -626,11 +835,11 @@ describe('PlotlyChartProvider', () => {
                 expect((layout.xaxis as Record<string, unknown>)?.type).toBe('log');
             });
 
-            it('sets axis range from xmin/xmax', () => {
+            it('sets axis range from xMin/xMax', () => {
                 const html = renderAndGetHtml(make2dTable(), {
                     type: 'columnchart',
-                    xmin: 0,
-                    xmax: 100,
+                    xMin: 0,
+                    xMax: 100,
                 });
                 expect(html).toBeDefined();
                 const layout = parseLayout(html!);

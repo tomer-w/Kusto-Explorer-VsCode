@@ -14,7 +14,7 @@ namespace Kusto.Vscode;
 public class ChartOptions
 {
     /// <summary>
-    /// Chart type. Use <see cref="ChartType"/> constants (e.g., "linechart", "barchart", "piechart", "scatterchart").
+    /// Chart type. Use kql keywords (e.g., "linechart", "barchart", "piechart", "scatterchart").
     /// </summary>
     [DataMember(Name = "type")]
     public required string Type { get; init; }
@@ -59,8 +59,14 @@ public class ChartOptions
     /// <summary>
     /// Column names used to split data into separate series. If null, each Y column becomes its own series.
     /// </summary>
-    [DataMember(Name = "series")]
-    public ImmutableList<string>? Series { get; init; }
+    [DataMember(Name = "seriesColumns")]
+    public ImmutableList<string>? SeriesColumns { get; init; }
+
+    /// <summary>
+    /// Column names to render as anomaly points on an anomaly chart.
+    /// </summary>
+    [DataMember(Name = "anomalyColumns")]
+    public ImmutableList<string>? AnomalyColumns { get; init; }
 
     /// <summary>
     /// Whether the legend is visible. If null, defaults to true.
@@ -84,32 +90,32 @@ public class ChartOptions
     public string? YAxis { get; init; }
 
     /// <summary>
-    /// Minimum value for the X-axis range. Must be numeric. If null (or if Xmax is also null), auto-ranges.
-    /// Both Xmin and Xmax must be set together to take effect.
+    /// Minimum value for the X-axis range. Must be numeric. If null (or if XMax is also null), auto-ranges.
+    /// Both XMin and XMax must be set together to take effect.
     /// </summary>
-    [DataMember(Name = "xmin")]
-    public object? Xmin { get; init; }
+    [DataMember(Name = "xMin")]
+    public object? XMin { get; init; }
 
     /// <summary>
-    /// Maximum value for the X-axis range. Must be numeric. If null (or if Xmin is also null), auto-ranges.
-    /// Both Xmin and Xmax must be set together to take effect.
+    /// Maximum value for the X-axis range. Must be numeric. If null (or if XMin is also null), auto-ranges.
+    /// Both XMin and XMax must be set together to take effect.
     /// </summary>
-    [DataMember(Name = "xmax")]
-    public object? Xmax { get; init; }
+    [DataMember(Name = "xMax")]
+    public object? XMax { get; init; }
 
     /// <summary>
-    /// Minimum value for the Y-axis range. Must be numeric. If null (or if Ymax is also null), auto-ranges.
-    /// Both Ymin and Ymax must be set together to take effect.
+    /// Minimum value for the Y-axis range. Must be numeric. If null (or if YMax is also null), auto-ranges.
+    /// Both YMin and YMax must be set together to take effect.
     /// </summary>
-    [DataMember(Name = "ymin")]
-    public object? Ymin { get; init; }
+    [DataMember(Name = "yMin")]
+    public object? YMin { get; init; }
 
     /// <summary>
-    /// Maximum value for the Y-axis range. Must be numeric. If null (or if Ymin is also null), auto-ranges.
-    /// Both Ymin and Ymax must be set together to take effect.
+    /// Maximum value for the Y-axis range. Must be numeric. If null (or if YMin is also null), auto-ranges.
+    /// Both YMin and YMax must be set together to take effect.
     /// </summary>
-    [DataMember(Name = "ymax")]
-    public object? Ymax { get; init; }
+    [DataMember(Name = "yMax")]
+    public object? YMax { get; init; }
 
     /// <summary>
     /// Whether to accumulate Y values across the X-axis (running total). Defaults to false.
@@ -206,13 +212,6 @@ public class ChartOptions
     public string? TextSize { get; init; }
 
     /// <summary>
-    /// Column names to render as anomaly points on an anomaly chart.
-    /// Only applies to the anomalychart visualization type.
-    /// </summary>
-    [DataMember(Name = "anomalyColumns")]
-    public ImmutableList<string>? AnomalyColumns { get; init; }
-
-    /// <summary>
     /// Marker shape for scatter points. Use Plotly marker symbol names: "circle", "diamond", "square", "triangle-up", "cross", "star", "hexagon", "x".
     /// If null, defaults to "circle".
     /// </summary>
@@ -248,14 +247,14 @@ public class ChartOptions
             YTitle = options.YTitle,
             XColumn = options.XColumn,
             YColumns = options.YColumns?.ToImmutableList(),
-            Series = options.Series?.ToImmutableList(),
+            SeriesColumns = options.Series?.ToImmutableList(),
             ShowLegend = options.Legend.ToString() != "Hidden",
             XAxis = options.XAxis.ToString(),
             YAxis = options.YAxis.ToString(),
-            Xmin = ConvertNanToNull(options.Xmin),
-            Xmax = ConvertNanToNull(options.Xmax),
-            Ymin = ConvertNanToNull(options.Ymin),
-            Ymax = ConvertNanToNull(options.Ymax),
+            XMin = ConvertNanToNull(options.Xmin),
+            XMax = ConvertNanToNull(options.Xmax),
+            YMin = ConvertNanToNull(options.Ymin),
+            YMax = ConvertNanToNull(options.Ymax),
             Accumulate = options.Accumulate,
             AnomalyColumns = options.AnomalyColumns?.ToImmutableList(),
         };
@@ -275,14 +274,14 @@ public class ChartOptions
             YTitle = this.YTitle,
             XColumn = this.XColumn,
             YColumns = this.YColumns,
-            Series = this.Series,
+            SeriesColumns = this.SeriesColumns,
             ShowLegend = this.ShowLegend ?? defaults.ShowLegend,
             XAxis = this.XAxis,
             YAxis = this.YAxis,
-            Xmin = this.Xmin,
-            Xmax = this.Xmax,
-            Ymin = this.Ymin,
-            Ymax = this.Ymax,
+            XMin = this.XMin,
+            XMax = this.XMax,
+            YMin = this.YMin,
+            YMax = this.YMax,
             Accumulate = this.Accumulate,
             ZTitle = this.ZTitle,
             XShowTicks = this.XShowTicks ?? defaults.XShowTicks,

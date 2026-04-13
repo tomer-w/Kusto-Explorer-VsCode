@@ -1342,10 +1342,8 @@ export class PlotlyChartProvider implements IChartProvider {
                 break;
             case ChartType.LineChart:
             case ChartType.TimeLineChart:
-                builder = this.buildLineChart(data, options);
-                break;
             case ChartType.TimeLineWithAnomalyChart:
-                builder = this.buildAnomalyChart(data, options);
+                builder = this.buildLineChart(data, options);
                 break;
             case ChartType.ScatterChart:
                 builder = this.buildScatterChart(data, options);
@@ -1476,64 +1474,57 @@ export class PlotlyChartProvider implements IChartProvider {
     // ─── Line / Scatter / Area ──────────────────────────────────────────
 
     private buildLineChart(data: ResultTable, options: ChartOptions): PlotlyChartBuilder | undefined {
-        return this.build2dChart(new PlotlyChartBuilder(), data, options,
-            (b, x, y, name, yAxis) => b.add2DLineTrace(x, y, name, false, yAxis));
-    }
-
-    private buildAnomalyChart(data: ResultTable, options: ChartOptions): PlotlyChartBuilder | undefined {
         const anomalySet = new Set(options.anomalyColumns ?? []);
 
-        // If no anomalyColumns specified, fall back to a plain line chart
-        if (anomalySet.size === 0) {
-            return this.buildLineChart(data, options);
-        }
+        // If anomalyColumns are specified, exclude them from y-columns so they don't render as lines
+        const effectiveOptions = anomalySet.size > 0
+            ? (() => {
+                const xColumn = this.get2dXColumn(data, options);
+                if (!xColumn) return options;
+                const filtered = this.get2dYColumns(data, options, xColumn)
+                    .filter(c => !anomalySet.has(c.column.name));
+                return { ...options, yColumns: filtered.map(c => c.column.name) } as ChartOptions;
+            })()
+            : options;
 
-        // Exclude anomaly columns from yColumns so they don't render as lines
-        const xColumn = this.get2dXColumn(data, options);
-        if (!xColumn) return undefined;
-
-        const allYColumns = this.get2dYColumns(data, options, xColumn)
-            .filter(c => !anomalySet.has(c.column.name));
-        const filteredOptions: ChartOptions = {
-            ...options,
-            yColumns: allYColumns.map(c => c.column.name),
-        };
-
-        // Build the line chart for non-anomaly columns
-        let builder = this.build2dChart(new PlotlyChartBuilder(), data, filteredOptions,
+        let builder = this.build2dChart(new PlotlyChartBuilder(), data, effectiveOptions,
             (b, x, y, name, yAxis) => b.add2DLineTrace(x, y, name, false, yAxis));
-        if (!builder) return undefined;
 
-        // Overlay anomaly points: for each anomaly column, show markers where flag != 0
-        const xValues = getColumnValues(data, xColumn);
+        // Overlay anomaly scatter points if anomalyColumns are present
+        if (builder && anomalySet.size > 0) {
+            const xColumn = this.get2dXColumn(data, options);
+            if (xColumn) {
+                const allYColumns = this.get2dYColumns(data, effectiveOptions, xColumn);
+                const xValues = getColumnValues(data, xColumn);
 
-        let anomalyTraceIndex = allYColumns.length;
-        for (const anomalyColName of anomalySet) {
-            const anomalyCol = getColumnRef(data, anomalyColName);
-            if (!anomalyCol) continue;
-            const anomalyFlags = getColumnValues(data, anomalyCol);
+                let anomalyTraceIndex = allYColumns.length;
+                for (const anomalyColName of anomalySet) {
+                    const anomalyCol = getColumnRef(data, anomalyColName);
+                    if (!anomalyCol) continue;
+                    const anomalyFlags = getColumnValues(data, anomalyCol);
 
-            // Find the corresponding y-column to plot anomaly points at (use the first one)
-            const yCol = allYColumns[0];
-            if (!yCol) continue;
-            const yValues = getColumnValues(data, yCol);
+                    // Plot anomaly points at the first y-column's values
+                    const yCol = allYColumns[0];
+                    if (!yCol) continue;
+                    const yValues = getColumnValues(data, yCol);
 
-            // Filter to only non-zero anomaly flag positions
-            const anomalyX: unknown[] = [];
-            const anomalyY: number[] = [];
-            const len = Math.min(xValues.length, anomalyFlags.length, yValues.length);
-            for (let i = 0; i < len; i++) {
-                const flag = toNumber(anomalyFlags[i]);
-                if (flag !== 0 && xValues[i] != null && yValues[i] != null) {
-                    anomalyX.push(xValues[i]);
-                    anomalyY.push(toNumber(yValues[i]));
+                    const anomalyX: unknown[] = [];
+                    const anomalyY: number[] = [];
+                    const len = Math.min(xValues.length, anomalyFlags.length, yValues.length);
+                    for (let i = 0; i < len; i++) {
+                        const flag = toNumber(anomalyFlags[i]);
+                        if (flag !== 0 && xValues[i] != null && yValues[i] != null) {
+                            anomalyX.push(xValues[i]);
+                            anomalyY.push(toNumber(yValues[i]));
+                        }
+                    }
+
+                    if (anomalyX.length > 0) {
+                        const shape = getMarkerShape(options, anomalyTraceIndex);
+                        builder = builder.add2DScatterTrace(anomalyX, anomalyY, anomalyColName, undefined, shape, getMarkerSize(options));
+                        anomalyTraceIndex++;
+                    }
                 }
-            }
-
-            if (anomalyX.length > 0) {
-                const shape = getMarkerShape(options, anomalyTraceIndex);
-                builder = builder.add2DScatterTrace(anomalyX, anomalyY, anomalyColName, undefined, shape, getMarkerSize(options));
-                anomalyTraceIndex++;
             }
         }
 
@@ -1877,14 +1868,14 @@ export class PlotlyChartProvider implements IChartProvider {
         if (options.xAxis === ChartAxis.Log) builder = builder.setLogX();
         if (options.yAxis === ChartAxis.Log) builder = builder.setLogY();
 
-        const xMinD = tryGetDouble(options.xmin);
-        const xMaxD = tryGetDouble(options.xmax);
+        const xMinD = tryGetDouble(options.xMin);
+        const xMaxD = tryGetDouble(options.xMax);
         if (xMinD !== undefined && xMaxD !== undefined) {
             builder = builder.setXAxisRange(xMinD, xMaxD);
         }
 
-        const yMinD = tryGetDouble(options.ymin);
-        const yMaxD = tryGetDouble(options.ymax);
+        const yMinD = tryGetDouble(options.yMin);
+        const yMaxD = tryGetDouble(options.yMax);
         if (yMinD !== undefined && yMaxD !== undefined) {
             builder = builder.setYAxisRange(yMinD, yMaxD);
         }
@@ -1892,16 +1883,76 @@ export class PlotlyChartProvider implements IChartProvider {
         if (options.showLegend === false) builder = builder.hideLegend();
         builder = applyCommonOptions(builder, options);
 
-        let traceIndex = 0;
-        for (const valueColumn of yColumns) {
-            const result = this.get2DChartData(data, xColumn, valueColumn);
-            if (result) {
-                builder = addTrace(builder, result.x, result.y, valueColumn.column.name, undefined, traceIndex);
-                traceIndex++;
+        // Resolve series columns
+        const seriesCols = (options.seriesColumns ?? [])
+            .map(name => getColumnRef(data, name))
+            .filter((c): c is ColumnRef => c !== undefined);
+
+        if (seriesCols.length > 0) {
+            // Pivot data by series column values
+            const groups = this.groupRowsBySeries(data, seriesCols);
+            const multipleYCols = yColumns.length > 1;
+            let traceIndex = 0;
+            for (const [seriesKey, rowIndices] of groups) {
+                for (const yCol of yColumns) {
+                    if (!isNumericType(yCol.column.type)) continue;
+                    const xValues: unknown[] = [];
+                    const yValues: number[] = [];
+                    for (const ri of rowIndices) {
+                        const row = data.rows[ri];
+                        if (!row) continue;
+                        const xVal = row[xColumn.index];
+                        const yVal = row[yCol.index];
+                        if (xVal != null && yVal != null) {
+                            xValues.push(xVal);
+                            yValues.push(sanitizeDouble(toNumber(yVal)));
+                        }
+                    }
+                    if (xValues.length > 0) {
+                        // Sort by x-value so lines don't zigzag
+                        const indices = xValues.map((_, i) => i);
+                        indices.sort((a, b) => (xValues[a]! < xValues[b]! ? -1 : xValues[a]! > xValues[b]! ? 1 : 0));
+                        const sortedX = indices.map(i => xValues[i]!);
+                        const sortedY = indices.map(i => yValues[i]!);
+                        const traceName = multipleYCols ? `${seriesKey} - ${yCol.column.name}` : seriesKey;
+                        builder = addTrace(builder, sortedX, sortedY, traceName, undefined, traceIndex);
+                        traceIndex++;
+                    }
+                }
+            }
+        } else {
+            // No series columns: one trace per y-column (existing behavior)
+            let traceIndex = 0;
+            for (const valueColumn of yColumns) {
+                const result = this.get2DChartData(data, xColumn, valueColumn);
+                if (result) {
+                    builder = addTrace(builder, result.x, result.y, valueColumn.column.name, undefined, traceIndex);
+                    traceIndex++;
+                }
             }
         }
 
         return builder;
+    }
+
+    /**
+     * Groups row indices by the combined string key of the specified series columns.
+     * Returns a Map preserving insertion order (first-seen order of distinct keys).
+     */
+    private groupRowsBySeries(data: ResultTable, seriesCols: ColumnRef[]): Map<string, number[]> {
+        const groups = new Map<string, number[]>();
+        for (let i = 0; i < data.rows.length; i++) {
+            const row = data.rows[i];
+            if (!row) continue;
+            const key = seriesCols.map(c => String(row[c.index] ?? '')).join(' - ');
+            let arr = groups.get(key);
+            if (!arr) {
+                arr = [];
+                groups.set(key, arr);
+            }
+            arr.push(i);
+        }
+        return groups;
     }
 
     // ─── Data Column Helpers ────────────────────────────────────────────
@@ -1939,9 +1990,10 @@ export class PlotlyChartProvider implements IChartProvider {
                 .map(name => getColumnRef(data, name))
                 .filter((c): c is ColumnRef => c !== undefined);
         }
+        const seriesSet = new Set(options.seriesColumns ?? []);
         const result: ColumnRef[] = [];
         for (let i = 0; i < data.columns.length; i++) {
-            if (i !== xColumn.index) {
+            if (i !== xColumn.index && !seriesSet.has(data.columns[i]!.name)) {
                 const ref = getColumnRefByIndex(data, i);
                 if (ref) result.push(ref);
             }

@@ -566,14 +566,15 @@ export interface ChartOptions {
     yTitle?: string;
     xColumn?: string;
     yColumns?: string[];
-    series?: string[];
+    seriesColumns?: string[];
+    anomalyColumns?: string[];
     showLegend?: boolean;
     xAxis?: string;
     yAxis?: string;
-    xmin?: unknown;
-    xmax?: unknown;
-    ymin?: unknown;
-    ymax?: unknown;
+    xMin?: unknown;
+    xMax?: unknown;
+    yMin?: unknown;
+    yMax?: unknown;
     accumulate?: boolean;
     zTitle?: string;
     xShowTicks?: boolean;
@@ -588,7 +589,6 @@ export interface ChartOptions {
     mode?: string;
     aspectRatio?: string;
     textSize?: string;
-    anomalyColumns?: string[];
     markerShape?: string;
     cycleMarkerShapes?: boolean;
     markerSize?: string;
