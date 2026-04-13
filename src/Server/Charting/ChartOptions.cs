@@ -14,7 +14,7 @@ namespace Kusto.Vscode;
 public class ChartOptions
 {
     /// <summary>
-    /// Chart type. Use <see cref="ChartType"/> constants (e.g., "linechart", "barchart", "piechart", "scatterchart").
+    /// Chart type. Use kql keywords (e.g., "linechart", "barchart", "piechart", "scatterchart").
     /// </summary>
     [DataMember(Name = "type")]
     public required string Type { get; init; }

@@ -1883,16 +1883,76 @@ export class PlotlyChartProvider implements IChartProvider {
         if (options.showLegend === false) builder = builder.hideLegend();
         builder = applyCommonOptions(builder, options);
 
-        let traceIndex = 0;
-        for (const valueColumn of yColumns) {
-            const result = this.get2DChartData(data, xColumn, valueColumn);
-            if (result) {
-                builder = addTrace(builder, result.x, result.y, valueColumn.column.name, undefined, traceIndex);
-                traceIndex++;
+        // Resolve series columns
+        const seriesCols = (options.seriesColumns ?? [])
+            .map(name => getColumnRef(data, name))
+            .filter((c): c is ColumnRef => c !== undefined);
+
+        if (seriesCols.length > 0) {
+            // Pivot data by series column values
+            const groups = this.groupRowsBySeries(data, seriesCols);
+            const multipleYCols = yColumns.length > 1;
+            let traceIndex = 0;
+            for (const [seriesKey, rowIndices] of groups) {
+                for (const yCol of yColumns) {
+                    if (!isNumericType(yCol.column.type)) continue;
+                    const xValues: unknown[] = [];
+                    const yValues: number[] = [];
+                    for (const ri of rowIndices) {
+                        const row = data.rows[ri];
+                        if (!row) continue;
+                        const xVal = row[xColumn.index];
+                        const yVal = row[yCol.index];
+                        if (xVal != null && yVal != null) {
+                            xValues.push(xVal);
+                            yValues.push(sanitizeDouble(toNumber(yVal)));
+                        }
+                    }
+                    if (xValues.length > 0) {
+                        // Sort by x-value so lines don't zigzag
+                        const indices = xValues.map((_, i) => i);
+                        indices.sort((a, b) => (xValues[a]! < xValues[b]! ? -1 : xValues[a]! > xValues[b]! ? 1 : 0));
+                        const sortedX = indices.map(i => xValues[i]!);
+                        const sortedY = indices.map(i => yValues[i]!);
+                        const traceName = multipleYCols ? `${seriesKey} - ${yCol.column.name}` : seriesKey;
+                        builder = addTrace(builder, sortedX, sortedY, traceName, undefined, traceIndex);
+                        traceIndex++;
+                    }
+                }
+            }
+        } else {
+            // No series columns: one trace per y-column (existing behavior)
+            let traceIndex = 0;
+            for (const valueColumn of yColumns) {
+                const result = this.get2DChartData(data, xColumn, valueColumn);
+                if (result) {
+                    builder = addTrace(builder, result.x, result.y, valueColumn.column.name, undefined, traceIndex);
+                    traceIndex++;
+                }
             }
         }
 
         return builder;
+    }
+
+    /**
+     * Groups row indices by the combined string key of the specified series columns.
+     * Returns a Map preserving insertion order (first-seen order of distinct keys).
+     */
+    private groupRowsBySeries(data: ResultTable, seriesCols: ColumnRef[]): Map<string, number[]> {
+        const groups = new Map<string, number[]>();
+        for (let i = 0; i < data.rows.length; i++) {
+            const row = data.rows[i];
+            if (!row) continue;
+            const key = seriesCols.map(c => String(row[c.index] ?? '')).join(' - ');
+            let arr = groups.get(key);
+            if (!arr) {
+                arr = [];
+                groups.set(key, arr);
+            }
+            arr.push(i);
+        }
+        return groups;
     }
 
     // ─── Data Column Helpers ────────────────────────────────────────────
@@ -1930,9 +1990,10 @@ export class PlotlyChartProvider implements IChartProvider {
                 .map(name => getColumnRef(data, name))
                 .filter((c): c is ColumnRef => c !== undefined);
         }
+        const seriesSet = new Set(options.seriesColumns ?? []);
         const result: ColumnRef[] = [];
         for (let i = 0; i < data.columns.length; i++) {
-            if (i !== xColumn.index) {
+            if (i !== xColumn.index && !seriesSet.has(data.columns[i]!.name)) {
                 const ref = getColumnRefByIndex(data, i);
                 if (ref) result.push(ref);
             }
