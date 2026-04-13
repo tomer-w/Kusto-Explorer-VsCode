@@ -274,6 +274,7 @@ interface BarTrace extends PlotlyTraceBase {
     type: 'bar';
     x: unknown[];
     y: unknown[];
+    base?: unknown[] | undefined;
     orientation: string;
     offsetgroup?: string | undefined;
     marker?: PlotlyMarker | undefined;
@@ -518,6 +519,23 @@ class PlotlyChartBuilder {
             offsetgroup: offsetGroup,
             text,
             textposition: textPosition,
+        };
+        return this.addTrace(trace);
+    }
+
+    addLadderTrace(
+        categories: unknown[],
+        durations: number[],
+        base: unknown[],
+        name?: string,
+    ): PlotlyChartBuilder {
+        const trace: BarTrace = {
+            type: 'bar',
+            x: durations,
+            y: categories,
+            base,
+            orientation: PlotlyOrientations.Horizontal,
+            name,
         };
         return this.addTrace(trace);
     }
@@ -1371,6 +1389,9 @@ export class PlotlyChartProvider implements IChartProvider {
             case ChartType.Sankey:
                 builder = this.buildSankeyChart(data, options);
                 break;
+            case ChartType.TimeLadderChart:
+                builder = this.buildLadderChart(data, options);
+                break;
             default:
                 return undefined;
         }
@@ -1845,6 +1866,117 @@ export class PlotlyChartProvider implements IChartProvider {
 
         if (options.showLegend === false) builder = builder.hideLegend();
         builder = applyCommonOptions(builder, options);
+
+        return builder;
+    }
+
+    // ─── Ladder Chart ─────────────────────────────────────────────────
+
+    private buildLadderChart(data: ResultTable, options: ChartOptions): PlotlyChartBuilder | undefined {
+        if (data.columns.length < 3 || data.rows.length === 0) return undefined;
+
+        // Find columns: first datetime → start, second datetime → end, first non-datetime non-numeric → category
+        let startColumn: ColumnRef | undefined;
+        let endColumn: ColumnRef | undefined;
+        let categoryColumn: ColumnRef | undefined;
+
+        for (let i = 0; i < data.columns.length; i++) {
+            const col = data.columns[i];
+            if (!col) continue;
+            if (isDateTimeType(col.type)) {
+                if (!startColumn) startColumn = getColumnRefByIndex(data, i);
+                else if (!endColumn) endColumn = getColumnRefByIndex(data, i);
+            } else if (!categoryColumn && !isNumericType(col.type)) {
+                categoryColumn = getColumnRefByIndex(data, i);
+            }
+        }
+
+        if (!startColumn || !endColumn || !categoryColumn) return undefined;
+
+        // Resolve series columns for grouping
+        const seriesCols = (options.seriesColumns ?? [])
+            .map(name => getColumnRef(data, name))
+            .filter((c): c is ColumnRef => c !== undefined);
+
+        // Category label = seriesColumns joined (if set), otherwise the category column value.
+        // Uses <br> between series values for multi-line wrapping.
+        // Color key = first series column value (if multiple series cols), otherwise same as category label.
+        interface RowData { category: string; start: unknown; duration: number }
+        const rowsByColorKey = new Map<string, RowData[]>();
+        const categoryOrder: string[] = [];
+        const categorySet = new Set<string>();
+        let hasData = false;
+
+        for (const row of data.rows) {
+            if (!row) continue;
+            const cat = row[categoryColumn.index];
+            const start = row[startColumn.index];
+            const end = row[endColumn.index];
+            if (cat == null || start == null || end == null) continue;
+            const startMs = new Date(String(start)).getTime();
+            const endMs = new Date(String(end)).getTime();
+            if (isNaN(startMs) || isNaN(endMs)) continue;
+
+            // Category label used as string y-value (Plotly manages categorical axis)
+            const categoryLabel = seriesCols.length > 0
+                ? seriesCols.map(c => String(row[c.index] ?? '')).join(' - ')
+                : String(cat);
+
+            // Track category order as first encountered in data
+            if (!categorySet.has(categoryLabel)) {
+                categorySet.add(categoryLabel);
+                categoryOrder.push(categoryLabel);
+            }
+
+            // Color key determines the trace (and thus the color)
+            const colorKey = seriesCols.length > 1
+                ? String(row[seriesCols[0]!.index] ?? '')
+                : categoryLabel;
+
+            let group = rowsByColorKey.get(colorKey);
+            if (!group) {
+                group = [];
+                rowsByColorKey.set(colorKey, group);
+            }
+            group.push({ category: categoryLabel, start, duration: endMs - startMs });
+            hasData = true;
+        }
+
+        if (!hasData) return undefined;
+
+        let builder = new PlotlyChartBuilder();
+        if (options.title) builder = builder.withTitle(options.title);
+        if (options.xTitle) builder = builder.setXAxisTitle(options.xTitle);
+        if (options.yTitle) builder = builder.setYAxisTitle(options.yTitle);
+        if (options.showLegend === false) builder = builder.hideLegend();
+        builder = applyCommonOptions(builder, options);
+
+        // Overlay bars so they align with grid lines (not grouped/dodged)
+        builder = builder.setBarMode('overlay');
+
+        // Set x-axis to date type; preserve data order on y-axis
+        builder = builder.withXAxis({ ...(builder.layout.xaxis ?? {}), type: 'date' });
+        builder = builder.withYAxis({
+            ...(builder.layout.yaxis ?? {}),
+            categoryorder: 'array',
+            categoryarray: categoryOrder,
+        });
+
+        // Reverse legend order so it matches the y-axis (which displays bottom-to-top)
+        builder = builder.withLayout({
+            ...builder.layout,
+            legend: { ...(builder.layout.legend ?? {}), traceorder: 'reversed' },
+        });
+
+        // Add traces in data order (categories appear in the order first encountered)
+        for (const [colorKey, rows] of rowsByColorKey) {
+            builder = builder.addLadderTrace(
+                rows.map(r => r.category),
+                rows.map(r => r.duration),
+                rows.map(r => r.start),
+                colorKey,
+            );
+        }
 
         return builder;
     }
