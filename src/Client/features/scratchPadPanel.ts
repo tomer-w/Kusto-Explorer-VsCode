@@ -89,7 +89,27 @@ export class ScratchPadPanel {
     // ─── Private helpers ─────────────────────────────────────────────
 
     private hasActiveKustoDocument(): boolean {
-        return vscode.window.activeTextEditor?.document.languageId === 'kusto' || false;
+        // Check if the active editor is a Kusto document
+        if (vscode.window.activeTextEditor?.document.languageId === 'kusto') {
+            return true;
+        }
+        // Check if any visible editor is a Kusto document (e.g. during startup restore)
+        if (vscode.window.visibleTextEditors.some(e => e.document.languageId === 'kusto')) {
+            return true;
+        }
+        // Check if any open tab has a .kql file or scratch pad (tabs restore before editors)
+        for (const group of vscode.window.tabGroups.all) {
+            for (const tab of group.tabs) {
+                const input = tab.input;
+                if (input instanceof vscode.TabInputText) {
+                    const uri = input.uri;
+                    if (uri.scheme === SCRATCH_PAD_SCHEME || uri.path.endsWith('.kql') || uri.path.endsWith('.csl')) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     private updatePlaceholder(editor: vscode.TextEditor | undefined): void {

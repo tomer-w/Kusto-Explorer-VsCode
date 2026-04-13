@@ -594,6 +594,7 @@ describe('PlotlyChartProvider', () => {
                 const html = renderAndGetHtml(ladderTable, { type: 'ladderchart' });
                 expect(html).toBeDefined();
                 const traces = parseTraces(html!);
+                // Traces in data order (order categories first appear)
                 expect(traces.length).toBe(3);
                 const build = traces[0] as Record<string, unknown>;
                 expect(build.type).toBe('bar');

@@ -1903,6 +1903,8 @@ export class PlotlyChartProvider implements IChartProvider {
         // Color key = first series column value (if multiple series cols), otherwise same as category label.
         interface RowData { category: string; start: unknown; duration: number }
         const rowsByColorKey = new Map<string, RowData[]>();
+        const categoryOrder: string[] = [];
+        const categorySet = new Set<string>();
         let hasData = false;
 
         for (const row of data.rows) {
@@ -1919,6 +1921,12 @@ export class PlotlyChartProvider implements IChartProvider {
             const categoryLabel = seriesCols.length > 0
                 ? seriesCols.map(c => String(row[c.index] ?? '')).join(' - ')
                 : String(cat);
+
+            // Track category order as first encountered in data
+            if (!categorySet.has(categoryLabel)) {
+                categorySet.add(categoryLabel);
+                categoryOrder.push(categoryLabel);
+            }
 
             // Color key determines the trace (and thus the color)
             const colorKey = seriesCols.length > 1
@@ -1946,10 +1954,21 @@ export class PlotlyChartProvider implements IChartProvider {
         // Overlay bars so they align with grid lines (not grouped/dodged)
         builder = builder.setBarMode('overlay');
 
-        // Set x-axis to date type
+        // Set x-axis to date type; preserve data order on y-axis
         builder = builder.withXAxis({ ...(builder.layout.xaxis ?? {}), type: 'date' });
+        builder = builder.withYAxis({
+            ...(builder.layout.yaxis ?? {}),
+            categoryorder: 'array',
+            categoryarray: categoryOrder,
+        });
 
-        // One trace per color key
+        // Reverse legend order so it matches the y-axis (which displays bottom-to-top)
+        builder = builder.withLayout({
+            ...builder.layout,
+            legend: { ...(builder.layout.legend ?? {}), traceorder: 'reversed' },
+        });
+
+        // Add traces in data order (categories appear in the order first encountered)
         for (const [colorKey, rows] of rowsByColorKey) {
             builder = builder.addLadderTrace(
                 rows.map(r => r.category),
