@@ -274,6 +274,7 @@ interface BarTrace extends PlotlyTraceBase {
     type: 'bar';
     x: unknown[];
     y: unknown[];
+    base?: unknown[] | undefined;
     orientation: string;
     offsetgroup?: string | undefined;
     marker?: PlotlyMarker | undefined;
@@ -518,6 +519,23 @@ class PlotlyChartBuilder {
             offsetgroup: offsetGroup,
             text,
             textposition: textPosition,
+        };
+        return this.addTrace(trace);
+    }
+
+    addLadderTrace(
+        categories: unknown[],
+        durations: number[],
+        base: unknown[],
+        name?: string,
+    ): PlotlyChartBuilder {
+        const trace: BarTrace = {
+            type: 'bar',
+            x: durations,
+            y: categories,
+            base,
+            orientation: PlotlyOrientations.Horizontal,
+            name,
         };
         return this.addTrace(trace);
     }
@@ -1371,6 +1389,9 @@ export class PlotlyChartProvider implements IChartProvider {
             case ChartType.Sankey:
                 builder = this.buildSankeyChart(data, options);
                 break;
+            case ChartType.TimeLadderChart:
+                builder = this.buildLadderChart(data, options);
+                break;
             default:
                 return undefined;
         }
@@ -1845,6 +1866,111 @@ export class PlotlyChartProvider implements IChartProvider {
 
         if (options.showLegend === false) builder = builder.hideLegend();
         builder = applyCommonOptions(builder, options);
+
+        return builder;
+    }
+
+    // ─── Ladder Chart ─────────────────────────────────────────────────
+
+    private buildLadderChart(data: ResultTable, options: ChartOptions): PlotlyChartBuilder | undefined {
+        if (data.columns.length < 3 || data.rows.length === 0) return undefined;
+
+        // Find columns: first datetime → start, second datetime → end, first non-datetime non-numeric → category
+        let startColumn: ColumnRef | undefined;
+        let endColumn: ColumnRef | undefined;
+        let categoryColumn: ColumnRef | undefined;
+
+        for (let i = 0; i < data.columns.length; i++) {
+            const col = data.columns[i];
+            if (!col) continue;
+            if (isDateTimeType(col.type)) {
+                if (!startColumn) startColumn = getColumnRefByIndex(data, i);
+                else if (!endColumn) endColumn = getColumnRefByIndex(data, i);
+            } else if (!categoryColumn && !isNumericType(col.type)) {
+                categoryColumn = getColumnRefByIndex(data, i);
+            }
+        }
+
+        if (!startColumn || !endColumn || !categoryColumn) return undefined;
+
+        // Resolve series columns for grouping
+        const seriesCols = (options.seriesColumns ?? [])
+            .map(name => getColumnRef(data, name))
+            .filter((c): c is ColumnRef => c !== undefined);
+
+        // Build y-positions: one per unique category key.
+        // Category key = seriesColumns joined (if set), otherwise the category column value.
+        // Color key = first series column value (if multiple series cols), otherwise same as category key.
+        const categoryPositions = new Map<string, number>();
+        const tickLabels: string[] = [];
+        interface RowData { yPos: number; start: unknown; duration: number }
+        const rowsByColorKey = new Map<string, RowData[]>();
+
+        for (const row of data.rows) {
+            if (!row) continue;
+            const cat = row[categoryColumn.index];
+            const start = row[startColumn.index];
+            const end = row[endColumn.index];
+            if (cat == null || start == null || end == null) continue;
+            const startMs = new Date(String(start)).getTime();
+            const endMs = new Date(String(end)).getTime();
+            if (isNaN(startMs) || isNaN(endMs)) continue;
+
+            // Category key determines the y-position (shared by rows with same key)
+            const categoryKey = seriesCols.length > 0
+                ? seriesCols.map(c => String(row[c.index] ?? '')).join(' - ')
+                : String(cat);
+
+            // Color key determines the trace (and thus the color)
+            // With multiple series columns, color by first series column; otherwise same as category key
+            const colorKey = seriesCols.length > 1
+                ? String(row[seriesCols[0]!.index] ?? '')
+                : categoryKey;
+
+            let yPos = categoryPositions.get(categoryKey);
+            if (yPos === undefined) {
+                yPos = tickLabels.length;
+                categoryPositions.set(categoryKey, yPos);
+                tickLabels.push(categoryKey);
+            }
+
+            let group = rowsByColorKey.get(colorKey);
+            if (!group) {
+                group = [];
+                rowsByColorKey.set(colorKey, group);
+            }
+            group.push({ yPos, start, duration: endMs - startMs });
+        }
+
+        if (tickLabels.length === 0) return undefined;
+
+        let builder = new PlotlyChartBuilder();
+        if (options.title) builder = builder.withTitle(options.title);
+        if (options.xTitle) builder = builder.setXAxisTitle(options.xTitle);
+        if (options.yTitle) builder = builder.setYAxisTitle(options.yTitle);
+        if (options.showLegend === false) builder = builder.hideLegend();
+        builder = applyCommonOptions(builder, options);
+
+        // Overlay bars so they align with grid lines (not grouped/dodged)
+        builder = builder.setBarMode('overlay');
+
+        // Set x-axis to date type, y-axis to category labels
+        builder = builder.withXAxis({ ...(builder.layout.xaxis ?? {}), type: 'date' });
+        builder = builder.withYAxis({
+            ...(builder.layout.yaxis ?? {}),
+            tickvals: tickLabels.map((_, i) => i),
+            ticktext: tickLabels,
+        });
+
+        // One trace per color key
+        for (const [colorKey, rows] of rowsByColorKey) {
+            builder = builder.addLadderTrace(
+                rows.map(r => r.yPos),
+                rows.map(r => r.duration),
+                rows.map(r => r.start),
+                colorKey,
+            );
+        }
 
         return builder;
     }

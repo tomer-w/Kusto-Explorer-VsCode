@@ -576,6 +576,159 @@ describe('PlotlyChartProvider', () => {
             });
         });
 
+        describe('ladderchart', () => {
+            const ladderTable = makeTable(
+                [
+                    { name: 'Task', type: 'string' },
+                    { name: 'Start', type: 'datetime' },
+                    { name: 'End', type: 'datetime' },
+                ],
+                [
+                    ['Build', '2024-01-01T00:00:00Z', '2024-01-05T00:00:00Z'],
+                    ['Test', '2024-01-03T00:00:00Z', '2024-01-08T00:00:00Z'],
+                    ['Deploy', '2024-01-07T00:00:00Z', '2024-01-09T00:00:00Z'],
+                ],
+            );
+
+            it('renders one trace per category with numeric y-positions', () => {
+                const html = renderAndGetHtml(ladderTable, { type: 'ladderchart' });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                // 3 distinct categories → 3 traces
+                expect(traces.length).toBe(3);
+                const build = traces[0] as Record<string, unknown>;
+                expect(build.type).toBe('bar');
+                expect(build.orientation).toBe('h');
+                expect(build.name).toBe('Build');
+                expect(build.y).toEqual([0]);
+                expect(build.base).toEqual(['2024-01-01T00:00:00Z']);
+                expect((build.x as number[])[0]).toBe(4 * 86400000);
+
+                const test = traces[1] as Record<string, unknown>;
+                expect(test.name).toBe('Test');
+                expect(test.y).toEqual([1]);
+
+                const deploy = traces[2] as Record<string, unknown>;
+                expect(deploy.name).toBe('Deploy');
+                expect(deploy.y).toEqual([2]);
+            });
+
+            it('shares y-position for duplicate categories', () => {
+                const table = makeTable(
+                    [
+                        { name: 'Task', type: 'string' },
+                        { name: 'Start', type: 'datetime' },
+                        { name: 'End', type: 'datetime' },
+                    ],
+                    [
+                        ['Build', '2024-01-01T00:00:00Z', '2024-01-03T00:00:00Z'],
+                        ['Test', '2024-01-02T00:00:00Z', '2024-01-04T00:00:00Z'],
+                        ['Build', '2024-01-05T00:00:00Z', '2024-01-07T00:00:00Z'],
+                    ],
+                );
+                const html = renderAndGetHtml(table, { type: 'ladderchart' });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                // 2 distinct categories → 2 traces
+                expect(traces.length).toBe(2);
+                const build = traces[0] as Record<string, unknown>;
+                expect(build.name).toBe('Build');
+                // Both Build rows share y-position 0
+                expect(build.y).toEqual([0, 0]);
+                const test = traces[1] as Record<string, unknown>;
+                expect(test.name).toBe('Test');
+                expect(test.y).toEqual([1]);
+            });
+
+            it('sets y-axis tickvals and ticktext for unique categories', () => {
+                const html = renderAndGetHtml(ladderTable, { type: 'ladderchart' });
+                expect(html).toBeDefined();
+                const layout = parseLayout(html!);
+                const yaxis = layout.yaxis as Record<string, unknown>;
+                expect(yaxis.tickvals).toEqual([0, 1, 2]);
+                expect(yaxis.ticktext).toEqual(['Build', 'Test', 'Deploy']);
+            });
+
+            it('returns undefined when fewer than 2 datetime columns', () => {
+                const table = makeTable(
+                    [
+                        { name: 'Task', type: 'string' },
+                        { name: 'Start', type: 'datetime' },
+                    ],
+                    [['A', '2024-01-01']],
+                );
+                const html = renderAndGetHtml(table, { type: 'ladderchart' });
+                expect(html).toBeUndefined();
+            });
+
+            it('uses series key as y-label with single seriesColumn', () => {
+                const table = makeTable(
+                    [
+                        { name: 'Task', type: 'string' },
+                        { name: 'Start', type: 'datetime' },
+                        { name: 'End', type: 'datetime' },
+                        { name: 'Team', type: 'string' },
+                    ],
+                    [
+                        ['Build', '2024-01-01T00:00:00Z', '2024-01-03T00:00:00Z', 'Alpha'],
+                        ['Test', '2024-01-02T00:00:00Z', '2024-01-04T00:00:00Z', 'Beta'],
+                        ['Deploy', '2024-01-05T00:00:00Z', '2024-01-06T00:00:00Z', 'Alpha'],
+                    ],
+                );
+                const html = renderAndGetHtml(table, { type: 'ladderchart', seriesColumns: ['Team'] });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                expect(traces.length).toBe(2);
+                const alpha = traces[0] as Record<string, unknown>;
+                expect(alpha.name).toBe('Alpha');
+                // Alpha rows share y-position 0
+                expect(alpha.y).toEqual([0, 0]);
+                const beta = traces[1] as Record<string, unknown>;
+                expect(beta.name).toBe('Beta');
+                expect(beta.y).toEqual([1]);
+            });
+
+            it('colors by first series column with multiple seriesColumns', () => {
+                const table = makeTable(
+                    [
+                        { name: 'Task', type: 'string' },
+                        { name: 'Start', type: 'datetime' },
+                        { name: 'End', type: 'datetime' },
+                        { name: 'State', type: 'string' },
+                        { name: 'EventType', type: 'string' },
+                    ],
+                    [
+                        ['x', '2024-01-01T00:00:00Z', '2024-01-03T00:00:00Z', 'CA', 'Flood'],
+                        ['x', '2024-01-04T00:00:00Z', '2024-01-06T00:00:00Z', 'CA', 'Fire'],
+                        ['x', '2024-01-02T00:00:00Z', '2024-01-05T00:00:00Z', 'TX', 'Tornado'],
+                    ],
+                );
+                const html = renderAndGetHtml(table, { type: 'ladderchart', seriesColumns: ['State', 'EventType'] });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                // 2 color groups (CA, TX), not 3 (CA-Flood, CA-Fire, TX-Tornado)
+                expect(traces.length).toBe(2);
+                const ca = traces[0] as Record<string, unknown>;
+                expect(ca.name).toBe('CA');
+                // CA - Flood at y=0, CA - Fire at y=1
+                expect(ca.y).toEqual([0, 1]);
+                const tx = traces[1] as Record<string, unknown>;
+                expect(tx.name).toBe('TX');
+                expect(tx.y).toEqual([2]);
+                // Y-axis labels are the combined keys
+                const layout = parseLayout(html!);
+                const yaxis = layout.yaxis as Record<string, unknown>;
+                expect(yaxis.ticktext).toEqual(['CA - Flood', 'CA - Fire', 'TX - Tornado']);
+            });
+
+            it('sets x-axis type to date', () => {
+                const html = renderAndGetHtml(ladderTable, { type: 'ladderchart' });
+                expect(html).toBeDefined();
+                const layout = parseLayout(html!);
+                expect((layout.xaxis as Record<string, unknown>)?.type).toBe('date');
+            });
+        });
+
         describe('plotly (raw)', () => {
             it('renders raw Plotly JSON from first cell', () => {
                 const plotlyJson = JSON.stringify({
