@@ -1898,13 +1898,12 @@ export class PlotlyChartProvider implements IChartProvider {
             .map(name => getColumnRef(data, name))
             .filter((c): c is ColumnRef => c !== undefined);
 
-        // Build y-positions: one per unique category key.
-        // Category key = seriesColumns joined (if set), otherwise the category column value.
-        // Color key = first series column value (if multiple series cols), otherwise same as category key.
-        const categoryPositions = new Map<string, number>();
-        const tickLabels: string[] = [];
-        interface RowData { yPos: number; start: unknown; duration: number }
+        // Category label = seriesColumns joined (if set), otherwise the category column value.
+        // Uses <br> between series values for multi-line wrapping.
+        // Color key = first series column value (if multiple series cols), otherwise same as category label.
+        interface RowData { category: string; start: unknown; duration: number }
         const rowsByColorKey = new Map<string, RowData[]>();
+        let hasData = false;
 
         for (const row of data.rows) {
             if (!row) continue;
@@ -1916,33 +1915,26 @@ export class PlotlyChartProvider implements IChartProvider {
             const endMs = new Date(String(end)).getTime();
             if (isNaN(startMs) || isNaN(endMs)) continue;
 
-            // Category key determines the y-position (shared by rows with same key)
-            const categoryKey = seriesCols.length > 0
+            // Category label used as string y-value (Plotly manages categorical axis)
+            const categoryLabel = seriesCols.length > 0
                 ? seriesCols.map(c => String(row[c.index] ?? '')).join(' - ')
                 : String(cat);
 
             // Color key determines the trace (and thus the color)
-            // With multiple series columns, color by first series column; otherwise same as category key
             const colorKey = seriesCols.length > 1
                 ? String(row[seriesCols[0]!.index] ?? '')
-                : categoryKey;
-
-            let yPos = categoryPositions.get(categoryKey);
-            if (yPos === undefined) {
-                yPos = tickLabels.length;
-                categoryPositions.set(categoryKey, yPos);
-                tickLabels.push(categoryKey);
-            }
+                : categoryLabel;
 
             let group = rowsByColorKey.get(colorKey);
             if (!group) {
                 group = [];
                 rowsByColorKey.set(colorKey, group);
             }
-            group.push({ yPos, start, duration: endMs - startMs });
+            group.push({ category: categoryLabel, start, duration: endMs - startMs });
+            hasData = true;
         }
 
-        if (tickLabels.length === 0) return undefined;
+        if (!hasData) return undefined;
 
         let builder = new PlotlyChartBuilder();
         if (options.title) builder = builder.withTitle(options.title);
@@ -1954,18 +1946,13 @@ export class PlotlyChartProvider implements IChartProvider {
         // Overlay bars so they align with grid lines (not grouped/dodged)
         builder = builder.setBarMode('overlay');
 
-        // Set x-axis to date type, y-axis to category labels
+        // Set x-axis to date type
         builder = builder.withXAxis({ ...(builder.layout.xaxis ?? {}), type: 'date' });
-        builder = builder.withYAxis({
-            ...(builder.layout.yaxis ?? {}),
-            tickvals: tickLabels.map((_, i) => i),
-            ticktext: tickLabels,
-        });
 
         // One trace per color key
         for (const [colorKey, rows] of rowsByColorKey) {
             builder = builder.addLadderTrace(
-                rows.map(r => r.yPos),
+                rows.map(r => r.category),
                 rows.map(r => r.duration),
                 rows.map(r => r.start),
                 colorKey,

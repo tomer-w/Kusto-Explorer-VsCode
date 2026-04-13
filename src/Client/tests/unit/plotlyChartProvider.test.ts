@@ -590,30 +590,29 @@ describe('PlotlyChartProvider', () => {
                 ],
             );
 
-            it('renders one trace per category with numeric y-positions', () => {
+            it('renders one trace per category with string y-values', () => {
                 const html = renderAndGetHtml(ladderTable, { type: 'ladderchart' });
                 expect(html).toBeDefined();
                 const traces = parseTraces(html!);
-                // 3 distinct categories → 3 traces
                 expect(traces.length).toBe(3);
                 const build = traces[0] as Record<string, unknown>;
                 expect(build.type).toBe('bar');
                 expect(build.orientation).toBe('h');
                 expect(build.name).toBe('Build');
-                expect(build.y).toEqual([0]);
+                expect(build.y).toEqual(['Build']);
                 expect(build.base).toEqual(['2024-01-01T00:00:00Z']);
                 expect((build.x as number[])[0]).toBe(4 * 86400000);
 
                 const test = traces[1] as Record<string, unknown>;
                 expect(test.name).toBe('Test');
-                expect(test.y).toEqual([1]);
+                expect(test.y).toEqual(['Test']);
 
                 const deploy = traces[2] as Record<string, unknown>;
                 expect(deploy.name).toBe('Deploy');
-                expect(deploy.y).toEqual([2]);
+                expect(deploy.y).toEqual(['Deploy']);
             });
 
-            it('shares y-position for duplicate categories', () => {
+            it('shares y-value for duplicate categories', () => {
                 const table = makeTable(
                     [
                         { name: 'Task', type: 'string' },
@@ -629,24 +628,13 @@ describe('PlotlyChartProvider', () => {
                 const html = renderAndGetHtml(table, { type: 'ladderchart' });
                 expect(html).toBeDefined();
                 const traces = parseTraces(html!);
-                // 2 distinct categories → 2 traces
                 expect(traces.length).toBe(2);
                 const build = traces[0] as Record<string, unknown>;
                 expect(build.name).toBe('Build');
-                // Both Build rows share y-position 0
-                expect(build.y).toEqual([0, 0]);
+                expect(build.y).toEqual(['Build', 'Build']);
                 const test = traces[1] as Record<string, unknown>;
                 expect(test.name).toBe('Test');
-                expect(test.y).toEqual([1]);
-            });
-
-            it('sets y-axis tickvals and ticktext for unique categories', () => {
-                const html = renderAndGetHtml(ladderTable, { type: 'ladderchart' });
-                expect(html).toBeDefined();
-                const layout = parseLayout(html!);
-                const yaxis = layout.yaxis as Record<string, unknown>;
-                expect(yaxis.tickvals).toEqual([0, 1, 2]);
-                expect(yaxis.ticktext).toEqual(['Build', 'Test', 'Deploy']);
+                expect(test.y).toEqual(['Test']);
             });
 
             it('returns undefined when fewer than 2 datetime columns', () => {
@@ -681,11 +669,10 @@ describe('PlotlyChartProvider', () => {
                 expect(traces.length).toBe(2);
                 const alpha = traces[0] as Record<string, unknown>;
                 expect(alpha.name).toBe('Alpha');
-                // Alpha rows share y-position 0
-                expect(alpha.y).toEqual([0, 0]);
+                expect(alpha.y).toEqual(['Alpha', 'Alpha']);
                 const beta = traces[1] as Record<string, unknown>;
                 expect(beta.name).toBe('Beta');
-                expect(beta.y).toEqual([1]);
+                expect(beta.y).toEqual(['Beta']);
             });
 
             it('colors by first series column with multiple seriesColumns', () => {
@@ -706,19 +693,15 @@ describe('PlotlyChartProvider', () => {
                 const html = renderAndGetHtml(table, { type: 'ladderchart', seriesColumns: ['State', 'EventType'] });
                 expect(html).toBeDefined();
                 const traces = parseTraces(html!);
-                // 2 color groups (CA, TX), not 3 (CA-Flood, CA-Fire, TX-Tornado)
+                // 2 color groups (CA, TX)
                 expect(traces.length).toBe(2);
                 const ca = traces[0] as Record<string, unknown>;
                 expect(ca.name).toBe('CA');
-                // CA - Flood at y=0, CA - Fire at y=1
-                expect(ca.y).toEqual([0, 1]);
+                // y-values use <br> for wrapping
+                expect(ca.y).toEqual(['CA - Flood', 'CA - Fire']);
                 const tx = traces[1] as Record<string, unknown>;
                 expect(tx.name).toBe('TX');
-                expect(tx.y).toEqual([2]);
-                // Y-axis labels are the combined keys
-                const layout = parseLayout(html!);
-                const yaxis = layout.yaxis as Record<string, unknown>;
-                expect(yaxis.ticktext).toEqual(['CA - Flood', 'CA - Fire', 'TX - Tornado']);
+                expect(tx.y).toEqual(['TX - Tornado']);
             });
 
             it('sets x-axis type to date', () => {
