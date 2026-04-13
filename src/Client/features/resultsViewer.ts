@@ -518,13 +518,8 @@ export class ResultsViewer {
             }
         }
 
-        const html = this.htmlBuilder.BuildMultiTabbedHtml(hasChart, mode, this.panelWebView, this.panelEditorWebView, chartOptions, columnNames,
-            resultData.query, resultData.cluster, resultData.database, resultData.tables, this.panelTableWebViews);
-
-        const totalRows = resultData.tables.reduce((sum, t) => sum + t.rows.length, 0);
-        await this.showPanelHtml(injectMessageHandlerScripts(html), totalRows);
-
-        // Populate chart and editor via controller messages after page is set
+        // Render chart and editor content into adapters BEFORE building HTML
+        // so their contentHtml is embedded inline in the page.
         if (hasChart && chartOptions) {
             const table = resultData.tables[0];
             if (table) {
@@ -532,6 +527,12 @@ export class ResultsViewer {
             }
             this.panelEditorView?.setOptions(chartOptions, columnNames);
         }
+
+        const html = this.htmlBuilder.BuildMultiTabbedHtml(hasChart, mode, this.panelWebView, this.panelEditorWebView, chartOptions, columnNames,
+            resultData.query, resultData.cluster, resultData.database, resultData.tables, this.panelTableWebViews);
+
+        const totalRows = resultData.tables.reduce((sum, t) => sum + t.rows.length, 0);
+        await this.showPanelHtml(injectMessageHandlerScripts(html), totalRows);
     }
 
     /**
@@ -635,12 +636,9 @@ export class ResultsViewer {
 
         const hasChart = !!chartOptions;
         const columnNames = resultData.tables[0]?.columns?.map(c => c.name) ?? [];
-        const html = this.htmlBuilder.BuildMultiTabbedHtml(hasChart, mode, this.singletonWebView, this.singletonEditorWebView, chartOptions, columnNames,
-            resultData.query, resultData.cluster, resultData.database, resultData.tables, this.singletonTableWebViews);
 
-        this.showSingletonView(injectMessageHandlerScripts(html), resultData, resultData.tables.map(t => t.name), singletonLocation, mode);
-
-        // Populate chart and editor via controller messages after page is set
+        // Render chart and editor content into adapters BEFORE building HTML
+        // so their contentHtml is embedded inline in the page.
         if (hasChart && chartOptions) {
             const table = resultData.tables[0];
             if (table) {
@@ -648,6 +646,11 @@ export class ResultsViewer {
             }
             this.singletonEditorView?.setOptions(chartOptions, columnNames);
         }
+
+        const html = this.htmlBuilder.BuildMultiTabbedHtml(hasChart, mode, this.singletonWebView, this.singletonEditorWebView, chartOptions, columnNames,
+            resultData.query, resultData.cluster, resultData.database, resultData.tables, this.singletonTableWebViews);
+
+        this.showSingletonView(injectMessageHandlerScripts(html), resultData, resultData.tables.map(t => t.name), singletonLocation, mode);
     }
 
 
@@ -1499,11 +1502,8 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         (this.viewer['dataTableViews'] as Map<vscode.WebviewPanel, IDataTableView[]>).set(webviewPanel, docTableViews);
         (this.viewer['dataTableWebViews'] as Map<vscode.WebviewPanel, WebViewAdapter[]>).set(webviewPanel, docTableWebViews);
 
-        const html = this.BuildMultiTabbedHtml(hasChart, 'all', docWebView, docEditorWebView, chartOptions, columnNames,
-            resultData.query, resultData.cluster, resultData.database, resultData.tables, docTableWebViews);
-        webviewPanel.webview.html = injectMessageHandlerScripts(html);
-
-        // Populate chart and editor via controller messages after page is set
+        // Render chart and editor content into adapters BEFORE building HTML
+        // so their contentHtml is embedded inline in the page.
         if (hasChart && chartOptions) {
             const table = resultData.tables[0];
             if (table) {
@@ -1513,6 +1513,10 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
             const editorView = (this.viewer['editorViews'] as Map<vscode.WebviewPanel, IChartEditorView>).get(webviewPanel);
             editorView?.setOptions(chartOptions, columnNames);
         }
+
+        const html = this.BuildMultiTabbedHtml(hasChart, 'all', docWebView, docEditorWebView, chartOptions, columnNames,
+            resultData.query, resultData.cluster, resultData.database, resultData.tables, docTableWebViews);
+        webviewPanel.webview.html = injectMessageHandlerScripts(html);
     }
 
     private async updateChartOnly(state: ResultViewerState, webviewPanel: vscode.WebviewPanel): Promise<void> {
@@ -1600,7 +1604,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         }
 
         // Build chart options edit panel placeholder (populated by editor controller)
-        const editPanelHtml = showChart ? '<div id=\"edit-panel\" class=\"edit-panel\"></div>' : '';
+        const editPanelHtml = showChart ? `<div id=\"edit-panel\" class=\"edit-panel\">${editorWebView?.contentHtml ?? ''}</div>` : '';
 
         // Get editor page dependencies from the editor adapter
         const editorHead = showChart ? (editorWebView?.headHtml ?? '') : '';
@@ -1713,7 +1717,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
     </div>` : ''}
     <div class="main-area">
         <div class="content-area">
-            ${showChart ? `<div id="chart" class="view-content${chartAspectClass}${firstActiveView === 'chart' ? ' active' : ''}"${chartStyle}${chartDataAttrs} data-vscode-context='{"chartVisible": true, "queryVisible": false, "preventDefaultContextMenuItems": true}'></div>` : ''}
+            ${showChart ? `<div id="chart" class="view-content${chartAspectClass}${firstActiveView === 'chart' ? ' active' : ''}"${chartStyle}${chartDataAttrs} data-vscode-context='{"chartVisible": true, "queryVisible": false, "preventDefaultContextMenuItems": true}'>${webview?.contentHtml ?? ''}</div>` : ''}
             ${tableContents}
             ${showQuery ? `<div id="query" class="view-content" data-vscode-context='{"chartVisible": false, "queryVisible": true, "preventDefaultContextMenuItems": true}'>
                 <div class="query-info">
