@@ -870,6 +870,13 @@
             "default": "",
             "description": "Default Y-axis tick label angle for charts"
           },
+          "kusto.chart.showMarkers": {
+            "type": "string",
+            "enum": ["", "yes", "no"],
+            "enumItemLabels": ["(default)", "Yes", "No"],
+            "default": "",
+            "description": "Show markers on line chart traces by default"
+          },
           "kusto.chart.markerShape": {
             "type": "string",
             "enum": [
@@ -901,6 +908,13 @@
             "enumItemLabels": ["(default)", "Yes", "No"],
             "default": "",
             "description": "Marker Shapes Cycle: cycle through shapes across traces by default"
+          },
+          "kusto.chart.markerOutline": {
+            "type": "string",
+            "enum": ["", "yes", "no"],
+            "enumItemLabels": ["(default)", "Yes", "No"],
+            "default": "",
+            "description": "Show a white outline around markers to help them stand out"
           },
           "kusto.chart.markerSize": {
             "type": "string",

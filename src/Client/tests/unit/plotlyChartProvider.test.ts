@@ -929,6 +929,500 @@ describe('PlotlyChartProvider', () => {
             });
         });
 
+        // ─── Auto-inference ─────────────────────────────────────────────
+
+        describe('auto-inference', () => {
+            it('infers series column from first non-x string column when seriesColumns is not set', () => {
+                const table = makeTable(
+                    [
+                        { name: 'timestamp', type: 'datetime' },
+                        { name: 'region', type: 'string' },
+                        { name: 'count', type: 'int' },
+                    ],
+                    [
+                        ['2024-01-01', 'East', 10],
+                        ['2024-01-01', 'West', 20],
+                        ['2024-01-02', 'East', 15],
+                        ['2024-01-02', 'West', 25],
+                    ],
+                );
+                const html = renderAndGetHtml(table, { type: 'timechart' });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                expect(traces.length).toBe(2);
+                expect((traces[0] as Record<string, unknown>).name).toBe('East');
+                expect((traces[1] as Record<string, unknown>).name).toBe('West');
+            });
+
+            it('does not infer series column when all non-x columns are numeric', () => {
+                const table = makeTable(
+                    [
+                        { name: 'timestamp', type: 'datetime' },
+                        { name: 'sales', type: 'int' },
+                        { name: 'profit', type: 'int' },
+                    ],
+                    [
+                        ['2024-01-01', 10, 2],
+                        ['2024-01-02', 15, 3],
+                    ],
+                );
+                const html = renderAndGetHtml(table, { type: 'timechart' });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                // One trace per numeric column, no series pivoting
+                expect(traces.length).toBe(2);
+                expect((traces[0] as Record<string, unknown>).name).toBe('sales');
+                expect((traces[1] as Record<string, unknown>).name).toBe('profit');
+            });
+
+            it('infers series for non-time chart types', () => {
+                const table = makeTable(
+                    [
+                        { name: 'category', type: 'string' },
+                        { name: 'region', type: 'string' },
+                        { name: 'value', type: 'int' },
+                    ],
+                    [
+                        ['A', 'East', 10],
+                        ['A', 'West', 20],
+                        ['B', 'East', 30],
+                        ['B', 'West', 40],
+                    ],
+                );
+                // x=category (first col), inferred series=region, y=value
+                const html = renderAndGetHtml(table, { type: 'columnchart' });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                expect(traces.length).toBe(2);
+                expect((traces[0] as Record<string, unknown>).name).toBe('East');
+                expect((traces[1] as Record<string, unknown>).name).toBe('West');
+            });
+
+            it('does not override explicitly set seriesColumns', () => {
+                const table = makeTable(
+                    [
+                        { name: 'timestamp', type: 'datetime' },
+                        { name: 'region', type: 'string' },
+                        { name: 'product', type: 'string' },
+                        { name: 'count', type: 'int' },
+                    ],
+                    [
+                        ['2024-01-01', 'East', 'Widget', 10],
+                        ['2024-01-01', 'West', 'Gadget', 20],
+                    ],
+                );
+                // Explicitly set product as series, not region
+                const html = renderAndGetHtml(table, {
+                    type: 'linechart',
+                    seriesColumns: ['product'],
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                expect(traces.length).toBe(2);
+                expect((traces[0] as Record<string, unknown>).name).toBe('Widget');
+                expect((traces[1] as Record<string, unknown>).name).toBe('Gadget');
+            });
+
+            it('renders pivotchart as linechart with auto-inferred series', () => {
+                const table = makeTable(
+                    [
+                        { name: 'category', type: 'string' },
+                        { name: 'region', type: 'string' },
+                        { name: 'value', type: 'int' },
+                    ],
+                    [
+                        ['A', 'East', 10],
+                        ['A', 'West', 20],
+                        ['B', 'East', 30],
+                    ],
+                );
+                const html = renderAndGetHtml(table, { type: 'pivotchart' });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                expect(traces.length).toBe(2);
+                expect((traces[0] as Record<string, unknown>).name).toBe('East');
+                expect((traces[1] as Record<string, unknown>).name).toBe('West');
+                // Should render as line traces (scatter with mode lines)
+                expect((traces[0] as Record<string, unknown>).mode).toBe('lines');
+            });
+
+            it('renders timepivot as ladder chart', () => {
+                const table = makeTable(
+                    [
+                        { name: 'start', type: 'datetime' },
+                        { name: 'end', type: 'datetime' },
+                        { name: 'task', type: 'string' },
+                    ],
+                    [
+                        ['2024-01-01', '2024-01-05', 'Task A'],
+                        ['2024-01-03', '2024-01-07', 'Task B'],
+                    ],
+                );
+                const html = renderAndGetHtml(table, { type: 'timepivot' });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                expect(traces.length).toBeGreaterThan(0);
+                // Ladder chart uses horizontal bars
+                expect((traces[0] as Record<string, unknown>).orientation).toBe('h');
+            });
+        });
+
+        // ─── Binning & Aggregation ──────────────────────────────────────
+
+        describe('binning and aggregation', () => {
+            it('bins datetime x-values by day and sums y-values', () => {
+                const table = makeTable(
+                    [
+                        { name: 'timestamp', type: 'datetime' },
+                        { name: 'value', type: 'int' },
+                    ],
+                    [
+                        ['2024-01-01T10:00:00Z', 5],
+                        ['2024-01-01T14:00:00Z', 3],
+                        ['2024-01-02T08:00:00Z', 10],
+                        ['2024-01-02T20:00:00Z', 2],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'timechart',
+                    binSize: '1d',
+                    aggregation: 'Sum',
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                expect(traces.length).toBe(1);
+                const trace = traces[0] as Record<string, unknown>;
+                expect((trace.y as number[]).length).toBe(2);
+                expect((trace.y as number[])[0]).toBe(8);  // 5 + 3
+                expect((trace.y as number[])[1]).toBe(12); // 10 + 2
+            });
+
+            it('bins datetime x-values by hour and counts', () => {
+                const table = makeTable(
+                    [
+                        { name: 'timestamp', type: 'datetime' },
+                        { name: 'value', type: 'int' },
+                    ],
+                    [
+                        ['2024-01-01T10:05:00Z', 1],
+                        ['2024-01-01T10:30:00Z', 2],
+                        ['2024-01-01T10:59:00Z', 3],
+                        ['2024-01-01T11:15:00Z', 4],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'timechart',
+                    binSize: '1h',
+                    aggregation: 'Count',
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                const trace = traces[0] as Record<string, unknown>;
+                expect((trace.y as number[])[0]).toBe(3); // 3 values in 10:xx
+                expect((trace.y as number[])[1]).toBe(1); // 1 value in 11:xx
+            });
+
+            it('bins with average aggregation', () => {
+                const table = makeTable(
+                    [
+                        { name: 'timestamp', type: 'datetime' },
+                        { name: 'value', type: 'int' },
+                    ],
+                    [
+                        ['2024-01-01T00:00:00Z', 10],
+                        ['2024-01-01T12:00:00Z', 20],
+                        ['2024-01-02T00:00:00Z', 30],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'timechart',
+                    binSize: '1d',
+                    aggregation: 'Average',
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                const trace = traces[0] as Record<string, unknown>;
+                expect((trace.y as number[])[0]).toBe(15); // (10+20)/2
+                expect((trace.y as number[])[1]).toBe(30);
+            });
+
+            it('bins numeric x-values by width', () => {
+                const table = makeTable(
+                    [
+                        { name: 'x', type: 'real' },
+                        { name: 'y', type: 'int' },
+                    ],
+                    [
+                        [1.5, 10],
+                        [3.2, 20],
+                        [7.8, 15],
+                        [8.1, 5],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'linechart',
+                    binSize: '5',
+                    aggregation: 'Sum',
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                const trace = traces[0] as Record<string, unknown>;
+                // bin 0: 1.5, 3.2 → sum 30
+                // bin 5: 7.8, 8.1 → sum 20
+                expect((trace.x as number[])).toEqual([0, 5]);
+                expect((trace.y as number[])).toEqual([30, 20]);
+            });
+
+            it('applies binning with series columns', () => {
+                const table = makeTable(
+                    [
+                        { name: 'timestamp', type: 'datetime' },
+                        { name: 'region', type: 'string' },
+                        { name: 'value', type: 'int' },
+                    ],
+                    [
+                        ['2024-01-01T10:00:00Z', 'East', 5],
+                        ['2024-01-01T14:00:00Z', 'East', 3],
+                        ['2024-01-01T10:00:00Z', 'West', 10],
+                        ['2024-01-01T14:00:00Z', 'West', 20],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'timechart',
+                    seriesColumns: ['region'],
+                    binSize: '1d',
+                    aggregation: 'Sum',
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                expect(traces.length).toBe(2);
+                const east = traces[0] as Record<string, unknown>;
+                expect(east.name).toBe('East');
+                expect((east.y as number[])[0]).toBe(8); // 5 + 3
+                const west = traces[1] as Record<string, unknown>;
+                expect(west.name).toBe('West');
+                expect((west.y as number[])[0]).toBe(30); // 10 + 20
+            });
+
+            it('does not bin when binSize is not set', () => {
+                const table = makeTable(
+                    [
+                        { name: 'timestamp', type: 'datetime' },
+                        { name: 'value', type: 'int' },
+                    ],
+                    [
+                        ['2024-01-01T10:00:00Z', 5],
+                        ['2024-01-01T14:00:00Z', 3],
+                    ],
+                );
+                const html = renderAndGetHtml(table, { type: 'timechart' });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                const trace = traces[0] as Record<string, unknown>;
+                expect((trace.y as number[]).length).toBe(2); // no aggregation
+            });
+
+            it('parses various KQL timespan suffixes', () => {
+                const table = makeTable(
+                    [
+                        { name: 'timestamp', type: 'datetime' },
+                        { name: 'value', type: 'int' },
+                    ],
+                    [
+                        ['2024-01-01T00:00:00Z', 1],
+                        ['2024-01-01T00:00:30Z', 2],
+                        ['2024-01-01T00:01:00Z', 3],
+                        ['2024-01-01T00:01:30Z', 4],
+                    ],
+                );
+                // Bin by 1 minute
+                const html = renderAndGetHtml(table, {
+                    type: 'timechart',
+                    binSize: '1minute',
+                    aggregation: 'Sum',
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                const trace = traces[0] as Record<string, unknown>;
+                expect((trace.y as number[])[0]).toBe(3);  // 1 + 2
+                expect((trace.y as number[])[1]).toBe(7);  // 3 + 4
+            });
+
+            it('supports min aggregation', () => {
+                const table = makeTable(
+                    [
+                        { name: 'timestamp', type: 'datetime' },
+                        { name: 'value', type: 'int' },
+                    ],
+                    [
+                        ['2024-01-01T00:00:00Z', 10],
+                        ['2024-01-01T12:00:00Z', 20],
+                        ['2024-01-01T18:00:00Z', 5],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'timechart',
+                    binSize: '1d',
+                    aggregation: 'Min',
+                });
+                expect(html).toBeDefined();
+                const trace = parseTraces(html!)[0] as Record<string, unknown>;
+                expect((trace.y as number[])[0]).toBe(5);
+            });
+
+            it('supports max aggregation', () => {
+                const table = makeTable(
+                    [
+                        { name: 'timestamp', type: 'datetime' },
+                        { name: 'value', type: 'int' },
+                    ],
+                    [
+                        ['2024-01-01T00:00:00Z', 10],
+                        ['2024-01-01T12:00:00Z', 20],
+                        ['2024-01-01T18:00:00Z', 5],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'timechart',
+                    binSize: '1d',
+                    aggregation: 'Max',
+                });
+                expect(html).toBeDefined();
+                const trace = parseTraces(html!)[0] as Record<string, unknown>;
+                expect((trace.y as number[])[0]).toBe(20);
+            });
+        });
+
+        // ─── Max Series & Max Points ────────────────────────────────────
+
+        describe('max series', () => {
+            it('limits to top N series by total y-value', () => {
+                const table = makeTable(
+                    [
+                        { name: 'timestamp', type: 'datetime' },
+                        { name: 'region', type: 'string' },
+                        { name: 'value', type: 'int' },
+                    ],
+                    [
+                        ['2024-01-01', 'Small', 1],
+                        ['2024-01-01', 'Big', 100],
+                        ['2024-01-01', 'Medium', 50],
+                        ['2024-01-02', 'Small', 2],
+                        ['2024-01-02', 'Big', 200],
+                        ['2024-01-02', 'Medium', 60],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'timechart',
+                    seriesColumns: ['region'],
+                    maxSeries: 2,
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                expect(traces.length).toBe(2);
+                const names = traces.map(t => (t as Record<string, unknown>).name);
+                expect(names).toContain('Big');
+                expect(names).toContain('Medium');
+                expect(names).not.toContain('Small');
+            });
+
+            it('does not limit when maxSeries is not set', () => {
+                const table = makeTable(
+                    [
+                        { name: 'timestamp', type: 'datetime' },
+                        { name: 'region', type: 'string' },
+                        { name: 'value', type: 'int' },
+                    ],
+                    [
+                        ['2024-01-01', 'A', 1],
+                        ['2024-01-01', 'B', 2],
+                        ['2024-01-01', 'C', 3],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'timechart',
+                    seriesColumns: ['region'],
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                expect(traces.length).toBe(3);
+            });
+        });
+
+        describe('max points per series', () => {
+            it('downsamples traces that exceed the limit', () => {
+                const rows: unknown[][] = [];
+                for (let i = 0; i < 100; i++) {
+                    rows.push([`2024-01-01T${String(Math.floor(i / 60)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}:00Z`, i]);
+                }
+                const table = makeTable(
+                    [
+                        { name: 'timestamp', type: 'datetime' },
+                        { name: 'value', type: 'int' },
+                    ],
+                    rows,
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'timechart',
+                    maxPointsPerSeries: 10,
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                const trace = traces[0] as Record<string, unknown>;
+                expect((trace.x as unknown[]).length).toBe(10);
+                expect((trace.y as number[]).length).toBe(10);
+            });
+
+            it('does not downsample when under the limit', () => {
+                const table = makeTable(
+                    [
+                        { name: 'timestamp', type: 'datetime' },
+                        { name: 'value', type: 'int' },
+                    ],
+                    [
+                        ['2024-01-01', 10],
+                        ['2024-01-02', 20],
+                        ['2024-01-03', 30],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'timechart',
+                    maxPointsPerSeries: 100,
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                const trace = traces[0] as Record<string, unknown>;
+                expect((trace.x as unknown[]).length).toBe(3);
+            });
+
+            it('preserves first and last points when downsampling', () => {
+                const rows: unknown[][] = [];
+                for (let i = 0; i < 50; i++) {
+                    rows.push([i, i * 10]);
+                }
+                const table = makeTable(
+                    [
+                        { name: 'x', type: 'int' },
+                        { name: 'y', type: 'int' },
+                    ],
+                    rows,
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'linechart',
+                    xColumn: 'x',
+                    yColumns: ['y'],
+                    maxPointsPerSeries: 5,
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                const trace = traces[0] as Record<string, unknown>;
+                const xVals = trace.x as number[];
+                expect(xVals.length).toBe(5);
+                expect(xVals[0]).toBe(0);             // first point
+                expect(xVals[xVals.length - 1]).toBe(49); // last point
+            });
+        });
+
         // ─── Chart options ──────────────────────────────────────────────
 
         describe('chart options', () => {

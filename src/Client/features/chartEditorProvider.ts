@@ -25,7 +25,6 @@ const chartTypes: ReadonlyMap<string, string> = new Map([
     ['ladderchart', 'Time - Ladder'],
     ['linechart', 'Line'],
     ['piechart', 'Pie'],
-    ['pivotchart', 'Pivot'],
     ['plotly', 'Plotly'],
     ['sankey', 'Sankey'],
     ['scatterchart', 'Scatter'],
@@ -33,7 +32,6 @@ const chartTypes: ReadonlyMap<string, string> = new Map([
     ['3Dchart', '3D'],
     ['timechart', 'Time - Line'],
     ['anomalychart', 'Time - Line w/ Anomalies'],
-    ['timepivot', 'Time - Pivot'],
     ['treemap', 'Tree Map'],
 ]);
 
@@ -46,6 +44,9 @@ const aspectRatios = ['16:9', '3:2', '4:3', '1:1', '3:4', '2:3', '9:16'];
 const textSizes = ['Extra Small', 'Small', 'Medium', 'Large', 'Extra Large'];
 const markerShapeOptions = ['circle', 'diamond', 'square', 'triangle-up', 'cross', 'star', 'x'];
 const tickAngles = [0, 15, 30, 45, 60, 75, 90, -15, -30, -45, -60, -75, -90];
+const aggregationTypes = ['Sum', 'Count', 'Average', 'Min', 'Max'];
+const maxSeriesOptions = [10, 20, 30, 40, 50];
+const maxPointsOptions = [100, 500, 1000, 5000, 10000, 50000];
 
 // ─── Interfaces ─────────────────────────────────────────────────────────────
 
@@ -201,26 +202,6 @@ class ChartEditorView implements IChartEditorView {
             display: inline;
             margin-bottom: 0;
         }
-        .edit-panel .column-picker {
-            display: flex;
-            gap: 4px;
-        }
-        .edit-panel .column-picker select {
-            flex: 1;
-            min-width: 0;
-        }
-        .edit-panel .column-picker button {
-            padding: 2px 8px;
-            cursor: pointer;
-            background: var(--vscode-button-background, #0e639c);
-            color: var(--vscode-button-foreground, #fff);
-            border: none;
-            border-radius: 2px;
-            font-size: inherit;
-        }
-        .edit-panel .column-picker button:hover {
-            background: var(--vscode-button-hoverBackground, #1177bb);
-        }
         .edit-panel .column-list {
             list-style: none;
             padding: 0;
@@ -293,12 +274,27 @@ class ChartEditorView implements IChartEditorView {
             li.appendChild(removeBtn);
             list.appendChild(li);
             picker.selectedIndex = 0;
+            _editorUpdateColumnPlaceholder(picker, list);
             _editorOnChartOptionChanged();
         }
 
         function _editorRemoveColumnItem(btn) {
             var li = btn.closest('li');
-            if (li) { li.remove(); _editorOnChartOptionChanged(); }
+            if (li) {
+                var list = li.parentNode;
+                var pickerId = list.id.replace('-list', '-picker');
+                li.remove();
+                var picker = document.getElementById(pickerId);
+                if (picker) _editorUpdateColumnPlaceholder(picker, list);
+                _editorOnChartOptionChanged();
+            }
+        }
+
+        function _editorUpdateColumnPlaceholder(picker, list) {
+            var firstOpt = picker.options[0];
+            if (firstOpt) {
+                firstOpt.textContent = list.children.length > 0 ? '(add)' : '(auto)';
+            }
         }
 
         function _editorMoveColumnItem(btn, dir) {
@@ -356,6 +352,10 @@ class ChartEditorView implements IChartEditorView {
             if (seriesList) { var si = Array.from(seriesList.querySelectorAll('li span')).map(function(s) { return s.textContent; }); if (si.length) opts.seriesColumns = si; }
             var anomalyList = document.getElementById('opt-anomalyColumns-list');
             if (anomalyList) { var ai = Array.from(anomalyList.querySelectorAll('li span')).map(function(s) { return s.textContent; }); if (ai.length) opts.anomalyColumns = ai; }
+            var showMarkers = document.getElementById('opt-showMarkers');
+            if (showMarkers) opts.showMarkers = showMarkers.checked;
+            var markerOutline = document.getElementById('opt-markerOutline');
+            if (markerOutline) opts.markerOutline = markerOutline.checked;
             var markerShape = document.getElementById('opt-markerShape');
             if (markerShape && markerShape.value) opts.markerShape = markerShape.value;
             var cycleMarkerShapes = document.getElementById('opt-cycleMarkerShapes');
@@ -364,6 +364,14 @@ class ChartEditorView implements IChartEditorView {
             if (markerSize && markerSize.value) opts.markerSize = markerSize.value;
             var accumulate = document.getElementById('opt-accumulate');
             if (accumulate) opts.accumulate = accumulate.checked;
+            var binSize = document.getElementById('opt-binSize');
+            if (binSize && binSize.value) opts.binSize = binSize.value;
+            var aggregation = document.getElementById('opt-aggregation');
+            if (aggregation && aggregation.value) opts.aggregation = aggregation.value;
+            var maxSeries = document.getElementById('opt-maxSeries');
+            if (maxSeries && maxSeries.value) opts.maxSeries = Number(maxSeries.value);
+            var maxPointsPerSeries = document.getElementById('opt-maxPointsPerSeries');
+            if (maxPointsPerSeries && maxPointsPerSeries.value) opts.maxPointsPerSeries = Number(maxPointsPerSeries.value);
             var xAxis = document.getElementById('opt-xAxis');
             if (xAxis && xAxis.value) opts.xAxis = xAxis.value;
             var yAxis = document.getElementById('opt-yAxis');
@@ -488,9 +496,15 @@ class ChartEditorView implements IChartEditorView {
             `<option value="${escapeHtml(c)}"${c === (opts.xColumn ?? '') ? ' selected' : ''}>${c || '(auto)'}</option>`
         ).join('');
 
-        const allColOptions = `<option value="" disabled selected>Pick a column</option>` + columnNames.map(c =>
+        const colOptionsList = columnNames.map(c =>
             `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`
         ).join('');
+        const makeColPickerOptions = (hasItems: boolean) =>
+            `<option value="" disabled selected>${hasItems ? '(add)' : '(auto)'}</option>` + colOptionsList;
+
+        const yColPickerOptions = makeColPickerOptions((opts.yColumns ?? []).length > 0);
+        const seriesColPickerOptions = makeColPickerOptions((opts.seriesColumns ?? []).length > 0);
+        const anomalyColPickerOptions = makeColPickerOptions((opts.anomalyColumns ?? []).length > 0);
 
         const yColumnsItems = (opts.yColumns ?? []).map(c =>
             `<li><span>${escapeHtml(c)}</span><button onclick="_editorMoveColumnItem(this,-1)" title="Move up">&uarr;</button><button onclick="_editorMoveColumnItem(this,1)" title="Move down">&darr;</button><button onclick="_editorRemoveColumnItem(this)" title="Remove">&times;</button></li>`
@@ -508,11 +522,28 @@ class ChartEditorView implements IChartEditorView {
         const markerShapeOpts = ['', ...markerShapeOptions].map(s =>
             `<option value="${s}"${s === currentMarkerShape ? ' selected' : ''}>${s || '(default)'}</option>`
         ).join('');
+        const showMarkersChecked = opts.showMarkers === true ? ' checked' : '';
+        const markerOutlineChecked = opts.markerOutline === true ? ' checked' : '';
         const cycleMarkerShapesChecked = opts.cycleMarkerShapes === true ? ' checked' : '';
 
         const currentMarkerSize = opts.markerSize ?? '';
         const markerSizeOpts = ['', ...textSizes].map(s =>
             `<option value="${s}"${s === currentMarkerSize ? ' selected' : ''}>${s || '(default)'}</option>`
+        ).join('');
+
+        const currentAggregation = opts.aggregation ?? '';
+        const aggregationOpts = ['', ...aggregationTypes].map(a =>
+            `<option value="${a}"${a === currentAggregation ? ' selected' : ''}>${a || '(none)'}</option>`
+        ).join('');
+
+        const currentMaxSeries = opts.maxSeries ?? '';
+        const maxSeriesOpts = ['', ...maxSeriesOptions].map(n =>
+            `<option value="${n}"${String(n) === String(currentMaxSeries) ? ' selected' : ''}>${n || '(unlimited)'}</option>`
+        ).join('');
+
+        const currentMaxPoints = opts.maxPointsPerSeries ?? '';
+        const maxPointsOpts = ['', ...maxPointsOptions].map(n =>
+            `<option value="${n}"${String(n) === String(currentMaxPoints) ? ' selected' : ''}>${n || '(unlimited)'}</option>`
         ).join('');
 
         const currentXAxis = opts.xAxis ?? '';
@@ -559,7 +590,7 @@ class ChartEditorView implements IChartEditorView {
                     <select id="opt-legendPosition" onchange="_editorOnChartOptionChanged()">${legendPosOptions}</select>
                 </div>
                 <div class="field">
-                    <label for="opt-sort">Sort</label>
+                    <label for="opt-sort">Axis Order</label>
                     <select id="opt-sort" onchange="_editorOnChartOptionChanged()">${sortOptions}</select>
                 </div>
                 <div class="field">
@@ -590,31 +621,38 @@ class ChartEditorView implements IChartEditorView {
                 </div>
                 <div class="field">
                     <label>Y Columns</label>
-                    <div class="column-picker">
-                        <select id="opt-yColumns-picker">${allColOptions}</select>
-                        <button onclick="_editorAddColumnItem('opt-yColumns-picker','opt-yColumns-list')">Add</button>
-                    </div>
                     <ul id="opt-yColumns-list" class="column-list">${yColumnsItems}</ul>
+                    <select id="opt-yColumns-picker" onchange="_editorAddColumnItem('opt-yColumns-picker','opt-yColumns-list')">${yColPickerOptions}</select>
                 </div>
                 <div class="field">
                     <label>Series Columns</label>
-                    <div class="column-picker">
-                        <select id="opt-seriesColumns-picker">${allColOptions}</select>
-                        <button onclick="_editorAddColumnItem('opt-seriesColumns-picker','opt-seriesColumns-list')">Add</button>
-                    </div>
                     <ul id="opt-seriesColumns-list" class="column-list">${seriesItems}</ul>
+                    <select id="opt-seriesColumns-picker" onchange="_editorAddColumnItem('opt-seriesColumns-picker','opt-seriesColumns-list')">${seriesColPickerOptions}</select>
                 </div>
                 <div class="field">
                     <label>Anomaly Columns</label>
-                    <div class="column-picker">
-                        <select id="opt-anomalyColumns-picker">${allColOptions}</select>
-                        <button onclick="_editorAddColumnItem('opt-anomalyColumns-picker','opt-anomalyColumns-list')">Add</button>
-                    </div>
                     <ul id="opt-anomalyColumns-list" class="column-list">${anomalyColumnsItems}</ul>
+                    <select id="opt-anomalyColumns-picker" onchange="_editorAddColumnItem('opt-anomalyColumns-picker','opt-anomalyColumns-list')">${anomalyColPickerOptions}</select>
                 </div>
                 <div class="field checkbox-field">
                     <input type="checkbox" id="opt-accumulate"${opts.accumulate ? ' checked' : ''} onchange="_editorOnChartOptionChanged()">
                     <label for="opt-accumulate">Accumulate</label>
+                </div>
+                <div class="field">
+                    <label for="opt-binSize">Bin Size</label>
+                    <input type="text" id="opt-binSize" value="${escapeHtml(opts.binSize ?? '')}" placeholder="e.g. 1h, 1d, 10" onchange="_editorOnChartOptionChanged()">
+                </div>
+                <div class="field">
+                    <label for="opt-aggregation">Aggregation</label>
+                    <select id="opt-aggregation" onchange="_editorOnChartOptionChanged()">${aggregationOpts}</select>
+                </div>
+                <div class="field">
+                    <label for="opt-maxSeries">Max Series</label>
+                    <select id="opt-maxSeries" onchange="_editorOnChartOptionChanged()">${maxSeriesOpts}</select>
+                </div>
+                <div class="field">
+                    <label for="opt-maxPointsPerSeries">Max Points per Series</label>
+                    <select id="opt-maxPointsPerSeries" onchange="_editorOnChartOptionChanged()">${maxPointsOpts}</select>
                 </div>
             </div>
 
@@ -626,13 +664,21 @@ class ChartEditorView implements IChartEditorView {
                     <label for="opt-markerShape">Shape</label>
                     <select id="opt-markerShape" onchange="_editorOnChartOptionChanged()">${markerShapeOpts}</select>
                 </div>
+                <div class="field">
+                    <label for="opt-markerSize">Size</label>
+                    <select id="opt-markerSize" onchange="_editorOnChartOptionChanged()">${markerSizeOpts}</select>
+                </div>
                 <div class="field checkbox-field">
                     <input type="checkbox" id="opt-cycleMarkerShapes"${cycleMarkerShapesChecked} onchange="_editorOnChartOptionChanged()">
                     <label for="opt-cycleMarkerShapes">Cycle Shapes</label>
                 </div>
-                <div class="field">
-                    <label for="opt-markerSize">Size</label>
-                    <select id="opt-markerSize" onchange="_editorOnChartOptionChanged()">${markerSizeOpts}</select>
+                <div class="field checkbox-field">
+                    <input type="checkbox" id="opt-showMarkers"${showMarkersChecked} onchange="_editorOnChartOptionChanged()">
+                    <label for="opt-showMarkers">Show on Lines</label>
+                </div>
+                <div class="field checkbox-field">
+                    <input type="checkbox" id="opt-markerOutline"${markerOutlineChecked} onchange="_editorOnChartOptionChanged()">
+                    <label for="opt-markerOutline">Outline</label>
                 </div>
             </div>
 

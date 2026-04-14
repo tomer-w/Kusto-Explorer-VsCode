@@ -101,6 +101,7 @@ interface PlotlyMarker {
     size?: number | undefined;
     opacity?: number | undefined;
     symbol?: string | undefined;
+    line?: { color?: string; width?: number } | undefined;
 }
 
 interface PlotlyLine {
@@ -292,6 +293,8 @@ interface ScatterTrace extends PlotlyTraceBase {
     groupnorm?: string | undefined;
     line?: PlotlyLine | undefined;
     marker?: PlotlyMarker | undefined;
+    text?: unknown[] | undefined;
+    textposition?: string | undefined;
 }
 
 interface PieTrace extends PlotlyTraceBase {
@@ -546,14 +549,29 @@ class PlotlyChartBuilder {
         name?: string,
         showMarkers = false,
         yAxisId?: string,
+        markerSymbol?: string,
+        markerSize?: number,
+        showValues = false,
+        markerOutline = false,
+        outlineColor = 'white',
     ): PlotlyChartBuilder {
+        const markerObj: PlotlyMarker | undefined = showMarkers
+            ? { symbol: markerSymbol, size: markerSize, line: markerOutline ? { color: outlineColor, width: 1.5 } : undefined }
+            : undefined;
+        let mode = PlotlyScatterModes.Lines as string;
+        if (showMarkers && showValues) mode = 'lines+markers+text';
+        else if (showMarkers) mode = PlotlyScatterModes.LinesAndMarkers;
+        else if (showValues) mode = 'lines+text';
         const trace: ScatterTrace = {
             type: 'scatter',
             x,
             y,
-            mode: showMarkers ? PlotlyScatterModes.LinesAndMarkers : PlotlyScatterModes.Lines,
+            mode,
             name,
             yaxis: yAxisId,
+            marker: markerObj,
+            text: showValues ? y.map(v => v as unknown) : undefined,
+            textposition: showValues ? 'top center' : undefined,
         };
         return this.addTrace(trace);
     }
@@ -565,16 +583,23 @@ class PlotlyChartBuilder {
         yAxisId?: string,
         markerSymbol?: string,
         markerSize?: number,
+        showValues = false,
+        markerOutline = false,
+        outlineColor = 'white',
     ): PlotlyChartBuilder {
         const hasMarker = markerSymbol != null || markerSize != null;
         const trace: ScatterTrace = {
             type: 'scatter',
             x,
             y,
-            mode: PlotlyScatterModes.Markers,
+            mode: showValues ? 'markers+text' : PlotlyScatterModes.Markers,
             name,
             yaxis: yAxisId,
-            marker: hasMarker ? { symbol: markerSymbol, size: markerSize } : undefined,
+            marker: hasMarker || markerOutline
+                ? { symbol: markerSymbol, size: markerSize, line: markerOutline ? { color: outlineColor, width: 1.5 } : undefined }
+                : undefined,
+            text: showValues ? y.map(v => v as unknown) : undefined,
+            textposition: showValues ? 'top center' : undefined,
         };
         return this.addTrace(trace);
     }
@@ -924,6 +949,128 @@ function isTimeChartType(type: string): boolean {
         || type === ChartType.TimeLineWithAnomalyChart
         || type === ChartType.TimeLadderChart
         || type === ChartType.TimePivot;
+}
+
+// ─── Timespan Parsing & Binning ─────────────────────────────────────────────
+
+/** Suffix → milliseconds multiplier for KQL timespan literals. */
+const timespanSuffixes: Record<string, number> = {
+    'nanosecond': 1e-6, 'nanoseconds': 1e-6,
+    'tick': 1e-4, 'ticks': 1e-4,
+    'microsecond': 1e-3, 'microseconds': 1e-3,
+    'ms': 1, 'millisecond': 1, 'milliseconds': 1,
+    's': 1000, 'sec': 1000, 'second': 1000, 'seconds': 1000,
+    'm': 60_000, 'min': 60_000, 'minute': 60_000, 'minutes': 60_000,
+    'h': 3_600_000, 'hr': 3_600_000, 'hrs': 3_600_000, 'hour': 3_600_000, 'hours': 3_600_000,
+    'd': 86_400_000, 'day': 86_400_000, 'days': 86_400_000,
+};
+
+/**
+ * Parses a bin size string into milliseconds.
+ * Accepts KQL timespan syntax (e.g. "1d", "5m", "1.5h") or plain numbers.
+ * Returns undefined if the string cannot be parsed.
+ */
+function parseBinSize(value: string): number | undefined {
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+
+    // Try KQL timespan: number + suffix
+    const match = /^(\d+(?:\.\d+)?)\s*(nanoseconds?|ticks?|microseconds?|milliseconds?|ms|seconds?|sec|minutes?|min|hours?|hrs?|hr|days?|[smhd])$/i.exec(trimmed);
+    if (match) {
+        const num = parseFloat(match[1]!);
+        const suffix = match[2]!.toLowerCase();
+        const multiplier = timespanSuffixes[suffix];
+        if (multiplier !== undefined && num > 0) return num * multiplier;
+    }
+
+    // Try plain number (for numeric bin width)
+    const num = parseFloat(trimmed);
+    if (!isNaN(num) && num > 0) return num;
+
+    return undefined;
+}
+
+/** Aggregation function type. */
+type AggregationType = 'Sum' | 'Count' | 'Average' | 'Min' | 'Max';
+
+/**
+ * Bins x-values and aggregates y-values within each bin.
+ * For datetime x-values, binSizeMs is in milliseconds.
+ * For numeric x-values, binSizeMs is the bin width.
+ */
+function binAndAggregate(
+    xValues: unknown[],
+    yValues: number[],
+    binSize: number,
+    aggregation: AggregationType,
+    isDateTime: boolean,
+): { x: unknown[]; y: number[] } {
+    const bins = new Map<string | number, number[]>();
+    const binKeys: (string | number)[] = [];
+
+    for (let i = 0; i < xValues.length; i++) {
+        const xVal = xValues[i];
+        const yVal = yValues[i];
+        if (xVal == null || yVal == null) continue;
+
+        let binKey: string | number;
+        if (isDateTime) {
+            const ms = new Date(String(xVal)).getTime();
+            if (isNaN(ms)) continue;
+            const binned = Math.floor(ms / binSize) * binSize;
+            binKey = new Date(binned).toISOString();
+        } else {
+            const num = typeof xVal === 'number' ? xVal : parseFloat(String(xVal));
+            if (isNaN(num)) continue;
+            binKey = Math.floor(num / binSize) * binSize;
+        }
+
+        let group = bins.get(binKey);
+        if (!group) {
+            group = [];
+            bins.set(binKey, group);
+            binKeys.push(binKey);
+        }
+        group.push(yVal);
+    }
+
+    const resultX: unknown[] = [];
+    const resultY: number[] = [];
+
+    for (const key of binKeys) {
+        const values = bins.get(key)!;
+        resultX.push(key);
+        resultY.push(aggregateValues(values, aggregation));
+    }
+
+    return { x: resultX, y: resultY };
+}
+
+function aggregateValues(values: number[], aggregation: AggregationType): number {
+    switch (aggregation) {
+        case 'Sum': return values.reduce((a, b) => a + b, 0);
+        case 'Count': return values.length;
+        case 'Average': return values.reduce((a, b) => a + b, 0) / values.length;
+        case 'Min': return Math.min(...values);
+        case 'Max': return Math.max(...values);
+    }
+}
+
+/**
+ * Downsamples x/y arrays to at most maxPoints by taking every Nth point.
+ * Always includes the first and last points to preserve the range.
+ */
+function downsample(x: unknown[], y: number[], maxPoints: number): { x: unknown[]; y: number[] } {
+    if (x.length <= maxPoints) return { x, y };
+    const step = (x.length - 1) / (maxPoints - 1);
+    const resultX: unknown[] = [];
+    const resultY: number[] = [];
+    for (let i = 0; i < maxPoints; i++) {
+        const idx = Math.round(i * step);
+        resultX.push(x[idx]!);
+        resultY.push(y[idx]!);
+    }
+    return { x: resultX, y: resultY };
 }
 
 /** Ordered set of marker shapes for cycling. */
@@ -1359,12 +1506,13 @@ export class PlotlyChartProvider implements IChartProvider {
                 builder = this.buildBarOrColumnChart(data, options);
                 break;
             case ChartType.LineChart:
+            case ChartType.PivotChart:
             case ChartType.TimeLineChart:
             case ChartType.TimeLineWithAnomalyChart:
-                builder = this.buildLineChart(data, options);
+                builder = this.buildLineChart(data, options, darkMode);
                 break;
             case ChartType.ScatterChart:
-                builder = this.buildScatterChart(data, options);
+                builder = this.buildScatterChart(data, options, darkMode);
                 break;
             case ChartType.PieChart:
                 builder = this.buildPieChart(data, options);
@@ -1390,6 +1538,7 @@ export class PlotlyChartProvider implements IChartProvider {
                 builder = this.buildSankeyChart(data, options);
                 break;
             case ChartType.TimeLadderChart:
+            case ChartType.TimePivot:
                 builder = this.buildLadderChart(data, options);
                 break;
             default:
@@ -1494,7 +1643,7 @@ export class PlotlyChartProvider implements IChartProvider {
 
     // ─── Line / Scatter / Area ──────────────────────────────────────────
 
-    private buildLineChart(data: ResultTable, options: ChartOptions): PlotlyChartBuilder | undefined {
+    private buildLineChart(data: ResultTable, options: ChartOptions, darkMode = false): PlotlyChartBuilder | undefined {
         const anomalySet = new Set(options.anomalyColumns ?? []);
 
         // If anomalyColumns are specified, exclude them from y-columns so they don't render as lines
@@ -1508,8 +1657,12 @@ export class PlotlyChartProvider implements IChartProvider {
             })()
             : options;
 
+        const hasMarkers = options.showMarkers === true;
+        const showValues = options.showValues === true;
+        const markerOutline = options.markerOutline === true;
+        const outlineColor = darkMode ? 'white' : '#333';
         let builder = this.build2dChart(new PlotlyChartBuilder(), data, effectiveOptions,
-            (b, x, y, name, yAxis) => b.add2DLineTrace(x, y, name, false, yAxis));
+            (b, x, y, name, yAxis, traceIndex) => b.add2DLineTrace(x, y, name, hasMarkers, yAxis, getMarkerShape(options, traceIndex), getMarkerSize(options), showValues, markerOutline, outlineColor));
 
         // Overlay anomaly scatter points if anomalyColumns are present
         if (builder && anomalySet.size > 0) {
@@ -1552,9 +1705,10 @@ export class PlotlyChartProvider implements IChartProvider {
         return builder;
     }
 
-    private buildScatterChart(data: ResultTable, options: ChartOptions): PlotlyChartBuilder | undefined {
+    private buildScatterChart(data: ResultTable, options: ChartOptions, darkMode = false): PlotlyChartBuilder | undefined {
+        const outlineColor = darkMode ? 'white' : '#333';
         return this.build2dChart(new PlotlyChartBuilder(), data, options,
-            (b, x, y, name, yAxis, traceIndex) => b.add2DScatterTrace(x, y, name, yAxis, getMarkerShape(options, traceIndex), getMarkerSize(options)));
+            (b, x, y, name, yAxis, traceIndex) => b.add2DScatterTrace(x, y, name, yAxis, getMarkerShape(options, traceIndex), getMarkerSize(options), options.showValues === true, options.markerOutline === true, outlineColor));
     }
 
     private buildAreaChart(data: ResultTable, options: ChartOptions): PlotlyChartBuilder | undefined {
@@ -1992,7 +2146,16 @@ export class PlotlyChartProvider implements IChartProvider {
         const xColumn = this.get2dXColumn(data, options);
         if (!xColumn) return undefined;
 
-        const yColumns = this.get2dYColumns(data, options, xColumn);
+        // Auto-infer series column when not explicitly specified
+        let effectiveOptions = options;
+        if (!options.seriesColumns || options.seriesColumns.length === 0) {
+            const inferredSeries = this.inferSeriesColumn(data, xColumn, options.anomalyColumns);
+            if (inferredSeries) {
+                effectiveOptions = { ...options, seriesColumns: [inferredSeries.column.name] };
+            }
+        }
+
+        const yColumns = this.get2dYColumns(data, effectiveOptions, xColumn);
 
         if (options.title) builder = builder.withTitle(options.title);
         if (options.xTitle) builder = builder.setXAxisTitle(options.xTitle);
@@ -2015,21 +2178,47 @@ export class PlotlyChartProvider implements IChartProvider {
         if (options.showLegend === false) builder = builder.hideLegend();
         builder = applyCommonOptions(builder, options);
 
-        // Resolve series columns
-        const seriesCols = (options.seriesColumns ?? [])
+        // Resolve series columns (may include auto-inferred)
+        const seriesCols = (effectiveOptions.seriesColumns ?? [])
             .map(name => getColumnRef(data, name))
             .filter((c): c is ColumnRef => c !== undefined);
 
+        // Resolve binning options
+        const binSize = options.binSize ? parseBinSize(options.binSize) : undefined;
+        const aggregation = options.aggregation as AggregationType | undefined;
+        const shouldBin = binSize !== undefined && binSize > 0 && aggregation !== undefined;
+        const xIsDateTime = isDateTimeType(xColumn.column.type);
+
         if (seriesCols.length > 0) {
             // Pivot data by series column values
-            const groups = this.groupRowsBySeries(data, seriesCols);
+            let groups = this.groupRowsBySeries(data, seriesCols);
+
+            // Limit to top N series by total y-value
+            if (options.maxSeries != null && options.maxSeries > 0 && groups.size > options.maxSeries) {
+                const ranked = [...groups.entries()].map(([key, rowIndices]) => {
+                    let total = 0;
+                    for (const ri of rowIndices) {
+                        const row = data.rows[ri];
+                        if (!row) continue;
+                        for (const yCol of yColumns) {
+                            if (!isNumericType(yCol.column.type)) continue;
+                            const v = row[yCol.index];
+                            if (v != null) total += Math.abs(toNumber(v));
+                        }
+                    }
+                    return { key, rowIndices, total };
+                });
+                ranked.sort((a, b) => b.total - a.total);
+                groups = new Map(ranked.slice(0, options.maxSeries).map(r => [r.key, r.rowIndices]));
+            }
+
             const multipleYCols = yColumns.length > 1;
             let traceIndex = 0;
             for (const [seriesKey, rowIndices] of groups) {
                 for (const yCol of yColumns) {
                     if (!isNumericType(yCol.column.type)) continue;
-                    const xValues: unknown[] = [];
-                    const yValues: number[] = [];
+                    let xValues: unknown[] = [];
+                    let yValues: number[] = [];
                     for (const ri of rowIndices) {
                         const row = data.rows[ri];
                         if (!row) continue;
@@ -2040,12 +2229,23 @@ export class PlotlyChartProvider implements IChartProvider {
                             yValues.push(sanitizeDouble(toNumber(yVal)));
                         }
                     }
+                    if (shouldBin && xValues.length > 0) {
+                        const binned = binAndAggregate(xValues, yValues, binSize, aggregation, xIsDateTime);
+                        xValues = binned.x;
+                        yValues = binned.y;
+                    }
                     if (xValues.length > 0) {
                         // Sort by x-value so lines don't zigzag
                         const indices = xValues.map((_, i) => i);
                         indices.sort((a, b) => (xValues[a]! < xValues[b]! ? -1 : xValues[a]! > xValues[b]! ? 1 : 0));
-                        const sortedX = indices.map(i => xValues[i]!);
-                        const sortedY = indices.map(i => yValues[i]!);
+                        let sortedX: unknown[] = indices.map(i => xValues[i]!);
+                        let sortedY: number[] = indices.map(i => yValues[i]!);
+                        // Downsample if over max points
+                        if (options.maxPointsPerSeries != null && options.maxPointsPerSeries > 0) {
+                            const ds = downsample(sortedX, sortedY, options.maxPointsPerSeries);
+                            sortedX = ds.x;
+                            sortedY = ds.y;
+                        }
                         const traceName = multipleYCols ? `${seriesKey} - ${yCol.column.name}` : seriesKey;
                         builder = addTrace(builder, sortedX, sortedY, traceName, undefined, traceIndex);
                         traceIndex++;
@@ -2056,8 +2256,18 @@ export class PlotlyChartProvider implements IChartProvider {
             // No series columns: one trace per y-column (existing behavior)
             let traceIndex = 0;
             for (const valueColumn of yColumns) {
-                const result = this.get2DChartData(data, xColumn, valueColumn);
+                let result = this.get2DChartData(data, xColumn, valueColumn);
                 if (result) {
+                    if (shouldBin) {
+                        result = binAndAggregate(result.x, result.y, binSize, aggregation, xIsDateTime);
+                    }
+                    // Sort by x-value so lines don't zigzag
+                    const indices = result.x.map((_, i) => i);
+                    indices.sort((a, b) => (result!.x[a]! < result!.x[b]! ? -1 : result!.x[a]! > result!.x[b]! ? 1 : 0));
+                    result = { x: indices.map(i => result!.x[i]!), y: indices.map(i => result!.y[i]!) };
+                    if (options.maxPointsPerSeries != null && options.maxPointsPerSeries > 0) {
+                        result = downsample(result.x, result.y, options.maxPointsPerSeries);
+                    }
                     builder = addTrace(builder, result.x, result.y, valueColumn.column.name, undefined, traceIndex);
                     traceIndex++;
                 }
@@ -2087,32 +2297,56 @@ export class PlotlyChartProvider implements IChartProvider {
         return groups;
     }
 
+    /**
+     * Infers a series column from the data when none is explicitly specified.
+     * Picks the first non-x, non-numeric, non-datetime column.
+     */
+    private inferSeriesColumn(data: ResultTable, xColumn: ColumnRef, anomalyColumns?: string[]): ColumnRef | undefined {
+        const anomalySet = new Set(anomalyColumns ?? []);
+        for (let i = 0; i < data.columns.length; i++) {
+            if (i === xColumn.index) continue;
+            const col = data.columns[i];
+            if (col && !isNumericType(col.type) && !isDateTimeType(col.type) && !anomalySet.has(col.name)) {
+                return getColumnRefByIndex(data, i);
+            }
+        }
+        return undefined;
+    }
+
     // ─── Data Column Helpers ────────────────────────────────────────────
 
     private get2dXColumn(data: ResultTable, options: ChartOptions): ColumnRef | undefined {
         if (options.xColumn) {
             return getColumnRef(data, options.xColumn);
         }
+        const anomalySet = new Set(options.anomalyColumns ?? []);
         // For time-based chart types, prefer a datetime column as x-axis that is not in yColumns
         if (isTimeChartType(options.type)) {
             for (let i = 0; i < data.columns.length; i++) {
                 const col = data.columns[i];
                 if (col && isDateTimeType(col.type)
+                    && !anomalySet.has(col.name)
                     && (!options.yColumns || !options.yColumns.includes(col.name))) {
                     return getColumnRefByIndex(data, i);
                 }
             }
         }
-        // otherwise, pick the first column that is not in yColumns
+        // otherwise, pick the first column that is not in yColumns or anomalyColumns
         if (options.yColumns) {
             for (let i = 0; i < data.columns.length; i++) {
                 const col = data.columns[i];
-                if (col && !options.yColumns.includes(col.name)) {
+                if (col && !options.yColumns.includes(col.name) && !anomalySet.has(col.name)) {
                     return getColumnRefByIndex(data, i);
                 }
             }
         }
-        // otherwise, pick the first column
+        // otherwise, pick the first non-anomaly column
+        for (let i = 0; i < data.columns.length; i++) {
+            const col = data.columns[i];
+            if (col && !anomalySet.has(col.name)) {
+                return getColumnRefByIndex(data, i);
+            }
+        }
         return getColumnRefByIndex(data, 0);
     }
 
@@ -2123,11 +2357,12 @@ export class PlotlyChartProvider implements IChartProvider {
                 .filter((c): c is ColumnRef => c !== undefined);
         }
         const seriesSet = new Set(options.seriesColumns ?? []);
+        const anomalySet = new Set(options.anomalyColumns ?? []);
         const result: ColumnRef[] = [];
         for (let i = 0; i < data.columns.length; i++) {
-            if (i !== xColumn.index && !seriesSet.has(data.columns[i]!.name)) {
+            if (i !== xColumn.index && !seriesSet.has(data.columns[i]!.name) && !anomalySet.has(data.columns[i]!.name)) {
                 const ref = getColumnRefByIndex(data, i);
-                if (ref) result.push(ref);
+                if (ref && isNumericType(ref.column.type)) result.push(ref);
             }
         }
         return result;
