@@ -929,6 +929,144 @@ describe('PlotlyChartProvider', () => {
             });
         });
 
+        // ─── Auto-inference ─────────────────────────────────────────────
+
+        describe('auto-inference', () => {
+            it('infers series column from first non-x string column when seriesColumns is not set', () => {
+                const table = makeTable(
+                    [
+                        { name: 'timestamp', type: 'datetime' },
+                        { name: 'region', type: 'string' },
+                        { name: 'count', type: 'int' },
+                    ],
+                    [
+                        ['2024-01-01', 'East', 10],
+                        ['2024-01-01', 'West', 20],
+                        ['2024-01-02', 'East', 15],
+                        ['2024-01-02', 'West', 25],
+                    ],
+                );
+                const html = renderAndGetHtml(table, { type: 'timechart' });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                expect(traces.length).toBe(2);
+                expect((traces[0] as Record<string, unknown>).name).toBe('East');
+                expect((traces[1] as Record<string, unknown>).name).toBe('West');
+            });
+
+            it('does not infer series column when all non-x columns are numeric', () => {
+                const table = makeTable(
+                    [
+                        { name: 'timestamp', type: 'datetime' },
+                        { name: 'sales', type: 'int' },
+                        { name: 'profit', type: 'int' },
+                    ],
+                    [
+                        ['2024-01-01', 10, 2],
+                        ['2024-01-02', 15, 3],
+                    ],
+                );
+                const html = renderAndGetHtml(table, { type: 'timechart' });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                // One trace per numeric column, no series pivoting
+                expect(traces.length).toBe(2);
+                expect((traces[0] as Record<string, unknown>).name).toBe('sales');
+                expect((traces[1] as Record<string, unknown>).name).toBe('profit');
+            });
+
+            it('infers series for non-time chart types', () => {
+                const table = makeTable(
+                    [
+                        { name: 'category', type: 'string' },
+                        { name: 'region', type: 'string' },
+                        { name: 'value', type: 'int' },
+                    ],
+                    [
+                        ['A', 'East', 10],
+                        ['A', 'West', 20],
+                        ['B', 'East', 30],
+                        ['B', 'West', 40],
+                    ],
+                );
+                // x=category (first col), inferred series=region, y=value
+                const html = renderAndGetHtml(table, { type: 'columnchart' });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                expect(traces.length).toBe(2);
+                expect((traces[0] as Record<string, unknown>).name).toBe('East');
+                expect((traces[1] as Record<string, unknown>).name).toBe('West');
+            });
+
+            it('does not override explicitly set seriesColumns', () => {
+                const table = makeTable(
+                    [
+                        { name: 'timestamp', type: 'datetime' },
+                        { name: 'region', type: 'string' },
+                        { name: 'product', type: 'string' },
+                        { name: 'count', type: 'int' },
+                    ],
+                    [
+                        ['2024-01-01', 'East', 'Widget', 10],
+                        ['2024-01-01', 'West', 'Gadget', 20],
+                    ],
+                );
+                // Explicitly set product as series, not region
+                const html = renderAndGetHtml(table, {
+                    type: 'linechart',
+                    seriesColumns: ['product'],
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                expect(traces.length).toBe(2);
+                expect((traces[0] as Record<string, unknown>).name).toBe('Widget');
+                expect((traces[1] as Record<string, unknown>).name).toBe('Gadget');
+            });
+
+            it('renders pivotchart as linechart with auto-inferred series', () => {
+                const table = makeTable(
+                    [
+                        { name: 'category', type: 'string' },
+                        { name: 'region', type: 'string' },
+                        { name: 'value', type: 'int' },
+                    ],
+                    [
+                        ['A', 'East', 10],
+                        ['A', 'West', 20],
+                        ['B', 'East', 30],
+                    ],
+                );
+                const html = renderAndGetHtml(table, { type: 'pivotchart' });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                expect(traces.length).toBe(2);
+                expect((traces[0] as Record<string, unknown>).name).toBe('East');
+                expect((traces[1] as Record<string, unknown>).name).toBe('West');
+                // Should render as line traces (scatter with mode lines)
+                expect((traces[0] as Record<string, unknown>).mode).toBe('lines');
+            });
+
+            it('renders timepivot as ladder chart', () => {
+                const table = makeTable(
+                    [
+                        { name: 'start', type: 'datetime' },
+                        { name: 'end', type: 'datetime' },
+                        { name: 'task', type: 'string' },
+                    ],
+                    [
+                        ['2024-01-01', '2024-01-05', 'Task A'],
+                        ['2024-01-03', '2024-01-07', 'Task B'],
+                    ],
+                );
+                const html = renderAndGetHtml(table, { type: 'timepivot' });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                expect(traces.length).toBeGreaterThan(0);
+                // Ladder chart uses horizontal bars
+                expect((traces[0] as Record<string, unknown>).orientation).toBe('h');
+            });
+        });
+
         // ─── Chart options ──────────────────────────────────────────────
 
         describe('chart options', () => {

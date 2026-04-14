@@ -1359,6 +1359,7 @@ export class PlotlyChartProvider implements IChartProvider {
                 builder = this.buildBarOrColumnChart(data, options);
                 break;
             case ChartType.LineChart:
+            case ChartType.PivotChart:
             case ChartType.TimeLineChart:
             case ChartType.TimeLineWithAnomalyChart:
                 builder = this.buildLineChart(data, options);
@@ -1390,6 +1391,7 @@ export class PlotlyChartProvider implements IChartProvider {
                 builder = this.buildSankeyChart(data, options);
                 break;
             case ChartType.TimeLadderChart:
+            case ChartType.TimePivot:
                 builder = this.buildLadderChart(data, options);
                 break;
             default:
@@ -1992,7 +1994,16 @@ export class PlotlyChartProvider implements IChartProvider {
         const xColumn = this.get2dXColumn(data, options);
         if (!xColumn) return undefined;
 
-        const yColumns = this.get2dYColumns(data, options, xColumn);
+        // Auto-infer series column when not explicitly specified
+        let effectiveOptions = options;
+        if (!options.seriesColumns || options.seriesColumns.length === 0) {
+            const inferredSeries = this.inferSeriesColumn(data, xColumn, options.anomalyColumns);
+            if (inferredSeries) {
+                effectiveOptions = { ...options, seriesColumns: [inferredSeries.column.name] };
+            }
+        }
+
+        const yColumns = this.get2dYColumns(data, effectiveOptions, xColumn);
 
         if (options.title) builder = builder.withTitle(options.title);
         if (options.xTitle) builder = builder.setXAxisTitle(options.xTitle);
@@ -2015,8 +2026,8 @@ export class PlotlyChartProvider implements IChartProvider {
         if (options.showLegend === false) builder = builder.hideLegend();
         builder = applyCommonOptions(builder, options);
 
-        // Resolve series columns
-        const seriesCols = (options.seriesColumns ?? [])
+        // Resolve series columns (may include auto-inferred)
+        const seriesCols = (effectiveOptions.seriesColumns ?? [])
             .map(name => getColumnRef(data, name))
             .filter((c): c is ColumnRef => c !== undefined);
 
@@ -2087,32 +2098,56 @@ export class PlotlyChartProvider implements IChartProvider {
         return groups;
     }
 
+    /**
+     * Infers a series column from the data when none is explicitly specified.
+     * Picks the first non-x, non-numeric, non-datetime column.
+     */
+    private inferSeriesColumn(data: ResultTable, xColumn: ColumnRef, anomalyColumns?: string[]): ColumnRef | undefined {
+        const anomalySet = new Set(anomalyColumns ?? []);
+        for (let i = 0; i < data.columns.length; i++) {
+            if (i === xColumn.index) continue;
+            const col = data.columns[i];
+            if (col && !isNumericType(col.type) && !isDateTimeType(col.type) && !anomalySet.has(col.name)) {
+                return getColumnRefByIndex(data, i);
+            }
+        }
+        return undefined;
+    }
+
     // ─── Data Column Helpers ────────────────────────────────────────────
 
     private get2dXColumn(data: ResultTable, options: ChartOptions): ColumnRef | undefined {
         if (options.xColumn) {
             return getColumnRef(data, options.xColumn);
         }
+        const anomalySet = new Set(options.anomalyColumns ?? []);
         // For time-based chart types, prefer a datetime column as x-axis that is not in yColumns
         if (isTimeChartType(options.type)) {
             for (let i = 0; i < data.columns.length; i++) {
                 const col = data.columns[i];
                 if (col && isDateTimeType(col.type)
+                    && !anomalySet.has(col.name)
                     && (!options.yColumns || !options.yColumns.includes(col.name))) {
                     return getColumnRefByIndex(data, i);
                 }
             }
         }
-        // otherwise, pick the first column that is not in yColumns
+        // otherwise, pick the first column that is not in yColumns or anomalyColumns
         if (options.yColumns) {
             for (let i = 0; i < data.columns.length; i++) {
                 const col = data.columns[i];
-                if (col && !options.yColumns.includes(col.name)) {
+                if (col && !options.yColumns.includes(col.name) && !anomalySet.has(col.name)) {
                     return getColumnRefByIndex(data, i);
                 }
             }
         }
-        // otherwise, pick the first column
+        // otherwise, pick the first non-anomaly column
+        for (let i = 0; i < data.columns.length; i++) {
+            const col = data.columns[i];
+            if (col && !anomalySet.has(col.name)) {
+                return getColumnRefByIndex(data, i);
+            }
+        }
         return getColumnRefByIndex(data, 0);
     }
 
@@ -2123,11 +2158,12 @@ export class PlotlyChartProvider implements IChartProvider {
                 .filter((c): c is ColumnRef => c !== undefined);
         }
         const seriesSet = new Set(options.seriesColumns ?? []);
+        const anomalySet = new Set(options.anomalyColumns ?? []);
         const result: ColumnRef[] = [];
         for (let i = 0; i < data.columns.length; i++) {
-            if (i !== xColumn.index && !seriesSet.has(data.columns[i]!.name)) {
+            if (i !== xColumn.index && !seriesSet.has(data.columns[i]!.name) && !anomalySet.has(data.columns[i]!.name)) {
                 const ref = getColumnRefByIndex(data, i);
-                if (ref) result.push(ref);
+                if (ref && isNumericType(ref.column.type)) result.push(ref);
             }
         }
         return result;
