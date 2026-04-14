@@ -199,26 +199,6 @@ class ChartEditorView implements IChartEditorView {
             display: inline;
             margin-bottom: 0;
         }
-        .edit-panel .column-picker {
-            display: flex;
-            gap: 4px;
-        }
-        .edit-panel .column-picker select {
-            flex: 1;
-            min-width: 0;
-        }
-        .edit-panel .column-picker button {
-            padding: 2px 8px;
-            cursor: pointer;
-            background: var(--vscode-button-background, #0e639c);
-            color: var(--vscode-button-foreground, #fff);
-            border: none;
-            border-radius: 2px;
-            font-size: inherit;
-        }
-        .edit-panel .column-picker button:hover {
-            background: var(--vscode-button-hoverBackground, #1177bb);
-        }
         .edit-panel .column-list {
             list-style: none;
             padding: 0;
@@ -291,12 +271,27 @@ class ChartEditorView implements IChartEditorView {
             li.appendChild(removeBtn);
             list.appendChild(li);
             picker.selectedIndex = 0;
+            _editorUpdateColumnPlaceholder(picker, list);
             _editorOnChartOptionChanged();
         }
 
         function _editorRemoveColumnItem(btn) {
             var li = btn.closest('li');
-            if (li) { li.remove(); _editorOnChartOptionChanged(); }
+            if (li) {
+                var list = li.parentNode;
+                var pickerId = list.id.replace('-list', '-picker');
+                li.remove();
+                var picker = document.getElementById(pickerId);
+                if (picker) _editorUpdateColumnPlaceholder(picker, list);
+                _editorOnChartOptionChanged();
+            }
+        }
+
+        function _editorUpdateColumnPlaceholder(picker, list) {
+            var firstOpt = picker.options[0];
+            if (firstOpt) {
+                firstOpt.textContent = list.children.length > 0 ? '(add)' : '(auto)';
+            }
         }
 
         function _editorMoveColumnItem(btn, dir) {
@@ -486,9 +481,15 @@ class ChartEditorView implements IChartEditorView {
             `<option value="${escapeHtml(c)}"${c === (opts.xColumn ?? '') ? ' selected' : ''}>${c || '(auto)'}</option>`
         ).join('');
 
-        const allColOptions = `<option value="" disabled selected>Pick a column</option>` + columnNames.map(c =>
+        const colOptionsList = columnNames.map(c =>
             `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`
         ).join('');
+        const makeColPickerOptions = (hasItems: boolean) =>
+            `<option value="" disabled selected>${hasItems ? '(add)' : '(auto)'}</option>` + colOptionsList;
+
+        const yColPickerOptions = makeColPickerOptions((opts.yColumns ?? []).length > 0);
+        const seriesColPickerOptions = makeColPickerOptions((opts.seriesColumns ?? []).length > 0);
+        const anomalyColPickerOptions = makeColPickerOptions((opts.anomalyColumns ?? []).length > 0);
 
         const yColumnsItems = (opts.yColumns ?? []).map(c =>
             `<li><span>${escapeHtml(c)}</span><button onclick="_editorMoveColumnItem(this,-1)" title="Move up">&uarr;</button><button onclick="_editorMoveColumnItem(this,1)" title="Move down">&darr;</button><button onclick="_editorRemoveColumnItem(this)" title="Remove">&times;</button></li>`
@@ -588,27 +589,18 @@ class ChartEditorView implements IChartEditorView {
                 </div>
                 <div class="field">
                     <label>Y Columns</label>
-                    <div class="column-picker">
-                        <select id="opt-yColumns-picker">${allColOptions}</select>
-                        <button onclick="_editorAddColumnItem('opt-yColumns-picker','opt-yColumns-list')">Add</button>
-                    </div>
                     <ul id="opt-yColumns-list" class="column-list">${yColumnsItems}</ul>
+                    <select id="opt-yColumns-picker" onchange="_editorAddColumnItem('opt-yColumns-picker','opt-yColumns-list')">${yColPickerOptions}</select>
                 </div>
                 <div class="field">
                     <label>Series Columns</label>
-                    <div class="column-picker">
-                        <select id="opt-seriesColumns-picker">${allColOptions}</select>
-                        <button onclick="_editorAddColumnItem('opt-seriesColumns-picker','opt-seriesColumns-list')">Add</button>
-                    </div>
                     <ul id="opt-seriesColumns-list" class="column-list">${seriesItems}</ul>
+                    <select id="opt-seriesColumns-picker" onchange="_editorAddColumnItem('opt-seriesColumns-picker','opt-seriesColumns-list')">${seriesColPickerOptions}</select>
                 </div>
                 <div class="field">
                     <label>Anomaly Columns</label>
-                    <div class="column-picker">
-                        <select id="opt-anomalyColumns-picker">${allColOptions}</select>
-                        <button onclick="_editorAddColumnItem('opt-anomalyColumns-picker','opt-anomalyColumns-list')">Add</button>
-                    </div>
                     <ul id="opt-anomalyColumns-list" class="column-list">${anomalyColumnsItems}</ul>
+                    <select id="opt-anomalyColumns-picker" onchange="_editorAddColumnItem('opt-anomalyColumns-picker','opt-anomalyColumns-list')">${anomalyColPickerOptions}</select>
                 </div>
                 <div class="field checkbox-field">
                     <input type="checkbox" id="opt-accumulate"${opts.accumulate ? ' checked' : ''} onchange="_editorOnChartOptionChanged()">
