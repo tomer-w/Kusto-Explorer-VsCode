@@ -9,7 +9,7 @@ import { ConnectionsPanel } from './features/connectionsPanel'
 import { ConnectionManager } from './features/connectionManager'
 import { QueryEditor } from './features/queryEditor'
 import { ResultsViewer } from './features/resultsViewer'
-import { PlotlyChartProvider } from './features/plotlyChartProvider'
+import { CompositeChartProvider } from './features/compositeChartProvider'
 import { ChartEditorProvider } from './features/chartEditorProvider'
 import { DataTableProvider } from './features/dataTableProvider'
 import * as copilot from './features/copilot'
@@ -107,7 +107,7 @@ export async function activate(context: ExtensionContext)
     );
 
     // activate results viewer
-    const chartProvider = new PlotlyChartProvider();
+    const chartProvider = new CompositeChartProvider();
     const chartEditorProvider = new ChartEditorProvider();
     const dataTableProvider = new DataTableProvider(server, clipboard);
     const resultsViewer = new ResultsViewer(context, server, clipboard, chartProvider, chartEditorProvider, dataTableProvider);

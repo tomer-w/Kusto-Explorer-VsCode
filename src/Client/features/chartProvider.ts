@@ -5,7 +5,7 @@
  * Chart provider interfaces and constants.
  */
 
-import type { ChartOptions, ResultTable } from './server';
+import type { ChartOptions, ResultColumn, ResultTable } from './server';
 import type { IWebView } from './webview';
 
 // Re-export so consumers can import from chartProvider
@@ -95,3 +95,66 @@ export const ChartMode = {
     Dark: 'Dark',
 } as const;
 
+// ─── Shared Utilities ───────────────────────────────────────────────────────
+
+/** Default colorway shared across chart providers. */
+export const ChartColorways = {
+    Default: [
+        '#636EFA', '#EF553B', '#00CC96', '#AB63FA', '#FDC826',
+        '#19D3F3', '#FF6692', '#B6E880', '#FF97FF', '#FECB52',
+    ],
+} as const;
+
+/** Convert a hex color to an rgba() string. */
+export function hexToRgba(hex: string, opacity: number): string {
+    let h = hex.replace(/^#/, '');
+    if (h.length === 3) {
+        h = (h[0] ?? '') + (h[0] ?? '') + (h[1] ?? '') + (h[1] ?? '') + (h[2] ?? '') + (h[2] ?? '');
+    }
+    if (h.length !== 6) {
+        return `rgba(128, 128, 128, ${opacity})`;
+    }
+    const r = parseInt(h.substring(0, 2), 16);
+    const g = parseInt(h.substring(2, 4), 16);
+    const b = parseInt(h.substring(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+}
+
+export function isNumericType(type: string): boolean {
+    switch (type) {
+        case 'int':
+        case 'long':
+        case 'real':
+        case 'decimal':
+            return true;
+        default:
+            return false;
+    }
+}
+
+export function isDateTimeType(type: string): boolean {
+    return type === 'datetime' || type === 'timespan';
+}
+
+// ─── Data Access Helpers ────────────────────────────────────────────────────
+
+/** A ResultColumn together with its position in the table. */
+export interface ColumnRef {
+    column: ResultColumn;
+    index: number;
+}
+
+export function getColumnRef(table: ResultTable, name: string): ColumnRef | undefined {
+    const idx = table.columns.findIndex(c => c.name === name);
+    if (idx < 0) return undefined;
+    const col = table.columns[idx];
+    if (!col) return undefined;
+    return { column: col, index: idx };
+}
+
+export function getColumnRefByIndex(table: ResultTable, index: number): ColumnRef | undefined {
+    if (index < 0 || index >= table.columns.length) return undefined;
+    const col = table.columns[index];
+    if (!col) return undefined;
+    return { column: col, index };
+}

@@ -3,6 +3,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PlotlyChartProvider } from '../../features/plotlyChartProvider';
+import { CompositeChartProvider } from '../../features/compositeChartProvider';
 import type { IChartView } from '../../features/chartProvider';
 import type { IWebView } from '../../features/webview';
 import type { ResultTable, ChartOptions } from '../../features/server';
@@ -65,10 +66,10 @@ function makePieTable(): ResultTable {
 // ─── createView ─────────────────────────────────────────────────────────
 
 describe('PlotlyChartProvider', () => {
-    let provider: PlotlyChartProvider;
+    let provider: CompositeChartProvider;
 
     beforeEach(() => {
-        provider = new PlotlyChartProvider();
+        provider = new CompositeChartProvider();
     });
 
     describe('createView', () => {
@@ -76,11 +77,14 @@ describe('PlotlyChartProvider', () => {
             const webview = createMockWebView();
             provider.createView(webview);
 
-            expect(webview.setup).toHaveBeenCalledOnce();
-            const [headHtml, scriptsHtml] = webview.setup.mock.calls[0]!;
-            expect(headHtml).toContain('<script src=');
-            expect(headHtml).toContain('plotly');
-            expect(scriptsHtml).toContain('<script>');
+            // Composite provider sets up both Plotly and TimePivot views
+            expect(webview.setup).toHaveBeenCalled();
+            // Plotly setup should include CDN script
+            const plotlyCall = webview.setup.mock.calls.find(
+                (args: unknown[]) => typeof args[0] === 'string' && (args[0] as string).includes('plotly')
+            );
+            expect(plotlyCall).toBeDefined();
+            expect(plotlyCall![1]).toContain('<script>');
         });
 
         it('returns an IChartView', () => {
@@ -97,7 +101,7 @@ describe('PlotlyChartProvider', () => {
             const webview = createMockWebView();
             provider.createView(webview);
 
-            expect(webview.handle).toHaveBeenCalledOnce();
+            expect(webview.handle).toHaveBeenCalled();
         });
     });
 
