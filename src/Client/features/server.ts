@@ -589,9 +589,15 @@ export interface ChartOptions {
     mode?: string;
     aspectRatio?: string;
     textSize?: string;
+    showMarkers?: boolean;
+    markerOutline?: boolean;
     markerShape?: string;
     cycleMarkerShapes?: boolean;
     markerSize?: string;
+    binSize?: string;
+    aggregation?: string;
+    maxSeries?: number;
+    maxPointsPerSeries?: number;
 }
 
 /** Position in a document. */

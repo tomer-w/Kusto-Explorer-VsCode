@@ -115,6 +115,12 @@ function getChartDefaults(): Partial<server.ChartOptions> {
     if (xTickAngle) { defaults.xTickAngle = Number(xTickAngle); }
     const yTickAngle = config.get<string>('yTickAngle');
     if (yTickAngle) { defaults.yTickAngle = Number(yTickAngle); }
+    const showMarkers = config.get<string>('showMarkers');
+    if (showMarkers === 'yes') { defaults.showMarkers = true; }
+    else if (showMarkers === 'no') { defaults.showMarkers = false; }
+    const markerOutline = config.get<string>('markerOutline');
+    if (markerOutline === 'yes') { defaults.markerOutline = true; }
+    else if (markerOutline === 'no') { defaults.markerOutline = false; }
     const markerShape = config.get<string>('markerShape');
     if (markerShape) { defaults.markerShape = markerShape; }
     const cycleMarkerShapes = config.get<string>('markerShapesCycle');
