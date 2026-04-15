@@ -25,9 +25,14 @@ public class LatestRequestQueue
         lock (this)
         {
             _latestTask?.CancellationSource.Cancel();
+            _latestTask?.CancellationSource.Dispose();
             var cts = new CancellationTokenSource();
             var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, cancellation);
-            var task = Task.Run(() => asyncAction(combinedCts.Token), combinedCts.Token);
+            var task = Task.Run(async () =>
+            {
+                try { await asyncAction(combinedCts.Token).ConfigureAwait(false); }
+                finally { combinedCts.Dispose(); }
+            }, combinedCts.Token);
             _latestTask = new TaskInfo(task, cts);
             return task;
         }

@@ -109,16 +109,30 @@ public class Server : LspServer, ILogger, ISettingSource, IStorage
     private async void _symbolManager_GlobalsChanged(object? sender, GlobalState e)
     {
         // since globals changed it is possible that some semantic tokens are now different, so request client to refresh them
-        await this.SendWorkspaceSemanticTokensRefresh();
+        try
+        {
+            await this.SendWorkspaceSemanticTokensRefresh();
+        }
+        catch (Exception ex)
+        {
+            _logger?.Log($"Error refreshing semantic tokens: {ex.Message}");
+        }
     }
 
     private void _scriptManager_ScriptChanged(object? sender, Uri id)
     {
     }
 
-    private void _diagnosticsManager_DiagnosticsUpdated(object? sender, DiagnosticInfo diagnostics)
+    private async void _diagnosticsManager_DiagnosticsUpdated(object? sender, DiagnosticInfo diagnostics)
     {
-        var _ = PublishDiagnosticsAsync(diagnostics);
+        try
+        {
+            await PublishDiagnosticsAsync(diagnostics);
+        }
+        catch (Exception ex)
+        {
+            _logger?.Log($"Error publishing diagnostics: {ex.Message}");
+        }
     }
 
     #endregion
