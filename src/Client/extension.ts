@@ -85,8 +85,13 @@ export async function activate(context: ExtensionContext)
             clientOptions
         );
 
-        await client.start();
-        server = new Server(client, context);
+        try {
+            await client.start();
+            server = new Server(client, context);
+        } catch (error) {
+            outputChannel.appendLine(`Failed to start language server: ${error instanceof Error ? error.message : String(error)}`);
+            window.showErrorMessage('Kusto language server failed to start. Language features will be unavailable.');
+        }
     }
 
     // ─── UI features (always registered so integration tests will run) ────────────────────
@@ -323,7 +328,9 @@ async function fixCommitCharDoubling(commitChars: string[], originalCommand?: vs
             }
         });
 
-        // Safety: dispose the listener if no change comes within 1 second
+        // Safety: dispose the listener if no change comes within 1 second.
+        // Note: dispose() is idempotent, so calling it from both the handler and
+        // this timeout is harmless. JS is single-threaded, so there is no race.
         setTimeout(() => disposable.dispose(), 1000);
     }
 

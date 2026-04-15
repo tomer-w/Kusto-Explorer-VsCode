@@ -129,9 +129,9 @@ export class HistoryManager {
     }
 
     /** Reads the ResultData from a history .kqr file. */
-    readHistoryFile(uri: vscode.Uri): server.ResultData | undefined {
+    async readHistoryFile(uri: vscode.Uri): Promise<server.ResultData | undefined> {
         try {
-            const content = fs.readFileSync(uri.fsPath, 'utf-8');
+            const content = await fs.promises.readFile(uri.fsPath, 'utf-8');
             return JSON.parse(content) as server.ResultData;
         } catch {
             return undefined;
@@ -139,9 +139,9 @@ export class HistoryManager {
     }
 
     /** Writes updated ResultData back to a history .kqr file. */
-    writeHistoryFile(uri: vscode.Uri, data: server.ResultData): void {
+    async writeHistoryFile(uri: vscode.Uri, data: server.ResultData): Promise<void> {
         const content = JSON.stringify(data, null, 2);
-        fs.writeFileSync(uri.fsPath, content, 'utf-8');
+        await fs.promises.writeFile(uri.fsPath, content, 'utf-8');
     }
 
     /** Returns the URI for a history entry's backing file. */

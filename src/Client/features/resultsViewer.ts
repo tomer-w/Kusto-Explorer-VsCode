@@ -952,7 +952,8 @@ export class ResultsViewer {
             this.singletonWriteBackTimer = undefined;
             if (this.singletonBackingUri && this.singletonResultData) {
                 const content = JSON.stringify(this.singletonResultData, null, 2);
-                vscode.workspace.fs.writeFile(this.singletonBackingUri, Buffer.from(content, 'utf-8'));
+                vscode.workspace.fs.writeFile(this.singletonBackingUri, Buffer.from(content, 'utf-8'))
+                    .then(undefined, error => console.error('Failed to write back result data:', error));
             }
         }, 1000);
     }
@@ -964,7 +965,8 @@ export class ResultsViewer {
         }
         if (this.singletonBackingUri && this.singletonResultData) {
             const content = JSON.stringify(this.singletonResultData, null, 2);
-            vscode.workspace.fs.writeFile(this.singletonBackingUri, Buffer.from(content, 'utf-8'));
+            vscode.workspace.fs.writeFile(this.singletonBackingUri, Buffer.from(content, 'utf-8'))
+                .then(undefined, error => console.error('Failed to write back result data:', error));
         }
     }
 
