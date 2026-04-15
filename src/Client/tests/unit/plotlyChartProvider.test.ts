@@ -3,6 +3,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PlotlyChartProvider } from '../../features/plotlyChartProvider';
+import { CompositeChartProvider } from '../../features/compositeChartProvider';
 import type { IChartView } from '../../features/chartProvider';
 import type { IWebView } from '../../features/webview';
 import type { ResultTable, ChartOptions } from '../../features/server';
@@ -65,10 +66,10 @@ function makePieTable(): ResultTable {
 // ─── createView ─────────────────────────────────────────────────────────
 
 describe('PlotlyChartProvider', () => {
-    let provider: PlotlyChartProvider;
+    let provider: CompositeChartProvider;
 
     beforeEach(() => {
-        provider = new PlotlyChartProvider();
+        provider = new CompositeChartProvider();
     });
 
     describe('createView', () => {
@@ -76,11 +77,14 @@ describe('PlotlyChartProvider', () => {
             const webview = createMockWebView();
             provider.createView(webview);
 
-            expect(webview.setup).toHaveBeenCalledOnce();
-            const [headHtml, scriptsHtml] = webview.setup.mock.calls[0]!;
-            expect(headHtml).toContain('<script src=');
-            expect(headHtml).toContain('plotly');
-            expect(scriptsHtml).toContain('<script>');
+            // Composite provider sets up both Plotly and TimePivot views
+            expect(webview.setup).toHaveBeenCalled();
+            // Plotly setup should include CDN script
+            const plotlyCall = webview.setup.mock.calls.find(
+                (args: unknown[]) => typeof args[0] === 'string' && (args[0] as string).includes('plotly')
+            );
+            expect(plotlyCall).toBeDefined();
+            expect(plotlyCall![1]).toContain('<script>');
         });
 
         it('returns an IChartView', () => {
@@ -97,7 +101,7 @@ describe('PlotlyChartProvider', () => {
             const webview = createMockWebView();
             provider.createView(webview);
 
-            expect(webview.handle).toHaveBeenCalledOnce();
+            expect(webview.handle).toHaveBeenCalled();
         });
     });
 
@@ -713,6 +717,175 @@ describe('PlotlyChartProvider', () => {
             });
         });
 
+        describe('timepivot', () => {
+            it('renders range mode with background bars and segment lines', () => {
+                const table = makeTable(
+                    [
+                        { name: 'State', type: 'string' },
+                        { name: 'Start', type: 'datetime' },
+                        { name: 'End', type: 'datetime' },
+                    ],
+                    [
+                        ['WA', '2024-01-01T00:00:00Z', '2024-01-03T00:00:00Z'],
+                        ['CA', '2024-01-02T00:00:00Z', '2024-01-05T00:00:00Z'],
+                    ],
+                );
+                const html = renderAndGetHtml(table, { type: 'timepivot' });
+                expect(html).toBeDefined();
+                // Two detail rows (flat, no nesting)
+                expect(html).toContain('tp-container');
+                expect(html).toContain('tp-segment');
+                expect(html).toContain('tp-bg-bar');
+                // Labels for each series value
+                expect(html).toContain('>WA<');
+                expect(html).toContain('>CA<');
+            });
+
+            it('renders point mode with dots when only one datetime column', () => {
+                const table = makeTable(
+                    [
+                        { name: 'State', type: 'string' },
+                        { name: 'Timestamp', type: 'datetime' },
+                    ],
+                    [
+                        ['WA', '2024-01-01T00:00:00Z'],
+                        ['CA', '2024-01-02T00:00:00Z'],
+                    ],
+                );
+                const html = renderAndGetHtml(table, { type: 'timepivot' });
+                expect(html).toBeDefined();
+                expect(html).toContain('tp-dot');
+                // No range segments in point mode
+                expect(html).not.toContain('class="tp-segment"');
+                expect(html).toContain('>WA<');
+                expect(html).toContain('>CA<');
+            });
+
+            it('creates nested layout with parent rows when multiple series columns', () => {
+                const table = makeTable(
+                    [
+                        { name: 'State', type: 'string' },
+                        { name: 'EventType', type: 'string' },
+                        { name: 'Start', type: 'datetime' },
+                        { name: 'End', type: 'datetime' },
+                    ],
+                    [
+                        ['WA', 'Login', '2024-01-01T00:00:00Z', '2024-01-02T00:00:00Z'],
+                        ['WA', 'Purchase', '2024-01-03T00:00:00Z', '2024-01-04T00:00:00Z'],
+                        ['CA', 'Login', '2024-01-02T00:00:00Z', '2024-01-05T00:00:00Z'],
+                    ],
+                );
+                const html = renderAndGetHtml(table, { type: 'timepivot', seriesColumns: ['State', 'EventType'] });
+                expect(html).toBeDefined();
+                // Group rows
+                expect(html).toContain('tp-group');
+                expect(html).toContain('data-group="WA"');
+                expect(html).toContain('data-group="CA"');
+                // Leaf rows with parent reference
+                expect(html).toContain('tp-leaf');
+                expect(html).toContain('data-parent-group="WA"');
+                expect(html).toContain('data-parent-group="CA"');
+                // Detail labels
+                expect(html).toContain('>Login<');
+                expect(html).toContain('>Purchase<');
+                // Toggle for collapse
+                expect(html).toContain('tp-toggle');
+                // Count badge
+                expect(html).toContain('(2)');
+                expect(html).toContain('(1)');
+            });
+
+            it('auto-infers first non-datetime non-numeric column as series', () => {
+                const table = makeTable(
+                    [
+                        { name: 'Start', type: 'datetime' },
+                        { name: 'End', type: 'datetime' },
+                        { name: 'Region', type: 'string' },
+                    ],
+                    [
+                        ['2024-01-01T00:00:00Z', '2024-01-03T00:00:00Z', 'East'],
+                        ['2024-01-02T00:00:00Z', '2024-01-04T00:00:00Z', 'West'],
+                    ],
+                );
+                const html = renderAndGetHtml(table, { type: 'timepivot' });
+                expect(html).toBeDefined();
+                expect(html).toContain('>East<');
+                expect(html).toContain('>West<');
+                expect(html).toContain('tp-segment');
+            });
+
+            it('supports 3 levels of nesting', () => {
+                const table = makeTable(
+                    [
+                        { name: 'Country', type: 'string' },
+                        { name: 'State', type: 'string' },
+                        { name: 'City', type: 'string' },
+                        { name: 'Start', type: 'datetime' },
+                        { name: 'End', type: 'datetime' },
+                    ],
+                    [
+                        ['US', 'WA', 'Seattle', '2024-01-01T00:00:00Z', '2024-01-03T00:00:00Z'],
+                        ['US', 'WA', 'Tacoma', '2024-01-02T00:00:00Z', '2024-01-04T00:00:00Z'],
+                        ['US', 'CA', 'LA', '2024-01-05T00:00:00Z', '2024-01-07T00:00:00Z'],
+                    ],
+                );
+                const html = renderAndGetHtml(table, { type: 'timepivot', seriesColumns: ['Country', 'State', 'City'] });
+                expect(html).toBeDefined();
+                // Top level group: US
+                expect(html).toContain('data-group="US"');
+                // Mid level groups: US/WA, US/CA
+                expect(html).toContain('data-group="US/WA"');
+                expect(html).toContain('data-group="US/CA"');
+                // Leaves referencing mid-level parents
+                expect(html).toContain('data-parent-group="US/WA"');
+                expect(html).toContain('data-parent-group="US/CA"');
+                // Labels
+                expect(html).toContain('>Seattle<');
+                expect(html).toContain('>Tacoma<');
+                expect(html).toContain('>LA<');
+            });
+
+            it('includes time axis ticks', () => {
+                const table = makeTable(
+                    [
+                        { name: 'State', type: 'string' },
+                        { name: 'Start', type: 'datetime' },
+                        { name: 'End', type: 'datetime' },
+                    ],
+                    [['WA', '2024-01-01T00:00:00Z', '2024-01-03T00:00:00Z']],
+                );
+                const html = renderAndGetHtml(table, { type: 'timepivot' });
+                expect(html).toBeDefined();
+                expect(html).toContain('tp-axis');
+                expect(html).toContain('tp-tick');
+                expect(html).toContain('tp-tick-label');
+            });
+
+            it('returns undefined with no datetime columns', () => {
+                const table = makeTable(
+                    [{ name: 'A', type: 'string' }, { name: 'B', type: 'real' }],
+                    [['x', 1]],
+                );
+                const html = renderAndGetHtml(table, { type: 'timepivot' });
+                expect(html).toBeUndefined();
+            });
+
+            it('renders title when specified', () => {
+                const table = makeTable(
+                    [
+                        { name: 'State', type: 'string' },
+                        { name: 'Start', type: 'datetime' },
+                        { name: 'End', type: 'datetime' },
+                    ],
+                    [['WA', '2024-01-01T00:00:00Z', '2024-01-03T00:00:00Z']],
+                );
+                const html = renderAndGetHtml(table, { type: 'timepivot', title: 'My Pivot' });
+                expect(html).toBeDefined();
+                expect(html).toContain('tp-title');
+                expect(html).toContain('My Pivot');
+            });
+        });
+
         describe('plotly (raw)', () => {
             it('renders raw Plotly JSON from first cell', () => {
                 const plotlyJson = JSON.stringify({
@@ -1046,7 +1219,7 @@ describe('PlotlyChartProvider', () => {
                 expect((traces[0] as Record<string, unknown>).mode).toBe('lines');
             });
 
-            it('renders timepivot as ladder chart', () => {
+            it('renders timepivot with HTML time pivot viewer', () => {
                 const table = makeTable(
                     [
                         { name: 'start', type: 'datetime' },
@@ -1060,10 +1233,11 @@ describe('PlotlyChartProvider', () => {
                 );
                 const html = renderAndGetHtml(table, { type: 'timepivot' });
                 expect(html).toBeDefined();
-                const traces = parseTraces(html!);
-                expect(traces.length).toBeGreaterThan(0);
-                // Ladder chart uses horizontal bars
-                expect((traces[0] as Record<string, unknown>).orientation).toBe('h');
+                // HTML-based renderer, not Plotly
+                expect(html).toContain('tp-container');
+                expect(html).toContain('tp-segment');
+                expect(html).toContain('>Task A<');
+                expect(html).toContain('>Task B<');
             });
         });
 

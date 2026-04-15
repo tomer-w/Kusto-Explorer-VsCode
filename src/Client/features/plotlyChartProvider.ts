@@ -6,9 +6,9 @@
  * Ported from Server/Charting C# implementation.
  */
 
-import type { ChartOptions, ResultColumn, ResultTable } from './server';
-import { ChartType, ChartKind, ChartAxis, ChartSortOrder, ChartLegendPosition } from './chartProvider';
-import type { IChartView, IWebView, IChartProvider } from './chartProvider';
+import type { ChartOptions, ResultTable } from './server';
+import { ChartType, ChartKind, ChartAxis, ChartSortOrder, ChartLegendPosition, ChartColorways, hexToRgba, isNumericType, isDateTimeType, getColumnRef, getColumnRefByIndex } from './chartProvider';
+import type { IChartView, IWebView, IChartProvider, ColumnRef } from './chartProvider';
 
 // ─── Plotly Constants ───────────────────────────────────────────────────────
 
@@ -59,12 +59,7 @@ const PlotlyAxisSides = {
     Right: 'right',
 } as const;
 
-const PlotlyColorways = {
-    Default: [
-        '#636EFA', '#EF553B', '#00CC96', '#AB63FA', '#FDC826',
-        '#19D3F3', '#FF6692', '#B6E880', '#FF97FF', '#FECB52',
-    ],
-} as const;
+const PlotlyColorways = ChartColorways;
 
 const SankeyDefaultNodeColors: readonly string[] = [
     '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
@@ -269,6 +264,9 @@ interface PlotlyTraceBase {
     name?: string | undefined;
     xaxis?: string | undefined;
     yaxis?: string | undefined;
+    showlegend?: boolean | undefined;
+    legendgroup?: string | undefined;
+    hoverinfo?: string | undefined;
 }
 
 interface BarTrace extends PlotlyTraceBase {
@@ -281,6 +279,7 @@ interface BarTrace extends PlotlyTraceBase {
     marker?: PlotlyMarker | undefined;
     text?: unknown[] | undefined;
     textposition?: string | undefined;
+    width?: number | number[] | undefined;
 }
 
 interface ScatterTrace extends PlotlyTraceBase {
@@ -914,36 +913,6 @@ try {
 
 // ─── Utility Functions ──────────────────────────────────────────────────────
 
-function hexToRgba(hex: string, opacity: number): string {
-    let h = hex.replace(/^#/, '');
-    if (h.length === 3) {
-        h = (h[0] ?? '') + (h[0] ?? '') + (h[1] ?? '') + (h[1] ?? '') + (h[2] ?? '') + (h[2] ?? '');
-    }
-    if (h.length !== 6) {
-        return `rgba(128, 128, 128, ${opacity})`;
-    }
-    const r = parseInt(h.substring(0, 2), 16);
-    const g = parseInt(h.substring(2, 4), 16);
-    const b = parseInt(h.substring(4, 6), 16);
-    return `rgba(${r}, ${g}, ${b}, ${opacity})`;
-}
-
-function isNumericType(type: string): boolean {
-    switch (type) {
-        case 'int':
-        case 'long':
-        case 'real':
-        case 'decimal':
-            return true;
-        default:
-            return false;
-    }
-}
-
-function isDateTimeType(type: string): boolean {
-    return type === 'datetime' || type === 'timespan';
-}
-
 function isTimeChartType(type: string): boolean {
     return type === ChartType.TimeLineChart
         || type === ChartType.TimeLineWithAnomalyChart
@@ -1124,28 +1093,7 @@ function tryGetDouble(value: unknown): number | undefined {
     return n;
 }
 
-// ─── Data Access Helpers (replaces DataTable/DataColumn) ────────────────────
-
-/** A ResultColumn together with its position in the table. */
-interface ColumnRef {
-    column: ResultColumn;
-    index: number;
-}
-
-function getColumnRef(table: ResultTable, name: string): ColumnRef | undefined {
-    const idx = table.columns.findIndex(c => c.name === name);
-    if (idx < 0) return undefined;
-    const col = table.columns[idx];
-    if (!col) return undefined;
-    return { column: col, index: idx };
-}
-
-function getColumnRefByIndex(table: ResultTable, index: number): ColumnRef | undefined {
-    if (index < 0 || index >= table.columns.length) return undefined;
-    const col = table.columns[index];
-    if (!col) return undefined;
-    return { column: col, index };
-}
+// ─── Data Access Helpers ────────────────────────────────────────────────────
 
 function getColumnValues(table: ResultTable, col: ColumnRef): unknown[] {
     return table.rows.map(row => row?.[col.index]);

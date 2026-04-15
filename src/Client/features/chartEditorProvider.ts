@@ -32,6 +32,7 @@ const chartTypes: ReadonlyMap<string, string> = new Map([
     ['3Dchart', '3D'],
     ['timechart', 'Time - Line'],
     ['anomalychart', 'Time - Line w/ Anomalies'],
+    ['timepivot', 'Time - Pivot'],
     ['treemap', 'Tree Map'],
 ]);
 
