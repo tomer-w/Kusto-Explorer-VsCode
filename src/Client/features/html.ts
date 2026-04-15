@@ -123,7 +123,7 @@ function formatCellValue(value: unknown | null): string {
  * @param text The text to escape
  * @returns The escaped text safe for use in HTML
  */
-function escapeHtml(text: string): string {
+export function escapeHtml(text: string): string {
     return text
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')

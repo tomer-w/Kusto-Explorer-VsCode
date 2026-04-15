@@ -12,6 +12,7 @@
 
 import type { ChartOptions } from './server';
 import type { IWebView } from './webview';
+import { escapeHtml } from './html';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -70,10 +71,6 @@ export interface IChartEditorProvider {
 }
 
 // ─── Implementation ─────────────────────────────────────────────────────────
-
-function escapeHtml(text: string): string {
-    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
 
 class ChartEditorView implements IChartEditorView {
     private readonly webview: IWebView;

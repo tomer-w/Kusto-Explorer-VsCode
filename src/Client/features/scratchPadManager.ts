@@ -80,7 +80,11 @@ export class ScratchPadManager {
             return [];
         }
         const order = this.readOrder();
-        return this.reconcileOrder(order, filesOnDisk);
+        const reconciled = this.reconcileOrder(order, filesOnDisk);
+        if (reconciled.length !== order.length || reconciled.some((f, i) => f !== order[i])) {
+            this.saveOrder(reconciled);
+        }
+        return reconciled;
     }
 
     /** Reads the order list from disk. Returns an empty array if the file doesn't exist or is invalid. */
@@ -196,10 +200,6 @@ export class ScratchPadManager {
             .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
         reconciled.push(...newFiles);
 
-        if (reconciled.length !== order.length || reconciled.some((f, i) => f !== order[i])) {
-            this.saveOrder(reconciled);
-        }
-
         return reconciled;
     }
 }
@@ -234,6 +234,11 @@ class ScratchPadFileSystemProvider implements vscode.FileSystemProvider {
         return this.manager.getScratchPadFiles().map(f => [f, vscode.FileType.File]);
     }
 
+    // FileSystemProvider methods use synchronous fs calls because the VS Code
+    // FileSystemProvider interface is invoked synchronously by the editor for
+    // document open/save operations. While the interface accepts Thenable returns,
+    // async I/O here risks interleaving with editor state. These files are small
+    // scratch pads on local disk, so blocking is negligible.
     readFile(uri: vscode.Uri): Uint8Array {
         const filePath = this.manager.diskPath(uri);
         return fs.readFileSync(filePath);

@@ -8,17 +8,22 @@ import type { IServer, ResultData } from './server';
  * Cache for query results, keyed by document URI and minified query text.
  * This mirrors the server's ResultsManager concept of caching results.
  */
-export class ResultsCache {
+export class ResultsCache implements vscode.Disposable {
     /** Map from document URI to its cached query results */
     private readonly documentCache = new Map<string, Map<string, ResultData>>();
+    private readonly disposable: vscode.Disposable;
 
     constructor(private readonly server: IServer) {
         // Clear cached results when a document is closed
-        vscode.workspace.onDidCloseTextDocument((document) => {
+        this.disposable = vscode.workspace.onDidCloseTextDocument((document) => {
             if (document.languageId === 'kusto') {
                 this.documentCache.delete(document.uri.toString());
             }
         });
+    }
+
+    dispose(): void {
+        this.disposable.dispose();
     }
 
     /**

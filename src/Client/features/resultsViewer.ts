@@ -15,6 +15,7 @@ import type { IChartProvider, IChartView } from './chartProvider';
 import type { IChartEditorProvider, IChartEditorView } from './chartEditorProvider';
 import type { IDataTableProvider, IDataTableView } from './dataTableProvider';
 import type { IWebView } from './webview';
+import { escapeHtml } from './html';
 
 /** The view type used for the custom results viewer. */
 const resultViewerViewType = 'kusto.resultViewer';
@@ -86,49 +87,42 @@ export function isDarkMode(): boolean {
  */
 function getChartDefaults(): Partial<server.ChartOptions> {
     const config = vscode.workspace.getConfiguration('kusto.chart');
-    const defaults: Partial<server.ChartOptions> = {};
-    const showLegend = config.get<string>('showLegend');
-    if (showLegend === 'yes') { defaults.showLegend = true; }
-    else if (showLegend === 'no') { defaults.showLegend = false; }
-    const legendPosition = config.get<string>('legendPosition');
-    if (legendPosition) { defaults.legendPosition = legendPosition; }
-    const xShowTicks = config.get<string>('xShowTicks');
-    if (xShowTicks === 'yes') { defaults.xShowTicks = true; }
-    else if (xShowTicks === 'no') { defaults.xShowTicks = false; }
-    const yShowTicks = config.get<string>('yShowTicks');
-    if (yShowTicks === 'yes') { defaults.yShowTicks = true; }
-    else if (yShowTicks === 'no') { defaults.yShowTicks = false; }
-    const xShowGrid = config.get<string>('xShowGrid');
-    if (xShowGrid === 'yes') { defaults.xShowGrid = true; }
-    else if (xShowGrid === 'no') { defaults.xShowGrid = false; }
-    const yShowGrid = config.get<string>('yShowGrid');
-    if (yShowGrid === 'yes') { defaults.yShowGrid = true; }
-    else if (yShowGrid === 'no') { defaults.yShowGrid = false; }
-    const showValues = config.get<string>('showValues');
-    if (showValues === 'yes') { defaults.showValues = true; }
-    else if (showValues === 'no') { defaults.showValues = false; }
-    const textSize = config.get<string>('textSize');
-    if (textSize) { defaults.textSize = textSize; }
-    const aspectRatio = config.get<string>('aspectRatio');
-    if (aspectRatio) { defaults.aspectRatio = aspectRatio; }
-    const xTickAngle = config.get<string>('xTickAngle');
-    if (xTickAngle) { defaults.xTickAngle = Number(xTickAngle); }
-    const yTickAngle = config.get<string>('yTickAngle');
-    if (yTickAngle) { defaults.yTickAngle = Number(yTickAngle); }
-    const showMarkers = config.get<string>('showMarkers');
-    if (showMarkers === 'yes') { defaults.showMarkers = true; }
-    else if (showMarkers === 'no') { defaults.showMarkers = false; }
-    const markerOutline = config.get<string>('markerOutline');
-    if (markerOutline === 'yes') { defaults.markerOutline = true; }
-    else if (markerOutline === 'no') { defaults.markerOutline = false; }
-    const markerShape = config.get<string>('markerShape');
-    if (markerShape) { defaults.markerShape = markerShape; }
-    const cycleMarkerShapes = config.get<string>('markerShapesCycle');
-    if (cycleMarkerShapes === 'yes') { defaults.cycleMarkerShapes = true; }
-    else if (cycleMarkerShapes === 'no') { defaults.cycleMarkerShapes = false; }
-    const markerSize = config.get<string>('markerSize');
-    if (markerSize) { defaults.markerSize = markerSize; }
-    return defaults;
+    const defaults: Record<string, unknown> = {};
+
+    function setBool(key: string, prop: string): void {
+        const val = config.get<string>(key);
+        if (val === 'yes') { defaults[prop] = true; }
+        else if (val === 'no') { defaults[prop] = false; }
+    }
+
+    function setString(key: string, prop: string): void {
+        const val = config.get<string>(key);
+        if (val) { defaults[prop] = val; }
+    }
+
+    function setNumber(key: string, prop: string): void {
+        const val = config.get<string>(key);
+        if (val) { defaults[prop] = Number(val); }
+    }
+
+    setBool('showLegend', 'showLegend');
+    setString('legendPosition', 'legendPosition');
+    setBool('xShowTicks', 'xShowTicks');
+    setBool('yShowTicks', 'yShowTicks');
+    setBool('xShowGrid', 'xShowGrid');
+    setBool('yShowGrid', 'yShowGrid');
+    setBool('showValues', 'showValues');
+    setString('textSize', 'textSize');
+    setString('aspectRatio', 'aspectRatio');
+    setNumber('xTickAngle', 'xTickAngle');
+    setNumber('yTickAngle', 'yTickAngle');
+    setBool('showMarkers', 'showMarkers');
+    setBool('markerOutline', 'markerOutline');
+    setString('markerShape', 'markerShape');
+    setBool('markerShapesCycle', 'cycleMarkerShapes');
+    setString('markerSize', 'markerSize');
+
+    return defaults as Partial<server.ChartOptions>;
 }
 
 /**
@@ -137,14 +131,6 @@ function getChartDefaults(): Partial<server.ChartOptions> {
 function applyChartDefaults(options: server.ChartOptions): server.ChartOptions {
     const defaults = getChartDefaults();
     return { ...defaults, ...options };
-}
-
-function escapeHtmlStatic(text: string): string {
-    return text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
 }
 
 /** Base script injected into all result webviews for core message handling. */
@@ -261,11 +247,12 @@ export class ResultsViewer {
     private readonly dataTableProvider: IDataTableProvider;
     private readonly htmlBuilder: DocumentViewProvider;
 
+    // ─── State shared with DocumentViewProvider (same file) ────────
     /** Map from webview to its viewer state. */
-    private readonly viewerStates = new Map<vscode.WebviewPanel, ResultViewerState>();
+    readonly viewerStates = new Map<vscode.WebviewPanel, ResultViewerState>();
 
     /** Map from document-view webview to its backing document URI. */
-    private readonly webviewDocuments = new Map<vscode.WebviewPanel, vscode.Uri>();
+    readonly webviewDocuments = new Map<vscode.WebviewPanel, vscode.Uri>();
 
     /** Set of all result webviews (singleton + results viewer tabs). */
     private readonly resultWebviews = new Set<vscode.WebviewPanel>();
@@ -303,13 +290,13 @@ export class ResultsViewer {
     private singletonTableViews: IDataTableView[] = [];
     private singletonTableWebViews: WebViewAdapter[] = [];
 
-    // ─── Chart views for document views ───────────────────────────────
-    private readonly chartViews = new Map<vscode.WebviewPanel, IChartView>();
-    private readonly chartWebViews = new Map<vscode.WebviewPanel, WebViewAdapter>();
-    private readonly editorViews = new Map<vscode.WebviewPanel, IChartEditorView>();
-    private readonly editorWebViews = new Map<vscode.WebviewPanel, WebViewAdapter>();
-    private readonly dataTableViews = new Map<vscode.WebviewPanel, IDataTableView[]>();
-    private readonly dataTableWebViews = new Map<vscode.WebviewPanel, WebViewAdapter[]>();
+    // ─── View maps for document views (shared with DocumentViewProvider) ─
+    readonly chartViews = new Map<vscode.WebviewPanel, IChartView>();
+    readonly chartWebViews = new Map<vscode.WebviewPanel, WebViewAdapter>();
+    readonly editorViews = new Map<vscode.WebviewPanel, IChartEditorView>();
+    readonly editorWebViews = new Map<vscode.WebviewPanel, WebViewAdapter>();
+    readonly dataTableViews = new Map<vscode.WebviewPanel, IDataTableView[]>();
+    readonly dataTableWebViews = new Map<vscode.WebviewPanel, WebViewAdapter[]>();
 
     constructor(context: vscode.ExtensionContext, server: IServer, clipboard: IClipboard, chartProvider: IChartProvider, chartEditorProvider: IChartEditorProvider, dataTableProvider: IDataTableProvider) {
         this.server = server;
@@ -438,7 +425,7 @@ export class ResultsViewer {
      * Registers a result webview for copy command targeting.
      * Tracks focus and removes on dispose.
      */
-    private registerResultWebview(webview: vscode.WebviewPanel): void {
+    registerResultWebview(webview: vscode.WebviewPanel): void {
         this.resultWebviews.add(webview);
         this.activeResultWebview = webview;
 
@@ -459,7 +446,7 @@ export class ResultsViewer {
     /**
      * Wires up the copy result/error callbacks on a chart view.
      */
-    private wireChartView(view: IChartView): void {
+    wireChartView(view: IChartView): void {
         view.onCopyResult = (pngDataUrl, svgDataUrl) => this.onCopyChartMessage(pngDataUrl, svgDataUrl);
         view.onCopyError = (error) => vscode.window.showErrorMessage(`Chart copy failed in webview: ${error}`);
     }
@@ -584,7 +571,7 @@ export class ResultsViewer {
     async displayErrorInBottomView(error: server.QueryDiagnostic): Promise<void> {
         this.disposeSingletonView();
 
-        const htmlMessage = `<html><body><table><tr><td>\u274C</td><td><pre>${escapeHtmlStatic(error.message)}</pre></td></tr><tr><td></td><td><pre>${escapeHtmlStatic(error.details || '')}</pre></td></tr></table></body></html>`;
+        const htmlMessage = `<html><body><table><tr><td>\u274C</td><td><pre>${escapeHtml(error.message)}</pre></td></tr><tr><td></td><td><pre>${escapeHtml(error.details || '')}</pre></td></tr></table></body></html>`;
 
         await this.showPanelHtml(htmlMessage, undefined, true);
     }
@@ -1312,28 +1299,28 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         };
 
         // Track this results viewer webview for copy commands
-        this.viewer['registerResultWebview'](webviewPanel);
+        this.viewer.registerResultWebview(webviewPanel);
 
         // Track document association for rerun support
-        this.viewer['webviewDocuments'].set(webviewPanel, document.uri);
+        this.viewer.webviewDocuments.set(webviewPanel, document.uri);
 
         // Create chart view for this document view
         const docAdapter = new WebViewAdapter(webviewPanel.webview);
         const docChartView = this.chartProvider.createView(docAdapter);
-        this.viewer['wireChartView'](docChartView);
-        (this.viewer['chartViews'] as Map<vscode.WebviewPanel, IChartView>).set(webviewPanel, docChartView);
-        (this.viewer['chartWebViews'] as Map<vscode.WebviewPanel, WebViewAdapter>).set(webviewPanel, docAdapter);
+        this.viewer.wireChartView(docChartView);
+        this.viewer.chartViews.set(webviewPanel, docChartView);
+        this.viewer.chartWebViews.set(webviewPanel, docAdapter);
 
         // Create chart editor view for this document view
         const docEditorAdapter = new WebViewAdapter(webviewPanel.webview, 'setEditPanelContent');
         const docEditorView = this.chartEditorProvider.createView(docEditorAdapter);
-        (this.viewer['editorViews'] as Map<vscode.WebviewPanel, IChartEditorView>).set(webviewPanel, docEditorView);
-        (this.viewer['editorWebViews'] as Map<vscode.WebviewPanel, WebViewAdapter>).set(webviewPanel, docEditorAdapter);
+        this.viewer.editorViews.set(webviewPanel, docEditorView);
+        this.viewer.editorWebViews.set(webviewPanel, docEditorAdapter);
 
         // Update context key when this panel gains/loses focus
         const updateChartContext = () => {
             if (webviewPanel.active) {
-                const state = this.viewer['viewerStates'].get(webviewPanel);
+                const state = this.viewer.viewerStates.get(webviewPanel);
                 const hasChart = !!state?.resultData?.chartOptions;
                 vscode.commands.executeCommand('setContext', 'kusto.resultViewerHasChart', hasChart);
                 vscode.commands.executeCommand('setContext', 'kusto.resultViewerChartActive', state?.activeView === 'chart');
@@ -1348,7 +1335,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
 
         // Wire chart editor options callback
         docEditorView.onOptionsChanged = async (options, clientOnly) => {
-            const state = this.viewer['viewerStates'].get(webviewPanel);
+            const state = this.viewer.viewerStates.get(webviewPanel);
             if (!state) { return; }
             state.chartOptionsOverride = options;
             state.resultData = { ...state.resultData, chartOptions: state.chartOptionsOverride };
@@ -1379,7 +1366,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         // Listen for messages from the webview
         webviewPanel.webview.onDidReceiveMessage(async (message) => {
             if (message.command === 'viewChanged' && typeof message.viewId === 'string') {
-                const state = this.viewer['viewerStates'].get(webviewPanel);
+                const state = this.viewer.viewerStates.get(webviewPanel);
                 if (state) {
                     state.activeView = message.viewId;
                 }
@@ -1428,16 +1415,16 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
             if (chartOptionsTimer) { clearTimeout(chartOptionsTimer); }
             docChartView.dispose();
             docEditorView.dispose();
-            const tableViews = (this.viewer['dataTableViews'] as Map<vscode.WebviewPanel, IDataTableView[]>).get(webviewPanel);
+            const tableViews = this.viewer.dataTableViews.get(webviewPanel);
             tableViews?.forEach(v => v.dispose());
-            (this.viewer['chartViews'] as Map<vscode.WebviewPanel, IChartView>).delete(webviewPanel);
-            (this.viewer['chartWebViews'] as Map<vscode.WebviewPanel, WebViewAdapter>).delete(webviewPanel);
-            (this.viewer['editorViews'] as Map<vscode.WebviewPanel, IChartEditorView>).delete(webviewPanel);
-            (this.viewer['editorWebViews'] as Map<vscode.WebviewPanel, WebViewAdapter>).delete(webviewPanel);
-            (this.viewer['dataTableViews'] as Map<vscode.WebviewPanel, IDataTableView[]>).delete(webviewPanel);
-            (this.viewer['dataTableWebViews'] as Map<vscode.WebviewPanel, WebViewAdapter[]>).delete(webviewPanel);
-            this.viewer['viewerStates'].delete(webviewPanel);
-            this.viewer['webviewDocuments'].delete(webviewPanel);
+            this.viewer.chartViews.delete(webviewPanel);
+            this.viewer.chartWebViews.delete(webviewPanel);
+            this.viewer.editorViews.delete(webviewPanel);
+            this.viewer.editorWebViews.delete(webviewPanel);
+            this.viewer.dataTableViews.delete(webviewPanel);
+            this.viewer.dataTableWebViews.delete(webviewPanel);
+            this.viewer.viewerStates.delete(webviewPanel);
+            this.viewer.webviewDocuments.delete(webviewPanel);
             vscode.commands.executeCommand('setContext', 'kusto.resultViewerHasChart', false);
             vscode.commands.executeCommand('setContext', 'kusto.resultViewerChartActive', false);
             vscode.commands.executeCommand('setContext', 'kusto.resultViewerHasQuery', false);
@@ -1475,8 +1462,8 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         // Track viewer state for copy commands
         const tableNames = resultData.tables.map(t => t.name);
         const firstActiveView = hasChart ? 'chart' : 'table-0';
-        const existingState = this.viewer['viewerStates'].get(webviewPanel);
-        this.viewer['viewerStates'].set(webviewPanel, {
+        const existingState = this.viewer.viewerStates.get(webviewPanel);
+        this.viewer.viewerStates.set(webviewPanel, {
             resultData,
             tableNames,
             activeView: firstActiveView,
@@ -1493,11 +1480,11 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         const rawChartOptions = existingState?.chartOptionsOverride ?? resultData.chartOptions;
         const chartOptions = rawChartOptions ? applyChartDefaults(rawChartOptions) : undefined;
         const columnNames = resultData.tables[0]?.columns?.map(c => c.name) ?? [];
-        const docWebView = (this.viewer['chartWebViews'] as Map<vscode.WebviewPanel, WebViewAdapter>).get(webviewPanel);
-        const docEditorWebView = (this.viewer['editorWebViews'] as Map<vscode.WebviewPanel, WebViewAdapter>).get(webviewPanel);
+        const docWebView = this.viewer.chartWebViews.get(webviewPanel);
+        const docEditorWebView = this.viewer.editorWebViews.get(webviewPanel);
 
         // Create table views for each result table (dispose previous ones first)
-        const prevTableViews = (this.viewer['dataTableViews'] as Map<vscode.WebviewPanel, IDataTableView[]>).get(webviewPanel);
+        const prevTableViews = this.viewer.dataTableViews.get(webviewPanel);
         prevTableViews?.forEach(v => v.dispose());
         const docTableViews: IDataTableView[] = [];
         const docTableWebViews: WebViewAdapter[] = [];
@@ -1507,18 +1494,18 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
             docTableViews.push(view);
             docTableWebViews.push(adapter);
         }
-        (this.viewer['dataTableViews'] as Map<vscode.WebviewPanel, IDataTableView[]>).set(webviewPanel, docTableViews);
-        (this.viewer['dataTableWebViews'] as Map<vscode.WebviewPanel, WebViewAdapter[]>).set(webviewPanel, docTableWebViews);
+        this.viewer.dataTableViews.set(webviewPanel, docTableViews);
+        this.viewer.dataTableWebViews.set(webviewPanel, docTableWebViews);
 
         // Render chart and editor content into adapters BEFORE building HTML
         // so their contentHtml is embedded inline in the page.
         if (hasChart && chartOptions) {
             const table = resultData.tables[0];
             if (table) {
-                const controller = (this.viewer['chartViews'] as Map<vscode.WebviewPanel, IChartView>).get(webviewPanel);
+                const controller = this.viewer.chartViews.get(webviewPanel);
                 controller?.renderChart(table, chartOptions, darkMode);
             }
-            const editorView = (this.viewer['editorViews'] as Map<vscode.WebviewPanel, IChartEditorView>).get(webviewPanel);
+            const editorView = this.viewer.editorViews.get(webviewPanel);
             editorView?.setOptions(chartOptions, columnNames);
         }
 
@@ -1538,7 +1525,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         const darkMode = isDarkMode();
         const table = modifiedData.tables[0];
         if (table) {
-            const controller = (this.viewer['chartViews'] as Map<vscode.WebviewPanel, IChartView>).get(webviewPanel);
+            const controller = this.viewer.chartViews.get(webviewPanel);
             controller?.renderChart(table, chartOptions, darkMode);
         }
     }

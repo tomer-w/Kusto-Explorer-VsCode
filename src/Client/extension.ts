@@ -117,6 +117,7 @@ export async function activate(context: ExtensionContext)
     const dataTableProvider = new DataTableProvider(server, clipboard);
     const resultsViewer = new ResultsViewer(context, server, clipboard, chartProvider, chartEditorProvider, dataTableProvider);
     const resultsCache = new ResultsCache(server);
+    context.subscriptions.push(resultsCache);
     context.subscriptions.push(
         vscode.commands.registerCommand('kusto.copyChart', () => resultsViewer.copyChart()),
         vscode.commands.registerCommand('kusto.toggleChartEditor', () => resultsViewer.toggleChartEditor()),
@@ -179,10 +180,11 @@ export async function activate(context: ExtensionContext)
     // activate connections panel and related features
     const connectionsPanel = new ConnectionsPanel(context, server, clipboard, importer, connectionManager);
     await connectionsPanel.initialize();
+    // No-op commands assigned to tree items to suppress auto-expand on click
     context.subscriptions.push(
         vscode.commands.registerCommand('kusto.selectServer', () => {}),
         vscode.commands.registerCommand('kusto.selectDatabase', () => {}),
-        vscode.commands.registerCommand('kusto.selectEntity', () => {}),
+        vscode.commands.registerCommand('kusto.selectEntity', () => {}),  
         vscode.commands.registerCommand('kusto.addServer', () => connectionsPanel.addServer()),
         vscode.commands.registerCommand('kusto.addServerToGroup', (item) => connectionsPanel.addServerToGroup(item)),
         vscode.commands.registerCommand('kusto.addServerGroup', () => connectionsPanel.addServerGroup()),
