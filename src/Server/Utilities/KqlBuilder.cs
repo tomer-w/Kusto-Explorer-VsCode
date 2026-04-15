@@ -58,9 +58,8 @@ public class KqlBuilder : TextBuilder
         if (fnNeedsSpace(this.LastCharacter, text[0]))
         {
             Write(" ");
-        }
-                      
-        if (IsKustoIdentifierCharacter(this.LastCharacter)
+        }                      
+        else if (IsKustoIdentifierCharacter(this.LastCharacter)
             && IsKustoIdentifierCharacter(text[0]))
         {
             Write(" ");

@@ -72,8 +72,6 @@ public class ServerSchemaSource : ISchemaSource
                 (_cluster, hset) => hset.Add(databaseName)
                 );
         }
-
-        badDbNames.Add(databaseName);
     }
 
     public async Task<DatabaseInfo?> GetDatabaseInfoAsync(string clusterName, string databaseName, string? contextCluster, CancellationToken cancellationToken)
@@ -439,7 +437,7 @@ public class ServerSchemaSource : ISchemaSource
             .Select(e =>
                 new StoredQueryResultInfo
                 {
-                    Name = e.EntityType,
+                    Name = e.EntityName,
                     Columns = CreateColumnInfo(e.CslOutputSchema),
                     Description = e.DocString,
                     Folder = e.Folder

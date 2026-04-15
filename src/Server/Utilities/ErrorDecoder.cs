@@ -193,7 +193,7 @@ public class ErrorDecoder
                 return false;
             }
 
-            var regexTokenString = Regex.Escape(@"\b" + token + @"\b");
+            var regexTokenString = @"\b" + Regex.Escape(token) + @"\b";
             var regexTokenMatch = new Regex(regexTokenString);
             var matches = regexTokenMatch.Matches(command);
             if (matches.SafeFastNone())
