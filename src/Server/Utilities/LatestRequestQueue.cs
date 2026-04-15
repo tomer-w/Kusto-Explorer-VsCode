@@ -28,12 +28,17 @@ public class LatestRequestQueue
             _latestTask?.CancellationSource.Dispose();
             var cts = new CancellationTokenSource();
             var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, cancellation);
-            var task = Task.Run(() => asyncAction(combinedCts.Token), combinedCts.Token);
-            task.ContinueWith(
-                _ => combinedCts.Dispose(),
-                CancellationToken.None,
-                TaskContinuationOptions.ExecuteSynchronously,
-                TaskScheduler.Default);
+            var task = Task.Run(() => asyncAction(combinedCts.Token), combinedCts.Token)
+                .ContinueWith(
+                    antecedent =>
+                    {
+                        combinedCts.Dispose();
+                        return antecedent;
+                    },
+                    CancellationToken.None,
+                    TaskContinuationOptions.ExecuteSynchronously,
+                    TaskScheduler.Default)
+                .Unwrap();
             _latestTask = new TaskInfo(task, cts);
             return task;
         }
