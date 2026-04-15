@@ -9,7 +9,7 @@ export const workspace = {
     onDidChangeTextDocument: () => ({ dispose: () => {} }),
     onDidOpenTextDocument: () => ({ dispose: () => {} }),
     getConfiguration: () => ({
-        get: () => undefined,
+        get: (_key: string, defaultValue?: unknown) => defaultValue,
         has: () => false,
         inspect: () => undefined,
         update: async () => {},

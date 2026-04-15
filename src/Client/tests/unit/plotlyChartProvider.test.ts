@@ -65,7 +65,7 @@ function makePieTable(): ResultTable {
 
 // ─── createView ─────────────────────────────────────────────────────────
 
-describe('PlotlyChartProvider', () => {
+describe('CompositeChartProvider', () => {
     let provider: CompositeChartProvider;
 
     beforeEach(() => {

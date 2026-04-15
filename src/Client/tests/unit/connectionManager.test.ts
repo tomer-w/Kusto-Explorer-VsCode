@@ -88,11 +88,15 @@ describe('type guards', () => {
 
 describe('getDisplayName', () => {
     it('returns short name when cluster ends with default domain', () => {
-        // The default domain from the mock config is .kusto.windows.net
-        // Since our mock returns undefined for config, getDisplayName returns undefined
-        // unless we test with the real logic. Let's verify the function exists and handles
-        // a cluster that doesn't match.
+        expect(getDisplayName('mycluster.kusto.windows.net')).toBe('mycluster');
+    });
+
+    it('returns undefined when cluster does not end with default domain', () => {
         expect(getDisplayName('standalone-cluster')).toBeUndefined();
+    });
+
+    it('returns undefined when cluster is just the domain', () => {
+        expect(getDisplayName('.kusto.windows.net')).toBeUndefined();
     });
 });
 

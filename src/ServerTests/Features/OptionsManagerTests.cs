@@ -120,14 +120,12 @@ public class OptionsManagerTests
         var settingSource = new TestSettingSource();
         var optionsManager = new OptionsManager(settingSource);
 
-        var eventFired = false;
-        optionsManager.OptionsChanged += (sender, args) => eventFired = true;
+        var eventFired = new ManualResetEventSlim(false);
+        optionsManager.OptionsChanged += (sender, args) => eventFired.Set();
 
         settingSource.RaiseSettingsChanged();
 
-        // Give it a moment for async operation
-        Thread.Sleep(100);
-        Assert.IsTrue(eventFired);
+        Assert.IsTrue(eventFired.Wait(TimeSpan.FromSeconds(5)), "OptionsChanged should fire after SettingsChanged");
     }
 
     #endregion
