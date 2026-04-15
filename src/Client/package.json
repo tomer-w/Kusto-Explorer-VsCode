@@ -31,6 +31,7 @@
     "compile": "esbuild ./extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap",
     "watch": "esbuild ./extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap --watch",
     "type-check": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
     "test": "vitest run",
     "test:unit": "vitest run",
     "test:watch": "vitest",
@@ -693,8 +694,16 @@
         "properties": {
           "kusto.chart.showLegend": {
             "type": "string",
-            "enum": ["", "yes", "no"],
-            "enumItemLabels": ["(default)", "Yes", "No"],
+            "enum": [
+              "",
+              "yes",
+              "no"
+            ],
+            "enumItemLabels": [
+              "(default)",
+              "Yes",
+              "No"
+            ],
             "default": "",
             "description": "Default legend visibility for charts"
           },
@@ -717,36 +726,76 @@
           },
           "kusto.chart.xShowTicks": {
             "type": "string",
-            "enum": ["", "yes", "no"],
-            "enumItemLabels": ["(default)", "Yes", "No"],
+            "enum": [
+              "",
+              "yes",
+              "no"
+            ],
+            "enumItemLabels": [
+              "(default)",
+              "Yes",
+              "No"
+            ],
             "default": "",
             "description": "Default X-axis tick mark visibility for charts"
           },
           "kusto.chart.yShowTicks": {
             "type": "string",
-            "enum": ["", "yes", "no"],
-            "enumItemLabels": ["(default)", "Yes", "No"],
+            "enum": [
+              "",
+              "yes",
+              "no"
+            ],
+            "enumItemLabels": [
+              "(default)",
+              "Yes",
+              "No"
+            ],
             "default": "",
             "description": "Default Y-axis tick mark visibility for charts"
           },
           "kusto.chart.xShowGrid": {
             "type": "string",
-            "enum": ["", "yes", "no"],
-            "enumItemLabels": ["(default)", "Yes", "No"],
+            "enum": [
+              "",
+              "yes",
+              "no"
+            ],
+            "enumItemLabels": [
+              "(default)",
+              "Yes",
+              "No"
+            ],
             "default": "",
             "description": "Default X-axis grid line visibility for charts"
           },
           "kusto.chart.yShowGrid": {
             "type": "string",
-            "enum": ["", "yes", "no"],
-            "enumItemLabels": ["(default)", "Yes", "No"],
+            "enum": [
+              "",
+              "yes",
+              "no"
+            ],
+            "enumItemLabels": [
+              "(default)",
+              "Yes",
+              "No"
+            ],
             "default": "",
             "description": "Default Y-axis grid line visibility for charts"
           },
           "kusto.chart.showValues": {
             "type": "string",
-            "enum": ["", "yes", "no"],
-            "enumItemLabels": ["(default)", "Yes", "No"],
+            "enum": [
+              "",
+              "yes",
+              "no"
+            ],
+            "enumItemLabels": [
+              "(default)",
+              "Yes",
+              "No"
+            ],
             "default": "",
             "description": "Default data value label visibility for charts"
           },
@@ -872,8 +921,16 @@
           },
           "kusto.chart.showMarkers": {
             "type": "string",
-            "enum": ["", "yes", "no"],
-            "enumItemLabels": ["(default)", "Yes", "No"],
+            "enum": [
+              "",
+              "yes",
+              "no"
+            ],
+            "enumItemLabels": [
+              "(default)",
+              "Yes",
+              "No"
+            ],
             "default": "",
             "description": "Show markers on line chart traces by default"
           },
@@ -904,15 +961,31 @@
           },
           "kusto.chart.markerShapesCycle": {
             "type": "string",
-            "enum": ["", "yes", "no"],
-            "enumItemLabels": ["(default)", "Yes", "No"],
+            "enum": [
+              "",
+              "yes",
+              "no"
+            ],
+            "enumItemLabels": [
+              "(default)",
+              "Yes",
+              "No"
+            ],
             "default": "",
             "description": "Marker Shapes Cycle: cycle through shapes across traces by default"
           },
           "kusto.chart.markerOutline": {
             "type": "string",
-            "enum": ["", "yes", "no"],
-            "enumItemLabels": ["(default)", "Yes", "No"],
+            "enum": [
+              "",
+              "yes",
+              "no"
+            ],
+            "enumItemLabels": [
+              "(default)",
+              "Yes",
+              "No"
+            ],
             "default": "",
             "description": "Show a white outline around markers to help them stand out"
           },
@@ -1918,10 +1991,14 @@
     "@types/mocha": "^10.0.10",
     "@types/node": "^18.0.0",
     "@types/vscode": "^1.90.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.5.2",
     "esbuild": "^0.27.5",
+    "eslint": "^9.0.0",
     "typescript": "^5.0.0",
+    "typescript-eslint": "^8.0.0",
     "vitest": "^4.1.3"
   }
 }

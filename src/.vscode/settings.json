@@ -1,0 +1,5 @@
+{
+    "terminal.integrated.env.windows": {
+        "Path": "c:\\nvm\\v20.19.0;${env:Path}"
+    }
+}

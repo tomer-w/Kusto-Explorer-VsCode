@@ -351,14 +351,14 @@ export class Server implements IServer {
      * Notifies the server that the connections list has been updated.
      */
     sendConnectionsUpdated(connections: string[]): void {
-        this.client.sendNotification('kusto/connectionsUpdated', { connections });
+        void this.client.sendNotification('kusto/connectionsUpdated', { connections });
     }
 
     /**
      * Notifies the server that a document's connection has changed.
      */
     sendDocumentConnectionChanged(uri: string, cluster: string | null, database: string | null, serverKind: string | null): void {
-        this.client.sendNotification('kusto/documentConnectionChanged', { uri, cluster, database, serverKind });
+        void this.client.sendNotification('kusto/documentConnectionChanged', { uri, cluster, database, serverKind });
     }
 
     // ─── Notifications (server → client) ────────────────────────────────

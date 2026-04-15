@@ -207,11 +207,11 @@ export class ConnectionsPanel {
     };
     context.subscriptions.push(
         this.treeView.onDidChangeVisibility((e) => {
-            if (e.visible) { tryPromptImport(); }
+            if (e.visible) { void tryPromptImport(); }
         })
     );
     // Also check if the panel is already visible at activation time
-    if (this.treeView.visible) { tryPromptImport(); }
+    if (this.treeView.visible) { void tryPromptImport(); }
 
     // Handle tree item expansion events - fetch data for servers (databases fetch in getChildren)
     context.subscriptions.push(
