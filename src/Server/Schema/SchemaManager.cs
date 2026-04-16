@@ -183,7 +183,7 @@ public class SchemaManager : ISchemaManager
             await Task.Delay(_refreshDelay);
             if (cachedCluster.State != CacheState.SchemaSource)
             {
-                await LoadClusterFromSourceAsync(cachedCluster, contextCluster, key, cancellationToken).ConfigureAwait(false);
+                await LoadClusterFromSourceAsync(cachedCluster, contextCluster, key, useThisCancellationToken).ConfigureAwait(false);
                 this.ClusterRefreshed?.Invoke(cachedCluster.Name);
             }
         });

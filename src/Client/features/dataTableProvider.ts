@@ -74,7 +74,7 @@ class DataTableView implements IDataTableView {
         this.subscription = webview.handle((msg) => {
             if (msg._token !== this.token) return;
             if (msg.command === 'copyText' && typeof msg.text === 'string') {
-                this.clipboard.copyText(msg.text);
+                void this.clipboard.copyText(msg.text);
             }
             if (msg.command === 'requestExpression') {
                 this.resolveExpression();

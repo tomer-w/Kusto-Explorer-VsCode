@@ -139,7 +139,7 @@ export class Importer {
             return;
         }
 
-        var scratchPadCount = this.importManager.getScratchPadsToImportCount();
+        const scratchPadCount = this.importManager.getScratchPadsToImportCount();
 
         if (!skipConfirm) {
             const confirm = await vscode.window.showInformationMessage(

@@ -63,11 +63,7 @@ public class DiagnosticsManager : IDiagnosticsManager
 
     private DiagnosticsState GetDiagnosticState(Uri documentId)
     {
-        if (!_idToDiagnosticState.TryGetValue(documentId, out var info))
-        {
-            info = _idToDiagnosticState.GetOrCreateValue(documentId);
-        }
-        return info;
+        return _idToDiagnosticState.GetOrCreateValue(documentId);
     }
 
     private void RecomputeDiagnostics(Uri documentId)

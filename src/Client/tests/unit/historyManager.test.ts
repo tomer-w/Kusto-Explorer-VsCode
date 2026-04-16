@@ -160,16 +160,16 @@ describe('HistoryManager', () => {
             const data = makeResultData('test query', 3);
             const uri = await mgr.addHistoryEntry(data);
 
-            const result = mgr.readHistoryFile(uri);
+            const result = await mgr.readHistoryFile(uri);
             expect(result).toBeDefined();
             expect(result!.query).toBe('test query');
             expect(result!.tables[0]!.rows).toHaveLength(3);
         });
 
-        it('returns undefined for missing file', () => {
+        it('returns undefined for missing file', async () => {
             const mgr = createManager();
             const fakeUri = { fsPath: path.join(historyDir, 'nonexistent.kqr') } as vscode.Uri;
-            expect(mgr.readHistoryFile(fakeUri)).toBeUndefined();
+            expect(await mgr.readHistoryFile(fakeUri)).toBeUndefined();
         });
     });
 
@@ -179,9 +179,9 @@ describe('HistoryManager', () => {
             const uri = await mgr.addHistoryEntry(makeResultData('original'));
 
             const updated = makeResultData('updated', 10);
-            mgr.writeHistoryFile(uri, updated);
+            await mgr.writeHistoryFile(uri, updated);
 
-            const result = mgr.readHistoryFile(uri);
+            const result = await mgr.readHistoryFile(uri);
             expect(result!.query).toBe('updated');
             expect(result!.tables[0]!.rows).toHaveLength(10);
         });

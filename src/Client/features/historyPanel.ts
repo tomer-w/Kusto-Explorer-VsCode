@@ -47,7 +47,7 @@ export class HistoryPanel {
     /** Opens a history item in the singleton results view. */
     async openHistoryItem(item: { meta: HistoryEntry }): Promise<void> {
         const uri = this.manager.getHistoryFileUri(item.meta.fileName);
-        const resultData = this.manager.readHistoryFile(uri);
+        const resultData = await this.manager.readHistoryFile(uri);
         if (!resultData) {
             vscode.window.showErrorMessage('Failed to read history entry.');
             return;

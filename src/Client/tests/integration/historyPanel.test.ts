@@ -101,7 +101,7 @@ suite('History Integration Tests', () => {
         assert.ok(stat.size > 0, 'History file should exist and have content');
 
         // Verify the data can be read back
-        const readBack = historyManager.readHistoryFile(uri);
+        const readBack = await historyManager.readHistoryFile(uri);
         assert.ok(readBack, 'Should be able to read back the history file');
         assert.strictEqual(readBack!.query, 'persist test');
         assert.strictEqual(readBack!.cluster, 'cluster1');

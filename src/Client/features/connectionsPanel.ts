@@ -58,8 +58,9 @@ export class ConnectionsPanel {
     }));
     context.subscriptions.push(connections.registerOnServersAndGroupsChanged(async () => {
         this.connectionsProvider.refresh();
-        // After refresh, restore the tree selection based on the current document's connection
-        // Use a small delay to allow the tree to rebuild first
+        // After refresh, restore the tree selection based on the current document's connection.
+        // The 100ms delay is a workaround because the VS Code TreeView API does not provide
+        // a callback or event for when the tree has finished rebuilding after a refresh.
         // Skip if we're already updating the tree (to prevent infinite loop from fetchDatabasesForCluster)
         if (!this.isFetchingDatabasesForTreeUpdate) {
             setTimeout(async () => {
@@ -76,7 +77,7 @@ export class ConnectionsPanel {
     this.treeView = vscode.window.createTreeView('kusto.connections', {
         treeDataProvider: this.connectionsProvider,
         showCollapseAll: true,
-        dragAndDropController: new KustoDragAndDropController(connections, () => { this.isDragging = true; setTimeout(() => { this.isDragging = false; }, 100); })
+        dragAndDropController: new KustoDragAndDropController(connections, () => { this.isDragging = true; setTimeout(() => { this.isDragging = false; }, 100); }) // delay resets drag state after tree selection events settle
     });
     context.subscriptions.push(this.treeView);
 
@@ -187,7 +188,9 @@ export class ConnectionsPanel {
         })
     );
 
-    // Initialize tree selection for active document (deferred to avoid activation issues)
+    // Initialize tree selection for active document.
+    // Deferred with setTimeout because the tree view must finish its initial getChildren()
+    // call before reveal() can find tree items. No API event signals this completion.
     setTimeout(async () => {
         const editor = vscode.window.activeTextEditor;
         if (editor && editor.document.languageId === 'kusto') {
@@ -207,11 +210,11 @@ export class ConnectionsPanel {
     };
     context.subscriptions.push(
         this.treeView.onDidChangeVisibility((e) => {
-            if (e.visible) { tryPromptImport(); }
+            if (e.visible) { void tryPromptImport(); }
         })
     );
     // Also check if the panel is already visible at activation time
-    if (this.treeView.visible) { tryPromptImport(); }
+    if (this.treeView.visible) { void tryPromptImport(); }
 
     // Handle tree item expansion events - fetch data for servers (databases fetch in getChildren)
     context.subscriptions.push(
@@ -1610,7 +1613,7 @@ class KustoDragAndDropController implements vscode.TreeDragAndDropController<Kus
  * the correct expression based on the document's connection context.
  */
 class KustoDocumentDropEditProvider implements vscode.DocumentDropEditProvider {
-    constructor(private readonly server: Server) {}
+    constructor(private readonly server: IServer) {}
 
     async provideDocumentDropEdits(
         document: vscode.TextDocument,

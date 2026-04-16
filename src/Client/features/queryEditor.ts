@@ -653,7 +653,7 @@ function activateQuerySeparators(context: vscode.ExtensionContext, server: IServ
                 // Set new timer - waits for typing to stop before requesting boundaries
                 // This ensures didChange notifications are sent to the server first
                 const timer = setTimeout(() => {
-                    updateQuerySeparators(uri);
+                    void updateQuerySeparators(uri);
                     debounceTimers.delete(uri);
                 }, 300); // 300ms after last change
                 
@@ -665,7 +665,7 @@ function activateQuerySeparators(context: vscode.ExtensionContext, server: IServ
     // Update decorations for already open documents
     for (const document of vscode.workspace.textDocuments) {
         if (document.languageId === 'kusto') {
-            updateQuerySeparators(document.uri.toString());
+            void updateQuerySeparators(document.uri.toString());
         }
     }
 }

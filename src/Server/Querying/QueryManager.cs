@@ -371,7 +371,7 @@ public class QueryManager : IQueryManager
                 return new RunResult
                 {
                     Query = context.Query,
-                    QueryParameters = context.Parameters
+                    QueryParameters = newContext.Parameters
                 };
             }
 
@@ -432,7 +432,7 @@ public class QueryManager : IQueryManager
     {
         var properties = context.Options;
         var newProperties = directive.GetArgumentPairs(properties);
-        return context with { Options = newProperties };
+        return context with { Query = directive.AfterDirectiveText, Options = newProperties };
     }
 
     private ExecutionContext ApplyQueryParameterDirective(ClientDirective directive, ExecutionContext context)

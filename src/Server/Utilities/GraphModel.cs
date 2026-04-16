@@ -6,6 +6,7 @@ using Newtonsoft.Json.Linq;
 
 namespace Kusto.Vscode;
 
+// disable nullability to allow construction of target instances before deserializing into them
 #nullable disable
 public class GraphModel
 {
@@ -71,6 +72,7 @@ public class GraphModelStepConverter : JsonConverter
         {
             "AddNodes" => new GraphModelNodeStep(),
             "AddEdges" => new GraphModelEdgeStep(),
+            // unexpected kind; json is bad or outdated, must fail entire deserialization
             _ => throw new InvalidOperationException($"Unknown graph model step kind: {kind}")
         };
 

@@ -63,17 +63,13 @@ public class ServerSchemaSource : ISchemaSource
 
     private void AddBadDatabaseName(string clusterName, string databaseName)
     {
-        if (!_clusterToBadDbNameMap.TryGetValue(clusterName, out var badDbNames))
-        {
-            badDbNames = ImmutableInterlocked.AddOrUpdate(
-                ref _clusterToBadDbNameMap,
-                clusterName,
-                _cluster => [databaseName],
-                (_cluster, hset) => hset.Add(databaseName)
-                );
-        }
-
-        badDbNames.Add(databaseName);
+        // updates cluster bad database information
+        _ = ImmutableInterlocked.AddOrUpdate(
+            ref _clusterToBadDbNameMap,
+            clusterName,
+            _cluster => [databaseName],
+            (_cluster, hset) => hset.Add(databaseName)
+            );
     }
 
     public async Task<DatabaseInfo?> GetDatabaseInfoAsync(string clusterName, string databaseName, string? contextCluster, CancellationToken cancellationToken)
@@ -439,7 +435,7 @@ public class ServerSchemaSource : ISchemaSource
             .Select(e =>
                 new StoredQueryResultInfo
                 {
-                    Name = e.EntityType,
+                    Name = e.EntityName,
                     Columns = CreateColumnInfo(e.CslOutputSchema),
                     Description = e.DocString,
                     Folder = e.Folder

@@ -85,7 +85,6 @@ public class Server : LspServer, ILogger, ISettingSource, IStorage
     private void InitEvents()
     {
         _symbolManager.GlobalsChanged += _symbolManager_GlobalsChanged;
-        _documentManager.DocumentChanged += _scriptManager_ScriptChanged;
         _diagnosticsManager.DiagnosticsUpdated += _diagnosticsManager_DiagnosticsUpdated;
     }
 
@@ -109,16 +108,26 @@ public class Server : LspServer, ILogger, ISettingSource, IStorage
     private async void _symbolManager_GlobalsChanged(object? sender, GlobalState e)
     {
         // since globals changed it is possible that some semantic tokens are now different, so request client to refresh them
-        await this.SendWorkspaceSemanticTokensRefresh();
+        try
+        {
+            await this.SendWorkspaceSemanticTokensRefresh();
+        }
+        catch (Exception ex)
+        {
+            _logger?.Log($"Error refreshing semantic tokens: {ex.Message}");
+        }
     }
 
-    private void _scriptManager_ScriptChanged(object? sender, Uri id)
+    private async void _diagnosticsManager_DiagnosticsUpdated(object? sender, DiagnosticInfo diagnostics)
     {
-    }
-
-    private void _diagnosticsManager_DiagnosticsUpdated(object? sender, DiagnosticInfo diagnostics)
-    {
-        var _ = PublishDiagnosticsAsync(diagnostics);
+        try
+        {
+            await PublishDiagnosticsAsync(diagnostics);
+        }
+        catch (Exception ex)
+        {
+            _logger?.Log($"Error publishing diagnostics: {ex.Message}");
+        }
     }
 
     #endregion
@@ -345,16 +354,6 @@ public class Server : LspServer, ILogger, ISettingSource, IStorage
     #endregion
 
     #region Workspace Configuration
-
-    public async Task<ImmutableDictionary<string, object>> GetWorkspaceSettingsAsync(IReadOnlyList<Setting> settings, CancellationToken cancellationToken)
-    {
-        var sendParams = new LSP.ConfigurationParams();
-        sendParams.Items = settings.Select(s => new LSP.ConfigurationItem { Section = s.Name }).ToArray();
-        var results = await this.SendWorkspaceConfigurationAsync(sendParams, cancellationToken).ConfigureAwait(false);
-        return results
-            .Select((r, i) => (s: settings[i], value: r))
-            .ToImmutableDictionary(t => t.s.Name, t => t.value!);
-    }
 
     public override Task OnWorkspaceDidChangeConfigurationAsync(LSP.DidChangeConfigurationParams @params)
     {
@@ -701,7 +700,7 @@ public class Server : LspServer, ILogger, ISettingSource, IStorage
             case ClassificationKind.Identifier:
             case ClassificationKind.ClientParameter:
             case ClassificationKind.QueryParameter:
-                return $"**{classyText.Text}**"; // name like things are italic
+                return $"*{classyText.Text}*"; // name like things are italic
 
             case ClassificationKind.QueryOperator:
             case ClassificationKind.ScalarOperator:
@@ -711,7 +710,7 @@ public class Server : LspServer, ILogger, ISettingSource, IStorage
             case ClassificationKind.MaterializedView:
             case ClassificationKind.SchemaMember:
             case ClassificationKind.SignatureParameter:
-                return $"*{classyText.Text}*"; // keyword like things are bold
+                return $"**{classyText.Text}**"; // keyword like things are bold
 
             default:
                 return classyText.Text;

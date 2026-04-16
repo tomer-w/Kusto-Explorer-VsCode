@@ -34,7 +34,7 @@ public static class InfoToSymbolExtensions
         infos.Select(ToSymbol).ToImmutableList();
 
     public static ColumnSymbol ToSymbol(this ColumnInfo info) =>
-        new ColumnSymbol(info.Name, ScalarTypes.GetSymbol(info.Name), info.Description);
+        new ColumnSymbol(info.Name, ScalarTypes.GetSymbol(info.Type), info.Description);
      
     public static FunctionSymbol ToSymbol(this FunctionInfo info) =>
         new FunctionSymbol(info.Name, info.Parameters, info.Body, info.Description);

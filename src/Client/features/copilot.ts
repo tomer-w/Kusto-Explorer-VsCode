@@ -13,12 +13,14 @@ import * as server from './server';
 import type { ConnectionManager } from './connectionManager';
 import { ENTITY_DEFINITION_SCHEME } from './entityDefinitionProvider';
 import { resultTableToMarkdown } from './markdown';
-import { ResultsViewer } from './resultsViewer';
-import type { ResultViewMode } from './resultsViewer';
+import type { ResultsViewer } from './resultsViewer';
 
 const COPILOT_PARTICIPANT_ID = 'kusto';
 const MAX_SCHEMA_CHARS = 30000; // Approximate limit to stay within token limits
 
+// Module-level state set once in activate(). These act as singletons for the extension's
+// lifetime. A context object or closure-based approach would be cleaner for testability,
+// but the copilot API's tool registration model makes that impractical.
 let languageClient: IServer;
 
 let conn: ConnectionManager;

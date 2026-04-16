@@ -141,6 +141,8 @@ public class ConnectionManager : IConnectionManager
             return new KustoConnection(_manager, newBuilder);
         }
 
+        // These providers are IDisposable but are intentionally not disposed.
+        // They are cached for the lifetime of the server process and cleaned up on exit.
         private ICslQueryProvider? _queryProvider;
         public ICslQueryProvider QueryProvider
         {
@@ -180,19 +182,22 @@ public class ConnectionManager : IConnectionManager
                 var resultReader = (Kusto.Language.KustoCode.GetKind(query) == CodeKinds.Command)
                     ? await this.AdminProvider.ExecuteControlCommandAsync(this.Database, query, properties).ConfigureAwait(false)
                     : await this.QueryProvider.ExecuteQueryAsync(this.Database, query, properties, cancellationToken).ConfigureAwait(false);
-                var dataSet = KustoDataReaderParser.ParseV1(resultReader, null);
-                var mainResult = dataSet?.GetMainResultsOrNull();
-                var tables = dataSet != null
-                    ? dataSet.Tables.Where(t => t.TableKind == WellKnownDataSet.PrimaryResult).Select(t => (DataTable)t.TableData).ToImmutableList()
-                    : null;
-                var chartOptions = mainResult?.VisualizationOptions != null && mainResult.VisualizationOptions.Visualization != Data.Utils.VisualizationKind.None
-                    ? ChartOptions.FromChartVisualizationOptions(mainResult.VisualizationOptions)
-                    : null;
-                return new ExecuteResult
+                using (resultReader)
                 {
-                    Tables = tables,
-                    ChartOptions = chartOptions
-                };
+                    var dataSet = KustoDataReaderParser.ParseV1(resultReader, null);
+                    var mainResult = dataSet?.GetMainResultsOrNull();
+                    var tables = dataSet != null
+                        ? dataSet.Tables.Where(t => t.TableKind == WellKnownDataSet.PrimaryResult).Select(t => (DataTable)t.TableData).ToImmutableList()
+                        : null;
+                    var chartOptions = mainResult?.VisualizationOptions != null && mainResult.VisualizationOptions.Visualization != Data.Utils.VisualizationKind.None
+                        ? ChartOptions.FromChartVisualizationOptions(mainResult.VisualizationOptions)
+                        : null;
+                    return new ExecuteResult
+                    {
+                        Tables = tables,
+                        ChartOptions = chartOptions
+                    };
+                }
             }
             catch (Exception ex)
             {

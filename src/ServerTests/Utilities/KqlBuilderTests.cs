@@ -412,7 +412,82 @@ public class KqlBuilderTests
 
             """
             );
+    }
 
+    #region WriteSpaced Tests
+
+    [TestMethod]
+    public void TestWriteSpaced_AddsSpaceBetweenIdentifiers()
+    {
+        var builder = new KqlBuilder(FormattingOptions.Default);
+        builder.Write("abc");
+        builder.WriteSpaced("def");
+        Assert.AreEqual("abc def", builder.Text);
+    }
+
+    [TestMethod]
+    public void TestWriteSpaced_NoDoubleSpace()
+    {
+        // Regression: WriteSpaced should not produce double spaces
+        var builder = new KqlBuilder(FormattingOptions.Default);
+        builder.Write("abc ");
+        builder.WriteSpaced("def");
+        Assert.AreEqual("abc def", builder.Text);
+    }
+
+    [TestMethod]
+    public void TestWriteSpaced_SpaceBeforeTextStartingWithSpace()
+    {
+        var builder = new KqlBuilder(FormattingOptions.Default);
+        builder.Write("abc");
+        builder.WriteSpaced(" def");
+        Assert.AreEqual("abc def", builder.Text);
+    }
+
+    [TestMethod]
+    public void TestWriteSpaced_AddsSpaceBetweenNonWhitespace()
+    {
+        var builder = new KqlBuilder(FormattingOptions.Default);
+        builder.Write("(");
+        builder.WriteSpaced("x");
+        // '(' is not an identifier char, but SpaceIfNone fires because neither side is whitespace
+        Assert.AreEqual("( x", builder.Text);
+    }
+
+    [TestMethod]
+    public void TestWriteSpaced_EmptyString_NoChange()
+    {
+        var builder = new KqlBuilder(FormattingOptions.Default);
+        builder.Write("abc");
+        builder.WriteSpaced("");
+        Assert.AreEqual("abc", builder.Text);
+    }
+
+    [TestMethod]
+    public void TestWriteSpaced_FirstWrite_NoLeadingSpace()
+    {
+        var builder = new KqlBuilder(FormattingOptions.Default);
+        builder.WriteSpaced("abc");
+        Assert.AreEqual("abc", builder.Text);
+    }
+
+    [TestMethod]
+    public void TestWriteSpaced_MultipleWrites()
+    {
+        var builder = new KqlBuilder(FormattingOptions.Default);
+        builder.WriteSpaced("let");
+        builder.WriteSpaced("x");
+        builder.WriteSpaced("=");
+        builder.WriteSpaced("1");
+        Assert.AreEqual("let x = 1", builder.Text);
+    }
+
+    #endregion
+
+    // Restore the third TestGraphModel test case that was part of TestGraphModel test method
+    [TestMethod]
+    public void TestGraphModel_BothFenceTypes()
+    {
         TestGraphModel(
             new GraphModelInfo
             {

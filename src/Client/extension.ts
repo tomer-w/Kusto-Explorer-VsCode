@@ -85,8 +85,13 @@ export async function activate(context: ExtensionContext)
             clientOptions
         );
 
-        await client.start();
-        server = new Server(client, context);
+        try {
+            await client.start();
+            server = new Server(client, context);
+        } catch (error) {
+            outputChannel.appendLine(`Failed to start language server: ${error instanceof Error ? error.message : String(error)}`);
+            window.showErrorMessage('Kusto language server failed to start. Language features will be unavailable.');
+        }
     }
 
     // ─── UI features (always registered so integration tests will run) ────────────────────
@@ -112,6 +117,7 @@ export async function activate(context: ExtensionContext)
     const dataTableProvider = new DataTableProvider(server, clipboard);
     const resultsViewer = new ResultsViewer(context, server, clipboard, chartProvider, chartEditorProvider, dataTableProvider);
     const resultsCache = new ResultsCache(server);
+    context.subscriptions.push(resultsCache);
     context.subscriptions.push(
         vscode.commands.registerCommand('kusto.copyChart', () => resultsViewer.copyChart()),
         vscode.commands.registerCommand('kusto.toggleChartEditor', () => resultsViewer.toggleChartEditor()),
@@ -174,10 +180,11 @@ export async function activate(context: ExtensionContext)
     // activate connections panel and related features
     const connectionsPanel = new ConnectionsPanel(context, server, clipboard, importer, connectionManager);
     await connectionsPanel.initialize();
+    // No-op commands assigned to tree items to suppress auto-expand on click
     context.subscriptions.push(
         vscode.commands.registerCommand('kusto.selectServer', () => {}),
         vscode.commands.registerCommand('kusto.selectDatabase', () => {}),
-        vscode.commands.registerCommand('kusto.selectEntity', () => {}),
+        vscode.commands.registerCommand('kusto.selectEntity', () => {}),  
         vscode.commands.registerCommand('kusto.addServer', () => connectionsPanel.addServer()),
         vscode.commands.registerCommand('kusto.addServerToGroup', (item) => connectionsPanel.addServerToGroup(item)),
         vscode.commands.registerCommand('kusto.addServerGroup', () => connectionsPanel.addServerGroup()),
@@ -323,7 +330,9 @@ async function fixCommitCharDoubling(commitChars: string[], originalCommand?: vs
             }
         });
 
-        // Safety: dispose the listener if no change comes within 1 second
+        // Safety: dispose the listener if no change comes within 1 second.
+        // Note: dispose() is idempotent, so calling it from both the handler and
+        // this timeout is harmless. JS is single-threaded, so there is no race.
         setTimeout(() => disposable.dispose(), 1000);
     }
 

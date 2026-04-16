@@ -137,6 +137,7 @@ export class ConnectionManager {
     private readonly serversAndGroupsChangedListeners: (() => void)[] = [];
     private readonly documentConnections = new Map<string, DocumentConnection>();
     private serversAndGroups: ServersAndGroupsData = { items: [] };
+    // Array with linear search. Cluster count is small (typically <20) so Map overhead isn't warranted.
     private clusterConnections: { cluster: string, connection: string, databases?: DatabaseInfo[] }[] = [];
 
     constructor(private readonly context: vscode.ExtensionContext, private readonly server: IServer) {
@@ -750,13 +751,17 @@ export class ConnectionManager {
             return undefined;
         }
 
-        // Try to infer connection from document content
-        let inferred: DocumentConnection | undefined;
+        // If we have a saved connection with a cluster, return it directly
+        if (saved?.cluster) {
+            return saved;
+        }
+
+        // No saved connection — try to infer from document content
         try {
             const inferredResult = await this.server.inferDocumentConnection(uri);
             
             if (inferredResult?.cluster) {
-                inferred = {
+                return {
                     uri,
                     cluster: inferredResult.cluster,
                     database: inferredResult.database
@@ -766,19 +771,7 @@ export class ConnectionManager {
             console.error(`Failed to infer connection for ${uri}:`, error);
         }
 
-        // If we have a saved connection with a cluster
-        if (saved?.cluster) {
-            // Check if it matches inferred - if so, remove from saved set
-            if (inferred && saved.cluster === inferred.cluster && saved.database === inferred.database) {
-                this.documentConnections.delete(uri);
-                await this.saveDocumentConnections();
-            }
-            // Return the saved connection (same value either way)
-            return saved;
-        }
-
-        // No saved connection - return inferred (may be undefined)
-        return inferred;
+        return undefined;
     }
 
     /**

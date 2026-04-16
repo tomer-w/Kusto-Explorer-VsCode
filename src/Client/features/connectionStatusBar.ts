@@ -29,17 +29,17 @@ export class ConnectionStatusBar {
         // Update status bar when the active document's connection changes
         context.subscriptions.push(this.connections.registerOnDocumentConnectionChanged(async (uri: string) => {
             if (vscode.window.activeTextEditor?.document.uri.toString() === uri) {
-                this.refresh();
+                void this.refresh();
             }
         }));
 
         // Update status bar when active editor changes
         context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(() => {
-            this.refresh();
+            void this.refresh();
         }));
 
         // Initialize status bar for currently active editor
-        this.refresh();
+        void this.refresh();
     }
 
     /**
