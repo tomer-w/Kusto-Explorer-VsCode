@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -237,6 +237,78 @@ describe('HistoryManager', () => {
             expect(mgr.getEntries()).toEqual([]);
             const kqrFiles = fs.readdirSync(historyDir).filter(f => f.endsWith('.kqr'));
             expect(kqrFiles).toHaveLength(0);
+        });
+    });
+
+    describe('hasEntryForQuery', () => {
+        it('returns true for a query that has been added', async () => {
+            const mgr = createManager();
+            await mgr.addHistoryEntry(makeResultData('StormEvents | count'));
+            expect(await mgr.hasEntryForQuery('StormEvents | count')).toBe(true);
+        });
+
+        it('returns false for a query that has not been added', async () => {
+            const mgr = createManager();
+            await mgr.addHistoryEntry(makeResultData('StormEvents | count'));
+            expect(await mgr.hasEntryForQuery('OtherTable | count')).toBe(false);
+        });
+
+        it('returns false when history is empty', async () => {
+            const mgr = createManager();
+            expect(await mgr.hasEntryForQuery('StormEvents | count')).toBe(false);
+        });
+    });
+
+    describe('getMatchingEntry', () => {
+        it('returns the matching entry for a query', async () => {
+            const mgr = createManager();
+            await mgr.addHistoryEntry(makeResultData('StormEvents | count'));
+            const entry = await mgr.getMatchingEntry('StormEvents | count');
+            expect(entry).toBeDefined();
+            expect(entry!.queryPreview).toBe('StormEvents | count');
+        });
+
+        it('returns the most recent entry when multiple match', async () => {
+            vi.useFakeTimers();
+            try {
+                const mgr = createManager();
+                vi.setSystemTime(new Date('2025-01-01T00:00:00Z'));
+                await mgr.addHistoryEntry(makeResultData('StormEvents | count', 1));
+                vi.setSystemTime(new Date('2025-01-01T00:00:01Z'));
+                await mgr.addHistoryEntry(makeResultData('StormEvents | count', 5));
+                const entry = await mgr.getMatchingEntry('StormEvents | count');
+                expect(entry).toBeDefined();
+                expect(entry!.rowCount).toBe(5);
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it('returns undefined for a non-matching query', async () => {
+            const mgr = createManager();
+            await mgr.addHistoryEntry(makeResultData('StormEvents | count'));
+            expect(await mgr.getMatchingEntry('OtherTable | count')).toBeUndefined();
+        });
+    });
+
+    describe('getEntryData', () => {
+        it('returns ResultData for a valid entry', async () => {
+            const mgr = createManager();
+            await mgr.addHistoryEntry(makeResultData('StormEvents | count', 3));
+            const entry = mgr.getEntries()[0]!;
+            const data = await mgr.getEntryData(entry);
+            expect(data).toBeDefined();
+            expect(data!.query).toBe('StormEvents | count');
+            expect(data!.tables[0]!.rows).toHaveLength(3);
+        });
+
+        it('returns undefined for a deleted entry', async () => {
+            const mgr = createManager();
+            await mgr.addHistoryEntry(makeResultData('StormEvents | count'));
+            const entry = mgr.getEntries()[0]!;
+            await mgr.deleteEntry(entry.fileName);
+            const data = await mgr.getEntryData(entry);
+            expect(data).toBeUndefined();
         });
     });
 

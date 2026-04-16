@@ -37,7 +37,7 @@ export class HistoryPanel {
         manager.onDidAddEntry((meta) => {
             this.treeProvider.refresh();
             const item = new HistoryItem(meta);
-            this.treeView.reveal(item, { select: true, focus: false });
+            this.treeView.reveal(item, { select: true, focus: false }).then(undefined, (err) => console.warn('Failed to reveal history item:', err));
         });
 
     }
@@ -47,7 +47,7 @@ export class HistoryPanel {
     /** Reveals and selects a history entry in the tree view. */
     revealEntry(entry: HistoryEntry): void {
         const item = new HistoryItem(entry);
-        this.treeView.reveal(item, { select: true, focus: false });
+        this.treeView.reveal(item, { select: true, focus: false }).then(undefined, (err) => console.warn('Failed to reveal history item:', err));
     }
 
     /** Opens a history item in the singleton results view. */
