@@ -61,12 +61,11 @@ Run: `cd Client && npx vitest run`
 | **connectionManager** | Connection CRUD, document connection resolution, display names |
 | **dataTableProvider** | Table rendering, column sorting, filtering |
 | **entityDefinitionProvider** | Entity definition content retrieval |
-| **historyManager** | History file read/write (async), entry management, max entries |
+| **historyManager** | History file read/write (async), entry management, max entries, query hash lookup |
 | **html** | HTML escaping utilities |
 | **importManager** | Import flow, connection resolution, server detection |
 | **markdown** | Markdown table generation |
 | **plotlyChartProvider** | Plotly trace generation, chart type mapping, series handling |
-| **resultsCache** | Result storage, retrieval, eviction |
 | **scratchPadManager** | File creation, ordering, reconciliation |
 | **timePivotChartProvider** | View lifecycle, edge cases (no data, no datetime, zero range), range/point modes |
 

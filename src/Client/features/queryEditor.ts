@@ -9,8 +9,8 @@ import * as vscode from 'vscode';
 import type { IServer, SelectionRange, Range } from './server';
 import type { ConnectionManager } from './connectionManager';
 import { ResultsViewer } from './resultsViewer';
-import { ResultsCache } from './resultsCache';
 import { HistoryManager } from './historyManager';
+import type { HistoryPanel } from './historyPanel';
 import type { IClipboard } from './clipboard';
 import type { ClipboardItem } from './clipboard';
 import { ENTITY_DEFINITION_SCHEME } from './entityDefinitionProvider';
@@ -42,28 +42,28 @@ export class QueryEditor {
 
     private readonly codeLensProvider: KustoCodeLensProvider;
     private readonly server: IServer;
-    private readonly cache: ResultsCache;
     private readonly clipboard: IClipboard;
     private readonly history: HistoryManager;
     private readonly connections: ConnectionManager;
     private readonly resultsViewer: ResultsViewer;
+    private readonly historyPanel: HistoryPanel;
     private readonly errorRangeDecoration: vscode.TextEditorDecorationType;
 
     constructor(
         context: vscode.ExtensionContext, 
         server: IServer, 
-        resultsCache: ResultsCache, 
         clipboard: IClipboard, 
         historyManager: HistoryManager, 
         connectionManager: ConnectionManager, 
-        resultsViewer: ResultsViewer) {
+        resultsViewer: ResultsViewer,
+        historyPanel: HistoryPanel) {
 
         this.server = server;
-        this.cache = resultsCache;
         this.clipboard = clipboard;
         this.history = historyManager;
         this.connections = connectionManager;
         this.resultsViewer = resultsViewer;
+        this.historyPanel = historyPanel;
 
         this.errorRangeDecoration = vscode.window.createTextEditorDecorationType({
             before: {
@@ -73,7 +73,7 @@ export class QueryEditor {
         });
 
         // Register CodeLens provider for queries
-        this.codeLensProvider = new KustoCodeLensProvider(this.server, this.cache);
+        this.codeLensProvider = new KustoCodeLensProvider(this.server, this.history);
         context.subscriptions.push(
             vscode.languages.registerCodeLensProvider(
                 { language: 'kusto' },
@@ -169,9 +169,6 @@ export class QueryEditor {
             }
             else if (runResult?.data)
             {
-                // Cache the result data on the client side
-                await this.cache.addToCache(uri, queryText, runResult.data);
-
                 // Add to history and use the history file as backing for the singleton view
                 const historyUri = await this.history.addHistoryEntry(runResult.data);
                 this.resultsViewer.setSingletonViewBackingUri(historyUri);
@@ -190,33 +187,37 @@ export class QueryEditor {
     }
 
     /**
-     * Shows the cached results for the query at the given position in the active document.
-     * @param startLine The start line of the query position
-     * @param startChar The start character of the query position
+     * Shows history results for the query at the given position in the active document.
+     * Uses the query hash to find a matching history entry, then verifies the full query.
      */
-    async showCachedResults(startLine: number, startChar: number): Promise<void> {
+    async showHistoryResults(startLine: number, startChar: number): Promise<void> {
         const editor = vscode.window.activeTextEditor;
         if (!editor || editor.document.languageId !== 'kusto') {
             return;
         }
 
         try {
-            const uri = editor.document.uri.toString();
-
             // Resolve the query range for this position
-            const queryRange = await this.server.getQueryRange(uri, { line: startLine, character: startChar });
+            const queryRange = await this.server.getQueryRange(editor.document.uri.toString(), { line: startLine, character: startChar });
             if (!queryRange) {
                 return;
             }
 
-            // Extract the query text and look up cached result data
             const queryText = editor.document.getText(new vscode.Range(
                 queryRange.start.line, queryRange.start.character,
                 queryRange.end.line, queryRange.end.character
             ));
-            const cachedData = await this.cache.getFromCache(uri, queryText);
-            if (cachedData) {
-                await this.resultsViewer.displayResults(cachedData);
+
+            const entry = await this.history.getMatchingEntry(queryText);
+            const data = entry ? await this.history.getEntryData(entry) : undefined;
+            if (data) {
+                await this.resultsViewer.displayResults(data);
+                this.historyPanel.revealEntry(entry);
+            } else {
+                await this.resultsViewer.displayErrorInBottomView({
+                    message: 'This query has changed since it was last run.',
+                    details: 'Run the query again to update the results.'
+                });
             }
         } catch (error) {
             vscode.window.showErrorMessage(`Failed to show results: ${error}`);
@@ -407,7 +408,7 @@ class KustoCodeLensProvider implements vscode.CodeLensProvider {
     private _onDidChangeCodeLenses = new vscode.EventEmitter<void>();
     readonly onDidChangeCodeLenses = this._onDidChangeCodeLenses.event;
 
-    constructor(private readonly server: IServer, private readonly cache: ResultsCache) {
+    constructor(private readonly server: IServer, private readonly history: HistoryManager) {
     }
 
     refresh(): void {
@@ -469,12 +470,12 @@ class KustoCodeLensProvider implements vscode.CodeLensProvider {
                     arguments: [range.start.line, range.start.character, range.end.line, range.end.character]
                 }));
 
-                // Only show Results lens if there is cached data for this query
-                if (await this.cache.hasInCache(document.uri.toString(), queryText)) {
+                // Only show Results lens if there is a history entry for this query
+                if (await this.history.hasEntryForQuery(queryText)) {
                     lenses.push(new vscode.CodeLens(vsRange, {
                         title: '📊 Results',
                         command: 'kusto.showResults',
-                        tooltip: 'Show cached results for this query',
+                        tooltip: 'Show results from history for this query',
                         arguments: [range.start.line, range.start.character]
                     }));
                 }
