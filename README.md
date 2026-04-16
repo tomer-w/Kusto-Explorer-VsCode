@@ -16,7 +16,7 @@
 
 ## Using this Repository
 
-- src/KustoExplorerVscode.slnx - Visual Studio solution file for the entire extension
+- KustoExplorerVscode.slnx - Visual Studio solution file for the entire extension
 - src/Client - TypeScript vscode extension
 - src/Server - C# LSP Server
 - src/ServerTests - C# Tests for the server codebase
@@ -38,8 +38,9 @@ Some other custom features are also implemented here, but eventually most of the
 
 ### Debugging the Server
 1. Run the extension in debug mode as described above, which will also launch the server in debug mode
-1. Open `src/KustoExplorerVscode.slnx` in Visual Studio
-2. Attach to the dotnet.exe process associated with the extension
+2. Attach to the server process using one of the following:
+   - **Visual Studio**: Open `KustoExplorerVscode.slnx` and attach to the dotnet.exe process associated with the extension
+   - **VS Code**: Open the repository root folder, then run command `Debug: Attach to a .NET 5+ or .NET Core process` (Ctrl+Shift+P) and select the `Server` process
 
 ### Creating the VSIX installer
 
