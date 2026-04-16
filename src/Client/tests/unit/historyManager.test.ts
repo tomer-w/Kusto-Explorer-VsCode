@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT license.
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -269,12 +269,19 @@ describe('HistoryManager', () => {
         });
 
         it('returns the most recent entry when multiple match', async () => {
-            const mgr = createManager();
-            await mgr.addHistoryEntry(makeResultData('StormEvents | count', 1));
-            await mgr.addHistoryEntry(makeResultData('StormEvents | count', 5));
-            const entry = await mgr.getMatchingEntry('StormEvents | count');
-            expect(entry).toBeDefined();
-            expect(entry!.rowCount).toBe(5);
+            vi.useFakeTimers();
+            try {
+                const mgr = createManager();
+                vi.setSystemTime(new Date('2025-01-01T00:00:00Z'));
+                await mgr.addHistoryEntry(makeResultData('StormEvents | count', 1));
+                vi.setSystemTime(new Date('2025-01-01T00:00:01Z'));
+                await mgr.addHistoryEntry(makeResultData('StormEvents | count', 5));
+                const entry = await mgr.getMatchingEntry('StormEvents | count');
+                expect(entry).toBeDefined();
+                expect(entry!.rowCount).toBe(5);
+            } finally {
+                vi.useRealTimers();
+            }
         });
 
         it('returns undefined for a non-matching query', async () => {
