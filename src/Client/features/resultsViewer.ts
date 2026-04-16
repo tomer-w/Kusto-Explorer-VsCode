@@ -1187,11 +1187,18 @@ export class ResultsViewer {
             vscode.window.showWarningMessage('No result data available to chart.');
             return;
         }
+        const hadChartOptions = !!this.lastPanelResultData.chartOptions;
         const chartData: server.ResultData = {
             ...this.lastPanelResultData,
             chartOptions: this.lastPanelResultData.chartOptions ?? { type: 'columnchart' }
         };
         await this.displayResultsInSingletonView(chartData, 'chart');
+
+        // When there was no render operator specifying a chart type, automatically
+        // open the chart editor so the user can pick the visualization they want.
+        if (!hadChartOptions && this.singletonView) {
+            this.singletonView.webview.postMessage({ command: 'setEditPanelVisible', visible: true });
+        }
     }
 
     /**

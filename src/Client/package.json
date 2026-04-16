@@ -1167,7 +1167,7 @@
               "main",
               "results"
             ],
-            "default": "beside",
+            "default": "main",
             "markdownDescription": "Where charts are displayed when results are in the bottom panel.\n- `beside`: In a singleton editor beside your query\n- `main`: In a singleton editor in the main area\n- `results`: Inline with results in the bottom panel\n\nWhen results display is `beside` or `main`, charts always appear as a tab in the same singleton view."
           }
         }
