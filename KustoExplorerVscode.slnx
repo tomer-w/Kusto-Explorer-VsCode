@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/root/">
+    <File Path=".github/workflows/ci.yml" />
+    <File Path="CONTRIBUTING.md" />
+    <File Path="LICENSE" />
+    <File Path="README.md" />
+    <File Path="SECURITY.md" />
+  </Folder>
+  <Project Path="src/Client/Client.esproj">
+    <Build />
+    <Deploy />
+  </Project>
+  <Project Path="src/Server/Server.csproj" />
+  <Project Path="src/ServerTests/ServerTests.csproj" />
+</Solution>
