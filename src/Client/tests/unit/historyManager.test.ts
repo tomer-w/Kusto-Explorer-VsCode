@@ -7,7 +7,8 @@ import * as os from 'os';
 import * as path from 'path';
 import { HistoryManager } from '../../features/historyManager';
 import type { HistoryEntry } from '../../features/historyManager';
-import type { ResultData } from '../../features/server';
+import type { ResultData, IServer } from '../../features/server';
+import { NullServer } from '../../features/server';
 import type * as vscode from 'vscode';
 
 function createMockContext(storageDir: string): vscode.ExtensionContext {
@@ -42,8 +43,8 @@ describe('HistoryManager', () => {
         fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
-    function createManager(): HistoryManager {
-        return new HistoryManager(createMockContext(tmpDir));
+    function createManager(server?: IServer): HistoryManager {
+        return new HistoryManager(createMockContext(tmpDir), server ?? new NullServer());
     }
 
     describe('constructor', () => {

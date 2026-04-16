@@ -34,6 +34,20 @@ export interface HistoryEntry {
     database?: string;
     /** Number of result rows. */
     rowCount?: number;
+    /** FNV-1a hash of the server-minified query text, for CodeLens and result lookup. */
+    queryHash?: number;
+}
+
+/**
+ * Computes a 32-bit FNV-1a hash of a string.
+ */
+function fnv1aHash(str: string): number {
+    let hash = 0x811c9dc5;
+    for (let i = 0; i < str.length; i++) {
+        hash ^= str.charCodeAt(i);
+        hash = Math.imul(hash, 0x01000193);
+    }
+    return hash >>> 0; // ensure unsigned
 }
 
 /**
@@ -42,6 +56,7 @@ export interface HistoryEntry {
 export class HistoryManager {
     private readonly historyDir: string;
     private readonly indexPath: string;
+    private readonly server: server.IServer;
     private readonly _onDidChange = new vscode.EventEmitter<void>();
     private readonly _onDidAddEntry = new vscode.EventEmitter<HistoryEntry>();
 
@@ -51,7 +66,8 @@ export class HistoryManager {
     /** Fires after a new entry is added, carrying its metadata for UI reveal. */
     readonly onDidAddEntry = this._onDidAddEntry.event;
 
-    constructor(context: vscode.ExtensionContext) {
+    constructor(context: vscode.ExtensionContext, server: server.IServer) {
+        this.server = server;
         this.historyDir = path.join(context.globalStorageUri.fsPath, 'history');
         fs.mkdirSync(this.historyDir, { recursive: true });
         this.indexPath = path.join(this.historyDir, INDEX_FILE);
@@ -73,6 +89,12 @@ export class HistoryManager {
     }
 
     // ─── Public API ─────────────────────────────────────────────────────
+
+    /** Computes a hash of the server-minified query text. */
+    private async computeQueryHash(query: string): Promise<number> {
+        const minified = (await this.server.getMinifiedQuery(query))?.minifiedQuery ?? query;
+        return fnv1aHash(minified);
+    }
 
     /** Returns all history entry metadata, most recent first. */
     getEntries(): HistoryEntry[] {
@@ -100,6 +122,7 @@ export class HistoryManager {
         await fs.promises.writeFile(filePath, content, 'utf-8');
 
         const rowCount = resultData.tables.reduce((sum, t) => sum + (t.rows?.length ?? 0), 0);
+        const queryHash = resultData.query ? await this.computeQueryHash(resultData.query) : undefined;
 
         const meta: HistoryEntry = {
             fileName,
@@ -108,6 +131,7 @@ export class HistoryManager {
             ...(resultData.cluster !== undefined && { cluster: resultData.cluster }),
             ...(resultData.database !== undefined && { database: resultData.database }),
             rowCount,
+            ...(queryHash !== undefined && { queryHash }),
         };
 
         // Prepend to index and enforce max size
@@ -147,6 +171,32 @@ export class HistoryManager {
     /** Returns the URI for a history entry's backing file. */
     getHistoryFileUri(fileName: string): vscode.Uri {
         return vscode.Uri.file(path.join(this.historyDir, fileName));
+    }
+
+    /**
+     * Returns true if any history entry is a match for the query, ignoring insignificant whitespace and comments.
+     * It is unlikely, but possible, that this produces a false positive, as the match is hash based.
+     */
+    async hasEntryForQuery(query: string): Promise<boolean> {
+        const queryHash = await this.computeQueryHash(query);
+        return this.readIndex().some(e => e.queryHash === queryHash);
+    }
+
+    /**
+     * Finds the most recent history entry whose query matches,
+     * or undefined if no match is found.
+     */
+    async getMatchingEntry(query: string): Promise<HistoryEntry | undefined> {
+        const queryHash = await this.computeQueryHash(query);
+        return this.readIndex().find(e => e.queryHash === queryHash);
+    }
+
+    /**
+     * Reads the ResultData for a history entry.
+     */
+    async getEntryData(entry: HistoryEntry): Promise<server.ResultData | undefined> {
+        const uri = this.getHistoryFileUri(entry.fileName);
+        return this.readHistoryFile(uri);
     }
 
     /** Deletes a single history entry's file and removes it from the index. */

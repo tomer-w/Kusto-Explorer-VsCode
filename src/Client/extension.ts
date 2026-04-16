@@ -15,7 +15,6 @@ import { DataTableProvider } from './features/dataTableProvider'
 import * as copilot from './features/copilot'
 import { ConnectionStatusBar } from './features/connectionStatusBar'
 import * as dotnet from './features/dotnet'
-import { ResultsCache } from './features/resultsCache'
 import { Clipboard } from './features/clipboard'
 import { ScratchPadManager, SCRATCH_PAD_SCHEME } from './features/scratchPadManager'
 import { ScratchPadPanel } from './features/scratchPadPanel'
@@ -116,8 +115,6 @@ export async function activate(context: ExtensionContext)
     const chartEditorProvider = new ChartEditorProvider();
     const dataTableProvider = new DataTableProvider(server, clipboard);
     const resultsViewer = new ResultsViewer(context, server, clipboard, chartProvider, chartEditorProvider, dataTableProvider);
-    const resultsCache = new ResultsCache(server);
-    context.subscriptions.push(resultsCache);
     context.subscriptions.push(
         vscode.commands.registerCommand('kusto.copyChart', () => resultsViewer.copyChart()),
         vscode.commands.registerCommand('kusto.toggleChartEditor', () => resultsViewer.toggleChartEditor()),
@@ -205,7 +202,7 @@ export async function activate(context: ExtensionContext)
     new ConnectionStatusBar(context, connectionManager);
 
     // activate query history
-    const historyManager = new HistoryManager(context);
+    const historyManager = new HistoryManager(context, server);
 
     // activate query execution features
     const historyPanel = new HistoryPanel(context, historyManager, resultsViewer);
@@ -214,14 +211,14 @@ export async function activate(context: ExtensionContext)
         vscode.commands.registerCommand('kusto.deleteHistoryItem', (item) => historyPanel.deleteHistoryItem(item)),
         vscode.commands.registerCommand('kusto.clearHistory', () => historyPanel.clearHistory()),
     );
-    const queryEditor = new QueryEditor(context, server, resultsCache, clipboard, historyManager, connectionManager, resultsViewer);
+    const queryEditor = new QueryEditor(context, server, clipboard, historyManager, connectionManager, resultsViewer, historyPanel);
     context.subscriptions.push(
         vscode.commands.registerCommand('kusto.runQuery', (startLine?: number, startChar?: number, endLine?: number, endChar?: number) => queryEditor.runQuery(startLine, startChar, endLine, endChar)),
         vscode.commands.registerCommand('kusto.copyQuery', (startLine?: number, startChar?: number, endLine?: number, endChar?: number) => queryEditor.copyQuery(startLine, startChar, endLine, endChar)),
         vscode.commands.registerCommand('kusto.copyQueryTransparent', (startLine?: number, startChar?: number, endLine?: number, endChar?: number) => queryEditor.copyQuery(startLine, startChar, endLine, endChar, true)),
         vscode.commands.registerCommand('kusto.formatQuery', (startLine?: number, startChar?: number, endLine?: number, endChar?: number) => queryEditor.formatQuery(startLine, startChar, endLine, endChar)),
         vscode.commands.registerCommand('kusto.selectQuery', (startLine: number, startChar: number, endLine: number, endChar: number) => queryEditor.selectRange(startLine, startChar, endLine, endChar)),
-        vscode.commands.registerCommand('kusto.showResults', (startLine: number, startChar: number) => queryEditor.showCachedResults(startLine, startChar)),
+        vscode.commands.registerCommand('kusto.showResults', (startLine: number, startChar: number) => queryEditor.showHistoryResults(startLine, startChar)),
         vscode.commands.registerCommand('kusto.refreshDocumentSchema', () => queryEditor.refreshDocumentSchema()),
     );
 

@@ -44,6 +44,12 @@ export class HistoryPanel {
 
     // ─── Command Handlers ───────────────────────────────────────────────
 
+    /** Reveals and selects a history entry in the tree view. */
+    revealEntry(entry: HistoryEntry): void {
+        const item = new HistoryItem(entry);
+        this.treeView.reveal(item, { select: true, focus: false });
+    }
+
     /** Opens a history item in the singleton results view. */
     async openHistoryItem(item: { meta: HistoryEntry }): Promise<void> {
         const uri = this.manager.getHistoryFileUri(item.meta.fileName);
