@@ -1613,7 +1613,7 @@ class KustoDragAndDropController implements vscode.TreeDragAndDropController<Kus
  * the correct expression based on the document's connection context.
  */
 class KustoDocumentDropEditProvider implements vscode.DocumentDropEditProvider {
-    constructor(private readonly server: Server) {}
+    constructor(private readonly server: IServer) {}
 
     async provideDocumentDropEdits(
         document: vscode.TextDocument,

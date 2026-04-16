@@ -14,9 +14,9 @@ function createMockWebView(): IWebView & {
     invoke: ReturnType<typeof vi.fn>;
 } {
     return {
-        setup: vi.fn(),
-        setContent: vi.fn(),
-        invoke: vi.fn(),
+        setup: vi.fn<IWebView['setup']>(),
+        setContent: vi.fn<IWebView['setContent']>(),
+        invoke: vi.fn<IWebView['invoke']>(),
         handle: vi.fn(() => ({ dispose: () => { } })),
     };
 }
