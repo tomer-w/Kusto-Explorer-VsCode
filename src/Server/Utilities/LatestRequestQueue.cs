@@ -8,6 +8,7 @@ namespace Kusto.Vscode;
 /// </summary>
 public class LatestRequestQueue
 {
+    private readonly object _lock = new object();
     private TaskInfo? _latestTask;
 
     private record TaskInfo(Task Task, CancellationTokenSource CancellationSource);
@@ -22,7 +23,7 @@ public class LatestRequestQueue
     /// </summary>
     public Task Run(CancellationToken cancellation, Func<CancellationToken, Task> asyncAction)
     {
-        lock (this)
+        lock (_lock)
         {
             _latestTask?.CancellationSource.Cancel();
             _latestTask?.CancellationSource.Dispose();

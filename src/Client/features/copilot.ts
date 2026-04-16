@@ -13,7 +13,7 @@ import * as server from './server';
 import type { ConnectionManager } from './connectionManager';
 import { ENTITY_DEFINITION_SCHEME } from './entityDefinitionProvider';
 import { resultTableToMarkdown } from './markdown';
-import { ResultsViewer } from './resultsViewer';
+import type { ResultsViewer } from './resultsViewer';
 
 const COPILOT_PARTICIPANT_ID = 'kusto';
 const MAX_SCHEMA_CHARS = 30000; // Approximate limit to stay within token limits

@@ -238,6 +238,24 @@ async function saveResults(source: { data: server.ResultData }): Promise<{ uri: 
 *
 *   More than one view can exist at the same time, but only one is the active view
 */
+
+/**
+ * Internal interface for DocumentViewProvider to access per-panel state
+ * on ResultsViewer. Not exported — only used within this file.
+ */
+interface IViewerPanelState {
+    readonly viewerStates: Map<vscode.WebviewPanel, ResultViewerState>;
+    readonly webviewDocuments: Map<vscode.WebviewPanel, vscode.Uri>;
+    readonly chartViews: Map<vscode.WebviewPanel, IChartView>;
+    readonly chartWebViews: Map<vscode.WebviewPanel, WebViewAdapter>;
+    readonly editorViews: Map<vscode.WebviewPanel, IChartEditorView>;
+    readonly editorWebViews: Map<vscode.WebviewPanel, WebViewAdapter>;
+    readonly dataTableViews: Map<vscode.WebviewPanel, IDataTableView[]>;
+    readonly dataTableWebViews: Map<vscode.WebviewPanel, WebViewAdapter[]>;
+    registerResultWebview(webview: vscode.WebviewPanel): void;
+    wireChartView(view: IChartView): void;
+}
+
 export class ResultsViewer {
 
     private readonly server: IServer;
@@ -247,12 +265,12 @@ export class ResultsViewer {
     private readonly dataTableProvider: IDataTableProvider;
     private readonly htmlBuilder: DocumentViewProvider;
 
-    // ─── State shared with DocumentViewProvider (same file) ────────
+    // ─── Per-panel state (exposed to DocumentViewProvider via IViewerPanelState) ─
     /** Map from webview to its viewer state. */
-    readonly viewerStates = new Map<vscode.WebviewPanel, ResultViewerState>();
+    private readonly viewerStates = new Map<vscode.WebviewPanel, ResultViewerState>();
 
     /** Map from document-view webview to its backing document URI. */
-    readonly webviewDocuments = new Map<vscode.WebviewPanel, vscode.Uri>();
+    private readonly webviewDocuments = new Map<vscode.WebviewPanel, vscode.Uri>();
 
     /** Set of all result webviews (singleton + results viewer tabs). */
     private readonly resultWebviews = new Set<vscode.WebviewPanel>();
@@ -290,13 +308,29 @@ export class ResultsViewer {
     private singletonTableViews: IDataTableView[] = [];
     private singletonTableWebViews: WebViewAdapter[] = [];
 
-    // ─── View maps for document views (shared with DocumentViewProvider) ─
-    readonly chartViews = new Map<vscode.WebviewPanel, IChartView>();
-    readonly chartWebViews = new Map<vscode.WebviewPanel, WebViewAdapter>();
-    readonly editorViews = new Map<vscode.WebviewPanel, IChartEditorView>();
-    readonly editorWebViews = new Map<vscode.WebviewPanel, WebViewAdapter>();
-    readonly dataTableViews = new Map<vscode.WebviewPanel, IDataTableView[]>();
-    readonly dataTableWebViews = new Map<vscode.WebviewPanel, WebViewAdapter[]>();
+    // ─── Per-panel view maps (exposed to DocumentViewProvider via IViewerPanelState) ─
+    private readonly chartViews = new Map<vscode.WebviewPanel, IChartView>();
+    private readonly chartWebViews = new Map<vscode.WebviewPanel, WebViewAdapter>();
+    private readonly editorViews = new Map<vscode.WebviewPanel, IChartEditorView>();
+    private readonly editorWebViews = new Map<vscode.WebviewPanel, WebViewAdapter>();
+    private readonly dataTableViews = new Map<vscode.WebviewPanel, IDataTableView[]>();
+    private readonly dataTableWebViews = new Map<vscode.WebviewPanel, WebViewAdapter[]>();
+
+    /** Creates an adapter that exposes private per-panel state to DocumentViewProvider. */
+    private createPanelStateAccessor(): IViewerPanelState {
+        return {
+            viewerStates: this.viewerStates,
+            webviewDocuments: this.webviewDocuments,
+            chartViews: this.chartViews,
+            chartWebViews: this.chartWebViews,
+            editorViews: this.editorViews,
+            editorWebViews: this.editorWebViews,
+            dataTableViews: this.dataTableViews,
+            dataTableWebViews: this.dataTableWebViews,
+            registerResultWebview: (webview) => this.registerResultWebview(webview),
+            wireChartView: (view) => this.wireChartView(view),
+        };
+    }
 
     constructor(context: vscode.ExtensionContext, server: IServer, clipboard: IClipboard, chartProvider: IChartProvider, chartEditorProvider: IChartEditorProvider, dataTableProvider: IDataTableProvider) {
         this.server = server;
@@ -304,7 +338,7 @@ export class ResultsViewer {
         this.chartProvider = chartProvider;
         this.chartEditorProvider = chartEditorProvider;
         this.dataTableProvider = dataTableProvider;
-        this.htmlBuilder = new DocumentViewProvider(this, server, chartProvider, chartEditorProvider, dataTableProvider);
+        this.htmlBuilder = new DocumentViewProvider(this.createPanelStateAccessor(), server, chartProvider, chartEditorProvider, dataTableProvider);
 
         context.subscriptions.push(
             vscode.window.registerCustomEditorProvider(
@@ -1286,7 +1320,7 @@ function singletonTitleForMode(mode: ResultViewMode): string {
  */
 class DocumentViewProvider implements vscode.CustomTextEditorProvider {
 
-    constructor(private readonly viewer: ResultsViewer, private readonly server: IServer, private readonly chartProvider: IChartProvider, private readonly chartEditorProvider: IChartEditorProvider, private readonly dataTableProvider: IDataTableProvider) {
+    constructor(private readonly viewer: IViewerPanelState, private readonly server: IServer, private readonly chartProvider: IChartProvider, private readonly chartEditorProvider: IChartEditorProvider, private readonly dataTableProvider: IDataTableProvider) {
     }
 
     async resolveCustomTextEditor(

@@ -6,7 +6,7 @@ using Newtonsoft.Json.Linq;
 
 namespace Kusto.Vscode;
 
-// disable nullabilty to allow construction of target instances before deserializing into them
+// disable nullability to allow construction of target instances before deserializing into them
 #nullable disable
 public class GraphModel
 {

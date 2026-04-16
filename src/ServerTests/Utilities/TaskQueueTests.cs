@@ -93,10 +93,10 @@ public class TaskQueueTests
         var barrier = new Barrier(3);
 
         // Simulate 3 threads calling Run concurrently
-        var tasks = Enumerable.Range(1, 3).Select(i => Task.Run(() =>
+        var tasks = Enumerable.Range(1, 3).Select(i => Task.Run(async () =>
         {
             barrier.SignalAndWait();
-            return queue.Run(() => { lock (order) { order.Add(i); } });
+            await queue.Run(() => { lock (order) { order.Add(i); } });
         })).ToArray();
 
         await Task.WhenAll(tasks);

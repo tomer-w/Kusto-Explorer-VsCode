@@ -41,16 +41,22 @@ public sealed class DiagnosticsManagerTests
         var docManager = CreateDocumentManager();
         var diagnosticsManager = new DiagnosticsManager(docManager);
 
-        docManager.AddDocument(TestDocId, "print 1");
-
-        // Wait for initial diagnostics
         var firstReceived = new TaskCompletionSource<DiagnosticInfo>();
-        diagnosticsManager.DiagnosticsUpdated += (s, info) => firstReceived.TrySetResult(info);
+        var secondReceived = new TaskCompletionSource<DiagnosticInfo>();
+        var count = 0;
+
+        diagnosticsManager.DiagnosticsUpdated += (s, info) =>
+        {
+            if (Interlocked.Increment(ref count) == 1)
+                firstReceived.TrySetResult(info);
+            else
+                secondReceived.TrySetResult(info);
+        };
+
+        docManager.AddDocument(TestDocId, "print 1");
         await firstReceived.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Change the document
-        var secondReceived = new TaskCompletionSource<DiagnosticInfo>();
-        diagnosticsManager.DiagnosticsUpdated += (s, info) => secondReceived.TrySetResult(info);
         await docManager.UpdateTextAsync(TestDocId, "print 2");
 
         var result = await secondReceived.Task.WaitAsync(TimeSpan.FromSeconds(5));
