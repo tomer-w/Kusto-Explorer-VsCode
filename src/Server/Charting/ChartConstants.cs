@@ -103,3 +103,25 @@ public static class ChartAspectRatio
     public const string Ratio2x3 = "2:3";
     public const string Ratio9x16 = "9:16";
 }
+
+/// <summary>
+/// Constants for Y-axis split modes.
+/// </summary>
+public static class ChartYSplit
+{
+    public const string None = "None";
+    public const string Axes = "Axes";
+    public const string Panels = "Panels";
+    public const string Charts = "Charts";
+}
+
+/// <summary>
+/// Constants for panel layout when Y-split is set to Panels.
+/// </summary>
+public static class ChartPanelLayout
+{
+    public const string Auto = "Auto";
+    public const string Horizontal = "Horizontal";
+    public const string Vertical = "Vertical";
+    public const string Grid = "Grid";
+}

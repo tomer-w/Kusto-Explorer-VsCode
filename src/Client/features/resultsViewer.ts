@@ -390,13 +390,11 @@ export class ResultsViewer {
                 const panelEditorAdapter = new WebViewAdapter(webviewView.webview, 'setEditPanelContent');
                 this.panelEditorView = this.chartEditorProvider.createView(panelEditorAdapter);
                 this.panelEditorWebView = panelEditorAdapter;
-                this.panelEditorView.onOptionsChanged = (options, clientOnly) => {
+                this.panelEditorView.onOptionsChanged = (options) => {
                     if (this.lastPanelResultData) {
                         this.lastPanelResultData = { ...this.lastPanelResultData, chartOptions: options };
                     }
-                    if (!clientOnly) {
-                        this.updateChartInPanel();
-                    }
+                    this.updateChartInPanel();
                 };
 
                 webviewView.onDidDispose(() => {
@@ -616,7 +614,8 @@ export class ResultsViewer {
      */
     async displayResultsInSingletonView(
         resultData: server.ResultData | undefined,
-        mode: ResultViewMode
+        mode: ResultViewMode,
+        locationOverride?: 'beside' | 'main'
     ): Promise<void> {
         // Always update result data before any early-return dispose paths,
         // so that a write-back in disposeSingletonView won't write stale
@@ -641,8 +640,13 @@ export class ResultsViewer {
         // For chart mode, use chart display setting; otherwise use results display setting.
         // If location resolves to 'panel' or 'results' (bottom panel), default to 'beside'
         // since this method always creates a singleton editor panel.
-        const rawLocation = mode === 'chart' ? getChartDisplayLocation() : getResultsDisplayLocation();
-        const singletonLocation: 'beside' | 'main' = (rawLocation === 'beside' || rawLocation === 'main') ? rawLocation : 'beside';
+        let singletonLocation: 'beside' | 'main';
+        if (locationOverride) {
+            singletonLocation = locationOverride;
+        } else {
+            const rawLocation = mode === 'chart' ? getChartDisplayLocation() : getResultsDisplayLocation();
+            singletonLocation = (rawLocation === 'beside' || rawLocation === 'main') ? rawLocation : 'beside';
+        }
 
         // Ensure the singleton view (and its chart adapter) exist before building
         // HTML so that BuildMultiTabbedHtml can read the adapter's headHtml/scriptsHtml.
@@ -840,7 +844,7 @@ export class ResultsViewer {
         const singletonEditorAdapter = new WebViewAdapter(this.singletonView.webview, 'setEditPanelContent');
         this.singletonEditorView = this.chartEditorProvider.createView(singletonEditorAdapter);
         this.singletonEditorWebView = singletonEditorAdapter;
-        this.singletonEditorView.onOptionsChanged = (options, clientOnly) => {
+        this.singletonEditorView.onOptionsChanged = (options) => {
             this.singletonChartOptionsOverride = options;
             if (this.singletonResultData) {
                 this.singletonResultData = { ...this.singletonResultData, chartOptions: this.singletonChartOptionsOverride };
@@ -851,9 +855,7 @@ export class ResultsViewer {
                 state.resultData = this.singletonResultData ?? state.resultData;
             }
             if (this.singletonChartOptionsTimer) { clearTimeout(this.singletonChartOptionsTimer); }
-            if (!clientOnly) {
-                this.singletonChartOptionsTimer = setTimeout(() => this.updateChartInSingletonView(), 600);
-            }
+            this.singletonChartOptionsTimer = setTimeout(() => this.updateChartInSingletonView(), 600);
             this.scheduleSingletonWriteBack();
         };
 
@@ -1202,14 +1204,33 @@ export class ResultsViewer {
     }
 
     /**
-     * Moves the results tab to main editor area
+     * Moves the results tab between main and beside editor columns.
      */
     moveResultsTabToMain(): void {
         const webview = this.activeResultWebview;
         if (!webview) { return; }
         const isMain = webview.viewColumn === vscode.ViewColumn.One;
         if (webview === this.singletonView) {
-            webview.reveal(isMain ? vscode.ViewColumn.Beside : vscode.ViewColumn.One, false);
+            // Dispose and recreate at the target column to avoid broken webview state.
+            const resultData = this.singletonResultData;
+            const mode = this.singletonMode ?? 'all';
+            const chartOptionsOverride = this.singletonChartOptionsOverride;
+            const backingUri = this.singletonBackingUri;
+            this.disposeSingletonView();
+            // Restore state that disposeSingletonView clears
+            this.singletonResultData = resultData;
+            this.singletonChartOptionsOverride = chartOptionsOverride;
+            this.singletonBackingUri = backingUri;
+            if (resultData) {
+                // Apply override so the recreated view uses the latest editor options
+                if (chartOptionsOverride) {
+                    this.singletonResultData = { ...resultData, chartOptions: chartOptionsOverride };
+                }
+                const targetLocation: 'beside' | 'main' = isMain ? 'beside' : 'main';
+                this.displayResultsInSingletonView(this.singletonResultData, mode as ResultViewMode, targetLocation);
+                // Always focus the recreated panel since the user explicitly toggled
+                this.singletonView?.reveal(undefined, false);
+            }
         } else {
             // Custom editors must be moved via workbench commands; reveal() creates duplicates.
             vscode.commands.executeCommand(
@@ -1375,7 +1396,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         let ignoringSelfEdit = false;
 
         // Wire chart editor options callback
-        docEditorView.onOptionsChanged = async (options, clientOnly) => {
+        docEditorView.onOptionsChanged = async (options) => {
             const state = this.viewer.viewerStates.get(webviewPanel);
             if (!state) { return; }
             state.chartOptionsOverride = options;
@@ -1392,9 +1413,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
             ignoringSelfEdit = false;
             if (chartOptionsTimer) { clearTimeout(chartOptionsTimer); }
             chartOptionsTimer = setTimeout(async () => {
-                if (!clientOnly) {
-                    await this.updateChartOnly(state, webviewPanel);
-                }
+                await this.updateChartOnly(state, webviewPanel);
                 ignoringSelfEdit = true;
                 try { await document.save(); } finally { ignoringSelfEdit = false; }
             }, 600);

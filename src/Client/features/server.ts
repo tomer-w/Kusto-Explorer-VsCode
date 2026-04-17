@@ -569,6 +569,8 @@ export interface ChartOptions {
     seriesColumns?: string[];
     anomalyColumns?: string[];
     showLegend?: boolean;
+    ySplit?: string | undefined;
+    panelLayout?: string;
     xAxis?: string;
     yAxis?: string;
     xMin?: unknown;
