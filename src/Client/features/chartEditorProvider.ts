@@ -376,8 +376,6 @@ class ChartEditorView implements IChartEditorView {
             if (yAxis && yAxis.value) opts.yAxis = yAxis.value;
             var ySplit = document.getElementById('opt-ySplit');
             if (ySplit && ySplit.value) opts.ySplit = ySplit.value;
-            var panelLayout = document.getElementById('opt-panelLayout');
-            if (panelLayout && panelLayout.value) opts.panelLayout = panelLayout.value;
             var xmin = document.getElementById('opt-xMin');
             if (xmin && xmin.value) opts.xMin = xmin.value;
             var xmax = document.getElementById('opt-xMax');
@@ -562,12 +560,6 @@ class ChartEditorView implements IChartEditorView {
             `<option value="${value}"${value === currentYSplit ? ' selected' : ''}>${label}</option>`
         ).join('');
 
-        const panelLayouts = ['Auto', 'Horizontal', 'Vertical', 'Grid'];
-        const currentPanelLayout = opts.panelLayout ?? '';
-        const panelLayoutOptions = ['', ...panelLayouts].map(l =>
-            `<option value="${l}"${l === currentPanelLayout ? ' selected' : ''}>${l || '(default)'}</option>`
-        ).join('');
-
         const xShowTicksChecked = opts.xShowTicks === true ? ' checked' : '';
         const yShowTicksChecked = opts.yShowTicks === true ? ' checked' : '';
         const xShowGridChecked = opts.xShowGrid === false ? '' : ' checked';
@@ -618,10 +610,6 @@ class ChartEditorView implements IChartEditorView {
                 <div class="field">
                     <label for="opt-ySplit">Y Split</label>
                     <select id="opt-ySplit" onchange="_editorOnChartOptionChanged()">${ySplitOptions}</select>
-                </div>
-                <div class="field">
-                    <label for="opt-panelLayout">Multi Chart Layout</label>
-                    <select id="opt-panelLayout" onchange="_editorOnChartOptionChanged()">${panelLayoutOptions}</select>
                 </div>
                 <div class="field checkbox-field">
                     <input type="checkbox" id="opt-showValues"${showValuesChecked} onchange="_editorOnChartOptionChanged()">

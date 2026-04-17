@@ -128,14 +128,6 @@ public class ChartOptions
     public string? YSplit { get; init; }
 
     /// <summary>
-    /// Panel layout when <see cref="YSplit"/> is "Panels".
-    /// Use <see cref="ChartPanelLayout"/> constants: "Auto", "Horizontal", "Vertical", "Grid".
-    /// If null, defaults to "Auto".
-    /// </summary>
-    [DataMember(Name = "panelLayout")]
-    public string? PanelLayout { get; init; }
-
-    /// <summary>
     /// Whether to accumulate Y values across the X-axis (running total). Defaults to false.
     /// </summary>
     [DataMember(Name = "accumulate")]
@@ -296,7 +288,6 @@ public class ChartOptions
             SeriesColumns = this.SeriesColumns,
             ShowLegend = this.ShowLegend ?? defaults.ShowLegend,
             YSplit = this.YSplit ?? defaults.YSplit,
-            PanelLayout = this.PanelLayout ?? defaults.PanelLayout,
             XAxis = this.XAxis,
             YAxis = this.YAxis,
             XMin = this.XMin,

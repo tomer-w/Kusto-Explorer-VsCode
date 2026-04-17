@@ -7,7 +7,7 @@
  */
 
 import type { ChartOptions, ResultTable } from './server';
-import { ChartType, ChartKind, ChartAxis, ChartSortOrder, ChartLegendPosition, ChartColorways, ChartYSplit, ChartPanelLayout, hexToRgba, isNumericType, isDateTimeType, getColumnRef, getColumnRefByIndex } from './chartProvider';
+import { ChartType, ChartKind, ChartAxis, ChartSortOrder, ChartLegendPosition, ChartColorways, ChartYSplit, hexToRgba, isNumericType, isDateTimeType, getColumnRef, getColumnRefByIndex } from './chartProvider';
 import type { IChartView, IWebView, IChartProvider, ColumnRef } from './chartProvider';
 
 // ─── Plotly Constants ───────────────────────────────────────────────────────
@@ -1255,15 +1255,44 @@ const plotlyChartScripts = `
         var container = chartDiv.querySelector('.multi-chart-container');
         if (!container) return;
 
+        var isScrollMode = container.classList.contains('multi-chart-scroll');
+
         // Scale each chart to fit its cell — no Plotly calls needed
         var cells = container.querySelectorAll('.multi-chart-cell');
+
+        // In scroll mode, clear explicit heights first so the grid can
+        // recalculate column widths before we re-measure.
+        if (isScrollMode) {
+            cells.forEach(function(cell) {
+                if (!cell.classList.contains('zoomed')) {
+                    cell.style.height = '';
+                }
+            });
+            container.offsetHeight; // force reflow
+        }
+
         cells.forEach(function(cell) {
             var scaler = cell.querySelector('.multi-chart-scaler');
             if (!scaler) return;
             var virtualW = Number(cell.getAttribute('data-virtual-w')) || 800;
             var virtualH = Number(cell.getAttribute('data-virtual-h')) || 500;
-            var cellW = cell.clientWidth;
-            var cellH = cell.clientHeight;
+            var isZoomed = cell.classList.contains('zoomed');
+
+            // For zoomed cells, use the container dimensions directly instead
+            // of relying on CSS absolute positioning for the cell size.
+            var cellW, cellH;
+            if (isZoomed) {
+                cellW = container.clientWidth;
+                cellH = container.clientHeight;
+            } else {
+                cellW = cell.clientWidth;
+                // In scroll mode, set explicit height from aspect ratio since the
+                // absolutely-positioned scaler contributes no intrinsic height.
+                if (isScrollMode && cellW > 0) {
+                    cell.style.height = Math.round(cellW * virtualH / virtualW) + 'px';
+                }
+                cellH = cell.clientHeight;
+            }
             if (cellW <= 0 || cellH <= 0) return;
 
             var scale = Math.min(cellW / virtualW, cellH / virtualH);
@@ -1438,33 +1467,56 @@ const plotlyChartScripts = `
         lastAppliedH = availH;
     };
 
-    // ── Copy chart ────────────────────────────────────────────────────
-    // In multi-chart mode, clicking a chart selects it for copy.
-    // Clicking the same chart again deselects it.
-    var selectedChartDiv = null;
+    // ── Chart zoom ─────────────────────────────────────────────────────
+    // In multi-chart mode, clicking a chart zooms in. A back button returns to grid.
+    var zoomedCell = null;
+    var backBtn = null;
+    function zoomToCell(cell) {
+        if (zoomedCell) unzoomCell();
+        var container = cell.closest('.multi-chart-container');
+        if (!container) return;
+        zoomedCell = cell;
+        container.scrollTop = 0;
+        container.classList.add('has-zoomed');
+        cell.classList.add('zoomed');
+        cell.style.height = '';
+        // Add back button to the container (not the cell) so it's always on top
+        backBtn = document.createElement('button');
+        backBtn.className = 'multi-chart-back-btn';
+        backBtn.textContent = '\u25C0 All Charts';
+        backBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            unzoomCell();
+        });
+        container.appendChild(backBtn);
+        // Re-scale the zoomed chart to fill the container
+        resizeMultiCharts();
+    }
+    function unzoomCell() {
+        if (!zoomedCell) return;
+        var container = zoomedCell.closest('.multi-chart-container');
+        if (backBtn) { backBtn.remove(); backBtn = null; }
+        zoomedCell.classList.remove('zoomed');
+        if (container) container.classList.remove('has-zoomed');
+        zoomedCell = null;
+        // Force reflow so cells have valid dimensions before resizing
+        if (container) container.offsetHeight;
+        resizeMultiCharts();
+    }
     document.addEventListener('click', function(e) {
         if (!isMultiChart()) return;
+        if (zoomedCell) {
+            // Clicking anywhere while zoomed returns to all charts
+            unzoomCell();
+            return;
+        }
         var target = e.target;
-        var foundCell = null;
         while (target && target !== document.body) {
             if (target.classList && target.classList.contains('multi-chart-cell')) {
-                foundCell = target;
-                break;
+                zoomToCell(target);
+                return;
             }
             target = target.parentElement;
-        }
-        if (foundCell) {
-            if (selectedChartDiv === foundCell) {
-                // Toggle off: clicking the same cell deselects
-                selectedChartDiv.style.outline = '';
-                selectedChartDiv = null;
-            } else {
-                if (selectedChartDiv) {
-                    selectedChartDiv.style.outline = '';
-                }
-                selectedChartDiv = foundCell;
-                selectedChartDiv.style.outline = '2px solid var(--vscode-focusBorder, #007acc)';
-            }
         }
     });
 
@@ -1474,10 +1526,10 @@ const plotlyChartScripts = `
         var vscodeApi = window._vscodeApi;
         if (!vscodeApi) return;
         try {
-            // In multi-chart mode, copy the selected chart (or first if none selected)
+            // In multi-chart mode, copy the zoomed chart (or first if none zoomed)
             var plotDiv;
-            if (isMultiChart() && selectedChartDiv) {
-                plotDiv = selectedChartDiv.querySelector('.js-plotly-plot') || selectedChartDiv.querySelector('.plotly-graph-div');
+            if (isMultiChart() && zoomedCell) {
+                plotDiv = zoomedCell.querySelector('.js-plotly-plot') || zoomedCell.querySelector('.plotly-graph-div');
             }
             if (!plotDiv) {
                 plotDiv = document.querySelector('.js-plotly-plot') || document.querySelector('.plotly-graph-div');
@@ -1579,20 +1631,8 @@ export class PlotlyChartProvider implements IChartProvider {
     height: 100%;
     overflow: hidden;
     box-sizing: border-box;
+    position: relative;
 }
-.multi-chart-horizontal {
-    display: flex;
-    flex-direction: row;
-    flex-wrap: nowrap;
-    height: 100%;
-}
-.multi-chart-horizontal > .multi-chart-cell { flex: 1 1 0; min-width: 0; height: 100%; }
-.multi-chart-vertical {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-}
-.multi-chart-vertical > .multi-chart-cell { flex: 1 1 0; min-height: 0; }
 .multi-chart-grid {
     display: grid;
     height: 100%;
@@ -1600,10 +1640,50 @@ export class PlotlyChartProvider implements IChartProvider {
     gap: 6px;
 }
 .multi-chart-grid > .multi-chart-cell { min-height: 0; }
+.multi-chart-grid.multi-chart-scroll {
+    overflow-y: auto;
+    grid-auto-rows: auto;
+}
+.multi-chart-grid.multi-chart-scroll > .multi-chart-cell {
+    aspect-ratio: var(--cell-aspect, 8 / 5);
+    overflow: hidden;
+}
 .multi-chart-cell {
     position: relative;
     overflow: hidden;
-    margin: 3px;
+    cursor: pointer;
+}
+.multi-chart-cell.zoomed {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    margin: 0;
+    z-index: 10;
+    cursor: default;
+}
+.multi-chart-container.has-zoomed > .multi-chart-cell:not(.zoomed) {
+    display: none;
+}
+.multi-chart-container.has-zoomed {
+    height: 100%;
+    overflow: hidden;
+}
+.multi-chart-back-btn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    z-index: 20;
+    background: var(--vscode-button-secondaryBackground, #333);
+    color: var(--vscode-button-secondaryForeground, #ccc);
+    border: 1px solid var(--vscode-button-border, #555);
+    border-radius: 3px;
+    padding: 2px 8px;
+    font-size: 12px;
+    cursor: pointer;
+    opacity: 0.85;
+}
+.multi-chart-back-btn:hover {
+    opacity: 1;
+    background: var(--vscode-button-secondaryHoverBackground, #444);
 }
 .multi-chart-scaler {
     transform-origin: top left;
@@ -1693,29 +1773,15 @@ export class PlotlyChartProvider implements IChartProvider {
 
         if (chartCells.length === 0) return undefined;
 
-        const layout = options.panelLayout ?? ChartPanelLayout.Auto;
-        const { cssClass, columns } = this.getPanelLayout(layout, chartCells.length);
-        const gridStyle = columns ? ` style="grid-template-columns: repeat(${columns}, 1fr)"` : '';
+        const maxCols = 3;
+        const cols = Math.min(maxCols, Math.ceil(Math.sqrt(chartCells.length)));
+        const scroll = chartCells.length > cols * 3;
+        const scrollClass = scroll ? ' multi-chart-scroll' : '';
+        const aspectVar = `--cell-aspect: ${virtualW} / ${virtualH}`;
+        const colsStyle = `; grid-template-columns: repeat(${cols}, 1fr)`;
+        const inlineStyle = ` style="${aspectVar}${colsStyle}"`;
 
-        return `<div class="multi-chart-container ${cssClass}"${gridStyle}>${chartCells.join('')}</div>`;
-    }
-
-    private getPanelLayout(layout: string, count: number): { cssClass: string; columns?: number } {
-        switch (layout) {
-            case ChartPanelLayout.Horizontal:
-                return { cssClass: 'multi-chart-horizontal' };
-            case ChartPanelLayout.Vertical:
-                return { cssClass: 'multi-chart-vertical' };
-            case ChartPanelLayout.Grid:
-                return { cssClass: 'multi-chart-grid', columns: Math.ceil(Math.sqrt(count)) };
-            case ChartPanelLayout.Auto:
-            default:
-                // Auto: vertical for 2-3, balanced grid for 4+
-                if (count <= 3) {
-                    return { cssClass: 'multi-chart-vertical' };
-                }
-                return { cssClass: 'multi-chart-grid', columns: Math.ceil(Math.sqrt(count)) };
-        }
+        return `<div class="multi-chart-container multi-chart-grid${scrollClass}"${inlineStyle}>${chartCells.join('')}</div>`;
     }
 
     /** Returns an initial render size based on the aspect ratio, defaulting to 800×500 (roughly 16:10). */

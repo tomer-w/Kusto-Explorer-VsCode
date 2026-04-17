@@ -102,13 +102,6 @@ export const ChartYSplit = {
     Charts: 'Charts',
 } as const;
 
-export const ChartPanelLayout = {
-    Auto: 'Auto',
-    Horizontal: 'Horizontal',
-    Vertical: 'Vertical',
-    Grid: 'Grid',
-} as const;
-
 // ─── Shared Utilities ───────────────────────────────────────────────────────
 
 /** Default colorway shared across chart providers. */

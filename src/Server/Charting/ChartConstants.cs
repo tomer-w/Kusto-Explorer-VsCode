@@ -114,14 +114,3 @@ public static class ChartYSplit
     public const string Panels = "Panels";
     public const string Charts = "Charts";
 }
-
-/// <summary>
-/// Constants for panel layout when Y-split is set to Panels.
-/// </summary>
-public static class ChartPanelLayout
-{
-    public const string Auto = "Auto";
-    public const string Horizontal = "Horizontal";
-    public const string Vertical = "Vertical";
-    public const string Grid = "Grid";
-}
