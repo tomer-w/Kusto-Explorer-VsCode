@@ -111,14 +111,22 @@ public class ChartOptions
     public object? YMax { get; init; }
 
     /// <summary>
-    /// Y-axis split mode. Use <see cref="ChartYSplit"/> constants: "None", "Axes", "Panels".
-    /// "None" plots all Y columns on a single shared axis.
-    /// "Axes" plots each Y column on its own axis within the same chart.
-    /// "Panels" renders each Y column as a separate chart panel.
-    /// If null, defaults to "None".
+    /// Y-column layout mode. Use <see cref="ChartYLayout"/> constants.
+    /// "SharedAxis" plots all Y columns on a single shared axis.
+    /// "DualAxis" adds an independent right-side axis for additional Y columns.
+    /// "SeparatePanels" renders each Y column as a separate chart panel.
+    /// "SeparateCharts" renders each Y column as a separate chart.
+    /// If null, defaults to "SharedAxis".
     /// </summary>
-    [DataMember(Name = "ySplit")]
-    public string? YSplit { get; init; }
+    [DataMember(Name = "yLayout")]
+    public string? YLayout { get; init; }
+
+    /// <summary>
+    /// Whether to mirror Y-axis tick labels on the right side of the chart.
+    /// If null or false, ticks appear only on the left.
+    /// </summary>
+    [DataMember(Name = "yMirror")]
+    public bool? YMirror { get; init; }
 
     /// <summary>
     /// Whether to accumulate Y values across the X-axis (running total). Defaults to false.
@@ -259,7 +267,7 @@ public class ChartOptions
             YMax = ConvertNanToNull(options.Ymax),
             Accumulate = options.Accumulate,
             AnomalyColumns = options.AnomalyColumns?.ToImmutableList(),
-            YSplit = options.YSplit == SplitVisualizationMode.None ? null : options.YSplit.ToString(),
+            YLayout = SplitVisualizationModeToYLayout(options.YSplit),
         };
     }
 
@@ -278,7 +286,8 @@ public class ChartOptions
             YColumns = this.YColumns,
             SeriesColumns = this.SeriesColumns,
             ShowLegend = this.ShowLegend ?? defaults.ShowLegend,
-            YSplit = this.YSplit ?? defaults.YSplit,
+            YLayout = this.YLayout ?? defaults.YLayout,
+            YMirror = this.YMirror ?? defaults.YMirror,
             XAxis = this.XAxis,
             YAxis = this.YAxis,
             XMin = this.XMin,
@@ -299,6 +308,17 @@ public class ChartOptions
             Mode = this.Mode,
             AspectRatio = this.AspectRatio ?? defaults.AspectRatio,
             TextSize = this.TextSize ?? defaults.TextSize,
+        };
+    }
+
+    private static string? SplitVisualizationModeToYLayout(SplitVisualizationMode mode)
+    {
+        return mode switch
+        {
+            SplitVisualizationMode.None => null,
+            SplitVisualizationMode.Axes => ChartYLayout.DualAxis,
+            SplitVisualizationMode.Panels => ChartYLayout.SeparatePanels,
+            _ => null,
         };
     }
 

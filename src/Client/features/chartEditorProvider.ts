@@ -376,8 +376,8 @@ class ChartEditorView implements IChartEditorView {
             if (xAxis && xAxis.value) opts.xAxis = xAxis.value;
             var yAxis = document.getElementById('opt-yAxis');
             if (yAxis && yAxis.value) opts.yAxis = yAxis.value;
-            var ySplit = document.getElementById('opt-ySplit');
-            if (ySplit && ySplit.value) opts.ySplit = ySplit.value;
+            var yLayout = document.getElementById('opt-yLayout');
+            if (yLayout && yLayout.value) opts.yLayout = yLayout.value;
             var xmin = document.getElementById('opt-xMin');
             if (xmin && xmin.value) opts.xMin = xmin.value;
             var xmax = document.getElementById('opt-xMax');
@@ -390,6 +390,8 @@ class ChartEditorView implements IChartEditorView {
             if (xShowTicks) opts.xShowTicks = xShowTicks.checked;
             var yShowTicks = document.getElementById('opt-yShowTicks');
             if (yShowTicks) opts.yShowTicks = yShowTicks.checked;
+            var yMirror = document.getElementById('opt-yMirror');
+            if (yMirror) opts.yMirror = yMirror.checked;
             var xShowGrid = document.getElementById('opt-xShowGrid');
             if (xShowGrid) opts.xShowGrid = xShowGrid.checked;
             var yShowGrid = document.getElementById('opt-yShowGrid');
@@ -550,14 +552,15 @@ class ChartEditorView implements IChartEditorView {
             `<option value="${a}"${a === currentYAxis ? ' selected' : ''}>${a || '(default)'}</option>`
         ).join('');
 
-        const ySplitModes: [string, string][] = [['None', 'One Chart (none)'], ['Axes', 'Mirrored Y-Axis (axes)'], ['IndependentAxes', 'Independent Axes'], ['Panels', 'Multiple Panels (panels)'], ['Charts', 'Multiple Charts']];
-        const currentYSplit = opts.ySplit ?? '';
-        const ySplitOptions = [['', '(default)'], ...ySplitModes].map(([value, label]) =>
-            `<option value="${value}"${value === currentYSplit ? ' selected' : ''}>${label}</option>`
+        const yLayoutModes: [string, string][] = [['SharedAxis', 'Shared Axis'], ['DualAxis', 'Dual Axis'], ['SeparatePanels', 'Separate Panels'], ['SeparateCharts', 'Separate Charts']];
+        const currentYLayout = opts.yLayout ?? '';
+        const yLayoutOptions = [['', '(default)'], ...yLayoutModes].map(([value, label]) =>
+            `<option value="${value}"${value === currentYLayout ? ' selected' : ''}>${label}</option>`
         ).join('');
 
         const xShowTicksChecked = opts.xShowTicks === true ? ' checked' : '';
         const yShowTicksChecked = opts.yShowTicks === true ? ' checked' : '';
+        const yMirrorChecked = opts.yMirror === true ? ' checked' : '';
         const xShowGridChecked = opts.xShowGrid === false ? '' : ' checked';
         const yShowGridChecked = opts.yShowGrid === false ? '' : ' checked';
         const xTickAngleValue = opts.xTickAngle != null ? String(opts.xTickAngle) : '';
@@ -600,8 +603,8 @@ class ChartEditorView implements IChartEditorView {
                     <select id="opt-textSize" onchange="_editorOnChartOptionChanged()">${textSizeOptions}</select>
                 </div>
                 <div class="field">
-                    <label for="opt-ySplit">Y Split</label>
-                    <select id="opt-ySplit" onchange="_editorOnChartOptionChanged()">${ySplitOptions}</select>
+                    <label for="opt-yLayout">Multi Y Layout</label>
+                    <select id="opt-yLayout" onchange="_editorOnChartOptionChanged()">${yLayoutOptions}</select>
                 </div>
             </div>
 
@@ -755,6 +758,10 @@ class ChartEditorView implements IChartEditorView {
                 <div class="field checkbox-field">
                     <input type="checkbox" id="opt-yShowTicks"${yShowTicksChecked} onchange="_editorOnChartOptionChanged()">
                     <label for="opt-yShowTicks">Show Tick Marks</label>
+                </div>
+                <div class="field checkbox-field">
+                    <input type="checkbox" id="opt-yMirror"${yMirrorChecked} onchange="_editorOnChartOptionChanged()">
+                    <label for="opt-yMirror">Mirror Axis</label>
                 </div>
                 <div class="field checkbox-field">
                     <input type="checkbox" id="opt-yShowGrid"${yShowGridChecked} onchange="_editorOnChartOptionChanged()">

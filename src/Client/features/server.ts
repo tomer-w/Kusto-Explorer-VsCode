@@ -568,7 +568,8 @@ export interface ChartOptions {
     seriesColumns?: string[];
     anomalyColumns?: string[];
     showLegend?: boolean;
-    ySplit?: string | undefined;
+    yLayout?: string | undefined;
+    yMirror?: boolean | undefined;
     xAxis?: string;
     yAxis?: string;
     xMin?: unknown;

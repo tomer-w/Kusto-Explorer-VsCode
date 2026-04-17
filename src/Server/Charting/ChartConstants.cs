@@ -97,13 +97,12 @@ public static class ChartAspectRatio
 }
 
 /// <summary>
-/// Constants for Y-axis split modes.
+/// Constants for Y-column layout modes.
 /// </summary>
-public static class ChartYSplit
+public static class ChartYLayout
 {
-    public const string None = "None";
-    public const string Axes = "Axes";
-    public const string IndependentAxes = "IndependentAxes";
-    public const string Panels = "Panels";
-    public const string Charts = "Charts";
+    public const string SharedAxis = "SharedAxis";
+    public const string DualAxis = "DualAxis";
+    public const string SeparatePanels = "SeparatePanels";
+    public const string SeparateCharts = "SeparateCharts";
 }

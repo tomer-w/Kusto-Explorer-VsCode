@@ -91,12 +91,11 @@ export const ChartMode = {
     Dark: 'Dark',
 } as const;
 
-export const ChartYSplit = {
-    None: 'None',
-    Axes: 'Axes',
-    IndependentAxes: 'IndependentAxes',
-    Panels: 'Panels',
-    Charts: 'Charts',
+export const ChartYLayout = {
+    SharedAxis: 'SharedAxis',
+    DualAxis: 'DualAxis',
+    SeparatePanels: 'SeparatePanels',
+    SeparateCharts: 'SeparateCharts',
 } as const;
 
 // ─── Shared Utilities ───────────────────────────────────────────────────────

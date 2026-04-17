@@ -7,7 +7,7 @@
  */
 
 import type { ChartOptions, ResultTable } from './server';
-import { ChartType, ChartAxis, ChartSortOrder, ChartLegendPosition, ChartColorways, ChartYSplit, ChartMode, hexToRgba, isNumericType, isDateTimeType, getColumnRef, getColumnRefByIndex } from './chartProvider';
+import { ChartType, ChartAxis, ChartSortOrder, ChartLegendPosition, ChartColorways, ChartYLayout, ChartMode, hexToRgba, isNumericType, isDateTimeType, getColumnRef, getColumnRefByIndex } from './chartProvider';
 import type { IChartView, IWebView, IChartProvider, ColumnRef } from './chartProvider';
 
 // ─── Plotly Constants ───────────────────────────────────────────────────────
@@ -1746,7 +1746,7 @@ export class PlotlyChartProvider implements IChartProvider {
         }
 
         // Multiple independent charts (CSS-scaled)
-        if (options.ySplit === ChartYSplit.Charts && (this.is2dChartType(options.type) || options.type === ChartType.Pie)) {
+        if (options.yLayout === ChartYLayout.SeparateCharts && (this.is2dChartType(options.type) || options.type === ChartType.Pie)) {
             const xColumn = this.get2dXColumn(data, options);
             if (xColumn) {
                 const yColumns = this.get2dYColumns(data, options, xColumn);
@@ -1800,7 +1800,7 @@ export class PlotlyChartProvider implements IChartProvider {
                 yColumns: [yCol.column.name],
                 yTitle: options.yTitle ? `${options.yTitle} - ${yCol.column.name}` : yCol.column.name,
             };
-            delete splitOptions.ySplit; // prevent recursion
+            delete splitOptions.yLayout; // prevent recursion
             let builder = this.buildChart(data, splitOptions, darkMode);
             if (builder) {
                 // Hide the legend when there's only one trace and no explicit position was set
@@ -2573,16 +2573,8 @@ export class PlotlyChartProvider implements IChartProvider {
         // Build a map from y-column index to Plotly yaxis reference (e.g., 'y', 'y2', 'y3').
         const yAxisMap = new Map<number, string>();
 
-        if (options.ySplit === ChartYSplit.Axes && yColumns.length > 1) {
-            // Mirrored Y-Axis: all traces share the same left axis, with tick labels mirrored on the right
-            builder = builder.addSecondaryYAxis('yaxis2', {
-                side: 'right',
-                matches: 'y',
-                showgrid: false,
-                overlaying: 'y',
-            });
-        } else if (options.ySplit === ChartYSplit.IndependentAxes && yColumns.length > 1) {
-            // Independent Axes: first y-column on left axis, rest on a shared right axis with its own scale
+        if (options.yLayout === ChartYLayout.DualAxis && yColumns.length > 1) {
+            // Dual Axis: first y-column on left axis, rest on a shared right axis with its own scale
             for (let i = 1; i < yColumns.length; i++) {
                 yAxisMap.set(i, 'y2');
             }
@@ -2591,7 +2583,7 @@ export class PlotlyChartProvider implements IChartProvider {
                 side: 'right',
                 showgrid: false,
             });
-        } else if (options.ySplit === ChartYSplit.Panels && yColumns.length > 1) {
+        } else if (options.yLayout === ChartYLayout.SeparatePanels && yColumns.length > 1) {
             // Panels: each y-column in its own subplot area (stacked vertically)
             // The primary yaxis/xaxis is assigned to the BOTTOM panel so that Plotly's
             // default margin handling benefits the panel that needs tick labels and title.
@@ -2735,7 +2727,7 @@ export class PlotlyChartProvider implements IChartProvider {
         }
 
         // For Panels mode, assign each trace to its corresponding x-axis subplot
-        if (options.ySplit === ChartYSplit.Panels && yColumns.length > 1) {
+        if (options.yLayout === ChartYLayout.SeparatePanels && yColumns.length > 1) {
             const updatedTraces = builder.traces.map(trace => {
                 if (trace.yaxis && trace.yaxis !== 'y') {
                     const axisNum = trace.yaxis.replace('y', '');
@@ -2871,6 +2863,13 @@ function applyCommonOptions(builder: PlotlyChartBuilder, options: ChartOptions):
     if (options.xTickAngle != null) builder = builder.setXTickAngle(options.xTickAngle);
     if (options.yTickAngle != null) builder = builder.setYTickAngle(options.yTickAngle);
 
+    if (options.yMirror === true) {
+        builder = builder.withLayout({
+            ...builder.layout,
+            yaxis: { ...(builder.layout.yaxis ?? {}), showline: true, mirror: 'ticks' } as PlotlyAxis,
+        });
+    }
+
     if (options.sort != null) {
         const order = options.sort === ChartSortOrder.Ascending
             ? PlotlyCategoryOrders.TotalAscending
@@ -2884,7 +2883,7 @@ function applyCommonOptions(builder: PlotlyChartBuilder, options: ChartOptions):
         } else {
             builder = builder.setLegendPosition(options.legendPosition);
         }
-    } else if (options.ySplit === ChartYSplit.Axes || options.ySplit === ChartYSplit.IndependentAxes) {
+    } else if (options.yLayout === ChartYLayout.DualAxis) {
         // Right-side axis clips with the default right-side legend
         builder = builder.setLegendPosition(ChartLegendPosition.Bottom);
     }
