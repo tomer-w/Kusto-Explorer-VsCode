@@ -560,7 +560,6 @@ export interface ResultColumn {
 /** Serializable representation of chart visualization options. */
 export interface ChartOptions {
     type: string;
-    kind?: string;
     title?: string;
     xTitle?: string;
     yTitle?: string;

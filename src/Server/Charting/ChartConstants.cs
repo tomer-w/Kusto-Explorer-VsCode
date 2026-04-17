@@ -8,36 +8,29 @@ namespace Kusto.Vscode;
 /// </summary>
 public static class ChartType
 {
-    public const string None = "none";
-    public const string AreaChart = "areachart";
-    public const string BarChart = "barchart";
-    public const string Card = "card";
-    public const string ColumnChart = "columnchart";
-    public const string Graph = "graph";
-    public const string LineChart = "linechart";
-    public const string PieChart = "piechart";
-    public const string PivotChart = "pivotchart";
-    public const string Plotly = "plotly";
-    public const string Sankey = "sankey";
-    public const string ScatterChart = "scatterchart";
-    public const string StackedAreaChart = "stackedareachart";
-    public const string ThreeDChart = "3Dchart";
-    public const string TimeLadderChart = "ladderchart";
-    public const string TimeLineChart = "timechart";
-    public const string TimeLineWithAnomalyChart = "anomalychart";
-    public const string TimePivot = "timepivot";
-    public const string TreeMap = "treemap";
-}
-
-/// <summary>
-/// Constants for chart visualization kinds.
-/// </summary>
-public static class ChartKind
-{
-    public const string Default = "Default";
-    public const string Stacked = "Stacked";
-    public const string Stacked100 = "Stacked100";
-    public const string Unstacked = "Unstacked";
+    public const string None = "None";
+    public const string Area = "Area";
+    public const string AreaStacked = "AreaStacked";
+    public const string AreaStacked100 = "AreaStacked100";
+    public const string Bar = "Bar";
+    public const string BarStacked = "BarStacked";
+    public const string BarStacked100 = "BarStacked100";
+    public const string Card = "Card";
+    public const string Column = "Column";
+    public const string ColumnStacked = "ColumnStacked";
+    public const string ColumnStacked100 = "ColumnStacked100";
+    public const string Graph = "Graph";
+    public const string Ladder = "Ladder";
+    public const string Line = "Line";
+    public const string Pie = "Pie";
+    public const string Plotly = "Plotly";
+    public const string Sankey = "Sankey";
+    public const string Scatter = "Scatter";
+    public const string ThreeD = "ThreeD";
+    public const string TimeLine = "TimeLine";
+    public const string TimeLineAnomaly = "TimeLineAnomaly";
+    public const string TimePivot = "TimePivot";
+    public const string TreeMap = "TreeMap";
 }
 
 /// <summary>
@@ -54,7 +47,6 @@ public static class ChartAxis
 /// </summary>
 public static class ChartSortOrder
 {
-    public const string Default = "Default";
     public const string Ascending = "Ascending";
     public const string Descending = "Descending";
 }

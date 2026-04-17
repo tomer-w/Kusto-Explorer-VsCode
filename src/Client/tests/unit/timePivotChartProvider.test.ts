@@ -28,7 +28,7 @@ function makeTable(columns: { name: string; type: string }[], rows: unknown[][])
 }
 
 function defaultOptions(): ChartOptions {
-    return { type: 'timepivot' };
+    return { type: 'TimePivot' };
 }
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
@@ -182,7 +182,7 @@ describe('TimePivotChartProvider', () => {
                     ['2024-01-02T00:00:00Z', 'B', 'Y'],
                 ],
             );
-            const options: ChartOptions = { type: 'timepivot', seriesColumns: ['Category'] };
+            const options: ChartOptions = { type: 'TimePivot', seriesColumns: ['Category'] };
             view.renderChart(table, options, false);
 
             expect(webview.setContent).toHaveBeenCalledTimes(1);

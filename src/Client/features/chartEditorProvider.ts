@@ -18,29 +18,33 @@ import { escapeHtml } from './html';
 
 /** Known chart types for the edit panel dropdown. Maps internal ID → UI display name. */
 const chartTypes: ReadonlyMap<string, string> = new Map([
-    ['areachart', 'Area'],
-    ['barchart', 'Bar'],
-    ['card', 'Card'],
-    ['columnchart', 'Column'],
-    ['graph', 'Graph'],
-    ['ladderchart', 'Time - Ladder'],
-    ['linechart', 'Line'],
-    ['piechart', 'Pie'],
-    ['plotly', 'Plotly'],
-    ['sankey', 'Sankey'],
-    ['scatterchart', 'Scatter'],
-    ['stackedareachart', 'Area - Stacked'],
-    ['3Dchart', '3D'],
-    ['timechart', 'Time - Line'],
-    ['anomalychart', 'Time - Line w/ Anomalies'],
-    ['timepivot', 'Time - Pivot'],
-    ['treemap', 'Tree Map'],
+    ['Area', 'Area (areachart)'],
+    ['AreaStacked', 'Area - Stacked (areachart)'],
+    ['AreaStacked100', 'Area - Stacked 100% (areachart)'],
+    ['Bar', 'Bar (barchart)'],
+    ['BarStacked', 'Bar - Stacked (barchart)'],
+    ['BarStacked100', 'Bar - Stacked 100% (barchart)'],
+    ['Card', 'Card (card)'],
+    ['Column', 'Column (columnchart)'],
+    ['ColumnStacked', 'Column - Stacked (columnchart)'],
+    ['ColumnStacked100', 'Column - Stacked 100% (columnchart)'],
+    ['Graph', 'Graph (graph)'],
+    ['Ladder', 'Time - Ladder (ladderchart)'],
+    ['Line', 'Line (linechart)'],
+    ['Pie', 'Pie (piechart)'],
+    ['Plotly', 'Plotly (plotly)'],
+    ['Sankey', 'Sankey (sankey)'],
+    ['Scatter', 'Scatter (scatterchart)'],
+    ['ThreeD', '3D (3Dchart)'],
+    ['TimeLine', 'Time - Line (timechart)'],
+    ['TimeLineAnomaly', 'Time - Line w/ Anomalies (anomalychart)'],
+    ['TimePivot', 'Time - Pivot (timepivot)'],
+    ['TreeMap', 'Tree Map (treemap)'],
 ]);
 
-const chartKinds = ['Default', 'Unstacked', 'Stacked', 'Stacked100'];
 const legendPositions = ['Right', 'Bottom', 'Hidden'];
 const axisTypes = ['Linear', 'Log'];
-const sortOrders = ['Default', 'Ascending', 'Descending'];
+const sortOrders = ['Ascending', 'Descending'];
 const chartModes = ['Light', 'Dark'];
 const aspectRatios = ['16:9', '3:2', '4:3', '1:1', '3:4', '2:3', '9:16'];
 const textSizes = ['Extra Small', 'Small', 'Medium', 'Large', 'Extra Large'];
@@ -317,8 +321,6 @@ class ChartEditorView implements IChartEditorView {
             var opts = {};
             var chartType = document.getElementById('opt-type');
             if (chartType) opts.type = chartType.value;
-            var kind = document.getElementById('opt-kind');
-            if (kind && kind.value) opts.kind = kind.value;
             var legendPos = document.getElementById('opt-legendPosition');
             if (legendPos && legendPos.value) {
                 if (legendPos.value === 'Hidden') { opts.showLegend = false; }
@@ -455,12 +457,6 @@ class ChartEditorView implements IChartEditorView {
             return `<option value="${t}"${t === opts.type ? ' selected' : ''} title="${escapeHtml(t)}">${escapeHtml(display)}</option>`;
         }).join('');
 
-        const currentKind = opts.kind || 'Default';
-        const allKinds = chartKinds.includes(currentKind) ? chartKinds : [currentKind, ...chartKinds];
-        const kindOptions = allKinds.map(k =>
-            `<option value="${k}"${k === currentKind ? ' selected' : ''}>${k === 'Default' ? '(default)' : escapeHtml(k)}</option>`
-        ).join('');
-
         const currentLegend = (opts.showLegend === false) ? 'Hidden' : (opts.legendPosition ?? '');
         const legendPosOptions = ['', ...legendPositions].map(p =>
             `<option value="${p}"${p === currentLegend ? ' selected' : ''}>${p || '(default)'}</option>`
@@ -582,10 +578,6 @@ class ChartEditorView implements IChartEditorView {
                 <div class="field">
                     <label for="opt-type">Type</label>
                     <select id="opt-type" onchange="_editorOnChartOptionChanged()">${typeOptions}</select>
-                </div>
-                <div class="field">
-                    <label for="opt-kind">Kind</label>
-                    <select id="opt-kind" onchange="_editorOnChartOptionChanged()">${kindOptions}</select>
                 </div>
                 <div class="field">
                     <label for="opt-legendPosition">Legend</label>

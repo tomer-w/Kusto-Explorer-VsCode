@@ -7,7 +7,7 @@
  */
 
 import type { ChartOptions, ResultTable } from './server';
-import { ChartType, ChartKind, ChartAxis, ChartSortOrder, ChartLegendPosition, ChartColorways, ChartYSplit, ChartMode, hexToRgba, isNumericType, isDateTimeType, getColumnRef, getColumnRefByIndex } from './chartProvider';
+import { ChartType, ChartAxis, ChartSortOrder, ChartLegendPosition, ChartColorways, ChartYSplit, ChartMode, hexToRgba, isNumericType, isDateTimeType, getColumnRef, getColumnRefByIndex } from './chartProvider';
 import type { IChartView, IWebView, IChartProvider, ColumnRef } from './chartProvider';
 
 // ─── Plotly Constants ───────────────────────────────────────────────────────
@@ -1002,9 +1002,9 @@ function applyFontSizesToLayout(layout: Record<string, unknown>, fonts: { titleS
 }
 
 function isTimeChartType(type: string): boolean {
-    return type === ChartType.TimeLineChart
-        || type === ChartType.TimeLineWithAnomalyChart
-        || type === ChartType.TimeLadderChart
+    return type === ChartType.TimeLine
+        || type === ChartType.TimeLineAnomaly
+        || type === ChartType.Ladder
         || type === ChartType.TimePivot;
 }
 
@@ -1746,7 +1746,7 @@ export class PlotlyChartProvider implements IChartProvider {
         }
 
         // Multiple independent charts (CSS-scaled)
-        if (options.ySplit === ChartYSplit.Charts && (this.is2dChartType(options.type) || options.type === ChartType.PieChart)) {
+        if (options.ySplit === ChartYSplit.Charts && (this.is2dChartType(options.type) || options.type === ChartType.Pie)) {
             const xColumn = this.get2dXColumn(data, options);
             if (xColumn) {
                 const yColumns = this.get2dYColumns(data, options, xColumn);
@@ -1763,15 +1763,19 @@ export class PlotlyChartProvider implements IChartProvider {
     /** Returns true for chart types that use 2D x/y column rendering and support y-split. */
     private is2dChartType(type: string): boolean {
         switch (type) {
-            case ChartType.BarChart:
-            case ChartType.ColumnChart:
-            case ChartType.LineChart:
-            case ChartType.PivotChart:
-            case ChartType.TimeLineChart:
-            case ChartType.TimeLineWithAnomalyChart:
-            case ChartType.ScatterChart:
-            case ChartType.AreaChart:
-            case ChartType.StackedAreaChart:
+            case ChartType.Bar:
+            case ChartType.BarStacked:
+            case ChartType.BarStacked100:
+            case ChartType.Column:
+            case ChartType.ColumnStacked:
+            case ChartType.ColumnStacked100:
+            case ChartType.Line:
+            case ChartType.TimeLine:
+            case ChartType.TimeLineAnomaly:
+            case ChartType.Scatter:
+            case ChartType.Area:
+            case ChartType.AreaStacked:
+            case ChartType.AreaStacked100:
                 return true;
             default:
                 return false;
@@ -1887,34 +1891,38 @@ export class PlotlyChartProvider implements IChartProvider {
         let builder: PlotlyChartBuilder | undefined;
 
         switch (options.type) {
-            case ChartType.BarChart:
-            case ChartType.ColumnChart:
+            case ChartType.Bar:
+            case ChartType.BarStacked:
+            case ChartType.BarStacked100:
+            case ChartType.Column:
+            case ChartType.ColumnStacked:
+            case ChartType.ColumnStacked100:
                 builder = this.buildBarOrColumnChart(data, options);
                 break;
-            case ChartType.LineChart:
-            case ChartType.PivotChart:
-            case ChartType.TimeLineChart:
-            case ChartType.TimeLineWithAnomalyChart:
+            case ChartType.Line:
+            case ChartType.TimeLine:
+            case ChartType.TimeLineAnomaly:
                 builder = this.buildLineChart(data, options, darkMode);
                 break;
-            case ChartType.ScatterChart:
+            case ChartType.Scatter:
                 builder = this.buildScatterChart(data, options, darkMode);
                 break;
-            case ChartType.PieChart:
+            case ChartType.Pie:
                 builder = this.buildPieChart(data, options);
                 break;
-            case ChartType.AreaChart:
-                builder = (options.kind === ChartKind.Stacked || options.kind === ChartKind.Stacked100)
-                    ? this.buildStackedAreaChart(data, options)
-                    : this.buildAreaChart(data, options);
+            case ChartType.Area:
+                builder = this.buildAreaChart(data, options);
                 break;
-            case ChartType.StackedAreaChart:
+            case ChartType.AreaStacked:
+                builder = this.buildStackedAreaChart(data, options);
+                break;
+            case ChartType.AreaStacked100:
                 builder = this.buildStackedAreaChart(data, options);
                 break;
             case ChartType.Card:
                 builder = this.buildCardChart(data, options);
                 break;
-            case ChartType.ThreeDChart:
+            case ChartType.ThreeD:
                 builder = this.buildThreeDChart(data, options);
                 break;
             case ChartType.TreeMap:
@@ -1923,7 +1931,7 @@ export class PlotlyChartProvider implements IChartProvider {
             case ChartType.Sankey:
                 builder = this.buildSankeyChart(data, options);
                 break;
-            case ChartType.TimeLadderChart:
+            case ChartType.Ladder:
             case ChartType.TimePivot:
                 builder = this.buildLadderChart(data, options);
                 break;
@@ -1937,7 +1945,7 @@ export class PlotlyChartProvider implements IChartProvider {
             } else {
                 builder = builder.withLightMode();
             }
-            if (options.type !== ChartType.ThreeDChart) {
+            if (options.type !== ChartType.ThreeD) {
                 builder = builder.withFixedRange();
             }
         }
@@ -1949,21 +1957,16 @@ export class PlotlyChartProvider implements IChartProvider {
 
     private buildBarOrColumnChart(data: ResultTable, options: ChartOptions): PlotlyChartBuilder | undefined {
         let builder = new PlotlyChartBuilder();
-        const isHorizontal = options.type === ChartType.BarChart;
+        const isHorizontal = options.type === ChartType.Bar || options.type === ChartType.BarStacked || options.type === ChartType.BarStacked100;
+        const isStacked = options.type === ChartType.BarStacked || options.type === ChartType.BarStacked100
+            || options.type === ChartType.ColumnStacked || options.type === ChartType.ColumnStacked100;
+        const isStacked100 = options.type === ChartType.BarStacked100 || options.type === ChartType.ColumnStacked100;
 
-        switch (options.kind) {
-            case ChartKind.Stacked:
-                builder = builder.setStacked();
-                break;
-            case ChartKind.Stacked100:
-                builder = builder.setStacked();
-                break;
-            case ChartKind.Unstacked:
-                builder = builder.setGrouped();
-                break;
+        if (isStacked) {
+            builder = builder.setStacked();
         }
 
-        if (options.kind === ChartKind.Stacked100) {
+        if (isStacked100) {
             return this.buildStacked100BarOrColumnChart(builder, data, options, isHorizontal);
         }
 
@@ -2105,7 +2108,7 @@ export class PlotlyChartProvider implements IChartProvider {
     }
 
     private buildStackedAreaChart(data: ResultTable, options: ChartOptions): PlotlyChartBuilder | undefined {
-        const groupNorm = options.kind === ChartKind.Stacked100 ? 'percent' : undefined;
+        const groupNorm = options.type === ChartType.AreaStacked100 ? 'percent' : undefined;
         return this.build2dChart(new PlotlyChartBuilder(), data, options,
             (b, x, y, name, yAxis) => b.addAreaChart(x, y, name, '1', yAxis, groupNorm));
     }
@@ -2868,7 +2871,7 @@ function applyCommonOptions(builder: PlotlyChartBuilder, options: ChartOptions):
     if (options.xTickAngle != null) builder = builder.setXTickAngle(options.xTickAngle);
     if (options.yTickAngle != null) builder = builder.setYTickAngle(options.yTickAngle);
 
-    if (options.sort != null && options.sort !== ChartSortOrder.Default) {
+    if (options.sort != null) {
         const order = options.sort === ChartSortOrder.Ascending
             ? PlotlyCategoryOrders.TotalAscending
             : PlotlyCategoryOrders.TotalDescending;

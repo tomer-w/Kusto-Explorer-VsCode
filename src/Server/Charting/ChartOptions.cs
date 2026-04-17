@@ -14,17 +14,10 @@ namespace Kusto.Vscode;
 public class ChartOptions
 {
     /// <summary>
-    /// Chart type. Use kql keywords (e.g., "linechart", "barchart", "piechart", "scatterchart").
+    /// Chart type. Use <see cref="ChartType"/> constants.
     /// </summary>
     [DataMember(Name = "type")]
     public required string Type { get; init; }
-
-    /// <summary>
-    /// Chart kind. Use <see cref="ChartKind"/> constants: "Default", "Stacked", "Stacked100", "Unstacked".
-    /// If null, defaults to "Default". Only applies to bar/column charts.
-    /// </summary>
-    [DataMember(Name = "kind")]
-    public string? Kind { get; init; }
 
     /// <summary>
     /// Chart title text displayed above the chart. If null, no title is shown.
@@ -186,7 +179,7 @@ public class ChartOptions
     public bool? ShowValues { get; init; }
 
     /// <summary>
-    /// Category sort order on the X-axis. Use <see cref="ChartSortOrder"/> constants: "Default", "Ascending", "Descending".
+    /// Category sort order on the X-axis. Use <see cref="ChartSortOrder"/> constants: "Ascending", "Descending".
     /// If null, categories appear in the order encountered in the data. Sorts by total value.
     /// </summary>
     [DataMember(Name = "sort")]
@@ -250,8 +243,7 @@ public class ChartOptions
     {
         return new ChartOptions
         {
-            Type = VisualizationToChartType(options.Visualization),
-            Kind = options.Mode.ToString(),
+            Type = VisualizationToChartType(options.Visualization, options.Mode),
             Title = options.Title,
             XTitle = options.XTitle,
             YTitle = options.YTitle,
@@ -279,7 +271,6 @@ public class ChartOptions
         return new ChartOptions
         {
             Type = this.Type,
-            Kind = this.Kind,
             Title = this.Title,
             XTitle = this.XTitle,
             YTitle = this.YTitle,
@@ -303,7 +294,7 @@ public class ChartOptions
             XTickAngle = this.XTickAngle,
             YTickAngle = this.YTickAngle,
             ShowValues = this.ShowValues ?? defaults.ShowValues,
-            Sort = this.Sort,
+            Sort = this.Sort == "Default" ? null : this.Sort,
             LegendPosition = this.LegendPosition ?? defaults.LegendPosition,
             Mode = this.Mode,
             AspectRatio = this.AspectRatio ?? defaults.AspectRatio,
@@ -325,26 +316,43 @@ public class ChartOptions
         };
     }
 
-    private static string VisualizationToChartType(VisualizationKind kind)
+    private static string VisualizationToChartType(VisualizationKind visualization, object mode)
     {
-        return kind switch
+        var modeStr = mode?.ToString();
+
+        return visualization switch
         {
-            VisualizationKind.AreaChart => ChartType.AreaChart,
-            VisualizationKind.BarChart => ChartType.BarChart,
+            VisualizationKind.AreaChart => modeStr switch
+            {
+                "Stacked" => ChartType.AreaStacked,
+                "Stacked100" => ChartType.AreaStacked100,
+                _ => ChartType.Area,
+            },
+            VisualizationKind.BarChart => modeStr switch
+            {
+                "Stacked" => ChartType.BarStacked,
+                "Stacked100" => ChartType.BarStacked100,
+                _ => ChartType.Bar,
+            },
             VisualizationKind.Card => ChartType.Card,
-            VisualizationKind.ColumnChart => ChartType.ColumnChart,
+            VisualizationKind.ColumnChart => modeStr switch
+            {
+                "Stacked" => ChartType.ColumnStacked,
+                "Stacked100" => ChartType.ColumnStacked100,
+                _ => ChartType.Column,
+            },
             VisualizationKind.Graph => ChartType.Graph,
-            VisualizationKind.LineChart => ChartType.LineChart,
-            VisualizationKind.PieChart => ChartType.PieChart,
-            VisualizationKind.PivotChart => ChartType.PivotChart,
+            VisualizationKind.LineChart => ChartType.Line,
+            VisualizationKind.PieChart => ChartType.Pie,
+            VisualizationKind.PivotChart => ChartType.Line,
             VisualizationKind.Plotly => ChartType.Plotly,
             VisualizationKind.Sankey => ChartType.Sankey,
-            VisualizationKind.ScatterChart => ChartType.ScatterChart,
-            VisualizationKind.StackedAreaChart => ChartType.StackedAreaChart,
-            VisualizationKind.ThreeDChart => ChartType.ThreeDChart,
-            VisualizationKind.TimeLadderChart => ChartType.TimeLadderChart,
-            VisualizationKind.TimeLineChart => ChartType.TimeLineChart,
-            VisualizationKind.TimeLineWithAnomalyChart => ChartType.TimeLineWithAnomalyChart,
+            VisualizationKind.ScatterChart => ChartType.Scatter,
+            VisualizationKind.StackedAreaChart => ChartType.AreaStacked,
+            VisualizationKind.ThreeDChart => ChartType.ThreeD,
+            VisualizationKind.TimeLadderChart => ChartType.Ladder,
+            VisualizationKind.TimeLineChart => ChartType.TimeLine,
+            VisualizationKind.TimeLineWithAnomalyChart => ChartType.TimeLineAnomaly,
             VisualizationKind.TimePivot => ChartType.TimePivot,
             VisualizationKind.TreeMap => ChartType.TreeMap,
             _ => ChartType.None,

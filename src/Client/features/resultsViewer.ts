@@ -1192,7 +1192,7 @@ export class ResultsViewer {
         const hadChartOptions = !!this.lastPanelResultData.chartOptions;
         const chartData: server.ResultData = {
             ...this.lastPanelResultData,
-            chartOptions: this.lastPanelResultData.chartOptions ?? { type: 'columnchart' }
+            chartOptions: this.lastPanelResultData.chartOptions ?? { type: 'Column' }
         };
         await this.displayResultsInSingletonView(chartData, 'chart');
 

@@ -45,32 +45,29 @@ export interface IChartProvider {
 // ─── Chart Constants ────────────────────────────────────────────────────────
 
 export const ChartType = {
-    None: 'none',
-    AreaChart: 'areachart',
-    BarChart: 'barchart',
-    Card: 'card',
-    ColumnChart: 'columnchart',
-    Graph: 'graph',
-    LineChart: 'linechart',
-    PieChart: 'piechart',
-    PivotChart: 'pivotchart',
-    Plotly: 'plotly',
-    Sankey: 'sankey',
-    ScatterChart: 'scatterchart',
-    StackedAreaChart: 'stackedareachart',
-    ThreeDChart: '3Dchart',
-    TimeLadderChart: 'ladderchart',
-    TimeLineChart: 'timechart',
-    TimeLineWithAnomalyChart: 'anomalychart',
-    TimePivot: 'timepivot',
-    TreeMap: 'treemap',
-} as const;
-
-export const ChartKind = {
-    Default: 'Default',
-    Stacked: 'Stacked',
-    Stacked100: 'Stacked100',
-    Unstacked: 'Unstacked',
+    None: 'None',
+    Area: 'Area',
+    AreaStacked: 'AreaStacked',
+    AreaStacked100: 'AreaStacked100',
+    Bar: 'Bar',
+    BarStacked: 'BarStacked',
+    BarStacked100: 'BarStacked100',
+    Card: 'Card',
+    Column: 'Column',
+    ColumnStacked: 'ColumnStacked',
+    ColumnStacked100: 'ColumnStacked100',
+    Graph: 'Graph',
+    Ladder: 'Ladder',
+    Line: 'Line',
+    Pie: 'Pie',
+    Plotly: 'Plotly',
+    Sankey: 'Sankey',
+    Scatter: 'Scatter',
+    ThreeD: 'ThreeD',
+    TimeLine: 'TimeLine',
+    TimeLineAnomaly: 'TimeLineAnomaly',
+    TimePivot: 'TimePivot',
+    TreeMap: 'TreeMap',
 } as const;
 
 export const ChartAxis = {
@@ -79,7 +76,6 @@ export const ChartAxis = {
 } as const;
 
 export const ChartSortOrder = {
-    Default: 'Default',
     Ascending: 'Ascending',
     Descending: 'Descending',
 } as const;
