@@ -1506,8 +1506,12 @@ const plotlyChartScripts = `
     document.addEventListener('click', function(e) {
         if (!isMultiChart()) return;
         if (zoomedCell) {
-            // Clicking anywhere while zoomed returns to all charts
-            unzoomCell();
+            // Only unzoom if the click is outside the Plotly chart area
+            // (allows legend clicks, axis interactions, etc. to work normally)
+            var plotArea = e.target.closest('.js-plotly-plot');
+            if (!plotArea) {
+                unzoomCell();
+            }
             return;
         }
         var target = e.target;
@@ -1705,7 +1709,7 @@ export class PlotlyChartProvider implements IChartProvider {
         }
 
         // Multiple independent charts (CSS-scaled)
-        if (options.ySplit === ChartYSplit.Charts && this.is2dChartType(options.type)) {
+        if (options.ySplit === ChartYSplit.Charts && (this.is2dChartType(options.type) || options.type === ChartType.PieChart)) {
             const xColumn = this.get2dXColumn(data, options);
             if (xColumn) {
                 const yColumns = this.get2dYColumns(data, options, xColumn);
