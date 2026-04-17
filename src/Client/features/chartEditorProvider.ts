@@ -611,10 +611,6 @@ class ChartEditorView implements IChartEditorView {
                     <label for="opt-ySplit">Y Split</label>
                     <select id="opt-ySplit" onchange="_editorOnChartOptionChanged()">${ySplitOptions}</select>
                 </div>
-                <div class="field checkbox-field">
-                    <input type="checkbox" id="opt-showValues"${showValuesChecked} onchange="_editorOnChartOptionChanged()">
-                    <label for="opt-showValues">Show Values</label>
-                </div>
             </div>
 
             <div class="section-header collapsed" onclick="_editorToggleSection(this)">
@@ -685,6 +681,10 @@ class ChartEditorView implements IChartEditorView {
                 <div class="field checkbox-field">
                     <input type="checkbox" id="opt-markerOutline"${markerOutlineChecked} onchange="_editorOnChartOptionChanged()">
                     <label for="opt-markerOutline">Outline</label>
+                </div>
+                <div class="field checkbox-field">
+                    <input type="checkbox" id="opt-showValues"${showValuesChecked} onchange="_editorOnChartOptionChanged()">
+                    <label for="opt-showValues">Show Values</label>
                 </div>
             </div>
 

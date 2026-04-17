@@ -7,7 +7,7 @@
  */
 
 import type { ChartOptions, ResultTable } from './server';
-import { ChartType, ChartKind, ChartAxis, ChartSortOrder, ChartLegendPosition, ChartColorways, ChartYSplit, hexToRgba, isNumericType, isDateTimeType, getColumnRef, getColumnRefByIndex } from './chartProvider';
+import { ChartType, ChartKind, ChartAxis, ChartSortOrder, ChartLegendPosition, ChartColorways, ChartYSplit, ChartMode, hexToRgba, isNumericType, isDateTimeType, getColumnRef, getColumnRefByIndex } from './chartProvider';
 import type { IChartView, IWebView, IChartProvider, ColumnRef } from './chartProvider';
 
 // ─── Plotly Constants ───────────────────────────────────────────────────────
@@ -463,7 +463,7 @@ class PlotlyChartBuilder {
             color: '#f2f5fa',
             gridcolor: '#444444',
             linecolor: '#666666',
-            zerolinecolor: '#666666',
+            zeroline: false,
         };
         const layout: PlotlyLayout = {
             ...this._layout,
@@ -478,6 +478,30 @@ class PlotlyChartBuilder {
         for (const key of Object.keys(this._layout)) {
             if (/^[xy]axis\d+$/.test(key)) {
                 (layout as Record<string, unknown>)[key] = { ...(this._layout as Record<string, unknown>)[key] as Record<string, unknown>, ...darkAxis };
+            }
+        }
+        return this._new(undefined, layout);
+    }
+
+    withLightMode(): PlotlyChartBuilder {
+        const lightAxis: Partial<PlotlyAxis> = {
+            color: '#2a3f5f',
+            gridcolor: '#e2e2e2',
+            linecolor: '#bcbcbc',
+            zeroline: false,
+        };
+        const layout: PlotlyLayout = {
+            ...this._layout,
+            paper_bgcolor: '#ffffff',
+            plot_bgcolor: '#ffffff',
+            font: { color: '#2a3f5f' },
+            xaxis: { ...(this._layout.xaxis ?? {}), ...lightAxis },
+            yaxis: { ...(this._layout.yaxis ?? {}), ...lightAxis },
+        };
+        // Apply light axis styling to additional subplot axes (xaxis2, yaxis2, etc.)
+        for (const key of Object.keys(this._layout)) {
+            if (/^[xy]axis\d+$/.test(key)) {
+                (layout as Record<string, unknown>)[key] = { ...(this._layout as Record<string, unknown>)[key] as Record<string, unknown>, ...lightAxis };
             }
         }
         return this._new(undefined, layout);
@@ -1505,6 +1529,9 @@ const plotlyChartScripts = `
     }
     document.addEventListener('click', function(e) {
         if (!isMultiChart()) return;
+        // Ignore clicks outside the chart area (e.g. chart editor panel)
+        var chartDiv = document.getElementById('chart');
+        if (!chartDiv || !chartDiv.contains(e.target)) return;
         if (zoomedCell) {
             // Only unzoom if the click is outside the Plotly chart area
             // (allows legend clicks, axis interactions, etc. to work normally)
@@ -1616,6 +1643,12 @@ class PlotlyChartView implements IChartView {
         const bodyHtml = this.render(data, options, darkMode);
         if (bodyHtml) {
             this.webview.setContent(bodyHtml);
+        } else {
+            const typeName = options.type || 'Unknown';
+            this.webview.setContent(
+                `<div style="display:flex;align-items:center;justify-content:center;height:100%;visibility:visible;color:var(--vscode-foreground,inherit);">` +
+                `<span style="font-size:1.5em;">&#10060;</span>&nbsp; Chart type "${typeName}" is not currently supported.</div>`
+            );
         }
     }
 
@@ -1704,6 +1737,10 @@ export class PlotlyChartProvider implements IChartProvider {
     }
 
     private renderChartToHtmlDiv(data: ResultTable, options: ChartOptions, darkMode = false): string | undefined {
+        // Allow the chart's mode option to override the editor theme
+        if (options.mode === ChartMode.Light) darkMode = false;
+        else if (options.mode === ChartMode.Dark) darkMode = true;
+
         if (options.type === ChartType.Plotly) {
             return this.renderRawPlotlyChart(data, darkMode);
         }
@@ -1830,6 +1867,8 @@ export class PlotlyChartProvider implements IChartProvider {
 
             if (darkMode) {
                 layoutJson = applyDarkModeToLayout(layoutJson);
+            } else {
+                layoutJson = applyLightModeToLayout(layoutJson);
             }
 
             const configJson = root.config
@@ -1895,6 +1934,8 @@ export class PlotlyChartProvider implements IChartProvider {
         if (builder) {
             if (darkMode) {
                 builder = builder.withDarkMode();
+            } else {
+                builder = builder.withLightMode();
             }
             if (options.type !== ChartType.ThreeDChart) {
                 builder = builder.withFixedRange();
@@ -2886,5 +2927,46 @@ function applyDarkModeToAxis(parent: Record<string, unknown>, axisKey: string): 
     axis.color = '#f2f5fa';
     axis.gridcolor = '#444444';
     axis.linecolor = '#666666';
-    axis.zerolinecolor = '#666666';
+    axis.zeroline = false;
+}
+
+// ─── Light Mode Layout Helper ───────────────────────────────────────────────
+
+function applyLightModeToLayout(layoutJson: string): string {
+    const layout = (JSON.parse(layoutJson) as Record<string, unknown>) ?? {};
+
+    layout.paper_bgcolor = '#ffffff';
+    layout.plot_bgcolor = '#ffffff';
+
+    if (!layout.font || typeof layout.font !== 'object') { layout.font = {}; }
+    (layout.font as Record<string, unknown>).color = '#2a3f5f';
+
+    applyLightModeToAxis(layout, 'xaxis');
+    applyLightModeToAxis(layout, 'yaxis');
+
+    // Apply to additional axes (xaxis2, yaxis2, etc.)
+    for (const key of Object.keys(layout)) {
+        if ((key.startsWith('xaxis') || key.startsWith('yaxis')) && key !== 'xaxis' && key !== 'yaxis') {
+            applyLightModeToAxis(layout, key);
+        }
+    }
+
+    // Apply to 3D scene axes if present
+    if (layout.scene && typeof layout.scene === 'object') {
+        const scene = layout.scene as Record<string, unknown>;
+        applyLightModeToAxis(scene, 'xaxis');
+        applyLightModeToAxis(scene, 'yaxis');
+        applyLightModeToAxis(scene, 'zaxis');
+    }
+
+    return JSON.stringify(layout);
+}
+
+function applyLightModeToAxis(parent: Record<string, unknown>, axisKey: string): void {
+    if (!parent[axisKey] || typeof parent[axisKey] !== 'object') { parent[axisKey] = {}; }
+    const axis = parent[axisKey] as Record<string, unknown>;
+    axis.color = '#2a3f5f';
+    axis.gridcolor = '#e2e2e2';
+    axis.linecolor = '#bcbcbc';
+    axis.zeroline = false;
 }
