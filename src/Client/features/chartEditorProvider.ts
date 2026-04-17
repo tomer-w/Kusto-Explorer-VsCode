@@ -554,7 +554,7 @@ class ChartEditorView implements IChartEditorView {
             `<option value="${a}"${a === currentYAxis ? ' selected' : ''}>${a || '(default)'}</option>`
         ).join('');
 
-        const ySplitModes: [string, string][] = [['None', 'One Chart'], ['Axes', 'Secondary Axis'], ['Panels', 'Multiple Panels'], ['Charts', 'Multiple Charts']];
+        const ySplitModes: [string, string][] = [['None', 'One Chart (none)'], ['Axes', 'Mirrored Y-Axis (axes)'], ['IndependentAxes', 'Independent Axes'], ['Panels', 'Multiple Panels (panels)'], ['Charts', 'Multiple Charts']];
         const currentYSplit = opts.ySplit ?? '';
         const ySplitOptions = [['', '(default)'], ...ySplitModes].map(([value, label]) =>
             `<option value="${value}"${value === currentYSplit ? ' selected' : ''}>${label}</option>`

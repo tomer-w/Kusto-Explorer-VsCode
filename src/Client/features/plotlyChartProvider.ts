@@ -1750,18 +1750,26 @@ export class PlotlyChartProvider implements IChartProvider {
     ): string | undefined {
         const { width: virtualW, height: virtualH } = this.getInitialChartSize(options.aspectRatio);
         const fontSizes = computeFontSizes(virtualW, virtualH, options.textSize);
+        const colorway = PlotlyColorways.Default;
         const chartCells: string[] = [];
         for (let i = 0; i < yColumns.length; i++) {
             const yCol = yColumns[i]!;
             const splitOptions: ChartOptions = {
                 ...options,
                 yColumns: [yCol.column.name],
-                ySplit: undefined, // prevent recursion
-                title: options.title,
                 yTitle: options.yTitle ? `${options.yTitle} - ${yCol.column.name}` : yCol.column.name,
             };
+            delete splitOptions.ySplit; // prevent recursion
             let builder = this.buildChart(data, splitOptions, darkMode);
             if (builder) {
+                // Hide the legend when there's only one trace and no explicit position was set
+                if (options.legendPosition == null && builder.traces.length <= 1) {
+                    builder = builder.hideLegend();
+                }
+                // Rotate the colorway so each chart's trace keeps the color it would
+                // have had on the combined chart.
+                const rotated = [...colorway.slice(i % colorway.length), ...colorway.slice(0, i % colorway.length)];
+                builder = builder.setColorway(...rotated);
                 // Render at a fixed virtual size. CSS transform: scale() handles fitting to the cell.
                 const layout = applyFontSizesToLayout({ ...builder.layout, width: virtualW, height: virtualH }, fontSizes);
                 builder = builder
@@ -2522,7 +2530,15 @@ export class PlotlyChartProvider implements IChartProvider {
         const yAxisMap = new Map<number, string>();
 
         if (options.ySplit === ChartYSplit.Axes && yColumns.length > 1) {
-            // Secondary Axis: first y-column on left axis, rest on a shared right axis
+            // Mirrored Y-Axis: all traces share the same left axis, with tick labels mirrored on the right
+            builder = builder.addSecondaryYAxis('yaxis2', {
+                side: 'right',
+                matches: 'y',
+                showgrid: false,
+                overlaying: 'y',
+            });
+        } else if (options.ySplit === ChartYSplit.IndependentAxes && yColumns.length > 1) {
+            // Independent Axes: first y-column on left axis, rest on a shared right axis with its own scale
             for (let i = 1; i < yColumns.length; i++) {
                 yAxisMap.set(i, 'y2');
             }
@@ -2824,6 +2840,9 @@ function applyCommonOptions(builder: PlotlyChartBuilder, options: ChartOptions):
         } else {
             builder = builder.setLegendPosition(options.legendPosition);
         }
+    } else if (options.ySplit === ChartYSplit.Axes || options.ySplit === ChartYSplit.IndependentAxes) {
+        // Right-side axis clips with the default right-side legend
+        builder = builder.setLegendPosition(ChartLegendPosition.Bottom);
     }
 
     return builder;

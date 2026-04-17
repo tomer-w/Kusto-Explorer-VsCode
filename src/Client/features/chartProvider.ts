@@ -98,6 +98,7 @@ export const ChartMode = {
 export const ChartYSplit = {
     None: 'None',
     Axes: 'Axes',
+    IndependentAxes: 'IndependentAxes',
     Panels: 'Panels',
     Charts: 'Charts',
 } as const;

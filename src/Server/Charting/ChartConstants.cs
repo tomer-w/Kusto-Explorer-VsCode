@@ -111,6 +111,7 @@ public static class ChartYSplit
 {
     public const string None = "None";
     public const string Axes = "Axes";
+    public const string IndependentAxes = "IndependentAxes";
     public const string Panels = "Panels";
     public const string Charts = "Charts";
 }
