@@ -1440,21 +1440,31 @@ const plotlyChartScripts = `
 
     // ── Copy chart ────────────────────────────────────────────────────
     // In multi-chart mode, clicking a chart selects it for copy.
+    // Clicking the same chart again deselects it.
     var selectedChartDiv = null;
     document.addEventListener('click', function(e) {
         if (!isMultiChart()) return;
         var target = e.target;
+        var foundCell = null;
         while (target && target !== document.body) {
             if (target.classList && target.classList.contains('multi-chart-cell')) {
-                // Deselect previous
-                if (selectedChartDiv && selectedChartDiv !== target) {
-                    selectedChartDiv.style.outline = '';
-                }
-                selectedChartDiv = target;
-                selectedChartDiv.style.outline = '2px solid var(--vscode-focusBorder, #007acc)';
+                foundCell = target;
                 break;
             }
             target = target.parentElement;
+        }
+        if (foundCell) {
+            if (selectedChartDiv === foundCell) {
+                // Toggle off: clicking the same cell deselects
+                selectedChartDiv.style.outline = '';
+                selectedChartDiv = null;
+            } else {
+                if (selectedChartDiv) {
+                    selectedChartDiv.style.outline = '';
+                }
+                selectedChartDiv = foundCell;
+                selectedChartDiv.style.outline = '2px solid var(--vscode-focusBorder, #007acc)';
+            }
         }
     });
 
@@ -1587,11 +1597,13 @@ export class PlotlyChartProvider implements IChartProvider {
     display: grid;
     height: 100%;
     grid-auto-rows: 1fr;
+    gap: 6px;
 }
 .multi-chart-grid > .multi-chart-cell { min-height: 0; }
 .multi-chart-cell {
     position: relative;
     overflow: hidden;
+    margin: 3px;
 }
 .multi-chart-scaler {
     transform-origin: top left;
@@ -1661,7 +1673,8 @@ export class PlotlyChartProvider implements IChartProvider {
                 ...options,
                 yColumns: [yCol.column.name],
                 ySplit: undefined, // prevent recursion
-                title: options.title ? `${options.title} — ${yCol.column.name}` : yCol.column.name,
+                title: options.title,
+                yTitle: options.yTitle ? `${options.yTitle} - ${yCol.column.name}` : yCol.column.name,
             };
             let builder = this.buildChart(data, splitOptions, darkMode);
             if (builder) {
