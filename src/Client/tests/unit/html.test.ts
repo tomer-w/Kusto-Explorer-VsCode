@@ -126,15 +126,15 @@ describe('resultDataToHtml', () => {
         expect(result.tables[0]!.name).toBe('Table2');
     });
 
-    it('reports hasChart when chartOptions present', () => {
+    it('reports hasChart when charts are present', () => {
         const withChart: ResultData = {
             ...data,
-            chartOptions: { type: 'Bar' },
+            charts: [{ options: { type: 'Bar' } }],
         };
         expect(resultDataToHtml(withChart).hasChart).toBe(true);
     });
 
-    it('reports no chart when chartOptions absent', () => {
+    it('reports no chart when charts are absent', () => {
         expect(resultDataToHtml(data).hasChart).toBe(false);
     });
 });

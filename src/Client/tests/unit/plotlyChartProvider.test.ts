@@ -364,6 +364,36 @@ describe('CompositeChartProvider', () => {
                 const trace = parseTraces(html!)[0] as Record<string, unknown>;
                 expect(trace.marker).toEqual({ symbol: 'star', size: 8 });
             });
+
+            it('renders anomaly overlays when anomalyColumns are specified', () => {
+                const table = makeTable(
+                    [
+                        { name: 'x', type: 'int' },
+                        { name: 'value', type: 'real' },
+                        { name: 'anomalies', type: 'real' },
+                    ],
+                    [
+                        [1, 10, 0],
+                        [2, 20, 1],
+                        [3, 15, 0],
+                        [4, 50, -1],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'Scatter',
+                    yColumns: ['value', 'anomalies'],
+                    anomalyColumns: ['anomalies'],
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                expect(traces.length).toBe(2);
+                const base = traces[0] as Record<string, unknown>;
+                const anomaly = traces[1] as Record<string, unknown>;
+                expect(base.mode).toBe('markers');
+                expect(anomaly.mode).toBe('markers');
+                expect(anomaly.x).toEqual([2, 4]);
+                expect(anomaly.y).toEqual([20, 50]);
+            });
         });
 
         describe('areachart', () => {
@@ -381,6 +411,26 @@ describe('CompositeChartProvider', () => {
                 const trace = parseTraces(html!)[0] as Record<string, unknown>;
                 expect(trace.stackgroup).toBe('1');
                 expect(trace.fill).toBe('tonexty');
+            });
+
+            it('shows markers and value labels on area traces', () => {
+                const html = renderAndGetHtml(make2dTable(), {
+                    type: 'Area',
+                    showMarkers: true,
+                    showValues: true,
+                    markerShape: 'Star',
+                    markerSize: 'Medium',
+                    markerOutline: true,
+                });
+                expect(html).toBeDefined();
+                const trace = parseTraces(html!)[0] as Record<string, unknown>;
+                expect(trace.mode).toBe('lines+markers+text');
+                expect(trace.text).toEqual([10, 20, 30]);
+                expect(trace.marker).toEqual({
+                    symbol: 'star',
+                    size: 8,
+                    line: { color: '#333', width: 1.5 },
+                });
             });
         });
 
@@ -1600,6 +1650,126 @@ describe('CompositeChartProvider', () => {
                 expect(xVals[0]).toBe(0);             // first point
                 expect(xVals[xVals.length - 1]).toBe(49); // last point
             });
+
+            it('accumulates y-values before downsampling', () => {
+                const rows: unknown[][] = [];
+                for (let i = 0; i < 5; i++) {
+                    rows.push([i, 1]);
+                }
+                const table = makeTable(
+                    [
+                        { name: 'x', type: 'int' },
+                        { name: 'y', type: 'int' },
+                    ],
+                    rows,
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'Line',
+                    xColumn: 'x',
+                    yColumns: ['y'],
+                    accumulate: true,
+                    maxPointsPerSeries: 3,
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                const trace = traces[0] as Record<string, unknown>;
+
+                expect(trace.x).toEqual([0, 2, 4]);
+                expect(trace.y).toEqual([1, 3, 5]);
+            });
+
+            it('accumulates separately for each grouped series', () => {
+                const table = makeTable(
+                    [
+                        { name: 'x', type: 'int' },
+                        { name: 'region', type: 'string' },
+                        { name: 'y', type: 'int' },
+                    ],
+                    [
+                        [2, 'East', 3],
+                        [1, 'East', 2],
+                        [2, 'West', 7],
+                        [1, 'West', 5],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'Line',
+                    xColumn: 'x',
+                    yColumns: ['y'],
+                    seriesColumns: ['region'],
+                    accumulate: true,
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                expect(traces.length).toBe(2);
+
+                const east = traces.find(t => (t as Record<string, unknown>).name === 'East') as Record<string, unknown> | undefined;
+                const west = traces.find(t => (t as Record<string, unknown>).name === 'West') as Record<string, unknown> | undefined;
+                expect(east).toBeDefined();
+                expect(west).toBeDefined();
+                expect(east!.x).toEqual([1, 2]);
+                expect(east!.y).toEqual([2, 5]);
+                expect(west!.x).toEqual([1, 2]);
+                expect(west!.y).toEqual([5, 12]);
+            });
+
+            it('accumulates each y-column independently for multi-y traces', () => {
+                const table = makeTable(
+                    [
+                        { name: 'x', type: 'int' },
+                        { name: 'sales', type: 'int' },
+                        { name: 'profit', type: 'int' },
+                    ],
+                    [
+                        [3, 4, 40],
+                        [1, 2, 10],
+                        [2, 3, 20],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'Line',
+                    xColumn: 'x',
+                    yColumns: ['sales', 'profit'],
+                    accumulate: true,
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                expect(traces.length).toBe(2);
+
+                const sales = traces.find(t => (t as Record<string, unknown>).name === 'sales') as Record<string, unknown> | undefined;
+                const profit = traces.find(t => (t as Record<string, unknown>).name === 'profit') as Record<string, unknown> | undefined;
+                expect(sales).toBeDefined();
+                expect(profit).toBeDefined();
+                expect(sales!.x).toEqual([1, 2, 3]);
+                expect(sales!.y).toEqual([2, 5, 9]);
+                expect(profit!.x).toEqual([1, 2, 3]);
+                expect(profit!.y).toEqual([10, 30, 70]);
+            });
+
+            it('accumulates after binning aggregated values', () => {
+                const table = makeTable(
+                    [
+                        { name: 'timestamp', type: 'datetime' },
+                        { name: 'value', type: 'int' },
+                    ],
+                    [
+                        ['2024-01-01T01:00:00Z', 1],
+                        ['2024-01-01T12:00:00Z', 2],
+                        ['2024-01-02T01:00:00Z', 4],
+                        ['2024-01-02T12:00:00Z', 8],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'TimeLine',
+                    binSize: '1d',
+                    aggregation: 'Sum',
+                    accumulate: true,
+                });
+                expect(html).toBeDefined();
+                const trace = parseTraces(html!)[0] as Record<string, unknown>;
+
+                expect(trace.y).toEqual([3, 15]);
+            });
         });
 
         // ─── Chart options ──────────────────────────────────────────────
@@ -1694,6 +1864,58 @@ describe('CompositeChartProvider', () => {
                 expect((layout.xaxis as Record<string, unknown>)?.categoryorder).toBeUndefined();
             });
 
+            it('accumulates y-values in x order within a trace', () => {
+                const table = makeTable(
+                    [
+                        { name: 'x', type: 'int' },
+                        { name: 'y', type: 'int' },
+                    ],
+                    [
+                        [3, 30],
+                        [1, 10],
+                        [2, 20],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'Line',
+                    xColumn: 'x',
+                    yColumns: ['y'],
+                    accumulate: true,
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                const trace = traces[0] as Record<string, unknown>;
+
+                expect(trace.x).toEqual([1, 2, 3]);
+                expect(trace.y).toEqual([10, 30, 60]);
+            });
+
+            it('drops NaN rows before accumulation', () => {
+                const table = makeTable(
+                    [
+                        { name: 'x', type: 'real' },
+                        { name: 'y', type: 'real' },
+                    ],
+                    [
+                        [1, 10],
+                        [2, Number.NaN],
+                        [3, 30],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'Line',
+                    xColumn: 'x',
+                    yColumns: ['y'],
+                    accumulate: true,
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                const trace = traces[0] as Record<string, unknown>;
+
+                expect(trace.x).toEqual([1, 3]);
+                expect(trace.y).toEqual([10, 40]);
+            });
+
             it('sets legend position to bottom', () => {
                 const html = renderAndGetHtml(make2dTable(), { type: 'Column', legendPosition: 'Bottom' });
                 expect(html).toBeDefined();
@@ -1756,6 +1978,38 @@ describe('CompositeChartProvider', () => {
 
                 expect((layout.yaxis as Record<string, unknown>)?.showline).toBe(true);
                 expect((layout.yaxis as Record<string, unknown>)?.mirror).toBe('ticks');
+            });
+
+            it('mirrors subplot y-axes when yMirror is enabled for separate panels', () => {
+                const html = renderAndGetHtml(makeMultiSeriesTable(), {
+                    type: 'Line',
+                    xColumn: 'Month',
+                    yColumns: ['Sales', 'Profit'],
+                    yLayout: 'SeparatePanels',
+                    yMirror: true,
+                });
+                expect(html).toBeDefined();
+                const layout = parseLayout(html!);
+
+                expect((layout.yaxis2 as Record<string, unknown>)?.showline).toBe(true);
+                expect((layout.yaxis2 as Record<string, unknown>)?.mirror).toBe('ticks');
+                expect((layout.yaxis3 as Record<string, unknown>)?.showline).toBe(true);
+                expect((layout.yaxis3 as Record<string, unknown>)?.mirror).toBe('ticks');
+            });
+
+            it('does not apply yMirror in DualAxis mode', () => {
+                const html = renderAndGetHtml(makeMultiSeriesTable(), {
+                    type: 'Line',
+                    xColumn: 'Month',
+                    yColumns: ['Sales', 'Profit'],
+                    yLayout: 'DualAxis',
+                    yMirror: true,
+                });
+                expect(html).toBeDefined();
+                const layout = parseLayout(html!);
+
+                expect((layout.yaxis as Record<string, unknown>)?.mirror).not.toBe('ticks');
+                expect((layout.yaxis2 as Record<string, unknown>)?.mirror).toBeUndefined();
             });
         });
 

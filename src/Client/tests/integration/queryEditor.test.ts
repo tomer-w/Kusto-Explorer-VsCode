@@ -100,7 +100,7 @@ suite('Query Editor Integration Tests', () => {
                         ['Kansas', 30]
                     ]
                 }],
-                chartOptions: { type: 'Column' }
+                charts: [{ options: { type: 'Column' } }]
             }
         };
 
@@ -123,7 +123,7 @@ suite('Query Editor Integration Tests', () => {
             'A history entry should be added after running a query'
         );
 
-        // Verify results were displayed in singleton view (chart mode requires chartOptions)
+        // Verify results were displayed in singleton view (chart mode requires a chart descriptor)
         assert.strictEqual(
             resultsViewer.hasSingletonView(), true,
             'Singleton view should open after running query'

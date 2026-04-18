@@ -192,10 +192,13 @@ public class ConnectionManager : IConnectionManager
                     var chartOptions = mainResult?.VisualizationOptions != null && mainResult.VisualizationOptions.Visualization != Data.Utils.VisualizationKind.None
                         ? ChartOptions.FromChartVisualizationOptions(mainResult.VisualizationOptions)
                         : null;
+                    var charts = chartOptions != null
+                        ? ImmutableList.Create(new ResultChart { Options = chartOptions })
+                        : null;
                     return new ExecuteResult
                     {
                         Tables = tables,
-                        ChartOptions = chartOptions
+                        Charts = charts
                     };
                 }
             }

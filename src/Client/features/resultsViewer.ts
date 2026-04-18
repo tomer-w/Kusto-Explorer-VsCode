@@ -134,6 +134,53 @@ function applyChartDefaults(options: server.ChartOptions): server.ChartOptions {
     return { ...defaults, ...options };
 }
 
+function getResultCharts(resultData: server.ResultData | undefined): server.ResultChart[] {
+    if (!resultData) {
+        return [];
+    }
+    return resultData.charts ?? [];
+}
+
+function getPrimaryChart(resultData: server.ResultData | undefined): server.ResultChart | undefined {
+    return getResultCharts(resultData)[0];
+}
+
+function getPrimaryChartOptions(resultData: server.ResultData | undefined, override?: server.ChartOptions): server.ChartOptions | undefined {
+    return override ?? getPrimaryChart(resultData)?.options;
+}
+
+function getPrimaryChartTable(resultData: server.ResultData | undefined, chart?: server.ResultChart): server.ResultTable | undefined {
+    if (!resultData?.tables?.length) {
+        return undefined;
+    }
+    if (chart?.tableName) {
+        return resultData.tables.find(t => t.name === chart.tableName) ?? resultData.tables[0];
+    }
+    return resultData.tables[0];
+}
+
+function withPrimaryChartOptions(resultData: server.ResultData, options: server.ChartOptions | undefined): server.ResultData {
+    const charts = getResultCharts(resultData);
+    let updatedCharts: server.ResultChart[] | undefined;
+    if (options) {
+        if (charts.length > 0) {
+            updatedCharts = [{ ...charts[0]!, options }, ...charts.slice(1)];
+        } else {
+            updatedCharts = [{ options }];
+        }
+    } else if (charts.length > 1) {
+        updatedCharts = charts.slice(1);
+    }
+
+    const updated: server.ResultData = { ...resultData };
+    if (updatedCharts && updatedCharts.length > 0) {
+        updated.charts = updatedCharts;
+    } else {
+        delete updated.charts;
+    }
+    return updated;
+}
+
 /** Base script injected into all result webviews for core message handling. */
 const webviewMessageHandlerScript = `
 <script>
@@ -393,7 +440,7 @@ export class ResultsViewer {
                 this.panelEditorWebView = panelEditorAdapter;
                 this.panelEditorView.onOptionsChanged = (options) => {
                     if (this.lastPanelResultData) {
-                        this.lastPanelResultData = { ...this.lastPanelResultData, chartOptions: options };
+                        this.lastPanelResultData = withPrimaryChartOptions(this.lastPanelResultData, options);
                     }
                     this.updateChartInPanel();
                 };
@@ -503,7 +550,7 @@ export class ResultsViewer {
 
         const darkMode = isDarkMode();
 
-        const hasChart = !!((mode === 'chart' || mode === 'all') && resultData.chartOptions);
+        const hasChart = !!((mode === 'chart' || mode === 'all') && getPrimaryChart(resultData));
         this.panelHasChart = hasChart;
         this.panelActiveView = hasChart ? 'chart' : 'table-0';
         vscode.commands.executeCommand('setContext', 'kusto.panelHasChart', hasChart);
@@ -516,10 +563,12 @@ export class ResultsViewer {
             return;
         }
 
-        const rawChartOptions = resultData.chartOptions;
+        const rawChart = getPrimaryChart(resultData);
+        const rawChartOptions = rawChart?.options;
         const chartOptions = rawChartOptions ? applyChartDefaults(rawChartOptions) : undefined;
         const chartDefaults = getChartDefaults();
-        const columnNames = resultData.tables[0]?.columns?.map(c => c.name) ?? [];
+        const chartTable = getPrimaryChartTable(resultData, rawChart);
+        const columnNames = chartTable?.columns?.map(c => c.name) ?? [];
 
         // Ensure the panel is ready before creating table adapters that need panel.webview
         if (!this.resultsPanel) {
@@ -549,7 +598,7 @@ export class ResultsViewer {
         // Render chart and editor content into adapters BEFORE building HTML
         // so their contentHtml is embedded inline in the page.
         if (hasChart && chartOptions) {
-            const table = resultData.tables[0];
+            const table = chartTable;
             if (table) {
                 this.panelChartView?.renderChart(table, chartOptions, darkMode);
             }
@@ -571,7 +620,7 @@ export class ResultsViewer {
      */
     async displayResults(resultData: server.ResultData | undefined): Promise<void> {
         const resultsLocation = getResultsDisplayLocation();
-        const hasChart = !!resultData?.chartOptions;
+        const hasChart = !!getPrimaryChart(resultData);
 
         if (resultsLocation === 'panel') {
             // Results in bottom panel
@@ -631,13 +680,14 @@ export class ResultsViewer {
             return;
         }
 
-        if (mode === 'chart' && !resultData.chartOptions) {
+        if (mode === 'chart' && !getPrimaryChart(resultData)) {
             this.disposeSingletonView();
             return;
         }
 
         const darkMode = isDarkMode();
-        const rawChartOptions = resultData.chartOptions;
+        const rawChart = getPrimaryChart(resultData);
+        const rawChartOptions = rawChart?.options;
         const chartOptions = rawChartOptions ? applyChartDefaults(rawChartOptions) : undefined;
         const chartDefaults = getChartDefaults();
 
@@ -671,12 +721,13 @@ export class ResultsViewer {
         }
 
         const hasChart = !!chartOptions;
-        const columnNames = resultData.tables[0]?.columns?.map(c => c.name) ?? [];
+        const chartTable = getPrimaryChartTable(resultData, rawChart);
+        const columnNames = chartTable?.columns?.map(c => c.name) ?? [];
 
         // Render chart and editor content into adapters BEFORE building HTML
         // so their contentHtml is embedded inline in the page.
         if (hasChart && chartOptions) {
-            const table = resultData.tables[0];
+            const table = chartTable;
             if (table) {
                 this.singletonChartView?.renderChart(table, chartOptions, darkMode);
             }
@@ -852,7 +903,7 @@ export class ResultsViewer {
         this.singletonEditorView.onOptionsChanged = (options) => {
             this.singletonChartOptionsOverride = options;
             if (this.singletonResultData) {
-                this.singletonResultData = { ...this.singletonResultData, chartOptions: this.singletonChartOptionsOverride };
+                this.singletonResultData = withPrimaryChartOptions(this.singletonResultData, this.singletonChartOptionsOverride);
             }
             const state = this.viewerStates.get(this.singletonView!);
             if (state) {
@@ -867,7 +918,7 @@ export class ResultsViewer {
         this.singletonView.onDidChangeViewState(() => {
             if (this.singletonView?.active) {
                 const state = this.viewerStates.get(this.singletonView);
-                const hasChart = !!state?.resultData?.chartOptions;
+                const hasChart = !!getPrimaryChart(state?.resultData);
                 vscode.commands.executeCommand('setContext', 'kusto.resultViewerHasChart', hasChart);
                 vscode.commands.executeCommand('setContext', 'kusto.resultViewerChartActive', state?.activeView === 'chart');
             }
@@ -922,7 +973,7 @@ export class ResultsViewer {
         this.ensureSingletonView(location, mode);
 
         // Track state for copy commands
-        const hasChart = !!resultData.chartOptions;
+        const hasChart = !!getPrimaryChart(resultData);
         this.viewerStates.set(this.singletonView!, {
             resultData,
             tableNames,
@@ -941,7 +992,8 @@ export class ResultsViewer {
 
     private async updateChartInSingletonView(): Promise<void> {
         if (!this.singletonView || !this.singletonResultData) { return; }
-        const rawChartOptions = this.singletonChartOptionsOverride ?? this.singletonResultData.chartOptions;
+        const rawChart = getPrimaryChart(this.singletonResultData);
+        const rawChartOptions = getPrimaryChartOptions(this.singletonResultData, this.singletonChartOptionsOverride);
         if (!rawChartOptions) { return; }
         const chartOptions = applyChartDefaults(rawChartOptions);
 
@@ -950,12 +1002,12 @@ export class ResultsViewer {
 
         // Persist the override into the backing data so that if the webview is
         // reconstructed (e.g. on column change), it uses the latest options.
-        this.singletonResultData = { ...this.singletonResultData, chartOptions };
+        this.singletonResultData = withPrimaryChartOptions(this.singletonResultData, chartOptions);
         if (state) { state.resultData = this.singletonResultData; }
 
         const modifiedData = this.singletonResultData;
         const darkMode = isDarkMode();
-        const table = modifiedData.tables[0];
+        const table = getPrimaryChartTable(modifiedData, rawChart);
         if (table && chartOptions) {
             this.singletonChartView?.renderChart(table, chartOptions, darkMode);
         }
@@ -963,11 +1015,10 @@ export class ResultsViewer {
 
     private updateChartInPanel(): void {
         if (!this.lastPanelResultData) { return; }
-        const chartOptions = this.lastPanelResultData.chartOptions
-            ? applyChartDefaults(this.lastPanelResultData.chartOptions)
-            : undefined;
+        const rawChart = getPrimaryChart(this.lastPanelResultData);
+        const chartOptions = rawChart?.options ? applyChartDefaults(rawChart.options) : undefined;
         if (!chartOptions) { return; }
-        const table = this.lastPanelResultData.tables[0];
+        const table = getPrimaryChartTable(this.lastPanelResultData, rawChart);
         if (table) {
             this.panelChartView?.renderChart(table, chartOptions, isDarkMode());
         }
@@ -1007,8 +1058,7 @@ export class ResultsViewer {
         if (this.activeResultWebview === this.singletonView) {
             // Singleton view: remove chart from the in-memory data
             if (!this.singletonResultData) { return; }
-            const updated = { ...this.singletonResultData };
-            delete updated.chartOptions;
+            const updated = withPrimaryChartOptions(this.singletonResultData, undefined);
             this.singletonResultData = updated;
             this.singletonChartOptionsOverride = undefined;
 
@@ -1038,8 +1088,7 @@ export class ResultsViewer {
             // Document view: remove chart from the data and update the document
             const state = this.viewerStates.get(this.activeResultWebview);
             if (!state) { return; }
-            const updated = { ...state.resultData };
-            delete updated.chartOptions;
+            const updated = withPrimaryChartOptions(state.resultData, undefined);
             state.resultData = updated;
             delete state.chartOptionsOverride;
 
@@ -1171,7 +1220,7 @@ export class ResultsViewer {
         }
 
         const data = this.singletonChartOptionsOverride && isSingleton
-            ? { ...rawData, chartOptions: this.singletonChartOptionsOverride }
+            ? withPrimaryChartOptions(rawData, this.singletonChartOptionsOverride)
             : rawData;
 
         const viewColumn = isSingleton
@@ -1194,11 +1243,8 @@ export class ResultsViewer {
             vscode.window.showWarningMessage('No result data available to chart.');
             return;
         }
-        const hadChartOptions = !!this.lastPanelResultData.chartOptions;
-        const chartData: server.ResultData = {
-            ...this.lastPanelResultData,
-            chartOptions: this.lastPanelResultData.chartOptions ?? { type: 'Column' }
-        };
+        const hadChartOptions = !!getPrimaryChart(this.lastPanelResultData);
+        const chartData = withPrimaryChartOptions(this.lastPanelResultData, getPrimaryChart(this.lastPanelResultData)?.options ?? { type: 'Column' });
         await this.displayResultsInSingletonView(chartData, 'chart');
 
         // When there was no render operator specifying a chart type, automatically
@@ -1229,7 +1275,7 @@ export class ResultsViewer {
             if (resultData) {
                 // Apply override so the recreated view uses the latest editor options
                 if (chartOptionsOverride) {
-                    this.singletonResultData = { ...resultData, chartOptions: chartOptionsOverride };
+                    this.singletonResultData = withPrimaryChartOptions(resultData, chartOptionsOverride);
                 }
                 const targetLocation: 'beside' | 'main' = isMain ? 'beside' : 'main';
                 await this.displayResultsInSingletonView(this.singletonResultData, mode as ResultViewMode, targetLocation);
@@ -1261,7 +1307,8 @@ export class ResultsViewer {
             return;
         }
 
-        const { query, cluster, database, chartOptions } = state.resultData;
+        const { query, cluster, database } = state.resultData;
+        const chartOptions = getPrimaryChartOptions(state.resultData);
 
         try {
             const runResult = await vscode.window.withProgress(
@@ -1277,11 +1324,10 @@ export class ResultsViewer {
             if (!runResult?.data) { return; }
 
             // Preserve existing chart options; fall back to server-returned options
-            const effectiveChartOptions = chartOptions ?? runResult.data.chartOptions;
-            const updatedData: server.ResultData = {
-                ...runResult.data,
-                ...(effectiveChartOptions && { chartOptions: effectiveChartOptions })
-            };
+            const effectiveChartOptions = chartOptions ?? getPrimaryChartOptions(runResult.data);
+            const updatedData = effectiveChartOptions
+                ? withPrimaryChartOptions(runResult.data, effectiveChartOptions)
+                : runResult.data;
 
             // Update the backing document (the change listener will re-render the webview)
             const document = vscode.workspace.textDocuments.find(
@@ -1388,7 +1434,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         const updateChartContext = () => {
             if (webviewPanel.active) {
                 const state = this.viewer.viewerStates.get(webviewPanel);
-                const hasChart = !!state?.resultData?.chartOptions;
+                const hasChart = !!getPrimaryChart(state?.resultData);
                 vscode.commands.executeCommand('setContext', 'kusto.resultViewerHasChart', hasChart);
                 vscode.commands.executeCommand('setContext', 'kusto.resultViewerChartActive', state?.activeView === 'chart');
                 vscode.commands.executeCommand('setContext', 'kusto.resultViewerHasQuery', !!state?.resultData?.query);
@@ -1405,7 +1451,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
             const state = this.viewer.viewerStates.get(webviewPanel);
             if (!state) { return; }
             state.chartOptionsOverride = options;
-            state.resultData = { ...state.resultData, chartOptions: state.chartOptionsOverride };
+            state.resultData = withPrimaryChartOptions(state.resultData, state.chartOptionsOverride);
             const content = JSON.stringify(state.resultData, null, 2);
             const fullRange = new vscode.Range(
                 document.positionAt(0),
@@ -1516,7 +1562,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
 
         const darkMode = isDarkMode();
 
-        const hasChart = !!resultData.chartOptions;
+        const hasChart = !!getPrimaryChart(resultData);
         const hasTable = !!resultData.tables.length;
 
         if (!hasTable && !hasChart) {
@@ -1542,10 +1588,12 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
             vscode.commands.executeCommand('setContext', 'kusto.resultViewerHasQuery', !!resultData?.query);
         }
 
-        const rawChartOptions = existingState?.chartOptionsOverride ?? resultData.chartOptions;
+        const rawChart = getPrimaryChart(resultData);
+        const rawChartOptions = getPrimaryChartOptions(resultData, existingState?.chartOptionsOverride);
         const chartOptions = rawChartOptions ? applyChartDefaults(rawChartOptions) : undefined;
         const chartDefaults = getChartDefaults();
-        const columnNames = resultData.tables[0]?.columns?.map(c => c.name) ?? [];
+        const chartTable = getPrimaryChartTable(resultData, rawChart);
+        const columnNames = chartTable?.columns?.map(c => c.name) ?? [];
         const docWebView = this.viewer.chartWebViews.get(webviewPanel);
         const docEditorWebView = this.viewer.editorWebViews.get(webviewPanel);
 
@@ -1566,7 +1614,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         // Render chart and editor content into adapters BEFORE building HTML
         // so their contentHtml is embedded inline in the page.
         if (hasChart && chartOptions) {
-            const table = resultData.tables[0];
+            const table = chartTable;
             if (table) {
                 const controller = this.viewer.chartViews.get(webviewPanel);
                 controller?.renderChart(table, chartOptions, darkMode);
@@ -1581,15 +1629,13 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
     }
 
     private async updateChartOnly(state: ResultViewerState, webviewPanel: vscode.WebviewPanel): Promise<void> {
-        const rawChartOptions = state.chartOptionsOverride ?? state.resultData.chartOptions;
+        const rawChart = getPrimaryChart(state.resultData);
+        const rawChartOptions = getPrimaryChartOptions(state.resultData, state.chartOptionsOverride);
         if (!rawChartOptions) { return; }
         const chartOptions = applyChartDefaults(rawChartOptions);
-        const modifiedData: server.ResultData = {
-            ...state.resultData,
-            chartOptions
-        };
+        const modifiedData = withPrimaryChartOptions(state.resultData, chartOptions);
         const darkMode = isDarkMode();
-        const table = modifiedData.tables[0];
+        const table = getPrimaryChartTable(modifiedData, rawChart);
         if (table) {
             const controller = this.viewer.chartViews.get(webviewPanel);
             controller?.renderChart(table, chartOptions, darkMode);

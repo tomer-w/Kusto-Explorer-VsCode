@@ -541,7 +541,14 @@ export interface ResultData {
     cluster?: string;
     database?: string;
     tables: ResultTable[];
-    chartOptions?: ChartOptions;
+    charts?: ResultChart[];
+}
+
+/** Serializable representation of a named chart bound to an optional result table. */
+export interface ResultChart {
+    name?: string;
+    tableName?: string;
+    options: ChartOptions;
 }
 
 /** Serializable representation of a data table. */

@@ -649,17 +649,33 @@ class PlotlyChartBuilder {
         stackGroup?: string,
         yAxisId?: string,
         groupNorm?: string,
+        showMarkers = false,
+        markerSymbol?: string,
+        markerSize?: number,
+        showValues = false,
+        markerOutline = false,
+        outlineColor = 'white',
     ): PlotlyChartBuilder {
+        const markerObj: PlotlyMarker | undefined = showMarkers
+            ? { symbol: markerSymbol, size: markerSize, line: markerOutline ? { color: outlineColor, width: 1.5 } : undefined }
+            : undefined;
+        let mode = PlotlyScatterModes.Lines as string;
+        if (showMarkers && showValues) mode = 'lines+markers+text';
+        else if (showMarkers) mode = PlotlyScatterModes.LinesAndMarkers;
+        else if (showValues) mode = 'lines+text';
         const trace: ScatterTrace = {
             type: 'scatter',
             x,
             y,
-            mode: PlotlyScatterModes.Lines,
+            mode,
             fill: stackGroup != null ? PlotlyFillModes.ToNextY : PlotlyFillModes.ToZeroY,
             stackgroup: stackGroup,
             groupnorm: groupNorm,
             name,
             yaxis: yAxisId,
+            marker: markerObj,
+            text: showValues ? y.map(v => v as unknown) : undefined,
+            textposition: showValues ? 'top center' : undefined,
         };
         return this.addTrace(trace);
     }
@@ -1131,6 +1147,14 @@ function downsample(x: unknown[], y: number[], maxPoints: number): { x: unknown[
     return { x: resultX, y: resultY };
 }
 
+function accumulateValues(values: number[]): number[] {
+    let runningTotal = 0;
+    return values.map(value => {
+        runningTotal += value;
+        return sanitizeDouble(runningTotal);
+    });
+}
+
 /** Ordered set of product marker shapes for cycling. */
 const markerShapes = ['Circle', 'Diamond', 'Square', 'TriangleUp', 'Cross', 'Star', 'X'] as const;
 const markerShapeSymbols: Record<typeof markerShapes[number], string> = {
@@ -1204,7 +1228,9 @@ function trimNullRows(xValues: unknown[], yValues: unknown[]): { x: unknown[]; y
     const yResult: unknown[] = [];
     const len = Math.min(xValues.length, yValues.length);
     for (let i = 0; i < len; i++) {
-        if (xValues[i] != null && yValues[i] != null) {
+        const xValue = xValues[i];
+        const yValue = yValues[i];
+        if (xValue != null && yValue != null && !(typeof xValue === 'number' && Number.isNaN(xValue)) && !(typeof yValue === 'number' && Number.isNaN(yValue))) {
             xResult.push(xValues[i]);
             yResult.push(yValues[i]);
         }
@@ -2068,62 +2094,106 @@ export class PlotlyChartProvider implements IChartProvider {
         let builder = this.build2dChart(new PlotlyChartBuilder(), data, effectiveOptions,
             (b, x, y, name, yAxis, traceIndex) => b.add2DLineTrace(x, y, name, hasMarkers, yAxis, getMarkerShape(options, traceIndex), getMarkerSize(options), showValues, markerOutline, outlineColor));
 
-        // Overlay anomaly scatter points if anomalyColumns are present
-        if (builder && anomalySet.size > 0) {
-            const xColumn = this.get2dXColumn(data, options);
-            if (xColumn) {
-                const allYColumns = this.get2dYColumns(data, effectiveOptions, xColumn);
-                const xValues = getColumnValues(data, xColumn);
-
-                let anomalyTraceIndex = allYColumns.length;
-                for (const anomalyColName of anomalySet) {
-                    const anomalyCol = getColumnRef(data, anomalyColName);
-                    if (!anomalyCol) continue;
-                    const anomalyFlags = getColumnValues(data, anomalyCol);
-
-                    // Plot anomaly points at the first y-column's values
-                    const yCol = allYColumns[0];
-                    if (!yCol) continue;
-                    const yValues = getColumnValues(data, yCol);
-
-                    const anomalyX: unknown[] = [];
-                    const anomalyY: number[] = [];
-                    const len = Math.min(xValues.length, anomalyFlags.length, yValues.length);
-                    for (let i = 0; i < len; i++) {
-                        const flag = toNumber(anomalyFlags[i]);
-                        if (flag !== 0 && xValues[i] != null && yValues[i] != null) {
-                            anomalyX.push(xValues[i]);
-                            anomalyY.push(toNumber(yValues[i]));
-                        }
-                    }
-
-                    if (anomalyX.length > 0) {
-                        const shape = getMarkerShape(options, anomalyTraceIndex);
-                        builder = builder.add2DScatterTrace(anomalyX, anomalyY, anomalyColName, undefined, shape, getMarkerSize(options));
-                        anomalyTraceIndex++;
-                    }
-                }
-            }
-        }
-
-        return builder;
+        return builder ? this.addAnomalyScatterOverlays(builder, data, options, effectiveOptions) : undefined;
     }
 
     private buildScatterChart(data: ResultTable, options: ChartOptions, darkMode = false): PlotlyChartBuilder | undefined {
+        const anomalySet = new Set(options.anomalyColumns ?? []);
+        const effectiveOptions = anomalySet.size > 0
+            ? (() => {
+                const xColumn = this.get2dXColumn(data, options);
+                if (!xColumn) return options;
+                const filtered = this.get2dYColumns(data, options, xColumn)
+                    .filter(c => !anomalySet.has(c.column.name));
+                return { ...options, yColumns: filtered.map(c => c.column.name) } as ChartOptions;
+            })()
+            : options;
+        const outlineColor = darkMode ? 'white' : '#333';
+        const builder = this.build2dChart(new PlotlyChartBuilder(), data, effectiveOptions,
+            (b, x, y, name, yAxis, traceIndex) => b.add2DScatterTrace(x, y, name, yAxis, getMarkerShape(options, traceIndex), getMarkerSize(options), options.showValues === true, options.markerOutline === true, outlineColor));
+        return builder ? this.addAnomalyScatterOverlays(builder, data, options, effectiveOptions) : undefined;
+    }
+
+    private buildAreaChart(data: ResultTable, options: ChartOptions, darkMode = false): PlotlyChartBuilder | undefined {
         const outlineColor = darkMode ? 'white' : '#333';
         return this.build2dChart(new PlotlyChartBuilder(), data, options,
-            (b, x, y, name, yAxis, traceIndex) => b.add2DScatterTrace(x, y, name, yAxis, getMarkerShape(options, traceIndex), getMarkerSize(options), options.showValues === true, options.markerOutline === true, outlineColor));
+            (b, x, y, name, yAxis, traceIndex) => b.addAreaChart(
+                x, y, name, undefined, yAxis, undefined,
+                options.showMarkers === true,
+                getMarkerShape(options, traceIndex),
+                getMarkerSize(options),
+                options.showValues === true,
+                options.markerOutline === true,
+                outlineColor,
+            ));
     }
 
-    private buildAreaChart(data: ResultTable, options: ChartOptions): PlotlyChartBuilder | undefined {
-        return this.build2dChart(new PlotlyChartBuilder(), data, options,
-            (b, x, y, name, yAxis) => b.addAreaChart(x, y, name, undefined, yAxis));
-    }
-
-    private buildStackedAreaChart(data: ResultTable, options: ChartOptions): PlotlyChartBuilder | undefined {
+    private buildStackedAreaChart(data: ResultTable, options: ChartOptions, darkMode = false): PlotlyChartBuilder | undefined {
         const groupNorm = options.type === ChartType.AreaStacked100 ? 'percent' : undefined;
+        const outlineColor = darkMode ? 'white' : '#333';
         return this.build2dChart(new PlotlyChartBuilder(), data, options,
-            (b, x, y, name, yAxis) => b.addAreaChart(x, y, name, '1', yAxis, groupNorm));
+            (b, x, y, name, yAxis, traceIndex) => b.addAreaChart(
+                x, y, name, '1', yAxis, groupNorm,
+                options.showMarkers === true,
+                getMarkerShape(options, traceIndex),
+                getMarkerSize(options),
+                options.showValues === true,
+                options.markerOutline === true,
+                outlineColor,
+            ));
+    }
+
+    private addAnomalyScatterOverlays(
+        builder: PlotlyChartBuilder,
+        data: ResultTable,
+        options: ChartOptions,
+        effectiveOptions: ChartOptions,
+    ): PlotlyChartBuilder {
+        const anomalySet = new Set(options.anomalyColumns ?? []);
+        if (anomalySet.size === 0) {
+            return builder;
+        }
+
+        const xColumn = this.get2dXColumn(data, options);
+        if (!xColumn) {
+            return builder;
+        }
+
+        const allYColumns = this.get2dYColumns(data, effectiveOptions, xColumn);
+        const yCol = allYColumns[0];
+        if (!yCol) {
+            return builder;
+        }
+
+        const xValues = getColumnValues(data, xColumn);
+        const yValues = getColumnValues(data, yCol);
+        let anomalyTraceIndex = allYColumns.length;
+        let updatedBuilder = builder;
+
+        for (const anomalyColName of anomalySet) {
+            const anomalyCol = getColumnRef(data, anomalyColName);
+            if (!anomalyCol) continue;
+            const anomalyFlags = getColumnValues(data, anomalyCol);
+
+            const anomalyX: unknown[] = [];
+            const anomalyY: number[] = [];
+            const len = Math.min(xValues.length, anomalyFlags.length, yValues.length);
+            for (let i = 0; i < len; i++) {
+                const flag = toNumber(anomalyFlags[i]);
+                if (flag !== 0 && xValues[i] != null && yValues[i] != null) {
+                    anomalyX.push(xValues[i]);
+                    anomalyY.push(toNumber(yValues[i]));
+                }
+            }
+
+            if (anomalyX.length > 0) {
+                const shape = getMarkerShape(options, anomalyTraceIndex);
+                updatedBuilder = updatedBuilder.add2DScatterTrace(anomalyX, anomalyY, anomalyColName, undefined, shape, getMarkerSize(options));
+                anomalyTraceIndex++;
+            }
+        }
+
+        return updatedBuilder;
     }
 
     // ─── Pie ────────────────────────────────────────────────────────────
@@ -2627,7 +2697,15 @@ export class PlotlyChartProvider implements IChartProvider {
 
                 builder = builder.withLayout({
                     ...builder.layout,
-                    [`yaxis${axisNum}`]: { ...yAxisBase, domain, title: { text: yColumns[i]!.column.name }, anchor: xRef, showline: true, mirror: true, linecolor: '#888888' },
+                    [`yaxis${axisNum}`]: {
+                        ...yAxisBase,
+                        domain,
+                        title: { text: yColumns[i]!.column.name },
+                        anchor: xRef,
+                        showline: true,
+                        mirror: options.yMirror === true ? 'ticks' : true,
+                        linecolor: '#888888'
+                    },
                     [`xaxis${axisNum}`]: { ...xAxisBase, anchor: yRef, showticklabels: isBottom, title: isBottom ? (xTitle ?? '') : '', showline: true, mirror: true, linecolor: '#888888' },
                 });
             }
@@ -2696,6 +2774,9 @@ export class PlotlyChartProvider implements IChartProvider {
                         indices.sort((a, b) => (xValues[a]! < xValues[b]! ? -1 : xValues[a]! > xValues[b]! ? 1 : 0));
                         let sortedX: unknown[] = indices.map(i => xValues[i]!);
                         let sortedY: number[] = indices.map(i => yValues[i]!);
+                        if (options.accumulate) {
+                            sortedY = accumulateValues(sortedY);
+                        }
                         // Downsample if over max points
                         if (options.maxPointsPerSeries != null && options.maxPointsPerSeries > 0) {
                             const ds = downsample(sortedX, sortedY, options.maxPointsPerSeries);
@@ -2723,6 +2804,9 @@ export class PlotlyChartProvider implements IChartProvider {
                     const indices = result.x.map((_, i) => i);
                     indices.sort((a, b) => (result!.x[a]! < result!.x[b]! ? -1 : result!.x[a]! > result!.x[b]! ? 1 : 0));
                     result = { x: indices.map(i => result!.x[i]!), y: indices.map(i => result!.y[i]!) };
+                    if (options.accumulate) {
+                        result = { x: result.x, y: accumulateValues(result.y) };
+                    }
                     if (options.maxPointsPerSeries != null && options.maxPointsPerSeries > 0) {
                         result = downsample(result.x, result.y, options.maxPointsPerSeries);
                     }
@@ -2870,11 +2954,21 @@ function applyCommonOptions(builder: PlotlyChartBuilder, options: ChartOptions):
     if (options.xTickAngle != null) builder = builder.setXTickAngle(options.xTickAngle);
     if (options.yTickAngle != null) builder = builder.setYTickAngle(options.yTickAngle);
 
-    if (options.yMirror === true) {
-        builder = builder.withLayout({
+    if (options.yMirror === true && options.yLayout !== ChartYLayout.DualAxis) {
+        const mirroredLayout: PlotlyLayout = {
             ...builder.layout,
             yaxis: { ...(builder.layout.yaxis ?? {}), showline: true, mirror: 'ticks' } as PlotlyAxis,
-        });
+        };
+        for (const key of Object.keys(builder.layout)) {
+            if (/^yaxis\d+$/.test(key)) {
+                mirroredLayout[key] = {
+                    ...((builder.layout[key] as PlotlyAxis | undefined) ?? {}),
+                    showline: true,
+                    mirror: 'ticks',
+                } as PlotlyAxis;
+            }
+        }
+        builder = builder.withLayout(mirroredLayout);
     }
 
     if (options.sort != null && options.sort !== ChartSortOrder.Auto) {

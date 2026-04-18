@@ -849,15 +849,15 @@ class ChartEditorView implements IChartEditorView {
                     <input type="text" id="opt-binSize" value="${escapeHtml(opts.binSize ?? '')}" placeholder="e.g. 1h, 1d, 10" onchange="_editorOnChartOptionChanged()">
                 </div>
                 <div class="field">
-                    <label for="opt-aggregation">Aggregation</label>
+                    <label for="opt-aggregation">Bin Aggregation</label>
                     <select id="opt-aggregation" onchange="_editorOnChartOptionChanged()">${aggregationOpts}</select>
                 </div>
                 <div class="field">
-                    <label for="opt-maxSeries">Max Series</label>
+                    <label for="opt-maxSeries">Max Series (top N)</label>
                     <select id="opt-maxSeries" onchange="_editorOnChartOptionChanged()">${maxSeriesOpts}</select>
                 </div>
                 <div class="field">
-                    <label for="opt-maxPointsPerSeries">Max Points per Series</label>
+                    <label for="opt-maxPointsPerSeries">Max Points per Series (downsample)</label>
                     <select id="opt-maxPointsPerSeries" onchange="_editorOnChartOptionChanged()">${maxPointsOpts}</select>
                 </div>
             </div>
