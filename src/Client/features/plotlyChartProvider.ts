@@ -9,6 +9,7 @@
 import type { ChartOptions, ResultTable } from './server';
 import { ChartType, ChartAxis, ChartSortOrder, ChartLegendPosition, ChartColorways, ChartYLayout, ChartMode, hexToRgba, isNumericType, isDateTimeType, getColumnRef, getColumnRefByIndex } from './chartProvider';
 import type { IChartView, IWebView, IChartProvider, ColumnRef } from './chartProvider';
+import { escapeHtml } from './html';
 
 // ─── Plotly Constants ───────────────────────────────────────────────────────
 
@@ -1611,11 +1612,14 @@ const plotlyChartScripts = `
     // ── Initial layout on page load ───────────────────────────────────
     // When charts are embedded inline (full page rebuild), _chartUpdated isn't called
     // by the message handler. Retry until the chart div has positive dimensions.
+    var initialResizeAttempts = 0;
+    var maxInitialResizeAttempts = 50;
     (function initialResize() {
         var chartDiv = document.getElementById('chart');
         if (chartDiv && chartDiv.clientWidth > 0 && chartDiv.clientHeight > 0) {
             if (window._chartUpdated) window._chartUpdated();
-        } else {
+        } else if (initialResizeAttempts < maxInitialResizeAttempts) {
+            initialResizeAttempts++;
             setTimeout(initialResize, 100);
         }
     })();
@@ -1655,7 +1659,7 @@ class PlotlyChartView implements IChartView {
         if (bodyHtml) {
             this.webview.setContent(bodyHtml);
         } else {
-            const typeName = options.type || 'Unknown';
+            const typeName = escapeHtml(options.type || 'Unknown');
             this.webview.setContent(
                 `<div style="display:flex;align-items:center;justify-content:center;height:100%;visibility:visible;color:var(--vscode-foreground,inherit);">` +
                 `<span style="font-size:1.5em;">&#10060;</span>&nbsp; Chart type "${typeName}" is not currently supported.</div>`
@@ -2873,7 +2877,7 @@ function applyCommonOptions(builder: PlotlyChartBuilder, options: ChartOptions):
         });
     }
 
-    if (options.sort != null) {
+    if (options.sort != null && options.sort !== ChartSortOrder.Auto) {
         const order = options.sort === ChartSortOrder.Ascending
             ? PlotlyCategoryOrders.TotalAscending
             : PlotlyCategoryOrders.TotalDescending;

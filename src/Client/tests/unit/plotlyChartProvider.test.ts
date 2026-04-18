@@ -18,10 +18,13 @@ function createMockWebView(): IWebView & {
     simulateMessage: (message: Record<string, unknown>) => void;
 } {
     const handlers: ((message: Record<string, unknown>) => void)[] = [];
+    const setup = vi.fn<(headHtml: string, scriptsHtml: string) => void>();
+    const setContent = vi.fn<(html: string) => void>();
+    const invoke = vi.fn<(command: string, args?: Record<string, unknown>) => void>();
     return {
-        setup: vi.fn(),
-        setContent: vi.fn(),
-        invoke: vi.fn(),
+        setup,
+        setContent,
+        invoke,
         handle: vi.fn((handler: (message: Record<string, unknown>) => void) => {
             handlers.push(handler);
             return { dispose: () => { const i = handlers.indexOf(handler); if (i >= 0) handlers.splice(i, 1); } };
@@ -1684,12 +1687,75 @@ describe('CompositeChartProvider', () => {
                 expect((layout.xaxis as Record<string, unknown>)?.categoryorder).toBe('total ascending');
             });
 
+            it('does not set category sort order for Auto', () => {
+                const html = renderAndGetHtml(make2dTable(), { type: 'Column', sort: 'Auto' });
+                expect(html).toBeDefined();
+                const layout = parseLayout(html!);
+                expect((layout.xaxis as Record<string, unknown>)?.categoryorder).toBeUndefined();
+            });
+
             it('sets legend position to bottom', () => {
                 const html = renderAndGetHtml(make2dTable(), { type: 'Column', legendPosition: 'Bottom' });
                 expect(html).toBeDefined();
                 const layout = parseLayout(html!);
                 const legend = layout.legend as Record<string, unknown>;
                 expect(legend?.orientation).toBe('h');
+            });
+
+            it('uses a secondary y-axis for DualAxis multi-y charts', () => {
+                const html = renderAndGetHtml(makeMultiSeriesTable(), {
+                    type: 'Line',
+                    xColumn: 'Month',
+                    yColumns: ['Sales', 'Profit'],
+                    yLayout: 'DualAxis',
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                const layout = parseLayout(html!);
+
+                expect((traces[0] as Record<string, unknown>)?.yaxis).toBeUndefined();
+                expect((traces[1] as Record<string, unknown>)?.yaxis).toBe('y2');
+                expect((layout.yaxis2 as Record<string, unknown>)?.overlaying).toBe('y');
+                expect((layout.yaxis2 as Record<string, unknown>)?.side).toBe('right');
+                expect((layout.yaxis2 as Record<string, unknown>)?.showgrid).toBe(false);
+                const legend = layout.legend as Record<string, unknown>;
+                expect(legend?.orientation).toBe('h');
+            });
+
+            it('creates subplot axes and domains for SeparatePanels multi-y charts', () => {
+                const html = renderAndGetHtml(makeMultiSeriesTable(), {
+                    type: 'Line',
+                    xColumn: 'Month',
+                    yColumns: ['Sales', 'Profit'],
+                    yLayout: 'SeparatePanels',
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                const layout = parseLayout(html!);
+
+                expect((traces[0] as Record<string, unknown>)?.yaxis).toBe('y2');
+                expect((traces[0] as Record<string, unknown>)?.xaxis).toBe('x2');
+                expect((traces[1] as Record<string, unknown>)?.yaxis).toBe('y3');
+                expect((traces[1] as Record<string, unknown>)?.xaxis).toBe('x3');
+
+                expect((layout.yaxis as Record<string, unknown>)?.visible).toBe(false);
+                expect((layout.xaxis as Record<string, unknown>)?.visible).toBe(false);
+                expect((layout.yaxis2 as Record<string, unknown>)?.domain).toEqual([0.525, 1]);
+                expect((layout.yaxis3 as Record<string, unknown>)?.domain).toEqual([0, 0.475]);
+                expect((layout.xaxis2 as Record<string, unknown>)?.showticklabels).toBe(false);
+                expect((layout.xaxis3 as Record<string, unknown>)?.showticklabels).toBe(true);
+            });
+
+            it('mirrors y-axis ticks when yMirror is enabled', () => {
+                const html = renderAndGetHtml(make2dTable(), {
+                    type: 'Column',
+                    yMirror: true,
+                });
+                expect(html).toBeDefined();
+                const layout = parseLayout(html!);
+
+                expect((layout.yaxis as Record<string, unknown>)?.showline).toBe(true);
+                expect((layout.yaxis as Record<string, unknown>)?.mirror).toBe('ticks');
             });
         });
 

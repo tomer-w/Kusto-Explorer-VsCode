@@ -10,7 +10,7 @@
  * `onOptionsChanged` callback.
  */
 
-import { ChartAspectRatio } from './chartProvider';
+import { ChartAspectRatio, ChartSortOrder, ChartTextSize, ChartYLayout, ChartLegendPosition } from './chartProvider';
 import type { ChartOptions } from './server';
 import type { IWebView } from './webview';
 import { escapeHtml } from './html';
@@ -45,7 +45,7 @@ const chartTypes: ReadonlyMap<string, string> = new Map([
 
 const legendPositions: [string, string][] = [['Auto', 'Auto'], ['Right', 'Right'], ['Bottom', 'Bottom'], ['None', 'None']];
 const axisTypes = ['Linear', 'Log'];
-const sortOrders = ['Ascending', 'Descending'];
+const sortOrders = [ChartSortOrder.Auto, ChartSortOrder.Ascending, ChartSortOrder.Descending];
 const chartModes: [string, string][] = [['Auto', 'Auto'], ['Light', 'Light'], ['Dark', 'Dark']];
 const aspectRatios = [ChartAspectRatio.Fill, ChartAspectRatio.Ratio16x9, ChartAspectRatio.Ratio3x2, ChartAspectRatio.Ratio4x3, ChartAspectRatio.Ratio1x1, ChartAspectRatio.Ratio3x4, ChartAspectRatio.Ratio2x3, ChartAspectRatio.Ratio9x16];
 const textSizes: [string, string][] = [['Auto', 'Auto'], ['Extra Small', 'Extra Small'], ['Small', 'Small'], ['Medium', 'Medium'], ['Large', 'Large'], ['Extra Large', 'Extra Large']];
@@ -71,6 +71,14 @@ const tickAngles = [0, 15, 30, 45, 60, 75, 90, -15, -30, -45, -60, -75, -90];
 const aggregationTypes = ['Sum', 'Count', 'Average', 'Min', 'Max'];
 const maxSeriesOptions = [10, 20, 30, 40, 50];
 const maxPointsOptions = [100, 500, 1000, 5000, 10000, 50000];
+const defaultMarkerShape = 'Circle';
+const defaultMarkerSize = ChartTextSize.Medium;
+const defaultableChartOptionKeys: Array<keyof ChartOptions> = [
+    'legendPosition', 'sort', 'aspectRatio', 'textSize', 'yLayout', 'accumulate',
+    'showValues', 'showMarkers', 'markerOutline', 'cycleMarkerShapes', 'xShowTicks',
+    'yShowTicks', 'yMirror', 'xShowGrid', 'yShowGrid', 'markerShape', 'markerSize',
+    'xTickAngle', 'yTickAngle'
+];
 
 // ─── Interfaces ─────────────────────────────────────────────────────────────
 
@@ -134,15 +142,17 @@ class ChartEditorView implements IChartEditorView {
 
     private getResolvedDefaults(defaults: Partial<ChartOptions>): Partial<ChartOptions> {
         const resolvedDefaults: Partial<ChartOptions> = {
-            legendPosition: defaults.legendPosition ?? 'Auto',
-            sort: 'Ascending',
+            legendPosition: defaults.legendPosition ?? ChartLegendPosition.Auto,
+            sort: defaults.sort ?? ChartSortOrder.Auto,
             aspectRatio: defaults.aspectRatio ?? ChartAspectRatio.Fill,
-            textSize: defaults.textSize ?? 'Auto',
-            yLayout: 'SharedAxis',
+            textSize: defaults.textSize ?? ChartTextSize.Auto,
+            yLayout: ChartYLayout.SharedAxis,
             accumulate: defaults.accumulate ?? false,
             showValues: defaults.showValues ?? false,
             showMarkers: defaults.showMarkers ?? false,
             markerOutline: defaults.markerOutline ?? false,
+            markerShape: defaults.markerShape ?? defaultMarkerShape,
+            markerSize: defaults.markerSize ?? defaultMarkerSize,
             cycleMarkerShapes: defaults.cycleMarkerShapes ?? false,
             xShowTicks: defaults.xShowTicks ?? false,
             yShowTicks: defaults.yShowTicks ?? false,
@@ -150,13 +160,6 @@ class ChartEditorView implements IChartEditorView {
             xShowGrid: defaults.xShowGrid ?? true,
             yShowGrid: defaults.yShowGrid ?? true,
         };
-
-        if (defaults.markerShape != null) {
-            resolvedDefaults.markerShape = defaults.markerShape;
-        }
-        if (defaults.markerSize != null) {
-            resolvedDefaults.markerSize = defaults.markerSize;
-        }
 
         if (defaults.xTickAngle != null) {
             resolvedDefaults.xTickAngle = defaults.xTickAngle;
@@ -171,14 +174,8 @@ class ChartEditorView implements IChartEditorView {
     private captureCurrentDefaults(options: ChartOptions, defaults: Partial<ChartOptions>): ChartOptions {
         const resolvedDefaults = this.getResolvedDefaults(defaults);
         const updatedOptions: ChartOptions = { ...options };
-        const defaultableKeys: Array<keyof ChartOptions> = [
-            'legendPosition', 'sort', 'aspectRatio', 'textSize', 'yLayout', 'accumulate',
-            'showValues', 'showMarkers', 'markerOutline', 'cycleMarkerShapes', 'xShowTicks',
-            'yShowTicks', 'yMirror', 'xShowGrid', 'yShowGrid', 'markerShape', 'markerSize',
-            'xTickAngle', 'yTickAngle'
-        ];
 
-        for (const key of defaultableKeys) {
+        for (const key of defaultableChartOptionKeys) {
             if (updatedOptions[key] == null) {
                 const resolvedValue = resolvedDefaults[key];
                 if (resolvedValue != null) {
@@ -193,14 +190,8 @@ class ChartEditorView implements IChartEditorView {
     private restoreMatchingDefaults(options: ChartOptions, defaults: Partial<ChartOptions>): ChartOptions {
         const resolvedDefaults = this.getResolvedDefaults(defaults);
         const updatedOptions: ChartOptions = { ...options };
-        const defaultableKeys: Array<keyof ChartOptions> = [
-            'legendPosition', 'sort', 'aspectRatio', 'textSize', 'yLayout', 'accumulate',
-            'showValues', 'showMarkers', 'markerOutline', 'cycleMarkerShapes', 'xShowTicks',
-            'yShowTicks', 'yMirror', 'xShowGrid', 'yShowGrid', 'markerShape', 'markerSize',
-            'xTickAngle', 'yTickAngle'
-        ];
 
-        for (const key of defaultableKeys) {
+        for (const key of defaultableChartOptionKeys) {
             const resolvedValue = resolvedDefaults[key];
             if (resolvedValue != null && updatedOptions[key] === resolvedValue) {
                 delete updatedOptions[key];
@@ -679,7 +670,7 @@ class ChartEditorView implements IChartEditorView {
             `<option value="${value}"${value === currentLegend ? ' selected' : ''}>${label}</option>`
         ).join('');
 
-        const defaultSortValue = 'Ascending';
+        const defaultSortValue = defaults.sort ?? ChartSortOrder.Auto;
         const currentSort = opts.sort ?? '';
         const sortOptions = [['', formatDefaultLabel(defaultSortValue)], ...sortOrders.map(s => [s, s] as [string, string])].map(([value, label]) =>
             `<option value="${value}"${value === currentSort ? ' selected' : ''}>${label}</option>`

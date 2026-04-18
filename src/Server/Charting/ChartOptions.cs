@@ -62,10 +62,6 @@ public class ChartOptions
     public ImmutableList<string>? AnomalyColumns { get; init; }
 
     /// <summary>
-    /// Whether the legend is visible. If null, defaults to true.
-    /// Retained for back-compat with older saved chart options; prefer <see cref="LegendPosition"/>.
-    /// </summary>
-    /// <summary>
     /// X-axis scale type. Use <see cref="ChartAxis"/> constants: "Linear", "Log".
     /// If null, defaults to "Linear".
     /// </summary>
@@ -119,8 +115,8 @@ public class ChartOptions
     public string? YLayout { get; init; }
 
     /// <summary>
-    /// Whether to mirror Y-axis tick labels on the right side of the chart.
-    /// If null or false, ticks appear only on the left.
+    /// Whether to mirror the Y-axis line and tick marks on the right side of the chart.
+    /// If null or false, the mirrored axis line and ticks are not shown.
     /// </summary>
     [DataMember(Name = "yMirror")]
     public bool? YMirror { get; init; }
@@ -177,15 +173,16 @@ public class ChartOptions
     public double? YTickAngle { get; init; }
 
     /// <summary>
-    /// Whether data value labels are shown. If null, values are hidden.
+    /// Whether data value labels are shown. If null, labels are hidden.
     /// When true, bar charts show values on bars and pie charts show label+value+percent.
     /// </summary>
     [DataMember(Name = "showValues")]
     public bool? ShowValues { get; init; }
 
     /// <summary>
-    /// Category sort order on the X-axis. Use <see cref="ChartSortOrder"/> constants: "Ascending", "Descending".
-    /// If null, categories appear in the order encountered in the data. Sorts by total value.
+    /// Category sort order on the X-axis. Use <see cref="ChartSortOrder"/> constants: "Auto", "Ascending", "Descending".
+    /// "Auto" and null preserve the axis's natural/data order.
+    /// "Ascending" and "Descending" sort categories by total value.
     /// </summary>
     [DataMember(Name = "sort")]
     public string? Sort { get; init; }
@@ -210,7 +207,7 @@ public class ChartOptions
 
     /// <summary>
     /// Aspect ratio for the chart display area. Use <see cref="ChartAspectRatio"/> constants: "Fill", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16".
-    /// If null, the chart falls back to the configured default aspect ratio.
+    /// If null, the chart falls back to the configured default aspect ratio or the product default.
     /// </summary>
     [DataMember(Name = "aspectRatio")]
     public string? AspectRatio { get; init; }
@@ -224,7 +221,7 @@ public class ChartOptions
     public string? TextSize { get; init; }
 
     /// <summary>
-    /// Marker shape for scatter points. Use chart marker shape values.
+    /// Marker shape for scatter points. Use chart marker shape values such as "Circle" and "TriangleUp".
     /// If null, defaults to the configured marker shape or the product default.
     /// </summary>
     [DataMember(Name = "markerShape")]
@@ -240,7 +237,7 @@ public class ChartOptions
 
     /// <summary>
     /// Marker size preset. Use "Extra Small", "Small", "Medium", "Large", "Extra Large".
-    /// If null, defaults to Plotly's built-in marker size.
+    /// If null, defaults to the configured marker size or the product default.
     /// </summary>
     [DataMember(Name = "markerSize")]
     public string? MarkerSize { get; init; }
@@ -303,7 +300,7 @@ public class ChartOptions
             XTickAngle = this.XTickAngle,
             YTickAngle = this.YTickAngle,
             ShowValues = this.ShowValues ?? defaults.ShowValues,
-            Sort = this.Sort == "Default" ? null : this.Sort,
+            Sort = this.Sort is "Default" or ChartSortOrder.Auto ? null : this.Sort,
             LegendPosition = NormalizeLegendPosition(this.LegendPosition) ?? defaults.LegendPosition,
             Mode = this.Mode,
             AspectRatio = this.AspectRatio ?? defaults.AspectRatio,

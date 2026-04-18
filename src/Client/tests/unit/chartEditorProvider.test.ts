@@ -16,10 +16,13 @@ function createMockWebView(): IWebView & {
     simulateMessage: (message: Record<string, unknown>) => void;
 } {
     const handlers: ((message: Record<string, unknown>) => void)[] = [];
+    const setup = vi.fn<(headHtml: string, scriptsHtml: string) => void>();
+    const setContent = vi.fn<(html: string) => void>();
+    const invoke = vi.fn<(command: string, args?: Record<string, unknown>) => void>();
     return {
-        setup: vi.fn(),
-        setContent: vi.fn(),
-        invoke: vi.fn(),
+        setup,
+        setContent,
+        invoke,
         handle: vi.fn((handler: (message: Record<string, unknown>) => void) => {
             handlers.push(handler);
             return { dispose: () => { const i = handlers.indexOf(handler); if (i >= 0) handlers.splice(i, 1); } };
@@ -155,7 +158,14 @@ describe('ChartEditorProvider', () => {
             view.setOptions(defaultOptions(), []);
             const html: string = webview.setContent.mock.calls[0]![0];
 
-            expect(html).toMatch(/id="opt-sort"[^>]*>.*<option value="" selected>Default \(Ascending\)/s);
+            expect(html).toMatch(/id="opt-sort"[^>]*>.*<option value="" selected>Default \(Auto\)/s);
+        });
+
+        it('selects Auto sort when explicitly set', () => {
+            view.setOptions(defaultOptions({ sort: 'Auto' }), []);
+            const html: string = webview.setContent.mock.calls[0]![0];
+
+            expect(html).toContain('<option value="Auto" selected>Auto</option>');
         });
 
         it('selects the specified mode', () => {
@@ -533,8 +543,22 @@ describe('ChartEditorProvider', () => {
                 type: 'Column',
                 legendPosition: 'Bottom',
                 textSize: 'Large',
-                sort: 'Ascending',
+                sort: 'Auto',
                 yLayout: 'SharedAxis'
+            }));
+        });
+
+        it('captures product marker defaults when config defaults are not provided', () => {
+            const callback = vi.fn();
+            view.onOptionsChanged = callback;
+            view.setOptions(defaultOptions(), [], { legendPosition: 'Bottom' });
+
+            webview.simulateMessage({ command: 'chartEditorDefaultsAction', action: 'capture' });
+
+            expect(callback).toHaveBeenCalledWith(expect.objectContaining({
+                type: 'Column',
+                markerShape: 'Circle',
+                markerSize: 'Medium'
             }));
         });
 
@@ -553,7 +577,7 @@ describe('ChartEditorProvider', () => {
         it('restores matching explicit values back to defaults', () => {
             const callback = vi.fn();
             view.onOptionsChanged = callback;
-            view.setOptions(defaultOptions({ legendPosition: 'Bottom', textSize: 'Large', sort: 'Ascending', yLayout: 'SharedAxis' }), [], { legendPosition: 'Bottom', textSize: 'Large' });
+            view.setOptions(defaultOptions({ legendPosition: 'Bottom', textSize: 'Large', sort: 'Auto', yLayout: 'SharedAxis' }), [], { legendPosition: 'Bottom', textSize: 'Large' });
 
             webview.simulateMessage({ command: 'chartEditorDefaultsAction', action: 'restore' });
 
@@ -561,7 +585,7 @@ describe('ChartEditorProvider', () => {
         });
 
         it('re-renders restored values back to Default labels in the editor', () => {
-            view.setOptions(defaultOptions({ legendPosition: 'Bottom', textSize: 'Large', sort: 'Ascending', yLayout: 'SharedAxis', aspectRatio: 'Fill' }), [], { legendPosition: 'Bottom', textSize: 'Large', aspectRatio: 'Fill' });
+            view.setOptions(defaultOptions({ legendPosition: 'Bottom', textSize: 'Large', sort: 'Auto', yLayout: 'SharedAxis', aspectRatio: 'Fill' }), [], { legendPosition: 'Bottom', textSize: 'Large', aspectRatio: 'Fill' });
 
             webview.simulateMessage({ command: 'chartEditorDefaultsAction', action: 'restore' });
 
@@ -569,7 +593,7 @@ describe('ChartEditorProvider', () => {
             const html: string = webview.setContent.mock.calls[1]![0];
             expect(html).toMatch(/id="opt-legendPosition"[^>]*>.*<option value="" selected>Default \(Bottom\)/s);
             expect(html).toMatch(/id="opt-textSize"[^>]*>.*<option value="" selected>Default \(Large\)/s);
-            expect(html).toMatch(/id="opt-sort"[^>]*>.*<option value="" selected>Default \(Ascending\)/s);
+            expect(html).toMatch(/id="opt-sort"[^>]*>.*<option value="" selected>Default \(Auto\)/s);
             expect(html).toMatch(/id="opt-yLayout"[^>]*>.*<option value="" selected>Default \(Shared Axis\)/s);
             expect(html).toMatch(/id="opt-aspectRatio"[^>]*>.*<option value="" selected>Default \(Fill\)/s);
         });
@@ -613,7 +637,7 @@ describe('ChartEditorProvider', () => {
                 legendPosition: 'Bottom',
                 textSize: 'Large',
                 xShowGrid: false,
-                sort: 'Ascending',
+                sort: 'Auto',
                 yLayout: 'SharedAxis'
             }));
             expect(callback).toHaveBeenNthCalledWith(2, { type: 'Column' });

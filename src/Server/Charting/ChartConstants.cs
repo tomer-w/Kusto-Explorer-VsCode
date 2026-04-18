@@ -47,6 +47,7 @@ public static class ChartAxis
 /// </summary>
 public static class ChartSortOrder
 {
+    public const string Auto = "Auto";
     public const string Ascending = "Ascending";
     public const string Descending = "Descending";
 }

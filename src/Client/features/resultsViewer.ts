@@ -107,6 +107,7 @@ function getChartDefaults(): Partial<server.ChartOptions> {
     }
 
     setString('legendPosition', 'legendPosition');
+    setString('sort', 'sort');
     setBool('xShowTicks', 'xShowTicks');
     setBool('yShowTicks', 'yShowTicks');
     setBool('xShowGrid', 'xShowGrid');
@@ -1210,7 +1211,7 @@ export class ResultsViewer {
     /**
      * Moves the results tab between main and beside editor columns.
      */
-    moveResultsTabToMain(): void {
+    async moveResultsTabToMain(): Promise<void> {
         const webview = this.activeResultWebview;
         if (!webview) { return; }
         const isMain = webview.viewColumn === vscode.ViewColumn.One;
@@ -1231,13 +1232,13 @@ export class ResultsViewer {
                     this.singletonResultData = { ...resultData, chartOptions: chartOptionsOverride };
                 }
                 const targetLocation: 'beside' | 'main' = isMain ? 'beside' : 'main';
-                this.displayResultsInSingletonView(this.singletonResultData, mode as ResultViewMode, targetLocation);
+                await this.displayResultsInSingletonView(this.singletonResultData, mode as ResultViewMode, targetLocation);
                 // Always focus the recreated panel since the user explicitly toggled
                 this.singletonView?.reveal(undefined, false);
             }
         } else {
             // Custom editors must be moved via workbench commands; reveal() creates duplicates.
-            vscode.commands.executeCommand(
+            await vscode.commands.executeCommand(
                 isMain ? 'workbench.action.moveEditorToNextGroup' : 'workbench.action.moveEditorToFirstGroup'
             );
         }

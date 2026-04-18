@@ -76,6 +76,7 @@ export const ChartAxis = {
 } as const;
 
 export const ChartSortOrder = {
+    Auto: 'Auto',
     Ascending: 'Ascending',
     Descending: 'Descending',
 } as const;
