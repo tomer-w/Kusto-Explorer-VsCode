@@ -364,6 +364,36 @@ describe('CompositeChartProvider', () => {
                 const trace = parseTraces(html!)[0] as Record<string, unknown>;
                 expect(trace.marker).toEqual({ symbol: 'star', size: 8 });
             });
+
+            it('renders anomaly overlays when anomalyColumns are specified', () => {
+                const table = makeTable(
+                    [
+                        { name: 'x', type: 'int' },
+                        { name: 'value', type: 'real' },
+                        { name: 'anomalies', type: 'real' },
+                    ],
+                    [
+                        [1, 10, 0],
+                        [2, 20, 1],
+                        [3, 15, 0],
+                        [4, 50, -1],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'Scatter',
+                    yColumns: ['value', 'anomalies'],
+                    anomalyColumns: ['anomalies'],
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                expect(traces.length).toBe(2);
+                const base = traces[0] as Record<string, unknown>;
+                const anomaly = traces[1] as Record<string, unknown>;
+                expect(base.mode).toBe('markers');
+                expect(anomaly.mode).toBe('markers');
+                expect(anomaly.x).toEqual([2, 4]);
+                expect(anomaly.y).toEqual([20, 50]);
+            });
         });
 
         describe('areachart', () => {
@@ -381,6 +411,26 @@ describe('CompositeChartProvider', () => {
                 const trace = parseTraces(html!)[0] as Record<string, unknown>;
                 expect(trace.stackgroup).toBe('1');
                 expect(trace.fill).toBe('tonexty');
+            });
+
+            it('shows markers and value labels on area traces', () => {
+                const html = renderAndGetHtml(make2dTable(), {
+                    type: 'Area',
+                    showMarkers: true,
+                    showValues: true,
+                    markerShape: 'Star',
+                    markerSize: 'Medium',
+                    markerOutline: true,
+                });
+                expect(html).toBeDefined();
+                const trace = parseTraces(html!)[0] as Record<string, unknown>;
+                expect(trace.mode).toBe('lines+markers+text');
+                expect(trace.text).toEqual([10, 20, 30]);
+                expect(trace.marker).toEqual({
+                    symbol: 'star',
+                    size: 8,
+                    line: { color: '#333', width: 1.5 },
+                });
             });
         });
 
