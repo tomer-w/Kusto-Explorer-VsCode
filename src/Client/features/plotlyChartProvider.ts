@@ -1130,8 +1130,17 @@ function downsample(x: unknown[], y: number[], maxPoints: number): { x: unknown[
     return { x: resultX, y: resultY };
 }
 
-/** Ordered set of marker shapes for cycling. */
-const markerShapes = ['circle', 'diamond', 'square', 'triangle-up', 'cross', 'star', 'x'] as const;
+/** Ordered set of product marker shapes for cycling. */
+const markerShapes = ['Circle', 'Diamond', 'Square', 'TriangleUp', 'Cross', 'Star', 'X'] as const;
+const markerShapeSymbols: Record<typeof markerShapes[number], string> = {
+    Circle: 'circle',
+    Diamond: 'diamond',
+    Square: 'square',
+    TriangleUp: 'triangle-up',
+    Cross: 'cross',
+    Star: 'star',
+    X: 'x',
+};
 
 /** Marker size presets mapped to pixel values. */
 const markerSizePresets: Record<string, number> = {
@@ -1145,15 +1154,15 @@ const markerSizePresets: Record<string, number> = {
 /**
  * Returns the marker shape for a given trace index, based on chart options.
  * - If no markerShape is set and cycleMarkerShapes is off, returns undefined (Plotly default).
- * - If markerShape is set but cycleMarkerShapes is false, returns that shape for all traces.
- * - If cycleMarkerShapes is true, cycles through shapes starting from the selected shape.
+ * - If markerShape is set but cycleMarkerShapes is false, returns its Plotly symbol for all traces.
+ * - If cycleMarkerShapes is true, cycles through product shapes starting from the selected shape.
  */
 function getMarkerShape(options: ChartOptions, traceIndex: number): string | undefined {
     if (!options.markerShape && !options.cycleMarkerShapes) return undefined;
     const startIndex = markerShapes.indexOf((options.markerShape ?? markerShapes[0]) as typeof markerShapes[number]);
     const base = startIndex >= 0 ? startIndex : 0;
-    if (!options.cycleMarkerShapes) return markerShapes[base];
-    return markerShapes[(base + traceIndex) % markerShapes.length];
+    if (!options.cycleMarkerShapes) return markerShapeSymbols[markerShapes[base]];
+    return markerShapeSymbols[markerShapes[(base + traceIndex) % markerShapes.length]];
 }
 
 /** Resolves the marker size preset to a pixel value, or undefined if not set. */
@@ -2012,8 +2021,6 @@ export class PlotlyChartProvider implements IChartProvider {
         if (options.title) builder = builder.withTitle(options.title);
         if (options.xTitle) builder = builder.setXAxisTitle(options.xTitle);
         if (options.yTitle) builder = builder.setYAxisTitle(options.yTitle);
-        if (options.showLegend === false) builder = builder.hideLegend();
-
         builder = builder.setYAxisRange(0, 1);
 
         const showValues = options.showValues === true;
@@ -2119,7 +2126,6 @@ export class PlotlyChartProvider implements IChartProvider {
         let builder = new PlotlyChartBuilder();
 
         if (options.title) builder = builder.withTitle(options.title);
-        if (options.showLegend === false) builder = builder.hideLegend();
         builder = applyCommonOptions(builder, options);
 
         const labelColumn = this.get2dXColumn(data, options);
@@ -2230,7 +2236,6 @@ export class PlotlyChartProvider implements IChartProvider {
         scene = { ...scene, zaxis: { title: { text: options.zTitle ?? zCol.column.name } } };
         builder = builder.withScene(scene);
 
-        if (options.showLegend === false) builder = builder.hideLegend();
         builder = applyCommonOptions(builder, options);
 
         return builder;
@@ -2327,7 +2332,6 @@ export class PlotlyChartProvider implements IChartProvider {
 
         builder = builder.addTreeMapTrace(labels, parents, values, valueColumn.column.name, ids, 'label+value', 'total');
 
-        if (options.showLegend === false) builder = builder.hideLegend();
         builder = applyCommonOptions(builder, options);
 
         return builder;
@@ -2409,7 +2413,6 @@ export class PlotlyChartProvider implements IChartProvider {
 
         builder = builder.addSankeyTrace(nodeLabels, linkSources, linkTargets, linkValues, valueColumn.column.name);
 
-        if (options.showLegend === false) builder = builder.hideLegend();
         builder = applyCommonOptions(builder, options);
 
         return builder;
@@ -2493,7 +2496,6 @@ export class PlotlyChartProvider implements IChartProvider {
         if (options.title) builder = builder.withTitle(options.title);
         if (options.xTitle) builder = builder.setXAxisTitle(options.xTitle);
         if (options.yTitle) builder = builder.setYAxisTitle(options.yTitle);
-        if (options.showLegend === false) builder = builder.hideLegend();
         builder = applyCommonOptions(builder, options);
 
         // Overlay bars so they align with grid lines (not grouped/dodged)
@@ -2566,7 +2568,6 @@ export class PlotlyChartProvider implements IChartProvider {
             builder = builder.setYAxisRange(yMinD, yMaxD);
         }
 
-        if (options.showLegend === false) builder = builder.hideLegend();
         builder = applyCommonOptions(builder, options);
 
         // ── Y-axis split modes ──────────────────────────────────────────
@@ -2877,8 +2878,8 @@ function applyCommonOptions(builder: PlotlyChartBuilder, options: ChartOptions):
         builder = builder.setCategoryOrder(order);
     }
 
-    if (options.legendPosition != null) {
-        if (options.legendPosition === ChartLegendPosition.Hidden) {
+    if (options.legendPosition != null && options.legendPosition !== ChartLegendPosition.Auto) {
+        if (options.legendPosition === ChartLegendPosition.None || options.legendPosition === 'Hidden') {
             builder = builder.hideLegend();
         } else {
             builder = builder.setLegendPosition(options.legendPosition);

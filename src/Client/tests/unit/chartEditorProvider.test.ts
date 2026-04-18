@@ -119,15 +119,15 @@ describe('ChartEditorProvider', () => {
 
         // ── Legend dropdown ─────────────────────────────────────────────
 
-        it('renders legend as Hidden when showLegend is false', () => {
-            view.setOptions(defaultOptions({ showLegend: false }), []);
+        it('renders legend as None when legendPosition is None', () => {
+            view.setOptions(defaultOptions({ legendPosition: 'None' }), []);
             const html: string = webview.setContent.mock.calls[0]![0];
 
-            expect(html).toContain('<option value="Hidden" selected>Hidden</option>');
+            expect(html).toContain('<option value="None" selected>None</option>');
         });
 
-        it('renders legend position when showLegend is true', () => {
-            view.setOptions(defaultOptions({ showLegend: true, legendPosition: 'Bottom' }), []);
+        it('renders legend position when explicitly set', () => {
+            view.setOptions(defaultOptions({ legendPosition: 'Bottom' }), []);
             const html: string = webview.setContent.mock.calls[0]![0];
 
             expect(html).toContain('<option value="Bottom" selected>Bottom</option>');
@@ -140,6 +140,13 @@ describe('ChartEditorProvider', () => {
             const html: string = webview.setContent.mock.calls[0]![0];
 
             expect(html).toContain('<option value="Ascending" selected>Ascending</option>');
+        });
+
+        it('renders default sort label when not explicitly set', () => {
+            view.setOptions(defaultOptions(), []);
+            const html: string = webview.setContent.mock.calls[0]![0];
+
+            expect(html).toMatch(/id="opt-sort"[^>]*>.*<option value="" selected>Default \(Ascending\)/s);
         });
 
         it('selects the specified mode', () => {
@@ -158,6 +165,13 @@ describe('ChartEditorProvider', () => {
             expect(html).toContain('<option value="4:3" selected>4:3</option>');
         });
 
+        it('selects Fill as an explicit aspect ratio', () => {
+            view.setOptions(defaultOptions({ aspectRatio: 'Fill' }), []);
+            const html: string = webview.setContent.mock.calls[0]![0];
+
+            expect(html).toContain('<option value="Fill" selected>Fill</option>');
+        });
+
         it('selects the specified text size', () => {
             view.setOptions(defaultOptions({ textSize: 'Large' }), []);
             const html: string = webview.setContent.mock.calls[0]![0];
@@ -165,56 +179,58 @@ describe('ChartEditorProvider', () => {
             expect(html).toContain('<option value="Large" selected>Large</option>');
         });
 
-        // ── Checkboxes ─────────────────────────────────────────────────
+        // ── Toggle dropdowns ───────────────────────────────────────────
 
-        it('checks showValues when true', () => {
+        it('selects showValues as On when true', () => {
             view.setOptions(defaultOptions({ showValues: true }), []);
             const html: string = webview.setContent.mock.calls[0]![0];
 
-            expect(html).toMatch(/id="opt-showValues"[^>]* checked/);
+            expect(html).toMatch(/id="opt-showValues"[^>]*>.*<option value="On" selected>On</s);
         });
 
-        it('does not check showValues when false', () => {
+        it('selects showValues as Off when false', () => {
             view.setOptions(defaultOptions({ showValues: false }), []);
             const html: string = webview.setContent.mock.calls[0]![0];
 
-            const showValuesTag = html.match(/<input[^>]*id="opt-showValues"[^>]*>/);
-            expect(showValuesTag).toBeTruthy();
-            expect(showValuesTag![0]).not.toContain('checked');
+            expect(html).toMatch(/id="opt-showValues"[^>]*>.*<option value="Off" selected>Off</s);
         });
 
-        it('checks accumulate when true', () => {
+        it('selects accumulate as On when true', () => {
             view.setOptions(defaultOptions({ accumulate: true }), []);
             const html: string = webview.setContent.mock.calls[0]![0];
 
-            expect(html).toMatch(/id="opt-accumulate"[^>]* checked/);
+            expect(html).toMatch(/id="opt-accumulate"[^>]*>.*<option value="On" selected>On</s);
         });
 
-        it('renders grid checkboxes checked by default', () => {
+        it('renders grid dropdowns as Default (On) when not set', () => {
             view.setOptions(defaultOptions(), []);
             const html: string = webview.setContent.mock.calls[0]![0];
 
-            // xShowGrid and yShowGrid default to checked (truthy unless explicitly false)
-            expect(html).toMatch(/id="opt-xShowGrid"[^>]* checked/);
-            expect(html).toMatch(/id="opt-yShowGrid"[^>]* checked/);
+            expect(html).toMatch(/id="opt-xShowGrid"[^>]*>.*<option value="" selected>Default \(On\)</s);
+            expect(html).toMatch(/id="opt-yShowGrid"[^>]*>.*<option value="" selected>Default \(On\)</s);
         });
 
-        it('renders grid checkboxes unchecked when false', () => {
+        it('renders multi-y layout as Default (Shared Axis) when not set', () => {
+            view.setOptions(defaultOptions(), []);
+            const html: string = webview.setContent.mock.calls[0]![0];
+
+            expect(html).toMatch(/id="opt-yLayout"[^>]*>.*<option value="" selected>Default \(Shared Axis\)/s);
+        });
+
+        it('selects grid dropdowns as Off when false', () => {
             view.setOptions(defaultOptions({ xShowGrid: false, yShowGrid: false }), []);
             const html: string = webview.setContent.mock.calls[0]![0];
 
-            const xGrid = html.match(/<input[^>]*id="opt-xShowGrid"[^>]*>/);
-            const yGrid = html.match(/<input[^>]*id="opt-yShowGrid"[^>]*>/);
-            expect(xGrid![0]).not.toContain('checked');
-            expect(yGrid![0]).not.toContain('checked');
+            expect(html).toMatch(/id="opt-xShowGrid"[^>]*>.*<option value="Off" selected>Off</s);
+            expect(html).toMatch(/id="opt-yShowGrid"[^>]*>.*<option value="Off" selected>Off</s);
         });
 
-        it('checks tick marks when specified', () => {
+        it('selects tick marks as On when specified', () => {
             view.setOptions(defaultOptions({ xShowTicks: true, yShowTicks: true }), []);
             const html: string = webview.setContent.mock.calls[0]![0];
 
-            expect(html).toMatch(/id="opt-xShowTicks"[^>]* checked/);
-            expect(html).toMatch(/id="opt-yShowTicks"[^>]* checked/);
+            expect(html).toMatch(/id="opt-xShowTicks"[^>]*>.*<option value="On" selected>On</s);
+            expect(html).toMatch(/id="opt-yShowTicks"[^>]*>.*<option value="On" selected>On</s);
         });
 
         // ── Column pickers ──────────────────────────────────────────────
@@ -326,12 +342,44 @@ describe('ChartEditorProvider', () => {
             expect(html).toContain('<option value="-90" selected>-90°</option>');
         });
 
-        it('renders empty tick angle when not set', () => {
+        it('renders default tick angle when not set', () => {
             view.setOptions(defaultOptions(), []);
             const html: string = webview.setContent.mock.calls[0]![0];
 
-            expect(html).toMatch(/id="opt-xTickAngle"[^>]*>.*<option value="" selected>\(auto\)/s);
-            expect(html).toMatch(/id="opt-yTickAngle"[^>]*>.*<option value="" selected>\(auto\)/s);
+            expect(html).toMatch(/id="opt-xTickAngle"[^>]*>.*<option value="" selected>Default \(Auto\)/s);
+            expect(html).toMatch(/id="opt-yTickAngle"[^>]*>.*<option value="" selected>Default \(Auto\)/s);
+        });
+
+        it('renders default legend label when not explicitly set', () => {
+            view.setOptions(defaultOptions(), []);
+            const html: string = webview.setContent.mock.calls[0]![0];
+
+            expect(html).toContain('<option value="" selected>Default (Auto)</option>');
+        });
+
+        it('renders marker defaults as explicit product defaults when not set', () => {
+            view.setOptions(defaultOptions(), []);
+            const html: string = webview.setContent.mock.calls[0]![0];
+
+            expect(html).toMatch(/id="opt-markerShape"[^>]*>.*<option value="" selected>Default \(Circle\)/s);
+            expect(html).toMatch(/id="opt-markerSize"[^>]*>.*<option value="" selected>Default \(Medium\)/s);
+        });
+
+        it('renders config-backed marker defaults when provided', () => {
+            view.setOptions(defaultOptions(), [], { markerShape: 'Diamond', markerSize: 'Large' });
+            const html: string = webview.setContent.mock.calls[0]![0];
+
+            expect(html).toMatch(/id="opt-markerShape"[^>]*>.*<option value="" selected>Default \(Diamond\)/s);
+            expect(html).toMatch(/id="opt-markerSize"[^>]*>.*<option value="" selected>Default \(Large\)/s);
+        });
+
+        it('renders normalized marker shape labels for explicit values', () => {
+            view.setOptions(defaultOptions({ markerShape: 'TriangleUp' }), []);
+            const html: string = webview.setContent.mock.calls[0]![0];
+
+            expect(html).toContain('<option value="TriangleUp" selected>Triangle Up</option>');
+            expect(html).toContain('<option value="Circle">Circle</option>');
+            expect(html).toContain('<option value="X">X</option>');
         });
 
         // ── HTML escaping ───────────────────────────────────────────────

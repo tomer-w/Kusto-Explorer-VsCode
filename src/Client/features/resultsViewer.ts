@@ -12,6 +12,7 @@ import * as server from './server';
 import type { IClipboard } from './clipboard';
 import type { ClipboardItem } from './clipboard';
 import type { IChartProvider, IChartView } from './chartProvider';
+import { ChartAspectRatio } from './chartProvider';
 import type { IChartEditorProvider, IChartEditorView } from './chartEditorProvider';
 import type { IDataTableProvider, IDataTableView } from './dataTableProvider';
 import type { IWebView } from './webview';
@@ -105,7 +106,6 @@ function getChartDefaults(): Partial<server.ChartOptions> {
         if (val) { defaults[prop] = Number(val); }
     }
 
-    setBool('showLegend', 'showLegend');
     setString('legendPosition', 'legendPosition');
     setBool('xShowTicks', 'xShowTicks');
     setBool('yShowTicks', 'yShowTicks');
@@ -515,7 +515,9 @@ export class ResultsViewer {
             return;
         }
 
-        const chartOptions = resultData.chartOptions ? applyChartDefaults(resultData.chartOptions) : undefined;
+        const rawChartOptions = resultData.chartOptions;
+        const chartOptions = rawChartOptions ? applyChartDefaults(rawChartOptions) : undefined;
+        const chartDefaults = getChartDefaults();
         const columnNames = resultData.tables[0]?.columns?.map(c => c.name) ?? [];
 
         // Ensure the panel is ready before creating table adapters that need panel.webview
@@ -550,7 +552,7 @@ export class ResultsViewer {
             if (table) {
                 this.panelChartView?.renderChart(table, chartOptions, darkMode);
             }
-            this.panelEditorView?.setOptions(chartOptions, columnNames);
+            this.panelEditorView?.setOptions(rawChartOptions, columnNames, chartDefaults);
         }
 
         const html = this.htmlBuilder.BuildMultiTabbedHtml(hasChart, mode, this.panelWebView, this.panelEditorWebView, chartOptions, columnNames,
@@ -634,7 +636,9 @@ export class ResultsViewer {
         }
 
         const darkMode = isDarkMode();
-        const chartOptions = resultData.chartOptions ? applyChartDefaults(resultData.chartOptions) : undefined;
+        const rawChartOptions = resultData.chartOptions;
+        const chartOptions = rawChartOptions ? applyChartDefaults(rawChartOptions) : undefined;
+        const chartDefaults = getChartDefaults();
 
         // Resolve where the singleton should appear.
         // For chart mode, use chart display setting; otherwise use results display setting.
@@ -675,7 +679,7 @@ export class ResultsViewer {
             if (table) {
                 this.singletonChartView?.renderChart(table, chartOptions, darkMode);
             }
-            this.singletonEditorView?.setOptions(chartOptions, columnNames);
+            this.singletonEditorView?.setOptions(rawChartOptions, columnNames, chartDefaults);
         }
 
         const html = this.htmlBuilder.BuildMultiTabbedHtml(hasChart, mode, this.singletonWebView, this.singletonEditorWebView, chartOptions, columnNames,
@@ -1539,6 +1543,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
 
         const rawChartOptions = existingState?.chartOptionsOverride ?? resultData.chartOptions;
         const chartOptions = rawChartOptions ? applyChartDefaults(rawChartOptions) : undefined;
+        const chartDefaults = getChartDefaults();
         const columnNames = resultData.tables[0]?.columns?.map(c => c.name) ?? [];
         const docWebView = this.viewer.chartWebViews.get(webviewPanel);
         const docEditorWebView = this.viewer.editorWebViews.get(webviewPanel);
@@ -1566,7 +1571,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
                 controller?.renderChart(table, chartOptions, darkMode);
             }
             const editorView = this.viewer.editorViews.get(webviewPanel);
-            editorView?.setOptions(chartOptions, columnNames);
+            editorView?.setOptions(rawChartOptions, columnNames, chartDefaults);
         }
 
         const html = this.BuildMultiTabbedHtml(hasChart, 'all', docWebView, docEditorWebView, chartOptions, columnNames,
@@ -1667,10 +1672,11 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
 
         // Aspect ratio support
         const aspectRatio = chartOptions?.aspectRatio;
-        const chartAspectClass = aspectRatio ? ' has-aspect-ratio' : '';
-        const textSize = chartOptions?.textSize ?? '';
+        const hasExplicitAspectRatio = !!aspectRatio && aspectRatio !== ChartAspectRatio.Fill;
+        const chartAspectClass = hasExplicitAspectRatio ? ' has-aspect-ratio' : '';
+        const textSize = chartOptions?.textSize === 'Auto' ? '' : (chartOptions?.textSize ?? '');
         const chartStyleParts: string[] = [];
-        if (aspectRatio) { chartStyleParts.push(`--chart-aspect-ratio: ${aspectRatio.replace(':', '/')}`); }
+        if (hasExplicitAspectRatio) { chartStyleParts.push(`--chart-aspect-ratio: ${aspectRatio.replace(':', '/')}`); }
         const chartStyle = chartStyleParts.length ? ` style="${chartStyleParts.join('; ')}"` : '';
         const chartDataAttrs = textSize ? ` data-text-size="${textSize}"` : '';
 

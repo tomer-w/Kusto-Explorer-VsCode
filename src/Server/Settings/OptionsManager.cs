@@ -49,7 +49,6 @@ public class OptionsManager : IOptionsManager
         return new ChartOptions
         {
             Type = ChartType.None,
-            ShowLegend = YesNoToBool(ChartSettings.ShowLegend.GetValue(settings)),
             LegendPosition = NullIfEmpty(ChartSettings.LegendPosition.GetValue(settings)),
             XShowTicks = YesNoToBool(ChartSettings.XShowTicks.GetValue(settings)),
             YShowTicks = YesNoToBool(ChartSettings.YShowTicks.GetValue(settings)),

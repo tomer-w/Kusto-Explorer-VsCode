@@ -56,9 +56,10 @@ public static class ChartSortOrder
 /// </summary>
 public static class ChartLegendPosition
 {
+    public const string Auto = "Auto";
     public const string Right = "Right";
     public const string Bottom = "Bottom";
-    public const string Hidden = "Hidden";
+    public const string None = "None";
 }
 
 /// <summary>
@@ -66,6 +67,7 @@ public static class ChartLegendPosition
 /// </summary>
 public static class ChartMode
 {
+    public const string Auto = "Auto";
     public const string Light = "Light";
     public const string Dark = "Dark";
 }
@@ -75,6 +77,7 @@ public static class ChartMode
 /// </summary>
 public static class ChartTextSize
 {
+    public const string Auto = "Auto";
     public const string ExtraSmall = "Extra Small";
     public const string Small = "Small";
     public const string Medium = "Medium";
@@ -87,6 +90,7 @@ public static class ChartTextSize
 /// </summary>
 public static class ChartAspectRatio
 {
+    public const string Fill = "Fill";
     public const string Ratio16x9 = "16:9";
     public const string Ratio3x2 = "3:2";
     public const string Ratio4x3 = "4:3";

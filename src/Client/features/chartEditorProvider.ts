@@ -10,6 +10,7 @@
  * `onOptionsChanged` callback.
  */
 
+import { ChartAspectRatio } from './chartProvider';
 import type { ChartOptions } from './server';
 import type { IWebView } from './webview';
 import { escapeHtml } from './html';
@@ -42,13 +43,30 @@ const chartTypes: ReadonlyMap<string, string> = new Map([
     ['TreeMap', 'Tree Map (treemap)'],
 ]);
 
-const legendPositions = ['Right', 'Bottom', 'Hidden'];
+const legendPositions: [string, string][] = [['Auto', 'Auto'], ['Right', 'Right'], ['Bottom', 'Bottom'], ['None', 'None']];
 const axisTypes = ['Linear', 'Log'];
 const sortOrders = ['Ascending', 'Descending'];
-const chartModes = ['Light', 'Dark'];
-const aspectRatios = ['16:9', '3:2', '4:3', '1:1', '3:4', '2:3', '9:16'];
-const textSizes = ['Extra Small', 'Small', 'Medium', 'Large', 'Extra Large'];
-const markerShapeOptions = ['circle', 'diamond', 'square', 'triangle-up', 'cross', 'star', 'x'];
+const chartModes: [string, string][] = [['Auto', 'Auto'], ['Light', 'Light'], ['Dark', 'Dark']];
+const aspectRatios = [ChartAspectRatio.Fill, ChartAspectRatio.Ratio16x9, ChartAspectRatio.Ratio3x2, ChartAspectRatio.Ratio4x3, ChartAspectRatio.Ratio1x1, ChartAspectRatio.Ratio3x4, ChartAspectRatio.Ratio2x3, ChartAspectRatio.Ratio9x16];
+const textSizes: [string, string][] = [['Auto', 'Auto'], ['Extra Small', 'Extra Small'], ['Small', 'Small'], ['Medium', 'Medium'], ['Large', 'Large'], ['Extra Large', 'Extra Large']];
+const markerShapeOptions: [string, string][] = [
+    ['Circle', 'Circle'],
+    ['Diamond', 'Diamond'],
+    ['Square', 'Square'],
+    ['TriangleUp', 'Triangle Up'],
+    ['Cross', 'Cross'],
+    ['Star', 'Star'],
+    ['X', 'X'],
+];
+const markerShapeLabels: ReadonlyMap<string, string> = new Map([
+    ['Circle', 'Circle'],
+    ['Diamond', 'Diamond'],
+    ['Square', 'Square'],
+    ['TriangleUp', 'Triangle Up'],
+    ['Cross', 'Cross'],
+    ['Star', 'Star'],
+    ['X', 'X'],
+]);
 const tickAngles = [0, 15, 30, 45, 60, 75, 90, -15, -30, -45, -60, -75, -90];
 const aggregationTypes = ['Sum', 'Count', 'Average', 'Min', 'Max'];
 const maxSeriesOptions = [10, 20, 30, 40, 50];
@@ -62,7 +80,7 @@ const maxPointsOptions = [100, 500, 1000, 5000, 10000, 50000];
  */
 export interface IChartEditorView {
     /** Populate (or re-populate) the edit panel with the given options and column names. */
-    setOptions(options: ChartOptions, columnNames: string[]): void;
+    setOptions(options: ChartOptions, columnNames: string[], defaults?: Partial<ChartOptions>): void;
     /** Fires when the user changes any chart option in the edit panel. */
     onOptionsChanged: ((options: ChartOptions) => void) | undefined;
     /** Release handlers and resources. */
@@ -91,8 +109,8 @@ class ChartEditorView implements IChartEditorView {
         });
     }
 
-    setOptions(options: ChartOptions, columnNames: string[]): void {
-        this.webview.setContent(this.buildFormHtml(options, columnNames));
+    setOptions(options: ChartOptions, columnNames: string[], defaults?: Partial<ChartOptions>): void {
+        this.webview.setContent(this.buildFormHtml(options, columnNames, defaults ?? {}));
     }
 
     dispose(): void {
@@ -323,11 +341,10 @@ class ChartEditorView implements IChartEditorView {
             if (chartType) opts.type = chartType.value;
             var legendPos = document.getElementById('opt-legendPosition');
             if (legendPos && legendPos.value) {
-                if (legendPos.value === 'Hidden') { opts.showLegend = false; }
-                else { opts.showLegend = true; opts.legendPosition = legendPos.value; }
+                opts.legendPosition = legendPos.value;
             }
             var sort = document.getElementById('opt-sort');
-            if (sort && sort.value) opts.sort = sort.value;
+            if (sort) opts.sort = sort.value;
             var mode = document.getElementById('opt-mode');
             if (mode && mode.value) opts.mode = mode.value;
             var aspectRatio = document.getElementById('opt-aspectRatio');
@@ -335,7 +352,7 @@ class ChartEditorView implements IChartEditorView {
             var textSize = document.getElementById('opt-textSize');
             if (textSize && textSize.value) opts.textSize = textSize.value;
             var showValues = document.getElementById('opt-showValues');
-            if (showValues) opts.showValues = showValues.checked;
+            if (showValues && showValues.value) opts.showValues = showValues.value === 'On';
             var title = document.getElementById('opt-title');
             if (title && title.value) opts.title = title.value;
             var xTitle = document.getElementById('opt-xTitle');
@@ -353,17 +370,17 @@ class ChartEditorView implements IChartEditorView {
             var anomalyList = document.getElementById('opt-anomalyColumns-list');
             if (anomalyList) { var ai = Array.from(anomalyList.querySelectorAll('li span')).map(function(s) { return s.textContent; }); if (ai.length) opts.anomalyColumns = ai; }
             var showMarkers = document.getElementById('opt-showMarkers');
-            if (showMarkers) opts.showMarkers = showMarkers.checked;
+            if (showMarkers && showMarkers.value) opts.showMarkers = showMarkers.value === 'On';
             var markerOutline = document.getElementById('opt-markerOutline');
-            if (markerOutline) opts.markerOutline = markerOutline.checked;
+            if (markerOutline && markerOutline.value) opts.markerOutline = markerOutline.value === 'On';
             var markerShape = document.getElementById('opt-markerShape');
             if (markerShape && markerShape.value) opts.markerShape = markerShape.value;
             var cycleMarkerShapes = document.getElementById('opt-cycleMarkerShapes');
-            if (cycleMarkerShapes) opts.cycleMarkerShapes = cycleMarkerShapes.checked;
+            if (cycleMarkerShapes && cycleMarkerShapes.value) opts.cycleMarkerShapes = cycleMarkerShapes.value === 'On';
             var markerSize = document.getElementById('opt-markerSize');
             if (markerSize && markerSize.value) opts.markerSize = markerSize.value;
             var accumulate = document.getElementById('opt-accumulate');
-            if (accumulate) opts.accumulate = accumulate.checked;
+            if (accumulate && accumulate.value) opts.accumulate = accumulate.value === 'On';
             var binSize = document.getElementById('opt-binSize');
             if (binSize && binSize.value) opts.binSize = binSize.value;
             var aggregation = document.getElementById('opt-aggregation');
@@ -373,11 +390,11 @@ class ChartEditorView implements IChartEditorView {
             var maxPointsPerSeries = document.getElementById('opt-maxPointsPerSeries');
             if (maxPointsPerSeries && maxPointsPerSeries.value) opts.maxPointsPerSeries = Number(maxPointsPerSeries.value);
             var xAxis = document.getElementById('opt-xAxis');
-            if (xAxis && xAxis.value) opts.xAxis = xAxis.value;
+            if (xAxis) opts.xAxis = xAxis.value;
             var yAxis = document.getElementById('opt-yAxis');
-            if (yAxis && yAxis.value) opts.yAxis = yAxis.value;
+            if (yAxis) opts.yAxis = yAxis.value;
             var yLayout = document.getElementById('opt-yLayout');
-            if (yLayout && yLayout.value) opts.yLayout = yLayout.value;
+            if (yLayout) opts.yLayout = yLayout.value;
             var xmin = document.getElementById('opt-xMin');
             if (xmin && xmin.value) opts.xMin = xmin.value;
             var xmax = document.getElementById('opt-xMax');
@@ -387,15 +404,15 @@ class ChartEditorView implements IChartEditorView {
             var ymax = document.getElementById('opt-yMax');
             if (ymax && ymax.value) opts.yMax = ymax.value;
             var xShowTicks = document.getElementById('opt-xShowTicks');
-            if (xShowTicks) opts.xShowTicks = xShowTicks.checked;
+            if (xShowTicks && xShowTicks.value) opts.xShowTicks = xShowTicks.value === 'On';
             var yShowTicks = document.getElementById('opt-yShowTicks');
-            if (yShowTicks) opts.yShowTicks = yShowTicks.checked;
+            if (yShowTicks && yShowTicks.value) opts.yShowTicks = yShowTicks.value === 'On';
             var yMirror = document.getElementById('opt-yMirror');
-            if (yMirror) opts.yMirror = yMirror.checked;
+            if (yMirror && yMirror.value) opts.yMirror = yMirror.value === 'On';
             var xShowGrid = document.getElementById('opt-xShowGrid');
-            if (xShowGrid) opts.xShowGrid = xShowGrid.checked;
+            if (xShowGrid && xShowGrid.value) opts.xShowGrid = xShowGrid.value === 'On';
             var yShowGrid = document.getElementById('opt-yShowGrid');
-            if (yShowGrid) opts.yShowGrid = yShowGrid.checked;
+            if (yShowGrid && yShowGrid.value) opts.yShowGrid = yShowGrid.value === 'On';
             var xTickAngle = document.getElementById('opt-xTickAngle');
             if (xTickAngle && xTickAngle.value !== '') opts.xTickAngle = Number(xTickAngle.value);
             var yTickAngle = document.getElementById('opt-yTickAngle');
@@ -416,14 +433,19 @@ class ChartEditorView implements IChartEditorView {
             var tsSelect = document.getElementById('opt-textSize');
             if (chartDiv) {
                 var arValue = arSelect ? arSelect.value : '';
-                if (arValue) {
+                var defaultArValue = arSelect ? (arSelect.getAttribute('data-default-value') || '') : '';
+                var effectiveArValue = arValue || defaultArValue;
+                if (effectiveArValue && effectiveArValue !== 'Fill') {
                     chartDiv.classList.add('has-aspect-ratio');
-                    chartDiv.style.setProperty('--chart-aspect-ratio', arValue.replace(':', '/'));
+                    chartDiv.style.setProperty('--chart-aspect-ratio', effectiveArValue.replace(':', '/'));
                 } else {
                     chartDiv.classList.remove('has-aspect-ratio');
                     chartDiv.style.removeProperty('--chart-aspect-ratio');
                 }
-                chartDiv.setAttribute('data-text-size', tsSelect ? tsSelect.value : '');
+                var textSizeValue = tsSelect ? tsSelect.value : '';
+                var defaultTextSizeValue = tsSelect ? (tsSelect.getAttribute('data-default-value') || '') : '';
+                var effectiveTextSizeValue = textSizeValue || defaultTextSizeValue;
+                chartDiv.setAttribute('data-text-size', effectiveTextSizeValue === 'Auto' ? '' : effectiveTextSizeValue);
                 setTimeout(function() {
                     if (window._chartResize) window._chartResize();
                 }, 50);
@@ -444,8 +466,25 @@ class ChartEditorView implements IChartEditorView {
         <\/script>`;
     }
 
-    private buildFormHtml(chartOptions: ChartOptions, columnNames: string[]): string {
+    private buildFormHtml(chartOptions: ChartOptions, columnNames: string[], defaults: Partial<ChartOptions>): string {
         const opts = chartOptions;
+        const formatDefaultLabel = (value: string) => `Default (${value})`;
+        const formatAngleLabel = (value: number | undefined) => value == null ? 'Auto' : `${value}°`;
+        const formatToggleLabel = (value: boolean | undefined) => value === true ? 'On' : 'Off';
+        const buildToggleOptions = (current: boolean | undefined, defaultValue: boolean | undefined) => {
+            const currentValue = current == null ? '' : (current ? 'On' : 'Off');
+            return [['', formatDefaultLabel(formatToggleLabel(defaultValue))], ['On', 'On'], ['Off', 'Off']].map(([value, label]) =>
+                `<option value="${value}"${value === currentValue ? ' selected' : ''}>${label}</option>`
+            ).join('');
+        };
+        const defaultLegendValue = (defaults.legendPosition as string | undefined) ?? 'Auto';
+        const defaultAspectRatioValue = (defaults.aspectRatio as string | undefined) ?? ChartAspectRatio.Fill;
+        const defaultTextSizeValue = (defaults.textSize as string | undefined) ?? 'Auto';
+        const formatMarkerShapeLabel = (value: string) => markerShapeLabels.get(value) ?? value;
+        const defaultMarkerShapeValue = formatMarkerShapeLabel((defaults.markerShape as string | undefined) ?? 'Circle');
+        const defaultMarkerSizeValue = (defaults.markerSize as string | undefined) ?? 'Medium';
+        const defaultXTickAngleValue = typeof defaults.xTickAngle === 'number' ? defaults.xTickAngle : undefined;
+        const defaultYTickAngleValue = typeof defaults.yTickAngle === 'number' ? defaults.yTickAngle : undefined;
 
         const allTypeKeys = chartTypes.has(opts.type) ? [...chartTypes.keys()] : [opts.type, ...chartTypes.keys()];
         allTypeKeys.sort((a, b) => {
@@ -459,32 +498,33 @@ class ChartEditorView implements IChartEditorView {
             return `<option value="${t}"${t === opts.type ? ' selected' : ''} title="${escapeHtml(t)}">${escapeHtml(display)}</option>`;
         }).join('');
 
-        const currentLegend = (opts.showLegend === false) ? 'Hidden' : (opts.legendPosition ?? '');
-        const legendPosOptions = ['', ...legendPositions].map(p =>
-            `<option value="${p}"${p === currentLegend ? ' selected' : ''}>${p || '(default)'}</option>`
+        const currentLegend = opts.legendPosition === 'Hidden' ? 'None' : (opts.legendPosition ?? '');
+        const legendPosOptions = [['', formatDefaultLabel(defaultLegendValue)], ...legendPositions].map(([value, label]) =>
+            `<option value="${value}"${value === currentLegend ? ' selected' : ''}>${label}</option>`
         ).join('');
 
+        const defaultSortValue = 'Ascending';
         const currentSort = opts.sort ?? '';
-        const sortOptions = ['', ...sortOrders].map(s =>
-            `<option value="${s}"${s === currentSort ? ' selected' : ''}>${s || '(default)'}</option>`
+        const sortOptions = [['', formatDefaultLabel(defaultSortValue)], ...sortOrders.map(s => [s, s] as [string, string])].map(([value, label]) =>
+            `<option value="${value}"${value === currentSort ? ' selected' : ''}>${label}</option>`
         ).join('');
 
-        const currentMode = opts.mode ?? '';
-        const modeOptions = ['', ...chartModes].map(m =>
-            `<option value="${m}"${m === currentMode ? ' selected' : ''}>${m || '(auto)'}</option>`
+        const currentMode = opts.mode ?? 'Auto';
+        const modeOptions = chartModes.map(([value, label]) =>
+            `<option value="${value}"${value === currentMode ? ' selected' : ''}>${label}</option>`
         ).join('');
 
         const currentAspectRatio = opts.aspectRatio ?? '';
         const aspectRatioOptions = ['', ...aspectRatios].map(r =>
-            `<option value="${r}"${r === currentAspectRatio ? ' selected' : ''}>${r || '(fill)'}</option>`
+            `<option value="${r}"${r === currentAspectRatio ? ' selected' : ''}>${r || formatDefaultLabel(defaultAspectRatioValue)}</option>`
         ).join('');
 
         const currentTextSize = opts.textSize ?? '';
-        const textSizeOptions = ['', ...textSizes].map(s =>
-            `<option value="${s}"${s === currentTextSize ? ' selected' : ''}>${s || '(medium)'}</option>`
+        const textSizeOptions = [['', formatDefaultLabel(defaultTextSizeValue)], ...textSizes].map(([value, label]) =>
+            `<option value="${value}"${value === currentTextSize ? ' selected' : ''}>${label}</option>`
         ).join('');
 
-        const showValuesChecked = opts.showValues === true ? ' checked' : '';
+        const showValuesOptions = buildToggleOptions(opts.showValues, defaults.showValues as boolean | undefined);
 
         const xColOptions = ['', ...columnNames].map(c =>
             `<option value="${escapeHtml(c)}"${c === (opts.xColumn ?? '') ? ' selected' : ''}>${c || '(auto)'}</option>`
@@ -513,16 +553,16 @@ class ChartEditorView implements IChartEditorView {
         ).join('');
 
         const currentMarkerShape = opts.markerShape ?? '';
-        const markerShapeOpts = ['', ...markerShapeOptions].map(s =>
-            `<option value="${s}"${s === currentMarkerShape ? ' selected' : ''}>${s || '(default)'}</option>`
+        const markerShapeOpts = [['', formatDefaultLabel(defaultMarkerShapeValue)], ...markerShapeOptions].map(([value, label]) =>
+            `<option value="${value}"${value === currentMarkerShape ? ' selected' : ''}>${label}</option>`
         ).join('');
-        const showMarkersChecked = opts.showMarkers === true ? ' checked' : '';
-        const markerOutlineChecked = opts.markerOutline === true ? ' checked' : '';
-        const cycleMarkerShapesChecked = opts.cycleMarkerShapes === true ? ' checked' : '';
+        const showMarkersOptions = buildToggleOptions(opts.showMarkers, defaults.showMarkers as boolean | undefined);
+        const markerOutlineOptions = buildToggleOptions(opts.markerOutline, defaults.markerOutline as boolean | undefined);
+        const cycleMarkerShapesOptions = buildToggleOptions(opts.cycleMarkerShapes, defaults.cycleMarkerShapes as boolean | undefined);
 
         const currentMarkerSize = opts.markerSize ?? '';
-        const markerSizeOpts = ['', ...textSizes].map(s =>
-            `<option value="${s}"${s === currentMarkerSize ? ' selected' : ''}>${s || '(default)'}</option>`
+        const markerSizeOpts = ['', ...textSizes.filter(([value]) => value !== 'Auto').map(([value]) => value)].map(s =>
+            `<option value="${s}"${s === currentMarkerSize ? ' selected' : ''}>${s || formatDefaultLabel(defaultMarkerSizeValue)}</option>`
         ).join('');
 
         const currentAggregation = opts.aggregation ?? '';
@@ -540,36 +580,38 @@ class ChartEditorView implements IChartEditorView {
             `<option value="${n}"${String(n) === String(currentMaxPoints) ? ' selected' : ''}>${n || '(unlimited)'}</option>`
         ).join('');
 
-        const currentXAxis = opts.xAxis ?? '';
+        const currentXAxis = opts.xAxis ?? 'Linear';
         const allAxisTypes = currentXAxis && !axisTypes.includes(currentXAxis) ? [currentXAxis, ...axisTypes] : axisTypes;
-        const xAxisOptions = ['', ...allAxisTypes].map(a =>
-            `<option value="${a}"${a === currentXAxis ? ' selected' : ''}>${a || '(default)'}</option>`
+        const xAxisOptions = allAxisTypes.map(a =>
+            `<option value="${a}"${a === currentXAxis ? ' selected' : ''}>${a}</option>`
         ).join('');
 
-        const currentYAxis = opts.yAxis ?? '';
+        const currentYAxis = opts.yAxis ?? 'Linear';
         const allYAxisTypes = currentYAxis && !axisTypes.includes(currentYAxis) ? [currentYAxis, ...axisTypes] : axisTypes;
-        const yAxisOptions = ['', ...allYAxisTypes].map(a =>
-            `<option value="${a}"${a === currentYAxis ? ' selected' : ''}>${a || '(default)'}</option>`
+        const yAxisOptions = allYAxisTypes.map(a =>
+            `<option value="${a}"${a === currentYAxis ? ' selected' : ''}>${a}</option>`
         ).join('');
 
         const yLayoutModes: [string, string][] = [['SharedAxis', 'Shared Axis'], ['DualAxis', 'Dual Axis'], ['SeparatePanels', 'Separate Panels'], ['SeparateCharts', 'Separate Charts']];
+        const defaultYLayoutValue = 'Shared Axis';
         const currentYLayout = opts.yLayout ?? '';
-        const yLayoutOptions = [['', '(default)'], ...yLayoutModes].map(([value, label]) =>
+        const yLayoutOptions = [['', formatDefaultLabel(defaultYLayoutValue)], ...yLayoutModes].map(([value, label]) =>
             `<option value="${value}"${value === currentYLayout ? ' selected' : ''}>${label}</option>`
         ).join('');
 
-        const xShowTicksChecked = opts.xShowTicks === true ? ' checked' : '';
-        const yShowTicksChecked = opts.yShowTicks === true ? ' checked' : '';
-        const yMirrorChecked = opts.yMirror === true ? ' checked' : '';
-        const xShowGridChecked = opts.xShowGrid === false ? '' : ' checked';
-        const yShowGridChecked = opts.yShowGrid === false ? '' : ' checked';
+        const accumulateOptions = buildToggleOptions(opts.accumulate, defaults.accumulate as boolean | undefined);
+        const xShowTicksOptions = buildToggleOptions(opts.xShowTicks, defaults.xShowTicks as boolean | undefined);
+        const yShowTicksOptions = buildToggleOptions(opts.yShowTicks, defaults.yShowTicks as boolean | undefined);
+        const yMirrorOptions = buildToggleOptions(opts.yMirror, defaults.yMirror as boolean | undefined);
+        const xShowGridOptions = buildToggleOptions(opts.xShowGrid, (defaults.xShowGrid as boolean | undefined) ?? true);
+        const yShowGridOptions = buildToggleOptions(opts.yShowGrid, (defaults.yShowGrid as boolean | undefined) ?? true);
         const xTickAngleValue = opts.xTickAngle != null ? String(opts.xTickAngle) : '';
         const xTickAngleOptions = ['', ...tickAngles.map(String)].map(a =>
-            `<option value="${a}"${a === xTickAngleValue ? ' selected' : ''}>${a ? a + '°' : '(auto)'}</option>`
+            `<option value="${a}"${a === xTickAngleValue ? ' selected' : ''}>${a ? a + '°' : formatDefaultLabel(formatAngleLabel(defaultXTickAngleValue))}</option>`
         ).join('');
         const yTickAngleValue = opts.yTickAngle != null ? String(opts.yTickAngle) : '';
         const yTickAngleOptions = ['', ...tickAngles.map(String)].map(a =>
-            `<option value="${a}"${a === yTickAngleValue ? ' selected' : ''}>${a ? a + '°' : '(auto)'}</option>`
+            `<option value="${a}"${a === yTickAngleValue ? ' selected' : ''}>${a ? a + '°' : formatDefaultLabel(formatAngleLabel(defaultYTickAngleValue))}</option>`
         ).join('');
 
         return `<h3>Chart Options</h3>
@@ -596,11 +638,11 @@ class ChartEditorView implements IChartEditorView {
                 </div>
                 <div class="field">
                     <label for="opt-aspectRatio">Aspect Ratio</label>
-                    <select id="opt-aspectRatio" onchange="_editorOnChartOptionChanged()">${aspectRatioOptions}</select>
+                    <select id="opt-aspectRatio" data-default-value="${escapeHtml(defaultAspectRatioValue)}" onchange="_editorOnChartOptionChanged()">${aspectRatioOptions}</select>
                 </div>
                 <div class="field">
                     <label for="opt-textSize">Text Size</label>
-                    <select id="opt-textSize" onchange="_editorOnChartOptionChanged()">${textSizeOptions}</select>
+                    <select id="opt-textSize" data-default-value="${escapeHtml(defaultTextSizeValue)}" onchange="_editorOnChartOptionChanged()">${textSizeOptions}</select>
                 </div>
                 <div class="field">
                     <label for="opt-yLayout">Multi Y Layout</label>
@@ -631,9 +673,9 @@ class ChartEditorView implements IChartEditorView {
                     <ul id="opt-anomalyColumns-list" class="column-list">${anomalyColumnsItems}</ul>
                     <select id="opt-anomalyColumns-picker" onchange="_editorAddColumnItem('opt-anomalyColumns-picker','opt-anomalyColumns-list')">${anomalyColPickerOptions}</select>
                 </div>
-                <div class="field checkbox-field">
-                    <input type="checkbox" id="opt-accumulate"${opts.accumulate ? ' checked' : ''} onchange="_editorOnChartOptionChanged()">
+                <div class="field">
                     <label for="opt-accumulate">Accumulate</label>
+                    <select id="opt-accumulate" onchange="_editorOnChartOptionChanged()">${accumulateOptions}</select>
                 </div>
                 <div class="field">
                     <label for="opt-binSize">Bin Size</label>
@@ -665,21 +707,21 @@ class ChartEditorView implements IChartEditorView {
                     <label for="opt-markerSize">Size</label>
                     <select id="opt-markerSize" onchange="_editorOnChartOptionChanged()">${markerSizeOpts}</select>
                 </div>
-                <div class="field checkbox-field">
-                    <input type="checkbox" id="opt-cycleMarkerShapes"${cycleMarkerShapesChecked} onchange="_editorOnChartOptionChanged()">
+                <div class="field">
                     <label for="opt-cycleMarkerShapes">Cycle Shapes</label>
+                    <select id="opt-cycleMarkerShapes" onchange="_editorOnChartOptionChanged()">${cycleMarkerShapesOptions}</select>
                 </div>
-                <div class="field checkbox-field">
-                    <input type="checkbox" id="opt-showMarkers"${showMarkersChecked} onchange="_editorOnChartOptionChanged()">
+                <div class="field">
                     <label for="opt-showMarkers">Show on Lines</label>
+                    <select id="opt-showMarkers" onchange="_editorOnChartOptionChanged()">${showMarkersOptions}</select>
                 </div>
-                <div class="field checkbox-field">
-                    <input type="checkbox" id="opt-markerOutline"${markerOutlineChecked} onchange="_editorOnChartOptionChanged()">
+                <div class="field">
                     <label for="opt-markerOutline">Outline</label>
+                    <select id="opt-markerOutline" onchange="_editorOnChartOptionChanged()">${markerOutlineOptions}</select>
                 </div>
-                <div class="field checkbox-field">
-                    <input type="checkbox" id="opt-showValues"${showValuesChecked} onchange="_editorOnChartOptionChanged()">
+                <div class="field">
                     <label for="opt-showValues">Show Values</label>
+                    <select id="opt-showValues" onchange="_editorOnChartOptionChanged()">${showValuesOptions}</select>
                 </div>
             </div>
 
@@ -723,13 +765,13 @@ class ChartEditorView implements IChartEditorView {
                         <input type="text" id="opt-xMax" value="${escapeHtml(String(opts.xMax ?? ''))}" oninput="_editorOnChartOptionChanged()">
                     </div>
                 </div>
-                <div class="field checkbox-field">
-                    <input type="checkbox" id="opt-xShowTicks"${xShowTicksChecked} onchange="_editorOnChartOptionChanged()">
+                <div class="field">
                     <label for="opt-xShowTicks">Show Tick Marks</label>
+                    <select id="opt-xShowTicks" onchange="_editorOnChartOptionChanged()">${xShowTicksOptions}</select>
                 </div>
-                <div class="field checkbox-field">
-                    <input type="checkbox" id="opt-xShowGrid"${xShowGridChecked} onchange="_editorOnChartOptionChanged()">
+                <div class="field">
                     <label for="opt-xShowGrid">Show Grid Lines</label>
+                    <select id="opt-xShowGrid" onchange="_editorOnChartOptionChanged()">${xShowGridOptions}</select>
                 </div>
                 <div class="field">
                     <label for="opt-xTickAngle">Tick Label Angle</label>
@@ -755,17 +797,17 @@ class ChartEditorView implements IChartEditorView {
                         <input type="text" id="opt-yMax" value="${escapeHtml(String(opts.yMax ?? ''))}" oninput="_editorOnChartOptionChanged()">
                     </div>
                 </div>
-                <div class="field checkbox-field">
-                    <input type="checkbox" id="opt-yShowTicks"${yShowTicksChecked} onchange="_editorOnChartOptionChanged()">
+                <div class="field">
                     <label for="opt-yShowTicks">Show Tick Marks</label>
+                    <select id="opt-yShowTicks" onchange="_editorOnChartOptionChanged()">${yShowTicksOptions}</select>
                 </div>
-                <div class="field checkbox-field">
-                    <input type="checkbox" id="opt-yMirror"${yMirrorChecked} onchange="_editorOnChartOptionChanged()">
+                <div class="field">
                     <label for="opt-yMirror">Mirror Axis</label>
+                    <select id="opt-yMirror" onchange="_editorOnChartOptionChanged()">${yMirrorOptions}</select>
                 </div>
-                <div class="field checkbox-field">
-                    <input type="checkbox" id="opt-yShowGrid"${yShowGridChecked} onchange="_editorOnChartOptionChanged()">
+                <div class="field">
                     <label for="opt-yShowGrid">Show Grid Lines</label>
+                    <select id="opt-yShowGrid" onchange="_editorOnChartOptionChanged()">${yShowGridOptions}</select>
                 </div>
                 <div class="field">
                     <label for="opt-yTickAngle">Tick Label Angle</label>

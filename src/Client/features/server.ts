@@ -567,7 +567,6 @@ export interface ChartOptions {
     yColumns?: string[];
     seriesColumns?: string[];
     anomalyColumns?: string[];
-    showLegend?: boolean;
     yLayout?: string | undefined;
     yMirror?: boolean | undefined;
     xAxis?: string;
@@ -592,7 +591,7 @@ export interface ChartOptions {
     textSize?: string;
     showMarkers?: boolean;
     markerOutline?: boolean;
-    markerShape?: string;
+    markerShape?: 'Circle' | 'Diamond' | 'Square' | 'TriangleUp' | 'Cross' | 'Star' | 'X';
     cycleMarkerShapes?: boolean;
     markerSize?: string;
     binSize?: string;

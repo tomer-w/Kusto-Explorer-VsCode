@@ -63,11 +63,8 @@ public class ChartOptions
 
     /// <summary>
     /// Whether the legend is visible. If null, defaults to true.
-    /// Overridden by <see cref="LegendPosition"/> if set.
+    /// Retained for back-compat with older saved chart options; prefer <see cref="LegendPosition"/>.
     /// </summary>
-    [DataMember(Name = "showLegend")]
-    public bool? ShowLegend { get; init; }
-
     /// <summary>
     /// X-axis scale type. Use <see cref="ChartAxis"/> constants: "Linear", "Log".
     /// If null, defaults to "Linear".
@@ -194,30 +191,34 @@ public class ChartOptions
     public string? Sort { get; init; }
 
     /// <summary>
-    /// Legend position. Use <see cref="ChartLegendPosition"/> constants: "Right", "Bottom", "Top", "Hidden".
-    /// If null, the legend position is determined by the <see cref="Legend"/> property (defaults to right side).
+    /// Legend position. Use <see cref="ChartLegendPosition"/> constants: "Auto", "Right", "Bottom", "None".
+    /// "Auto" chooses a layout-aware legend position.
+    /// "None" hides the legend.
+    /// If null, older saved options behave like "Auto".
     /// </summary>
     [DataMember(Name = "legendPosition")]
     public string? LegendPosition { get; init; }
 
     /// <summary>
-    /// Color mode override. Use <see cref="ChartMode"/> constants: "Light", "Dark".
-    /// If null, the chart uses the darkMode parameter (which reflects the editor theme).
+    /// Color mode override. Use <see cref="ChartMode"/> constants: "Auto", "Light", "Dark".
+    /// "Auto" uses the darkMode parameter (which reflects the editor theme).
     /// "Light" or "Dark" overrides the darkMode parameter.
+    /// If null, older saved options behave like "Auto".
     /// </summary>
     [DataMember(Name = "mode")]
     public string? Mode { get; init; }
 
     /// <summary>
-    /// Aspect ratio for the chart display area. Use <see cref="ChartAspectRatio"/> constants: "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16".
-    /// If null, the chart fills the available space.
+    /// Aspect ratio for the chart display area. Use <see cref="ChartAspectRatio"/> constants: "Fill", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16".
+    /// If null, the chart falls back to the configured default aspect ratio.
     /// </summary>
     [DataMember(Name = "aspectRatio")]
     public string? AspectRatio { get; init; }
 
     /// <summary>
-    /// Text size preset for chart titles and axis labels. Use <see cref="ChartTextSize"/> constants: "Small", "Large", "Extra Large".
-    /// If null, font sizes scale dynamically based on chart dimensions.
+    /// Text size preset for chart titles and axis labels. Use <see cref="ChartTextSize"/> constants.
+    /// "Auto" scales dynamically based on chart dimensions.
+    /// If null, older saved options behave like "Auto".
     /// </summary>
     [DataMember(Name = "textSize")]
     public string? TextSize { get; init; }
@@ -258,7 +259,7 @@ public class ChartOptions
             XColumn = options.XColumn,
             YColumns = options.YColumns?.ToImmutableList(),
             SeriesColumns = options.Series?.ToImmutableList(),
-            ShowLegend = options.Legend.ToString() != "Hidden",
+            LegendPosition = options.Legend.ToString() == "Hidden" ? ChartLegendPosition.None : null,
             XAxis = options.XAxis.ToString(),
             YAxis = options.YAxis.ToString(),
             XMin = ConvertNanToNull(options.Xmin),
@@ -285,7 +286,6 @@ public class ChartOptions
             XColumn = this.XColumn,
             YColumns = this.YColumns,
             SeriesColumns = this.SeriesColumns,
-            ShowLegend = this.ShowLegend ?? defaults.ShowLegend,
             YLayout = this.YLayout ?? defaults.YLayout,
             YMirror = this.YMirror ?? defaults.YMirror,
             XAxis = this.XAxis,
@@ -304,10 +304,19 @@ public class ChartOptions
             YTickAngle = this.YTickAngle,
             ShowValues = this.ShowValues ?? defaults.ShowValues,
             Sort = this.Sort == "Default" ? null : this.Sort,
-            LegendPosition = this.LegendPosition ?? defaults.LegendPosition,
+            LegendPosition = NormalizeLegendPosition(this.LegendPosition) ?? defaults.LegendPosition,
             Mode = this.Mode,
             AspectRatio = this.AspectRatio ?? defaults.AspectRatio,
             TextSize = this.TextSize ?? defaults.TextSize,
+        };
+    }
+
+    private static string? NormalizeLegendPosition(string? legendPosition)
+    {
+        return legendPosition switch
+        {
+            "Hidden" => ChartLegendPosition.None,
+            _ => legendPosition,
         };
     }
 

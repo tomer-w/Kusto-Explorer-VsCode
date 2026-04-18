@@ -313,7 +313,7 @@ describe('CompositeChartProvider', () => {
             });
 
             it('applies markerShape to all traces when cycleMarkerShapes is off', () => {
-                const html = renderAndGetHtml(makeMultiSeriesTable(), { type: 'Scatter', markerShape: 'diamond' });
+                const html = renderAndGetHtml(makeMultiSeriesTable(), { type: 'Scatter', markerShape: 'Diamond' });
                 expect(html).toBeDefined();
                 const traces = parseTraces(html!);
                 expect(traces.length).toBe(2);
@@ -322,7 +322,7 @@ describe('CompositeChartProvider', () => {
             });
 
             it('cycles marker shapes when cycleMarkerShapes is true', () => {
-                const html = renderAndGetHtml(makeMultiSeriesTable(), { type: 'Scatter', markerShape: 'diamond', cycleMarkerShapes: true });
+                const html = renderAndGetHtml(makeMultiSeriesTable(), { type: 'Scatter', markerShape: 'Diamond', cycleMarkerShapes: true });
                 expect(html).toBeDefined();
                 const traces = parseTraces(html!);
                 expect(traces.length).toBe(2);
@@ -356,7 +356,7 @@ describe('CompositeChartProvider', () => {
             });
 
             it('applies both markerShape and markerSize', () => {
-                const html = renderAndGetHtml(make2dTable(), { type: 'Scatter', markerShape: 'star', markerSize: 'Medium' });
+                const html = renderAndGetHtml(make2dTable(), { type: 'Scatter', markerShape: 'Star', markerSize: 'Medium' });
                 expect(html).toBeDefined();
                 const trace = parseTraces(html!)[0] as Record<string, unknown>;
                 expect(trace.marker).toEqual({ symbol: 'star', size: 8 });
@@ -544,7 +544,7 @@ describe('CompositeChartProvider', () => {
                     type: 'TimeLineAnomaly',
                     yColumns: ['value', 'anomalies'],
                     anomalyColumns: ['anomalies'],
-                    markerShape: 'star',
+                    markerShape: 'Star',
                 });
                 expect(html).toBeDefined();
                 const traces = parseTraces(html!);
@@ -1621,8 +1621,8 @@ describe('CompositeChartProvider', () => {
                 expect((layout.yaxis as Record<string, unknown>)?.title).toEqual(expect.objectContaining({ text: 'Values' }));
             });
 
-            it('hides legend when showLegend is false', () => {
-                const html = renderAndGetHtml(make2dTable(), { type: 'Column', showLegend: false });
+            it('hides legend when legendPosition is None', () => {
+                const html = renderAndGetHtml(make2dTable(), { type: 'Column', legendPosition: 'None' });
                 expect(html).toBeDefined();
                 const layout = parseLayout(html!);
                 expect(layout.showlegend).toBe(false);

@@ -7,9 +7,6 @@ namespace Kusto.Vscode;
 
 public static class ChartSettings
 {
-    public static readonly Setting<string?> ShowLegend =
-        new Setting<string?>("kusto.chart.showLegend", null);
-
     public static readonly Setting<string?> LegendPosition =
         new Setting<string?>("kusto.chart.legendPosition", null);
 
@@ -36,7 +33,6 @@ public static class ChartSettings
 
     public static readonly ImmutableList<Setting> All =
         [
-            ShowLegend,
             LegendPosition,
             XShowTicks,
             YShowTicks,

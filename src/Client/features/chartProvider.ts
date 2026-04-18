@@ -81,14 +81,36 @@ export const ChartSortOrder = {
 } as const;
 
 export const ChartLegendPosition = {
+    Auto: 'Auto',
     Right: 'Right',
     Bottom: 'Bottom',
-    Hidden: 'Hidden',
+    None: 'None',
 } as const;
 
 export const ChartMode = {
+    Auto: 'Auto',
     Light: 'Light',
     Dark: 'Dark',
+} as const;
+
+export const ChartTextSize = {
+    Auto: 'Auto',
+    ExtraSmall: 'Extra Small',
+    Small: 'Small',
+    Medium: 'Medium',
+    Large: 'Large',
+    ExtraLarge: 'Extra Large',
+} as const;
+
+export const ChartAspectRatio = {
+    Fill: 'Fill',
+    Ratio16x9: '16:9',
+    Ratio3x2: '3:2',
+    Ratio4x3: '4:3',
+    Ratio1x1: '1:1',
+    Ratio3x4: '3:4',
+    Ratio2x3: '2:3',
+    Ratio9x16: '9:16',
 } as const;
 
 export const ChartYLayout = {
