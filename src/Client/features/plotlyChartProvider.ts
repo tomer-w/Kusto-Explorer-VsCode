@@ -7,8 +7,9 @@
  */
 
 import type { ChartOptions, ResultTable } from './server';
-import { ChartType, ChartKind, ChartAxis, ChartSortOrder, ChartLegendPosition, ChartColorways, hexToRgba, isNumericType, isDateTimeType, getColumnRef, getColumnRefByIndex } from './chartProvider';
+import { ChartType, ChartAxis, ChartSortOrder, ChartLegendPosition, ChartColorways, ChartYLayout, ChartMode, hexToRgba, isNumericType, isDateTimeType, getColumnRef, getColumnRefByIndex } from './chartProvider';
 import type { IChartView, IWebView, IChartProvider, ColumnRef } from './chartProvider';
+import { escapeHtml } from './html';
 
 // ─── Plotly Constants ───────────────────────────────────────────────────────
 
@@ -463,9 +464,9 @@ class PlotlyChartBuilder {
             color: '#f2f5fa',
             gridcolor: '#444444',
             linecolor: '#666666',
-            zerolinecolor: '#666666',
+            zeroline: false,
         };
-        return this._new(undefined, {
+        const layout: PlotlyLayout = {
             ...this._layout,
             paper_bgcolor: '#1e1e1e',
             plot_bgcolor: '#1e1e1e',
@@ -473,17 +474,55 @@ class PlotlyChartBuilder {
             colorway: [...PlotlyColorways.Default],
             xaxis: { ...(this._layout.xaxis ?? {}), ...darkAxis },
             yaxis: { ...(this._layout.yaxis ?? {}), ...darkAxis },
-        });
+        };
+        // Apply dark axis styling to additional subplot axes (xaxis2, yaxis2, etc.)
+        for (const key of Object.keys(this._layout)) {
+            if (/^[xy]axis\d+$/.test(key)) {
+                (layout as Record<string, unknown>)[key] = { ...(this._layout as Record<string, unknown>)[key] as Record<string, unknown>, ...darkAxis };
+            }
+        }
+        return this._new(undefined, layout);
+    }
+
+    withLightMode(): PlotlyChartBuilder {
+        const lightAxis: Partial<PlotlyAxis> = {
+            color: '#2a3f5f',
+            gridcolor: '#e2e2e2',
+            linecolor: '#bcbcbc',
+            zeroline: false,
+        };
+        const layout: PlotlyLayout = {
+            ...this._layout,
+            paper_bgcolor: '#ffffff',
+            plot_bgcolor: '#ffffff',
+            font: { color: '#2a3f5f' },
+            xaxis: { ...(this._layout.xaxis ?? {}), ...lightAxis },
+            yaxis: { ...(this._layout.yaxis ?? {}), ...lightAxis },
+        };
+        // Apply light axis styling to additional subplot axes (xaxis2, yaxis2, etc.)
+        for (const key of Object.keys(this._layout)) {
+            if (/^[xy]axis\d+$/.test(key)) {
+                (layout as Record<string, unknown>)[key] = { ...(this._layout as Record<string, unknown>)[key] as Record<string, unknown>, ...lightAxis };
+            }
+        }
+        return this._new(undefined, layout);
     }
 
     withFixedRange(): PlotlyChartBuilder {
+        const layout: PlotlyLayout = {
+            ...this._layout,
+            xaxis: { ...(this._layout.xaxis ?? {}), fixedrange: true },
+            yaxis: { ...(this._layout.yaxis ?? {}), fixedrange: true },
+        };
+        // Apply fixedrange to additional subplot axes
+        for (const key of Object.keys(this._layout)) {
+            if (/^[xy]axis\d+$/.test(key)) {
+                (layout as Record<string, unknown>)[key] = { ...(this._layout as Record<string, unknown>)[key] as Record<string, unknown>, fixedrange: true };
+            }
+        }
         return this._new(
             undefined,
-            {
-                ...this._layout,
-                xaxis: { ...(this._layout.xaxis ?? {}), fixedrange: true },
-                yaxis: { ...(this._layout.yaxis ?? {}), fixedrange: true },
-            },
+            layout,
             {
                 ...this._config,
                 scrollZoom: false,
@@ -913,10 +952,60 @@ try {
 
 // ─── Utility Functions ──────────────────────────────────────────────────────
 
+/** Computes font sizes based on chart dimensions and a text-size preset. Mirrors the webview-side computeFontSizes. */
+function computeFontSizes(chartW: number, chartH: number, preset?: string): { titleSize: number; axisSize: number; tickSize: number } {
+    const scale = preset === 'Extra Small' ? 0.5 : preset === 'Small' ? 0.75 : preset === 'Large' ? 1.5 : preset === 'Extra Large' ? 2.0 : 1.0;
+    const base = Math.min(chartW, chartH);
+    const titleSize = Math.round(Math.max(10, Math.min(36, base * 0.04)) * scale);
+    const axisSize = Math.round(Math.max(8, Math.min(24, base * 0.028)) * scale);
+    const tickSize = Math.round(Math.max(7, Math.min(16, base * 0.018)) * scale);
+    return { titleSize, axisSize, tickSize };
+}
+
+/** Applies computed font sizes to a Plotly layout object. */
+function applyFontSizesToLayout(layout: Record<string, unknown>, fonts: { titleSize: number; axisSize: number; tickSize: number }): Record<string, unknown> {
+    const result = { ...layout };
+    const title = result.title as Record<string, unknown> | string | undefined;
+    if (title && typeof title === 'object') {
+        result.title = { ...title, font: { ...(title.font as Record<string, unknown> ?? {}), size: fonts.titleSize } };
+    } else if (typeof title === 'string') {
+        result.title = { text: title, font: { size: fonts.titleSize } };
+    }
+    const xaxis = result.xaxis as Record<string, unknown> | undefined;
+    if (xaxis) {
+        const xTitle = xaxis.title as Record<string, unknown> | undefined;
+        result.xaxis = { ...xaxis, automargin: true,
+            title: { ...(xTitle ?? {}), font: { ...((xTitle?.font as Record<string, unknown>) ?? {}), size: fonts.axisSize }, standoff: fonts.tickSize },
+            tickfont: { ...(xaxis.tickfont as Record<string, unknown> ?? {}), size: fonts.tickSize } };
+    }
+    const yaxis = result.yaxis as Record<string, unknown> | undefined;
+    if (yaxis) {
+        const yTitle = yaxis.title as Record<string, unknown> | undefined;
+        result.yaxis = { ...yaxis, automargin: true,
+            title: { ...(yTitle ?? {}), font: { ...((yTitle?.font as Record<string, unknown>) ?? {}), size: fonts.axisSize }, standoff: fonts.tickSize },
+            tickfont: { ...(yaxis.tickfont as Record<string, unknown> ?? {}), size: fonts.tickSize } };
+    }
+    // Apply font sizes to additional subplot axes (xaxis2, yaxis2, etc.)
+    for (const key of Object.keys(result)) {
+        if (/^[xy]axis\d+$/.test(key)) {
+            const axis = result[key] as Record<string, unknown> | undefined;
+            if (axis) {
+                const axisTitle = axis.title as Record<string, unknown> | undefined;
+                result[key] = { ...axis, automargin: true,
+                    title: { ...(axisTitle ?? {}), font: { ...((axisTitle?.font as Record<string, unknown>) ?? {}), size: fonts.axisSize }, standoff: fonts.tickSize },
+                    tickfont: { ...(axis.tickfont as Record<string, unknown> ?? {}), size: fonts.tickSize } };
+            }
+        }
+    }
+    const legend = (result.legend ?? {}) as Record<string, unknown>;
+    result.legend = { ...legend, font: { ...(legend.font as Record<string, unknown> ?? {}), size: fonts.tickSize } };
+    return result;
+}
+
 function isTimeChartType(type: string): boolean {
-    return type === ChartType.TimeLineChart
-        || type === ChartType.TimeLineWithAnomalyChart
-        || type === ChartType.TimeLadderChart
+    return type === ChartType.TimeLine
+        || type === ChartType.TimeLineAnomaly
+        || type === ChartType.Ladder
         || type === ChartType.TimePivot;
 }
 
@@ -1042,8 +1131,17 @@ function downsample(x: unknown[], y: number[], maxPoints: number): { x: unknown[
     return { x: resultX, y: resultY };
 }
 
-/** Ordered set of marker shapes for cycling. */
-const markerShapes = ['circle', 'diamond', 'square', 'triangle-up', 'cross', 'star', 'x'] as const;
+/** Ordered set of product marker shapes for cycling. */
+const markerShapes = ['Circle', 'Diamond', 'Square', 'TriangleUp', 'Cross', 'Star', 'X'] as const;
+const markerShapeSymbols: Record<typeof markerShapes[number], string> = {
+    Circle: 'circle',
+    Diamond: 'diamond',
+    Square: 'square',
+    TriangleUp: 'triangle-up',
+    Cross: 'cross',
+    Star: 'star',
+    X: 'x',
+};
 
 /** Marker size presets mapped to pixel values. */
 const markerSizePresets: Record<string, number> = {
@@ -1057,15 +1155,17 @@ const markerSizePresets: Record<string, number> = {
 /**
  * Returns the marker shape for a given trace index, based on chart options.
  * - If no markerShape is set and cycleMarkerShapes is off, returns undefined (Plotly default).
- * - If markerShape is set but cycleMarkerShapes is false, returns that shape for all traces.
- * - If cycleMarkerShapes is true, cycles through shapes starting from the selected shape.
+ * - If markerShape is set but cycleMarkerShapes is false, returns its Plotly symbol for all traces.
+ * - If cycleMarkerShapes is true, cycles through product shapes starting from the selected shape.
  */
 function getMarkerShape(options: ChartOptions, traceIndex: number): string | undefined {
     if (!options.markerShape && !options.cycleMarkerShapes) return undefined;
     const startIndex = markerShapes.indexOf((options.markerShape ?? markerShapes[0]) as typeof markerShapes[number]);
     const base = startIndex >= 0 ? startIndex : 0;
-    if (!options.cycleMarkerShapes) return markerShapes[base];
-    return markerShapes[(base + traceIndex) % markerShapes.length];
+    const selectedShape = markerShapes[base] ?? markerShapes[0];
+    if (!options.cycleMarkerShapes) return markerShapeSymbols[selectedShape];
+    const cycledShape = markerShapes[(base + traceIndex) % markerShapes.length] ?? markerShapes[0];
+    return markerShapeSymbols[cycledShape];
 }
 
 /** Resolves the marker size preset to a pixel value, or undefined if not set. */
@@ -1148,21 +1248,25 @@ const plotlyChartScripts = `
         } else if (typeof titleObj === 'string') {
             overrides.title = { text: titleObj, font: { size: fonts.titleSize } };
         }
-        var xaxis = layout.xaxis;
-        if (xaxis) {
-            overrides.xaxis = Object.assign({}, xaxis, {
-                automargin: true,
-                title: Object.assign({}, xaxis.title || {}, { font: Object.assign({}, (xaxis.title && xaxis.title.font) || {}, { size: fonts.axisSize }), standoff: fonts.tickSize }),
-                tickfont: Object.assign({}, xaxis.tickfont || {}, { size: fonts.tickSize })
-            });
+        // For subplot charts, Plotly ignores per-axis font sizes on numbered axes
+        // and derives them from layout.font.size. Set it to tickSize so tick labels
+        // and legend text are consistent. Axis titles will also use this as their base.
+        var hasSubplots = !!layout.xaxis2 || !!layout.yaxis2;
+        if (hasSubplots) {
+            overrides.font = Object.assign({}, layout.font || {}, { size: fonts.tickSize });
         }
-        var yaxis = layout.yaxis;
-        if (yaxis) {
-            overrides.yaxis = Object.assign({}, yaxis, {
-                automargin: true,
-                title: Object.assign({}, yaxis.title || {}, { font: Object.assign({}, (yaxis.title && yaxis.title.font) || {}, { size: fonts.axisSize }), standoff: fonts.tickSize }),
-                tickfont: Object.assign({}, yaxis.tickfont || {}, { size: fonts.tickSize })
-            });
+        // Apply font sizes to all axes (xaxis, yaxis, xaxis2, yaxis2, etc.)
+        var keys = Object.keys(layout);
+        for (var ki = 0; ki < keys.length; ki++) {
+            var key = keys[ki];
+            if (/^[xy]axis\d*$/.test(key) && layout[key]) {
+                var axis = layout[key];
+                overrides[key] = Object.assign({}, axis, {
+                    automargin: true,
+                    title: Object.assign({}, axis.title || {}, { font: Object.assign({}, (axis.title && axis.title.font) || {}, { size: fonts.axisSize }), standoff: fonts.tickSize }),
+                    tickfont: Object.assign({}, axis.tickfont || {}, { size: fonts.tickSize })
+                });
+            }
         }
         var legend = layout.legend || {};
         overrides.legend = Object.assign({}, legend, {
@@ -1175,10 +1279,93 @@ const plotlyChartScripts = `
     var lastAppliedW = 0;
     var lastAppliedH = 0;
     var resizeTimer = null;
+    var resizing = false;
 
-    function resizeChart() {
+    function isMultiChart() {
+        return !!document.querySelector('.multi-chart-container');
+    }
+
+    function resizeMultiCharts() {
         var chartDiv = document.getElementById('chart');
         if (!chartDiv) return;
+        var container = chartDiv.querySelector('.multi-chart-container');
+        if (!container) return;
+
+        var isScrollMode = container.classList.contains('multi-chart-scroll');
+
+        // Scale each chart to fit its cell — no Plotly calls needed
+        var cells = container.querySelectorAll('.multi-chart-cell');
+
+        // In scroll mode, clear explicit heights first so the grid can
+        // recalculate column widths before we re-measure.
+        if (isScrollMode) {
+            cells.forEach(function(cell) {
+                if (!cell.classList.contains('zoomed')) {
+                    cell.style.height = '';
+                }
+            });
+            container.offsetHeight; // force reflow
+        }
+
+        cells.forEach(function(cell) {
+            var scaler = cell.querySelector('.multi-chart-scaler');
+            if (!scaler) return;
+            var virtualW = Number(cell.getAttribute('data-virtual-w')) || 800;
+            var virtualH = Number(cell.getAttribute('data-virtual-h')) || 500;
+            var isZoomed = cell.classList.contains('zoomed');
+
+            // For zoomed cells, use the container dimensions directly instead
+            // of relying on CSS absolute positioning for the cell size.
+            var cellW, cellH;
+            if (isZoomed) {
+                cellW = container.clientWidth;
+                cellH = container.clientHeight;
+            } else {
+                cellW = cell.clientWidth;
+                // In scroll mode, set explicit height from aspect ratio since the
+                // absolutely-positioned scaler contributes no intrinsic height.
+                if (isScrollMode && cellW > 0) {
+                    cell.style.height = Math.round(cellW * virtualH / virtualW) + 'px';
+                }
+                cellH = cell.clientHeight;
+            }
+            if (cellW <= 0 || cellH <= 0) return;
+
+            var scale = Math.min(cellW / virtualW, cellH / virtualH);
+            var scaledW = virtualW * scale;
+            var scaledH = virtualH * scale;
+            var offsetX = Math.round((cellW - scaledW) / 2);
+            var offsetY = Math.round((cellH - scaledH) / 2);
+
+            scaler.style.transform = 'translate(' + offsetX + 'px, ' + offsetY + 'px) scale(' + scale + ')';
+        });
+    }
+
+    function resizeChart() {
+        if (resizing) return;
+        resizing = true;
+        try {
+            resizeChartCore();
+        } finally {
+            resizing = false;
+        }
+    }
+
+    function resizeChartCore() {
+        var chartDiv = document.getElementById('chart');
+        if (!chartDiv) return;
+
+        if (isMultiChart()) {
+            var w = chartDiv.clientWidth;
+            var h = chartDiv.clientHeight;
+            if (w > 0 && h > 0) {
+                lastAppliedW = w;
+                lastAppliedH = h;
+                resizeMultiCharts();
+            }
+            return;
+        }
+
         var plotDiv = chartDiv.querySelector('.js-plotly-plot') || chartDiv.querySelector('.plotly-graph-div');
         if (!plotDiv || typeof Plotly === 'undefined') return;
         var wrapperDiv = chartDiv.firstElementChild;
@@ -1248,7 +1435,7 @@ const plotlyChartScripts = `
             var h = chartContainer.clientHeight;
             if (w === lastAppliedW && h === lastAppliedH) return;
             if (resizeTimer) clearTimeout(resizeTimer);
-            resizeTimer = setTimeout(function() { resizeChart(); }, 30);
+            resizeTimer = setTimeout(function() { resizeChart(); }, 100);
         }).observe(chartContainer);
     }
 
@@ -1256,6 +1443,14 @@ const plotlyChartScripts = `
     window._chartUpdated = function() {
         var chartDiv = document.getElementById('chart');
         if (!chartDiv) return;
+
+        if (isMultiChart()) {
+            lastAppliedW = chartDiv.clientWidth;
+            lastAppliedH = chartDiv.clientHeight;
+            resizeMultiCharts();
+            return;
+        }
+
         var plotDiv = chartDiv.querySelector('.js-plotly-plot') || chartDiv.querySelector('.plotly-graph-div');
         if (!plotDiv || typeof Plotly === 'undefined') return;
 
@@ -1302,20 +1497,86 @@ const plotlyChartScripts = `
 
         // Apply font/size overrides to the already-rendered plot
         var overrides = Object.assign({ width: targetW, height: targetH }, applyFontOverrides(plotDiv.layout || {}, targetW, targetH, preset));
-        Plotly.relayout(plotDiv, overrides);
+        Plotly.newPlot(plotDiv, plotDiv.data, Object.assign({}, plotDiv.layout, overrides), plotDiv._context);
 
         lastAppliedW = availW;
         lastAppliedH = availH;
     };
 
-    // ── Copy chart ────────────────────────────────────────────────────
+    // ── Chart zoom ─────────────────────────────────────────────────────
+    // In multi-chart mode, clicking a chart zooms in. A back button returns to grid.
+    var zoomedCell = null;
+    var backBtn = null;
+    function zoomToCell(cell) {
+        if (zoomedCell) unzoomCell();
+        var container = cell.closest('.multi-chart-container');
+        if (!container) return;
+        zoomedCell = cell;
+        container.scrollTop = 0;
+        container.classList.add('has-zoomed');
+        cell.classList.add('zoomed');
+        cell.style.height = '';
+        // Add back button to the container (not the cell) so it's always on top
+        backBtn = document.createElement('button');
+        backBtn.className = 'multi-chart-back-btn';
+        backBtn.textContent = '\u25C0 All Charts';
+        backBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            unzoomCell();
+        });
+        container.appendChild(backBtn);
+        // Re-scale the zoomed chart to fill the container
+        resizeMultiCharts();
+    }
+    function unzoomCell() {
+        if (!zoomedCell) return;
+        var container = zoomedCell.closest('.multi-chart-container');
+        if (backBtn) { backBtn.remove(); backBtn = null; }
+        zoomedCell.classList.remove('zoomed');
+        if (container) container.classList.remove('has-zoomed');
+        zoomedCell = null;
+        // Force reflow so cells have valid dimensions before resizing
+        if (container) container.offsetHeight;
+        resizeMultiCharts();
+    }
+    document.addEventListener('click', function(e) {
+        if (!isMultiChart()) return;
+        // Ignore clicks outside the chart area (e.g. chart editor panel)
+        var chartDiv = document.getElementById('chart');
+        if (!chartDiv || !chartDiv.contains(e.target)) return;
+        if (zoomedCell) {
+            // Only unzoom if the click is outside the Plotly chart area
+            // (allows legend clicks, axis interactions, etc. to work normally)
+            var plotArea = e.target.closest('.js-plotly-plot');
+            if (!plotArea) {
+                unzoomCell();
+            }
+            return;
+        }
+        var target = e.target;
+        while (target && target !== document.body) {
+            if (target.classList && target.classList.contains('multi-chart-cell')) {
+                zoomToCell(target);
+                return;
+            }
+            target = target.parentElement;
+        }
+    });
+
     window.addEventListener('message', async function(event) {
         var message = event.data;
         if (!(message && message.command === 'copyChart')) return;
         var vscodeApi = window._vscodeApi;
         if (!vscodeApi) return;
         try {
-            var plotDiv = document.querySelector('.js-plotly-plot') || document.querySelector('.plotly-graph-div');
+            // In multi-chart mode, copy the zoomed chart (or first if none zoomed)
+            var plotDiv;
+            if (isMultiChart() && zoomedCell) {
+                plotDiv = zoomedCell.querySelector('.js-plotly-plot') || zoomedCell.querySelector('.plotly-graph-div');
+            }
+            if (!plotDiv) {
+                plotDiv = document.querySelector('.js-plotly-plot') || document.querySelector('.plotly-graph-div');
+            }
             if (plotDiv && typeof Plotly !== 'undefined') {
                 var chartDiv = document.getElementById('chart');
                 var arValue = chartDiv ? getComputedStyle(chartDiv).getPropertyValue('--chart-aspect-ratio').trim() : '';
@@ -1347,6 +1608,21 @@ const plotlyChartScripts = `
             vscodeApi.postMessage({ command: 'copyChartError', error: String(err) });
         }
     });
+
+    // ── Initial layout on page load ───────────────────────────────────
+    // When charts are embedded inline (full page rebuild), _chartUpdated isn't called
+    // by the message handler. Retry until the chart div has positive dimensions.
+    var initialResizeAttempts = 0;
+    var maxInitialResizeAttempts = 50;
+    (function initialResize() {
+        var chartDiv = document.getElementById('chart');
+        if (chartDiv && chartDiv.clientWidth > 0 && chartDiv.clientHeight > 0) {
+            if (window._chartUpdated) window._chartUpdated();
+        } else if (initialResizeAttempts < maxInitialResizeAttempts) {
+            initialResizeAttempts++;
+            setTimeout(initialResize, 100);
+        }
+    })();
 })();
 </script>`;
 
@@ -1382,6 +1658,12 @@ class PlotlyChartView implements IChartView {
         const bodyHtml = this.render(data, options, darkMode);
         if (bodyHtml) {
             this.webview.setContent(bodyHtml);
+        } else {
+            const typeName = escapeHtml(options.type || 'Unknown');
+            this.webview.setContent(
+                `<div style="display:flex;align-items:center;justify-content:center;height:100%;visibility:visible;color:var(--vscode-foreground,inherit);">` +
+                `<span style="font-size:1.5em;">&#10060;</span>&nbsp; Chart type "${typeName}" is not currently supported.</div>`
+            );
         }
     }
 
@@ -1394,19 +1676,192 @@ export class PlotlyChartProvider implements IChartProvider {
 
     createView(webview: IWebView): IChartView {
         webview.setup(
-            `<script src="${PlotlyJsCdn}" charset="utf-8"></script>`,
+            `<script src="${PlotlyJsCdn}" charset="utf-8"></script>
+<style>
+.multi-chart-container {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    box-sizing: border-box;
+    position: relative;
+}
+.multi-chart-grid {
+    display: grid;
+    height: 100%;
+    grid-auto-rows: 1fr;
+    gap: 6px;
+}
+.multi-chart-grid > .multi-chart-cell { min-height: 0; }
+.multi-chart-grid.multi-chart-scroll {
+    overflow-y: auto;
+    grid-auto-rows: auto;
+}
+.multi-chart-grid.multi-chart-scroll > .multi-chart-cell {
+    aspect-ratio: var(--cell-aspect, 8 / 5);
+    overflow: hidden;
+}
+.multi-chart-cell {
+    position: relative;
+    overflow: hidden;
+    cursor: pointer;
+}
+.multi-chart-cell.zoomed {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    margin: 0;
+    z-index: 10;
+    cursor: default;
+}
+.multi-chart-container.has-zoomed > .multi-chart-cell:not(.zoomed) {
+    display: none;
+}
+.multi-chart-container.has-zoomed {
+    height: 100%;
+    overflow: hidden;
+}
+.multi-chart-back-btn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    z-index: 20;
+    background: var(--vscode-button-secondaryBackground, #333);
+    color: var(--vscode-button-secondaryForeground, #ccc);
+    border: 1px solid var(--vscode-button-border, #555);
+    border-radius: 3px;
+    padding: 2px 8px;
+    font-size: 12px;
+    cursor: pointer;
+    opacity: 0.85;
+}
+.multi-chart-back-btn:hover {
+    opacity: 1;
+    background: var(--vscode-button-secondaryHoverBackground, #444);
+}
+.multi-chart-scaler {
+    transform-origin: top left;
+    position: absolute;
+    visibility: visible;
+}
+.multi-chart-container {
+    visibility: visible !important;
+}
+</style>`,
             plotlyChartScripts
         );
         return new PlotlyChartView(webview, (data, options, darkMode) => this.renderChartToHtmlDiv(data, options, darkMode));
     }
 
     private renderChartToHtmlDiv(data: ResultTable, options: ChartOptions, darkMode = false): string | undefined {
+        // Allow the chart's mode option to override the editor theme
+        if (options.mode === ChartMode.Light) darkMode = false;
+        else if (options.mode === ChartMode.Dark) darkMode = true;
+
         if (options.type === ChartType.Plotly) {
             return this.renderRawPlotlyChart(data, darkMode);
         }
 
+        // Multiple independent charts (CSS-scaled)
+        if (options.yLayout === ChartYLayout.SeparateCharts && (this.is2dChartType(options.type) || options.type === ChartType.Pie)) {
+            const xColumn = this.get2dXColumn(data, options);
+            if (xColumn) {
+                const yColumns = this.get2dYColumns(data, options, xColumn);
+                if (yColumns.length > 1) {
+                    return this.renderMultiChartPanels(data, options, darkMode, yColumns);
+                }
+            }
+        }
+
         const builder = this.buildChart(data, options, darkMode);
         return builder?.toHtmlDiv();
+    }
+
+    /** Returns true for chart types that use 2D x/y column rendering and support y-split. */
+    private is2dChartType(type: string): boolean {
+        switch (type) {
+            case ChartType.Bar:
+            case ChartType.BarStacked:
+            case ChartType.BarStacked100:
+            case ChartType.Column:
+            case ChartType.ColumnStacked:
+            case ChartType.ColumnStacked100:
+            case ChartType.Line:
+            case ChartType.TimeLine:
+            case ChartType.TimeLineAnomaly:
+            case ChartType.Scatter:
+            case ChartType.Area:
+            case ChartType.AreaStacked:
+            case ChartType.AreaStacked100:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /** Renders multiple separate charts, one per y-column, arranged in a layout container. */
+    private renderMultiChartPanels(
+        data: ResultTable,
+        options: ChartOptions,
+        darkMode: boolean,
+        yColumns: ColumnRef[],
+    ): string | undefined {
+        const { width: virtualW, height: virtualH } = this.getInitialChartSize(options.aspectRatio);
+        const fontSizes = computeFontSizes(virtualW, virtualH, options.textSize);
+        const colorway = PlotlyColorways.Default;
+        const chartCells: string[] = [];
+        for (let i = 0; i < yColumns.length; i++) {
+            const yCol = yColumns[i]!;
+            const splitOptions: ChartOptions = {
+                ...options,
+                yColumns: [yCol.column.name],
+                yTitle: options.yTitle ? `${options.yTitle} - ${yCol.column.name}` : yCol.column.name,
+            };
+            delete splitOptions.yLayout; // prevent recursion
+            let builder = this.buildChart(data, splitOptions, darkMode);
+            if (builder) {
+                // Hide the legend when there's only one trace and no explicit position was set
+                if (options.legendPosition == null && builder.traces.length <= 1) {
+                    builder = builder.hideLegend();
+                }
+                // Rotate the colorway so each chart's trace keeps the color it would
+                // have had on the combined chart.
+                const rotated = [...colorway.slice(i % colorway.length), ...colorway.slice(0, i % colorway.length)];
+                builder = builder.setColorway(...rotated);
+                // Render at a fixed virtual size. CSS transform: scale() handles fitting to the cell.
+                const layout = applyFontSizesToLayout({ ...builder.layout, width: virtualW, height: virtualH }, fontSizes);
+                builder = builder
+                    .withLayout(layout)
+                    .withConfig({ ...builder.config, responsive: false });
+                const chartHtml = builder.toHtmlDiv(`plotly-chart-${i}`);
+                chartCells.push(
+                    `<div class="multi-chart-cell" data-virtual-w="${virtualW}" data-virtual-h="${virtualH}">` +
+                    `<div class="multi-chart-scaler">${chartHtml}</div></div>`
+                );
+            }
+        }
+
+        if (chartCells.length === 0) return undefined;
+
+        const maxCols = 3;
+        const cols = Math.min(maxCols, Math.ceil(Math.sqrt(chartCells.length)));
+        const scroll = chartCells.length > cols * 3;
+        const scrollClass = scroll ? ' multi-chart-scroll' : '';
+        const aspectVar = `--cell-aspect: ${virtualW} / ${virtualH}`;
+        const colsStyle = `; grid-template-columns: repeat(${cols}, 1fr)`;
+        const inlineStyle = ` style="${aspectVar}${colsStyle}"`;
+
+        return `<div class="multi-chart-container multi-chart-grid${scrollClass}"${inlineStyle}>${chartCells.join('')}</div>`;
+    }
+
+    /** Returns an initial render size based on the aspect ratio, defaulting to 800×500 (roughly 16:10). */
+    private getInitialChartSize(aspectRatio?: string): { width: number; height: number } {
+        const baseWidth = 800;
+        if (aspectRatio) {
+            const parts = aspectRatio.split(':').map(Number);
+            if (parts.length === 2 && parts[0]! > 0 && parts[1]! > 0) {
+                return { width: baseWidth, height: Math.round(baseWidth * parts[1]! / parts[0]!) };
+            }
+        }
+        return { width: baseWidth, height: 500 };
     }
 
     // ─── Raw Plotly ─────────────────────────────────────────────────────
@@ -1431,6 +1886,8 @@ export class PlotlyChartProvider implements IChartProvider {
 
             if (darkMode) {
                 layoutJson = applyDarkModeToLayout(layoutJson);
+            } else {
+                layoutJson = applyLightModeToLayout(layoutJson);
             }
 
             const configJson = root.config
@@ -1449,34 +1906,38 @@ export class PlotlyChartProvider implements IChartProvider {
         let builder: PlotlyChartBuilder | undefined;
 
         switch (options.type) {
-            case ChartType.BarChart:
-            case ChartType.ColumnChart:
+            case ChartType.Bar:
+            case ChartType.BarStacked:
+            case ChartType.BarStacked100:
+            case ChartType.Column:
+            case ChartType.ColumnStacked:
+            case ChartType.ColumnStacked100:
                 builder = this.buildBarOrColumnChart(data, options);
                 break;
-            case ChartType.LineChart:
-            case ChartType.PivotChart:
-            case ChartType.TimeLineChart:
-            case ChartType.TimeLineWithAnomalyChart:
+            case ChartType.Line:
+            case ChartType.TimeLine:
+            case ChartType.TimeLineAnomaly:
                 builder = this.buildLineChart(data, options, darkMode);
                 break;
-            case ChartType.ScatterChart:
+            case ChartType.Scatter:
                 builder = this.buildScatterChart(data, options, darkMode);
                 break;
-            case ChartType.PieChart:
+            case ChartType.Pie:
                 builder = this.buildPieChart(data, options);
                 break;
-            case ChartType.AreaChart:
-                builder = (options.kind === ChartKind.Stacked || options.kind === ChartKind.Stacked100)
-                    ? this.buildStackedAreaChart(data, options)
-                    : this.buildAreaChart(data, options);
+            case ChartType.Area:
+                builder = this.buildAreaChart(data, options);
                 break;
-            case ChartType.StackedAreaChart:
+            case ChartType.AreaStacked:
+                builder = this.buildStackedAreaChart(data, options);
+                break;
+            case ChartType.AreaStacked100:
                 builder = this.buildStackedAreaChart(data, options);
                 break;
             case ChartType.Card:
                 builder = this.buildCardChart(data, options);
                 break;
-            case ChartType.ThreeDChart:
+            case ChartType.ThreeD:
                 builder = this.buildThreeDChart(data, options);
                 break;
             case ChartType.TreeMap:
@@ -1485,7 +1946,7 @@ export class PlotlyChartProvider implements IChartProvider {
             case ChartType.Sankey:
                 builder = this.buildSankeyChart(data, options);
                 break;
-            case ChartType.TimeLadderChart:
+            case ChartType.Ladder:
             case ChartType.TimePivot:
                 builder = this.buildLadderChart(data, options);
                 break;
@@ -1496,8 +1957,10 @@ export class PlotlyChartProvider implements IChartProvider {
         if (builder) {
             if (darkMode) {
                 builder = builder.withDarkMode();
+            } else {
+                builder = builder.withLightMode();
             }
-            if (options.type !== ChartType.ThreeDChart) {
+            if (options.type !== ChartType.ThreeD) {
                 builder = builder.withFixedRange();
             }
         }
@@ -1509,21 +1972,16 @@ export class PlotlyChartProvider implements IChartProvider {
 
     private buildBarOrColumnChart(data: ResultTable, options: ChartOptions): PlotlyChartBuilder | undefined {
         let builder = new PlotlyChartBuilder();
-        const isHorizontal = options.type === ChartType.BarChart;
+        const isHorizontal = options.type === ChartType.Bar || options.type === ChartType.BarStacked || options.type === ChartType.BarStacked100;
+        const isStacked = options.type === ChartType.BarStacked || options.type === ChartType.BarStacked100
+            || options.type === ChartType.ColumnStacked || options.type === ChartType.ColumnStacked100;
+        const isStacked100 = options.type === ChartType.BarStacked100 || options.type === ChartType.ColumnStacked100;
 
-        switch (options.kind) {
-            case ChartKind.Stacked:
-                builder = builder.setStacked();
-                break;
-            case ChartKind.Stacked100:
-                builder = builder.setStacked();
-                break;
-            case ChartKind.Unstacked:
-                builder = builder.setGrouped();
-                break;
+        if (isStacked) {
+            builder = builder.setStacked();
         }
 
-        if (options.kind === ChartKind.Stacked100) {
+        if (isStacked100) {
             return this.buildStacked100BarOrColumnChart(builder, data, options, isHorizontal);
         }
 
@@ -1569,8 +2027,6 @@ export class PlotlyChartProvider implements IChartProvider {
         if (options.title) builder = builder.withTitle(options.title);
         if (options.xTitle) builder = builder.setXAxisTitle(options.xTitle);
         if (options.yTitle) builder = builder.setYAxisTitle(options.yTitle);
-        if (options.showLegend === false) builder = builder.hideLegend();
-
         builder = builder.setYAxisRange(0, 1);
 
         const showValues = options.showValues === true;
@@ -1665,7 +2121,7 @@ export class PlotlyChartProvider implements IChartProvider {
     }
 
     private buildStackedAreaChart(data: ResultTable, options: ChartOptions): PlotlyChartBuilder | undefined {
-        const groupNorm = options.kind === ChartKind.Stacked100 ? 'percent' : undefined;
+        const groupNorm = options.type === ChartType.AreaStacked100 ? 'percent' : undefined;
         return this.build2dChart(new PlotlyChartBuilder(), data, options,
             (b, x, y, name, yAxis) => b.addAreaChart(x, y, name, '1', yAxis, groupNorm));
     }
@@ -1676,7 +2132,6 @@ export class PlotlyChartProvider implements IChartProvider {
         let builder = new PlotlyChartBuilder();
 
         if (options.title) builder = builder.withTitle(options.title);
-        if (options.showLegend === false) builder = builder.hideLegend();
         builder = applyCommonOptions(builder, options);
 
         const labelColumn = this.get2dXColumn(data, options);
@@ -1787,7 +2242,6 @@ export class PlotlyChartProvider implements IChartProvider {
         scene = { ...scene, zaxis: { title: { text: options.zTitle ?? zCol.column.name } } };
         builder = builder.withScene(scene);
 
-        if (options.showLegend === false) builder = builder.hideLegend();
         builder = applyCommonOptions(builder, options);
 
         return builder;
@@ -1884,7 +2338,6 @@ export class PlotlyChartProvider implements IChartProvider {
 
         builder = builder.addTreeMapTrace(labels, parents, values, valueColumn.column.name, ids, 'label+value', 'total');
 
-        if (options.showLegend === false) builder = builder.hideLegend();
         builder = applyCommonOptions(builder, options);
 
         return builder;
@@ -1966,7 +2419,6 @@ export class PlotlyChartProvider implements IChartProvider {
 
         builder = builder.addSankeyTrace(nodeLabels, linkSources, linkTargets, linkValues, valueColumn.column.name);
 
-        if (options.showLegend === false) builder = builder.hideLegend();
         builder = applyCommonOptions(builder, options);
 
         return builder;
@@ -2050,7 +2502,6 @@ export class PlotlyChartProvider implements IChartProvider {
         if (options.title) builder = builder.withTitle(options.title);
         if (options.xTitle) builder = builder.setXAxisTitle(options.xTitle);
         if (options.yTitle) builder = builder.setYAxisTitle(options.yTitle);
-        if (options.showLegend === false) builder = builder.hideLegend();
         builder = applyCommonOptions(builder, options);
 
         // Overlay bars so they align with grid lines (not grouped/dodged)
@@ -2123,8 +2574,64 @@ export class PlotlyChartProvider implements IChartProvider {
             builder = builder.setYAxisRange(yMinD, yMaxD);
         }
 
-        if (options.showLegend === false) builder = builder.hideLegend();
         builder = applyCommonOptions(builder, options);
+
+        // ── Y-axis split modes ──────────────────────────────────────────
+        // Build a map from y-column index to Plotly yaxis reference (e.g., 'y', 'y2', 'y3').
+        const yAxisMap = new Map<number, string>();
+
+        if (options.yLayout === ChartYLayout.DualAxis && yColumns.length > 1) {
+            // Dual Axis: first y-column on left axis, rest on a shared right axis with its own scale
+            for (let i = 1; i < yColumns.length; i++) {
+                yAxisMap.set(i, 'y2');
+            }
+            builder = builder.addSecondaryYAxis('yaxis2', {
+                overlaying: 'y',
+                side: 'right',
+                showgrid: false,
+            });
+        } else if (options.yLayout === ChartYLayout.SeparatePanels && yColumns.length > 1) {
+            // Panels: each y-column in its own subplot area (stacked vertically)
+            // The primary yaxis/xaxis is assigned to the BOTTOM panel so that Plotly's
+            // default margin handling benefits the panel that needs tick labels and title.
+            const count = yColumns.length;
+            const gap = 0.05;
+            const totalGap = gap * (count - 1);
+            const plotHeight = (1 - totalGap) / count;
+
+            // Build a clean base from the primary yaxis, stripping title/domain/range
+            // so all subplot axes start from an identical base.
+            const { title: _t, domain: _d, range: _r, ...yAxisBase } = (builder.layout.yaxis ?? {}) as Record<string, unknown>;
+            const { title: xTitle, ...xAxisBase } = (builder.layout.xaxis ?? {}) as Record<string, unknown>;
+
+            // Use ONLY numbered axes (yaxis2/xaxis2 .. yaxisN+1/xaxisN+1) for all panels.
+            // Hide the primary yaxis/xaxis so Plotly doesn't give them special margin treatment.
+            builder = builder.withLayout({
+                ...builder.layout,
+                yaxis: { visible: false, showticklabels: false, zeroline: false } as PlotlyAxis,
+                xaxis: { visible: false, showticklabels: false, zeroline: false } as PlotlyAxis,
+            });
+
+            const bottomIdx = count - 1;
+
+            for (let i = 0; i < count; i++) {
+                const domainBottom = i * (plotHeight + gap);
+                const domainTop = domainBottom + plotHeight;
+                // Reverse so first column is at top
+                const domain: [number, number] = [1 - domainTop, 1 - domainBottom];
+                const isBottom = i === bottomIdx;
+                const axisNum = i + 2; // yaxis2, xaxis2, yaxis3, xaxis3, ...
+                const yRef = `y${axisNum}`;
+                const xRef = `x${axisNum}`;
+                yAxisMap.set(i, yRef);
+
+                builder = builder.withLayout({
+                    ...builder.layout,
+                    [`yaxis${axisNum}`]: { ...yAxisBase, domain, title: { text: yColumns[i]!.column.name }, anchor: xRef, showline: true, mirror: true, linecolor: '#888888' },
+                    [`xaxis${axisNum}`]: { ...xAxisBase, anchor: yRef, showticklabels: isBottom, title: isBottom ? (xTitle ?? '') : '', showline: true, mirror: true, linecolor: '#888888' },
+                });
+            }
+        }
 
         // Resolve series columns (may include auto-inferred)
         const seriesCols = (effectiveOptions.seriesColumns ?? [])
@@ -2163,7 +2670,8 @@ export class PlotlyChartProvider implements IChartProvider {
             const multipleYCols = yColumns.length > 1;
             let traceIndex = 0;
             for (const [seriesKey, rowIndices] of groups) {
-                for (const yCol of yColumns) {
+                for (let yColIdx = 0; yColIdx < yColumns.length; yColIdx++) {
+                    const yCol = yColumns[yColIdx]!;
                     if (!isNumericType(yCol.column.type)) continue;
                     let xValues: unknown[] = [];
                     let yValues: number[] = [];
@@ -2195,7 +2703,8 @@ export class PlotlyChartProvider implements IChartProvider {
                             sortedY = ds.y;
                         }
                         const traceName = multipleYCols ? `${seriesKey} - ${yCol.column.name}` : seriesKey;
-                        builder = addTrace(builder, sortedX, sortedY, traceName, undefined, traceIndex);
+                        const yAxisRef = yAxisMap.get(yColIdx);
+                        builder = addTrace(builder, sortedX, sortedY, traceName, yAxisRef, traceIndex);
                         traceIndex++;
                     }
                 }
@@ -2203,7 +2712,8 @@ export class PlotlyChartProvider implements IChartProvider {
         } else {
             // No series columns: one trace per y-column (existing behavior)
             let traceIndex = 0;
-            for (const valueColumn of yColumns) {
+            for (let yColIdx = 0; yColIdx < yColumns.length; yColIdx++) {
+                const valueColumn = yColumns[yColIdx]!;
                 let result = this.get2DChartData(data, xColumn, valueColumn);
                 if (result) {
                     if (shouldBin) {
@@ -2216,10 +2726,25 @@ export class PlotlyChartProvider implements IChartProvider {
                     if (options.maxPointsPerSeries != null && options.maxPointsPerSeries > 0) {
                         result = downsample(result.x, result.y, options.maxPointsPerSeries);
                     }
-                    builder = addTrace(builder, result.x, result.y, valueColumn.column.name, undefined, traceIndex);
+                    const yAxisRef = yAxisMap.get(yColIdx);
+                    builder = addTrace(builder, result.x, result.y, valueColumn.column.name, yAxisRef, traceIndex);
                     traceIndex++;
                 }
             }
+        }
+
+        // For Panels mode, assign each trace to its corresponding x-axis subplot
+        if (options.yLayout === ChartYLayout.SeparatePanels && yColumns.length > 1) {
+            const updatedTraces = builder.traces.map(trace => {
+                if (trace.yaxis && trace.yaxis !== 'y') {
+                    const axisNum = trace.yaxis.replace('y', '');
+                    return { ...trace, xaxis: `x${axisNum}` };
+                }
+                return trace;
+            });
+            builder = builder.withLayout(builder.layout).withConfig(builder.config);
+            // Rebuild with updated traces
+            builder = new PlotlyChartBuilder(updatedTraces as PlotlyTrace[], builder.layout, builder.config);
         }
 
         return builder;
@@ -2345,19 +2870,29 @@ function applyCommonOptions(builder: PlotlyChartBuilder, options: ChartOptions):
     if (options.xTickAngle != null) builder = builder.setXTickAngle(options.xTickAngle);
     if (options.yTickAngle != null) builder = builder.setYTickAngle(options.yTickAngle);
 
-    if (options.sort != null && options.sort !== ChartSortOrder.Default) {
+    if (options.yMirror === true) {
+        builder = builder.withLayout({
+            ...builder.layout,
+            yaxis: { ...(builder.layout.yaxis ?? {}), showline: true, mirror: 'ticks' } as PlotlyAxis,
+        });
+    }
+
+    if (options.sort != null && options.sort !== ChartSortOrder.Auto) {
         const order = options.sort === ChartSortOrder.Ascending
             ? PlotlyCategoryOrders.TotalAscending
             : PlotlyCategoryOrders.TotalDescending;
         builder = builder.setCategoryOrder(order);
     }
 
-    if (options.legendPosition != null) {
-        if (options.legendPosition === ChartLegendPosition.Hidden) {
+    if (options.legendPosition != null && options.legendPosition !== ChartLegendPosition.Auto) {
+        if (options.legendPosition === ChartLegendPosition.None || options.legendPosition === 'Hidden') {
             builder = builder.hideLegend();
         } else {
             builder = builder.setLegendPosition(options.legendPosition);
         }
+    } else if (options.yLayout === ChartYLayout.DualAxis) {
+        // Right-side axis clips with the default right-side legend
+        builder = builder.setLegendPosition(ChartLegendPosition.Bottom);
     }
 
     return builder;
@@ -2401,5 +2936,46 @@ function applyDarkModeToAxis(parent: Record<string, unknown>, axisKey: string): 
     axis.color = '#f2f5fa';
     axis.gridcolor = '#444444';
     axis.linecolor = '#666666';
-    axis.zerolinecolor = '#666666';
+    axis.zeroline = false;
+}
+
+// ─── Light Mode Layout Helper ───────────────────────────────────────────────
+
+function applyLightModeToLayout(layoutJson: string): string {
+    const layout = (JSON.parse(layoutJson) as Record<string, unknown>) ?? {};
+
+    layout.paper_bgcolor = '#ffffff';
+    layout.plot_bgcolor = '#ffffff';
+
+    if (!layout.font || typeof layout.font !== 'object') { layout.font = {}; }
+    (layout.font as Record<string, unknown>).color = '#2a3f5f';
+
+    applyLightModeToAxis(layout, 'xaxis');
+    applyLightModeToAxis(layout, 'yaxis');
+
+    // Apply to additional axes (xaxis2, yaxis2, etc.)
+    for (const key of Object.keys(layout)) {
+        if ((key.startsWith('xaxis') || key.startsWith('yaxis')) && key !== 'xaxis' && key !== 'yaxis') {
+            applyLightModeToAxis(layout, key);
+        }
+    }
+
+    // Apply to 3D scene axes if present
+    if (layout.scene && typeof layout.scene === 'object') {
+        const scene = layout.scene as Record<string, unknown>;
+        applyLightModeToAxis(scene, 'xaxis');
+        applyLightModeToAxis(scene, 'yaxis');
+        applyLightModeToAxis(scene, 'zaxis');
+    }
+
+    return JSON.stringify(layout);
+}
+
+function applyLightModeToAxis(parent: Record<string, unknown>, axisKey: string): void {
+    if (!parent[axisKey] || typeof parent[axisKey] !== 'object') { parent[axisKey] = {}; }
+    const axis = parent[axisKey] as Record<string, unknown>;
+    axis.color = '#2a3f5f';
+    axis.gridcolor = '#e2e2e2';
+    axis.linecolor = '#bcbcbc';
+    axis.zeroline = false;
 }

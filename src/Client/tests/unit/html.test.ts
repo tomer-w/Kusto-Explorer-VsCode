@@ -129,7 +129,7 @@ describe('resultDataToHtml', () => {
     it('reports hasChart when chartOptions present', () => {
         const withChart: ResultData = {
             ...data,
-            chartOptions: { type: 'bar' },
+            chartOptions: { type: 'Bar' },
         };
         expect(resultDataToHtml(withChart).hasChart).toBe(true);
     });

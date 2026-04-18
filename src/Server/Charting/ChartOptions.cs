@@ -14,17 +14,10 @@ namespace Kusto.Vscode;
 public class ChartOptions
 {
     /// <summary>
-    /// Chart type. Use kql keywords (e.g., "linechart", "barchart", "piechart", "scatterchart").
+    /// Chart type. Use <see cref="ChartType"/> constants.
     /// </summary>
     [DataMember(Name = "type")]
     public required string Type { get; init; }
-
-    /// <summary>
-    /// Chart kind. Use <see cref="ChartKind"/> constants: "Default", "Stacked", "Stacked100", "Unstacked".
-    /// If null, defaults to "Default". Only applies to bar/column charts.
-    /// </summary>
-    [DataMember(Name = "kind")]
-    public string? Kind { get; init; }
 
     /// <summary>
     /// Chart title text displayed above the chart. If null, no title is shown.
@@ -69,13 +62,6 @@ public class ChartOptions
     public ImmutableList<string>? AnomalyColumns { get; init; }
 
     /// <summary>
-    /// Whether the legend is visible. If null, defaults to true.
-    /// Overridden by <see cref="LegendPosition"/> if set.
-    /// </summary>
-    [DataMember(Name = "showLegend")]
-    public bool? ShowLegend { get; init; }
-
-    /// <summary>
     /// X-axis scale type. Use <see cref="ChartAxis"/> constants: "Linear", "Log".
     /// If null, defaults to "Linear".
     /// </summary>
@@ -116,6 +102,24 @@ public class ChartOptions
     /// </summary>
     [DataMember(Name = "yMax")]
     public object? YMax { get; init; }
+
+    /// <summary>
+    /// Y-column layout mode. Use <see cref="ChartYLayout"/> constants.
+    /// "SharedAxis" plots all Y columns on a single shared axis.
+    /// "DualAxis" adds an independent right-side axis for additional Y columns.
+    /// "SeparatePanels" renders each Y column as a separate chart panel.
+    /// "SeparateCharts" renders each Y column as a separate chart.
+    /// If null, defaults to "SharedAxis".
+    /// </summary>
+    [DataMember(Name = "yLayout")]
+    public string? YLayout { get; init; }
+
+    /// <summary>
+    /// Whether to mirror the Y-axis line and tick marks on the right side of the chart.
+    /// If null or false, the mirrored axis line and ticks are not shown.
+    /// </summary>
+    [DataMember(Name = "yMirror")]
+    public bool? YMirror { get; init; }
 
     /// <summary>
     /// Whether to accumulate Y values across the X-axis (running total). Defaults to false.
@@ -169,51 +173,56 @@ public class ChartOptions
     public double? YTickAngle { get; init; }
 
     /// <summary>
-    /// Whether data value labels are shown. If null, values are hidden.
+    /// Whether data value labels are shown. If null, labels are hidden.
     /// When true, bar charts show values on bars and pie charts show label+value+percent.
     /// </summary>
     [DataMember(Name = "showValues")]
     public bool? ShowValues { get; init; }
 
     /// <summary>
-    /// Category sort order on the X-axis. Use <see cref="ChartSortOrder"/> constants: "Default", "Ascending", "Descending".
-    /// If null, categories appear in the order encountered in the data. Sorts by total value.
+    /// Category sort order on the X-axis. Use <see cref="ChartSortOrder"/> constants: "Auto", "Ascending", "Descending".
+    /// "Auto" and null preserve the axis's natural/data order.
+    /// "Ascending" and "Descending" sort categories by total value.
     /// </summary>
     [DataMember(Name = "sort")]
     public string? Sort { get; init; }
 
     /// <summary>
-    /// Legend position. Use <see cref="ChartLegendPosition"/> constants: "Right", "Bottom", "Top", "Hidden".
-    /// If null, the legend position is determined by the <see cref="Legend"/> property (defaults to right side).
+    /// Legend position. Use <see cref="ChartLegendPosition"/> constants: "Auto", "Right", "Bottom", "None".
+    /// "Auto" chooses a layout-aware legend position.
+    /// "None" hides the legend.
+    /// If null, older saved options behave like "Auto".
     /// </summary>
     [DataMember(Name = "legendPosition")]
     public string? LegendPosition { get; init; }
 
     /// <summary>
-    /// Color mode override. Use <see cref="ChartMode"/> constants: "Light", "Dark".
-    /// If null, the chart uses the darkMode parameter (which reflects the editor theme).
+    /// Color mode override. Use <see cref="ChartMode"/> constants: "Auto", "Light", "Dark".
+    /// "Auto" uses the darkMode parameter (which reflects the editor theme).
     /// "Light" or "Dark" overrides the darkMode parameter.
+    /// If null, older saved options behave like "Auto".
     /// </summary>
     [DataMember(Name = "mode")]
     public string? Mode { get; init; }
 
     /// <summary>
-    /// Aspect ratio for the chart display area. Use <see cref="ChartAspectRatio"/> constants: "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16".
-    /// If null, the chart fills the available space.
+    /// Aspect ratio for the chart display area. Use <see cref="ChartAspectRatio"/> constants: "Fill", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16".
+    /// If null, the chart falls back to the configured default aspect ratio or the product default.
     /// </summary>
     [DataMember(Name = "aspectRatio")]
     public string? AspectRatio { get; init; }
 
     /// <summary>
-    /// Text size preset for chart titles and axis labels. Use <see cref="ChartTextSize"/> constants: "Small", "Large", "Extra Large".
-    /// If null, font sizes scale dynamically based on chart dimensions.
+    /// Text size preset for chart titles and axis labels. Use <see cref="ChartTextSize"/> constants.
+    /// "Auto" scales dynamically based on chart dimensions.
+    /// If null, older saved options behave like "Auto".
     /// </summary>
     [DataMember(Name = "textSize")]
     public string? TextSize { get; init; }
 
     /// <summary>
-    /// Marker shape for scatter points. Use Plotly marker symbol names: "circle", "diamond", "square", "triangle-up", "cross", "star", "hexagon", "x".
-    /// If null, defaults to "circle".
+    /// Marker shape for scatter points. Use chart marker shape values such as "Circle" and "TriangleUp".
+    /// If null, defaults to the configured marker shape or the product default.
     /// </summary>
     [DataMember(Name = "markerShape")]
     public string? MarkerShape { get; init; }
@@ -228,7 +237,7 @@ public class ChartOptions
 
     /// <summary>
     /// Marker size preset. Use "Extra Small", "Small", "Medium", "Large", "Extra Large".
-    /// If null, defaults to Plotly's built-in marker size.
+    /// If null, defaults to the configured marker size or the product default.
     /// </summary>
     [DataMember(Name = "markerSize")]
     public string? MarkerSize { get; init; }
@@ -240,15 +249,14 @@ public class ChartOptions
     {
         return new ChartOptions
         {
-            Type = VisualizationToChartType(options.Visualization),
-            Kind = options.Mode.ToString(),
+            Type = VisualizationToChartType(options.Visualization, options.Mode),
             Title = options.Title,
             XTitle = options.XTitle,
             YTitle = options.YTitle,
             XColumn = options.XColumn,
             YColumns = options.YColumns?.ToImmutableList(),
             SeriesColumns = options.Series?.ToImmutableList(),
-            ShowLegend = options.Legend.ToString() != "Hidden",
+            LegendPosition = options.Legend.ToString() == "Hidden" ? ChartLegendPosition.None : null,
             XAxis = options.XAxis.ToString(),
             YAxis = options.YAxis.ToString(),
             XMin = ConvertNanToNull(options.Xmin),
@@ -257,6 +265,7 @@ public class ChartOptions
             YMax = ConvertNanToNull(options.Ymax),
             Accumulate = options.Accumulate,
             AnomalyColumns = options.AnomalyColumns?.ToImmutableList(),
+            YLayout = SplitVisualizationModeToYLayout(options.YSplit),
         };
     }
 
@@ -268,14 +277,14 @@ public class ChartOptions
         return new ChartOptions
         {
             Type = this.Type,
-            Kind = this.Kind,
             Title = this.Title,
             XTitle = this.XTitle,
             YTitle = this.YTitle,
             XColumn = this.XColumn,
             YColumns = this.YColumns,
             SeriesColumns = this.SeriesColumns,
-            ShowLegend = this.ShowLegend ?? defaults.ShowLegend,
+            YLayout = this.YLayout ?? defaults.YLayout,
+            YMirror = this.YMirror ?? defaults.YMirror,
             XAxis = this.XAxis,
             YAxis = this.YAxis,
             XMin = this.XMin,
@@ -291,11 +300,34 @@ public class ChartOptions
             XTickAngle = this.XTickAngle,
             YTickAngle = this.YTickAngle,
             ShowValues = this.ShowValues ?? defaults.ShowValues,
-            Sort = this.Sort,
-            LegendPosition = this.LegendPosition ?? defaults.LegendPosition,
+            Sort = this.Sort is "Default" or ChartSortOrder.Auto ? null : this.Sort,
+            LegendPosition = NormalizeLegendPosition(this.LegendPosition) ?? defaults.LegendPosition,
             Mode = this.Mode,
             AspectRatio = this.AspectRatio ?? defaults.AspectRatio,
             TextSize = this.TextSize ?? defaults.TextSize,
+            MarkerShape = this.MarkerShape ?? defaults.MarkerShape,
+            CycleMarkerShapes = this.CycleMarkerShapes ?? defaults.CycleMarkerShapes,
+            MarkerSize = this.MarkerSize ?? defaults.MarkerSize,
+        };
+    }
+
+    private static string? NormalizeLegendPosition(string? legendPosition)
+    {
+        return legendPosition switch
+        {
+            "Hidden" => ChartLegendPosition.None,
+            _ => legendPosition,
+        };
+    }
+
+    private static string? SplitVisualizationModeToYLayout(SplitVisualizationMode mode)
+    {
+        return mode switch
+        {
+            SplitVisualizationMode.None => null,
+            SplitVisualizationMode.Axes => ChartYLayout.DualAxis,
+            SplitVisualizationMode.Panels => ChartYLayout.SeparatePanels,
+            _ => null,
         };
     }
 
@@ -313,26 +345,43 @@ public class ChartOptions
         };
     }
 
-    private static string VisualizationToChartType(VisualizationKind kind)
+    private static string VisualizationToChartType(VisualizationKind visualization, object mode)
     {
-        return kind switch
+        var modeStr = mode?.ToString();
+
+        return visualization switch
         {
-            VisualizationKind.AreaChart => ChartType.AreaChart,
-            VisualizationKind.BarChart => ChartType.BarChart,
+            VisualizationKind.AreaChart => modeStr switch
+            {
+                "Stacked" => ChartType.AreaStacked,
+                "Stacked100" => ChartType.AreaStacked100,
+                _ => ChartType.Area,
+            },
+            VisualizationKind.BarChart => modeStr switch
+            {
+                "Stacked" => ChartType.BarStacked,
+                "Stacked100" => ChartType.BarStacked100,
+                _ => ChartType.Bar,
+            },
             VisualizationKind.Card => ChartType.Card,
-            VisualizationKind.ColumnChart => ChartType.ColumnChart,
+            VisualizationKind.ColumnChart => modeStr switch
+            {
+                "Stacked" => ChartType.ColumnStacked,
+                "Stacked100" => ChartType.ColumnStacked100,
+                _ => ChartType.Column,
+            },
             VisualizationKind.Graph => ChartType.Graph,
-            VisualizationKind.LineChart => ChartType.LineChart,
-            VisualizationKind.PieChart => ChartType.PieChart,
-            VisualizationKind.PivotChart => ChartType.PivotChart,
+            VisualizationKind.LineChart => ChartType.Line,
+            VisualizationKind.PieChart => ChartType.Pie,
+            VisualizationKind.PivotChart => ChartType.Line,
             VisualizationKind.Plotly => ChartType.Plotly,
             VisualizationKind.Sankey => ChartType.Sankey,
-            VisualizationKind.ScatterChart => ChartType.ScatterChart,
-            VisualizationKind.StackedAreaChart => ChartType.StackedAreaChart,
-            VisualizationKind.ThreeDChart => ChartType.ThreeDChart,
-            VisualizationKind.TimeLadderChart => ChartType.TimeLadderChart,
-            VisualizationKind.TimeLineChart => ChartType.TimeLineChart,
-            VisualizationKind.TimeLineWithAnomalyChart => ChartType.TimeLineWithAnomalyChart,
+            VisualizationKind.ScatterChart => ChartType.Scatter,
+            VisualizationKind.StackedAreaChart => ChartType.AreaStacked,
+            VisualizationKind.ThreeDChart => ChartType.ThreeD,
+            VisualizationKind.TimeLadderChart => ChartType.Ladder,
+            VisualizationKind.TimeLineChart => ChartType.TimeLine,
+            VisualizationKind.TimeLineWithAnomalyChart => ChartType.TimeLineAnomaly,
             VisualizationKind.TimePivot => ChartType.TimePivot,
             VisualizationKind.TreeMap => ChartType.TreeMap,
             _ => ChartType.None,

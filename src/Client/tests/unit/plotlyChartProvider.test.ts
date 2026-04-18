@@ -18,10 +18,13 @@ function createMockWebView(): IWebView & {
     simulateMessage: (message: Record<string, unknown>) => void;
 } {
     const handlers: ((message: Record<string, unknown>) => void)[] = [];
+    const setup = vi.fn<(headHtml: string, scriptsHtml: string) => void>();
+    const setContent = vi.fn<(html: string) => void>();
+    const invoke = vi.fn<(command: string, args?: Record<string, unknown>) => void>();
     return {
-        setup: vi.fn(),
-        setContent: vi.fn(),
-        invoke: vi.fn(),
+        setup,
+        setContent,
+        invoke,
         handle: vi.fn((handler: (message: Record<string, unknown>) => void) => {
             handlers.push(handler);
             return { dispose: () => { const i = handlers.indexOf(handler); if (i >= 0) handlers.splice(i, 1); } };
@@ -184,7 +187,7 @@ describe('CompositeChartProvider', () => {
 
         describe('renderChart', () => {
             it('calls webview.setContent() with chart HTML', () => {
-                view.renderChart(make2dTable(), { type: 'columnchart' }, false);
+                view.renderChart(make2dTable(), { type: 'Column' }, false);
                 expect(webview.setContent).toHaveBeenCalledOnce();
                 const html = webview.setContent.mock.calls[0]![0] as string;
                 expect(html).toContain('plotly-chart');
@@ -196,7 +199,7 @@ describe('CompositeChartProvider', () => {
                     [{ name: 'X', type: 'string' }, { name: 'Y', type: 'real' }],
                     [],
                 );
-                view.renderChart(emptyTable, { type: 'columnchart' }, false);
+                view.renderChart(emptyTable, { type: 'Column' }, false);
                 expect(webview.setContent).toHaveBeenCalledOnce();
                 const html = webview.setContent.mock.calls[0]![0] as string;
                 const traces = html.match(/var data = (\[[\s\S]*?\]);\s*var layout/);
@@ -206,9 +209,11 @@ describe('CompositeChartProvider', () => {
                 expect(parsed[0]!.y).toEqual([]);
             });
 
-            it('does not call setContent for unsupported chart type', () => {
+            it('shows error message for unsupported chart type', () => {
                 view.renderChart(make2dTable(), { type: 'UnknownChart' }, false);
-                expect(webview.setContent).not.toHaveBeenCalled();
+                expect(webview.setContent).toHaveBeenCalledOnce();
+                const html = webview.setContent.mock.calls[0]![0] as string;
+                expect(html).toContain('not currently supported');
             });
         });
     });
@@ -247,7 +252,7 @@ describe('CompositeChartProvider', () => {
 
         describe('columnchart', () => {
             it('renders bar traces with vertical orientation', () => {
-                const html = renderAndGetHtml(make2dTable(), { type: 'columnchart' });
+                const html = renderAndGetHtml(make2dTable(), { type: 'Column' });
                 expect(html).toBeDefined();
                 const traces = parseTraces(html!);
                 expect(traces.length).toBe(1);
@@ -259,7 +264,7 @@ describe('CompositeChartProvider', () => {
             });
 
             it('renders multiple series as separate traces', () => {
-                const html = renderAndGetHtml(makeMultiSeriesTable(), { type: 'columnchart' });
+                const html = renderAndGetHtml(makeMultiSeriesTable(), { type: 'Column' });
                 expect(html).toBeDefined();
                 const traces = parseTraces(html!);
                 expect(traces.length).toBe(2);
@@ -270,7 +275,7 @@ describe('CompositeChartProvider', () => {
             it('respects xColumn and yColumns options', () => {
                 const table = makeMultiSeriesTable();
                 const html = renderAndGetHtml(table, {
-                    type: 'columnchart',
+                    type: 'Column',
                     xColumn: 'Month',
                     yColumns: ['Profit'],
                 });
@@ -283,7 +288,7 @@ describe('CompositeChartProvider', () => {
 
         describe('barchart', () => {
             it('renders bar traces with horizontal orientation', () => {
-                const html = renderAndGetHtml(make2dTable(), { type: 'barchart' });
+                const html = renderAndGetHtml(make2dTable(), { type: 'Bar' });
                 expect(html).toBeDefined();
                 const trace = parseTraces(html!)[0] as Record<string, unknown>;
                 expect(trace.type).toBe('bar');
@@ -293,7 +298,7 @@ describe('CompositeChartProvider', () => {
 
         describe('linechart', () => {
             it('renders scatter traces with lines mode', () => {
-                const html = renderAndGetHtml(make2dTable(), { type: 'linechart' });
+                const html = renderAndGetHtml(make2dTable(), { type: 'Line' });
                 expect(html).toBeDefined();
                 const trace = parseTraces(html!)[0] as Record<string, unknown>;
                 expect(trace.type).toBe('scatter');
@@ -303,7 +308,7 @@ describe('CompositeChartProvider', () => {
 
         describe('scatterchart', () => {
             it('renders scatter traces with markers mode', () => {
-                const html = renderAndGetHtml(make2dTable(), { type: 'scatterchart' });
+                const html = renderAndGetHtml(make2dTable(), { type: 'Scatter' });
                 expect(html).toBeDefined();
                 const trace = parseTraces(html!)[0] as Record<string, unknown>;
                 expect(trace.type).toBe('scatter');
@@ -311,7 +316,7 @@ describe('CompositeChartProvider', () => {
             });
 
             it('applies markerShape to all traces when cycleMarkerShapes is off', () => {
-                const html = renderAndGetHtml(makeMultiSeriesTable(), { type: 'scatterchart', markerShape: 'diamond' });
+                const html = renderAndGetHtml(makeMultiSeriesTable(), { type: 'Scatter', markerShape: 'Diamond' });
                 expect(html).toBeDefined();
                 const traces = parseTraces(html!);
                 expect(traces.length).toBe(2);
@@ -320,7 +325,7 @@ describe('CompositeChartProvider', () => {
             });
 
             it('cycles marker shapes when cycleMarkerShapes is true', () => {
-                const html = renderAndGetHtml(makeMultiSeriesTable(), { type: 'scatterchart', markerShape: 'diamond', cycleMarkerShapes: true });
+                const html = renderAndGetHtml(makeMultiSeriesTable(), { type: 'Scatter', markerShape: 'Diamond', cycleMarkerShapes: true });
                 expect(html).toBeDefined();
                 const traces = parseTraces(html!);
                 expect(traces.length).toBe(2);
@@ -329,14 +334,14 @@ describe('CompositeChartProvider', () => {
             });
 
             it('does not set marker when markerShape is not specified', () => {
-                const html = renderAndGetHtml(make2dTable(), { type: 'scatterchart' });
+                const html = renderAndGetHtml(make2dTable(), { type: 'Scatter' });
                 expect(html).toBeDefined();
                 const trace = parseTraces(html!)[0] as Record<string, unknown>;
                 expect(trace.marker).toBeUndefined();
             });
 
             it('cycles shapes from circle when cycleMarkerShapes is true but no markerShape set', () => {
-                const html = renderAndGetHtml(makeMultiSeriesTable(), { type: 'scatterchart', cycleMarkerShapes: true });
+                const html = renderAndGetHtml(makeMultiSeriesTable(), { type: 'Scatter', cycleMarkerShapes: true });
                 expect(html).toBeDefined();
                 const traces = parseTraces(html!);
                 expect(traces.length).toBe(2);
@@ -345,7 +350,7 @@ describe('CompositeChartProvider', () => {
             });
 
             it('applies markerSize preset to scatter traces', () => {
-                const html = renderAndGetHtml(makeMultiSeriesTable(), { type: 'scatterchart', markerSize: 'Large' });
+                const html = renderAndGetHtml(makeMultiSeriesTable(), { type: 'Scatter', markerSize: 'Large' });
                 expect(html).toBeDefined();
                 const traces = parseTraces(html!);
                 expect(traces.length).toBe(2);
@@ -354,7 +359,7 @@ describe('CompositeChartProvider', () => {
             });
 
             it('applies both markerShape and markerSize', () => {
-                const html = renderAndGetHtml(make2dTable(), { type: 'scatterchart', markerShape: 'star', markerSize: 'Medium' });
+                const html = renderAndGetHtml(make2dTable(), { type: 'Scatter', markerShape: 'Star', markerSize: 'Medium' });
                 expect(html).toBeDefined();
                 const trace = parseTraces(html!)[0] as Record<string, unknown>;
                 expect(trace.marker).toEqual({ symbol: 'star', size: 8 });
@@ -363,15 +368,15 @@ describe('CompositeChartProvider', () => {
 
         describe('areachart', () => {
             it('renders scatter traces with fill', () => {
-                const html = renderAndGetHtml(make2dTable(), { type: 'areachart' });
+                const html = renderAndGetHtml(make2dTable(), { type: 'Area' });
                 expect(html).toBeDefined();
                 const trace = parseTraces(html!)[0] as Record<string, unknown>;
                 expect(trace.type).toBe('scatter');
                 expect(trace.fill).toBe('tozeroy');
             });
 
-            it('renders stacked area when kind is Stacked', () => {
-                const html = renderAndGetHtml(makeMultiSeriesTable(), { type: 'areachart', kind: 'Stacked' });
+            it('renders stacked area chart', () => {
+                const html = renderAndGetHtml(makeMultiSeriesTable(), { type: 'AreaStacked' });
                 expect(html).toBeDefined();
                 const trace = parseTraces(html!)[0] as Record<string, unknown>;
                 expect(trace.stackgroup).toBe('1');
@@ -381,7 +386,7 @@ describe('CompositeChartProvider', () => {
 
         describe('stackedareachart', () => {
             it('renders stacked area traces', () => {
-                const html = renderAndGetHtml(makeMultiSeriesTable(), { type: 'stackedareachart' });
+                const html = renderAndGetHtml(makeMultiSeriesTable(), { type: 'AreaStacked' });
                 expect(html).toBeDefined();
                 const traces = parseTraces(html!);
                 for (const t of traces) {
@@ -392,7 +397,7 @@ describe('CompositeChartProvider', () => {
 
         describe('piechart', () => {
             it('renders a pie trace with labels and values', () => {
-                const html = renderAndGetHtml(makePieTable(), { type: 'piechart' });
+                const html = renderAndGetHtml(makePieTable(), { type: 'Pie' });
                 expect(html).toBeDefined();
                 const trace = parseTraces(html!)[0] as Record<string, unknown>;
                 expect(trace.type).toBe('pie');
@@ -407,7 +412,7 @@ describe('CompositeChartProvider', () => {
                     [{ name: 'Metric', type: 'real' }],
                     [[42]],
                 );
-                const html = renderAndGetHtml(table, { type: 'card' });
+                const html = renderAndGetHtml(table, { type: 'Card' });
                 expect(html).toBeDefined();
                 const trace = parseTraces(html!)[0] as Record<string, unknown>;
                 expect(trace.type).toBe('indicator');
@@ -415,13 +420,13 @@ describe('CompositeChartProvider', () => {
                 expect(trace.mode).toBe('number');
             });
 
-            it('returns undefined for table with no numeric column', () => {
+            it('shows error for table with no numeric column', () => {
                 const table = makeTable(
                     [{ name: 'Name', type: 'string' }],
                     [['hello']],
                 );
-                const html = renderAndGetHtml(table, { type: 'card' });
-                expect(html).toBeUndefined();
+                const html = renderAndGetHtml(table, { type: 'Card' });
+                expect(html).toContain('not currently supported');
             });
         });
 
@@ -439,7 +444,7 @@ describe('CompositeChartProvider', () => {
                         ['South', 'Widget', 150],
                     ],
                 );
-                const html = renderAndGetHtml(table, { type: 'treemap' });
+                const html = renderAndGetHtml(table, { type: 'TreeMap' });
                 expect(html).toBeDefined();
                 const trace = parseTraces(html!)[0] as Record<string, unknown>;
                 expect(trace.type).toBe('treemap');
@@ -462,7 +467,7 @@ describe('CompositeChartProvider', () => {
                         ['B', 'C', 5],
                     ],
                 );
-                const html = renderAndGetHtml(table, { type: 'sankey' });
+                const html = renderAndGetHtml(table, { type: 'Sankey' });
                 expect(html).toBeDefined();
                 const trace = parseTraces(html!)[0] as Record<string, unknown>;
                 expect(trace.type).toBe('sankey');
@@ -487,7 +492,7 @@ describe('CompositeChartProvider', () => {
                     ],
                 );
                 const html = renderAndGetHtml(table, {
-                    type: 'anomalychart',
+                    type: 'TimeLineAnomaly',
                     yColumns: ['value', 'anomalies'],
                     anomalyColumns: ['anomalies'],
                 });
@@ -517,7 +522,7 @@ describe('CompositeChartProvider', () => {
                         ['2024-01-02', 20],
                     ],
                 );
-                const html = renderAndGetHtml(table, { type: 'anomalychart' });
+                const html = renderAndGetHtml(table, { type: 'TimeLineAnomaly' });
                 expect(html).toBeDefined();
                 const traces = parseTraces(html!);
                 expect(traces.length).toBe(1);
@@ -539,10 +544,10 @@ describe('CompositeChartProvider', () => {
                     ],
                 );
                 const html = renderAndGetHtml(table, {
-                    type: 'anomalychart',
+                    type: 'TimeLineAnomaly',
                     yColumns: ['value', 'anomalies'],
                     anomalyColumns: ['anomalies'],
-                    markerShape: 'star',
+                    markerShape: 'Star',
                 });
                 expect(html).toBeDefined();
                 const traces = parseTraces(html!);
@@ -564,7 +569,7 @@ describe('CompositeChartProvider', () => {
                     ],
                 );
                 const html = renderAndGetHtml(table, {
-                    type: 'linechart',
+                    type: 'Line',
                     yColumns: ['value', 'anomalies'],
                     anomalyColumns: ['anomalies'],
                 });
@@ -595,7 +600,7 @@ describe('CompositeChartProvider', () => {
             );
 
             it('renders one trace per category with string y-values', () => {
-                const html = renderAndGetHtml(ladderTable, { type: 'ladderchart' });
+                const html = renderAndGetHtml(ladderTable, { type: 'Ladder' });
                 expect(html).toBeDefined();
                 const traces = parseTraces(html!);
                 // Traces in data order (order categories first appear)
@@ -630,7 +635,7 @@ describe('CompositeChartProvider', () => {
                         ['Build', '2024-01-05T00:00:00Z', '2024-01-07T00:00:00Z'],
                     ],
                 );
-                const html = renderAndGetHtml(table, { type: 'ladderchart' });
+                const html = renderAndGetHtml(table, { type: 'Ladder' });
                 expect(html).toBeDefined();
                 const traces = parseTraces(html!);
                 expect(traces.length).toBe(2);
@@ -642,7 +647,7 @@ describe('CompositeChartProvider', () => {
                 expect(test.y).toEqual(['Test']);
             });
 
-            it('returns undefined when fewer than 2 datetime columns', () => {
+            it('shows error when fewer than 2 datetime columns', () => {
                 const table = makeTable(
                     [
                         { name: 'Task', type: 'string' },
@@ -650,8 +655,8 @@ describe('CompositeChartProvider', () => {
                     ],
                     [['A', '2024-01-01']],
                 );
-                const html = renderAndGetHtml(table, { type: 'ladderchart' });
-                expect(html).toBeUndefined();
+                const html = renderAndGetHtml(table, { type: 'Ladder' });
+                expect(html).toContain('not currently supported');
             });
 
             it('uses series key as y-label with single seriesColumn', () => {
@@ -668,7 +673,7 @@ describe('CompositeChartProvider', () => {
                         ['Deploy', '2024-01-05T00:00:00Z', '2024-01-06T00:00:00Z', 'Alpha'],
                     ],
                 );
-                const html = renderAndGetHtml(table, { type: 'ladderchart', seriesColumns: ['Team'] });
+                const html = renderAndGetHtml(table, { type: 'Ladder', seriesColumns: ['Team'] });
                 expect(html).toBeDefined();
                 const traces = parseTraces(html!);
                 expect(traces.length).toBe(2);
@@ -695,7 +700,7 @@ describe('CompositeChartProvider', () => {
                         ['x', '2024-01-02T00:00:00Z', '2024-01-05T00:00:00Z', 'TX', 'Tornado'],
                     ],
                 );
-                const html = renderAndGetHtml(table, { type: 'ladderchart', seriesColumns: ['State', 'EventType'] });
+                const html = renderAndGetHtml(table, { type: 'Ladder', seriesColumns: ['State', 'EventType'] });
                 expect(html).toBeDefined();
                 const traces = parseTraces(html!);
                 // 2 color groups (CA, TX)
@@ -710,7 +715,7 @@ describe('CompositeChartProvider', () => {
             });
 
             it('sets x-axis type to date', () => {
-                const html = renderAndGetHtml(ladderTable, { type: 'ladderchart' });
+                const html = renderAndGetHtml(ladderTable, { type: 'Ladder' });
                 expect(html).toBeDefined();
                 const layout = parseLayout(html!);
                 expect((layout.xaxis as Record<string, unknown>)?.type).toBe('date');
@@ -730,7 +735,7 @@ describe('CompositeChartProvider', () => {
                         ['CA', '2024-01-02T00:00:00Z', '2024-01-05T00:00:00Z'],
                     ],
                 );
-                const html = renderAndGetHtml(table, { type: 'timepivot' });
+                const html = renderAndGetHtml(table, { type: 'TimePivot' });
                 expect(html).toBeDefined();
                 // Two detail rows (flat, no nesting)
                 expect(html).toContain('tp-container');
@@ -752,7 +757,7 @@ describe('CompositeChartProvider', () => {
                         ['CA', '2024-01-02T00:00:00Z'],
                     ],
                 );
-                const html = renderAndGetHtml(table, { type: 'timepivot' });
+                const html = renderAndGetHtml(table, { type: 'TimePivot' });
                 expect(html).toBeDefined();
                 expect(html).toContain('tp-dot');
                 // No range segments in point mode
@@ -775,7 +780,7 @@ describe('CompositeChartProvider', () => {
                         ['CA', 'Login', '2024-01-02T00:00:00Z', '2024-01-05T00:00:00Z'],
                     ],
                 );
-                const html = renderAndGetHtml(table, { type: 'timepivot', seriesColumns: ['State', 'EventType'] });
+                const html = renderAndGetHtml(table, { type: 'TimePivot', seriesColumns: ['State', 'EventType'] });
                 expect(html).toBeDefined();
                 // Group rows
                 expect(html).toContain('tp-group');
@@ -807,7 +812,7 @@ describe('CompositeChartProvider', () => {
                         ['2024-01-02T00:00:00Z', '2024-01-04T00:00:00Z', 'West'],
                     ],
                 );
-                const html = renderAndGetHtml(table, { type: 'timepivot' });
+                const html = renderAndGetHtml(table, { type: 'TimePivot' });
                 expect(html).toBeDefined();
                 expect(html).toContain('>East<');
                 expect(html).toContain('>West<');
@@ -829,7 +834,7 @@ describe('CompositeChartProvider', () => {
                         ['US', 'CA', 'LA', '2024-01-05T00:00:00Z', '2024-01-07T00:00:00Z'],
                     ],
                 );
-                const html = renderAndGetHtml(table, { type: 'timepivot', seriesColumns: ['Country', 'State', 'City'] });
+                const html = renderAndGetHtml(table, { type: 'TimePivot', seriesColumns: ['Country', 'State', 'City'] });
                 expect(html).toBeDefined();
                 // Top level group: US
                 expect(html).toContain('data-group="US"');
@@ -854,7 +859,7 @@ describe('CompositeChartProvider', () => {
                     ],
                     [['WA', '2024-01-01T00:00:00Z', '2024-01-03T00:00:00Z']],
                 );
-                const html = renderAndGetHtml(table, { type: 'timepivot' });
+                const html = renderAndGetHtml(table, { type: 'TimePivot' });
                 expect(html).toBeDefined();
                 expect(html).toContain('tp-axis');
                 expect(html).toContain('tp-tick');
@@ -866,7 +871,7 @@ describe('CompositeChartProvider', () => {
                     [{ name: 'A', type: 'string' }, { name: 'B', type: 'real' }],
                     [['x', 1]],
                 );
-                const html = renderAndGetHtml(table, { type: 'timepivot' });
+                const html = renderAndGetHtml(table, { type: 'TimePivot' });
                 expect(html).toBeUndefined();
             });
 
@@ -879,7 +884,7 @@ describe('CompositeChartProvider', () => {
                     ],
                     [['WA', '2024-01-01T00:00:00Z', '2024-01-03T00:00:00Z']],
                 );
-                const html = renderAndGetHtml(table, { type: 'timepivot', title: 'My Pivot' });
+                const html = renderAndGetHtml(table, { type: 'TimePivot', title: 'My Pivot' });
                 expect(html).toBeDefined();
                 expect(html).toContain('tp-title');
                 expect(html).toContain('My Pivot');
@@ -896,29 +901,29 @@ describe('CompositeChartProvider', () => {
                     [{ name: 'plotly_json', type: 'string' }],
                     [[plotlyJson]],
                 );
-                const html = renderAndGetHtml(table, { type: 'plotly' });
+                const html = renderAndGetHtml(table, { type: 'Plotly' });
                 expect(html).toBeDefined();
                 expect(html).toContain('Plotly.newPlot');
                 const traces = parseTraces(html!);
                 expect((traces[0] as Record<string, unknown>).type).toBe('bar');
             });
 
-            it('returns undefined for invalid JSON', () => {
+            it('shows error for invalid JSON', () => {
                 const table = makeTable(
                     [{ name: 'plotly_json', type: 'string' }],
                     [['not valid json']],
                 );
-                const html = renderAndGetHtml(table, { type: 'plotly' });
-                expect(html).toBeUndefined();
+                const html = renderAndGetHtml(table, { type: 'Plotly' });
+                expect(html).toContain('not currently supported');
             });
 
-            it('returns undefined for JSON without data field', () => {
+            it('shows error for JSON without data field', () => {
                 const table = makeTable(
                     [{ name: 'plotly_json', type: 'string' }],
                     [[JSON.stringify({ layout: {} })]],
                 );
-                const html = renderAndGetHtml(table, { type: 'plotly' });
-                expect(html).toBeUndefined();
+                const html = renderAndGetHtml(table, { type: 'Plotly' });
+                expect(html).toContain('not currently supported');
             });
         });
 
@@ -940,7 +945,7 @@ describe('CompositeChartProvider', () => {
                     ],
                 );
                 const html = renderAndGetHtml(table, {
-                    type: 'linechart',
+                    type: 'Line',
                     xColumn: 'timestamp',
                     yColumns: ['count'],
                     seriesColumns: ['region'],
@@ -976,7 +981,7 @@ describe('CompositeChartProvider', () => {
                     ],
                 );
                 const html = renderAndGetHtml(table, {
-                    type: 'linechart',
+                    type: 'Line',
                     xColumn: 'timestamp',
                     yColumns: ['count'],
                     seriesColumns: ['region', 'product'],
@@ -1004,7 +1009,7 @@ describe('CompositeChartProvider', () => {
                     ],
                 );
                 const html = renderAndGetHtml(table, {
-                    type: 'columnchart',
+                    type: 'Column',
                     xColumn: 'timestamp',
                     yColumns: ['sales', 'profit'],
                     seriesColumns: ['region'],
@@ -1032,7 +1037,7 @@ describe('CompositeChartProvider', () => {
                 );
                 // No explicit yColumns — should auto-detect 'count' only, not 'region'
                 const html = renderAndGetHtml(table, {
-                    type: 'linechart',
+                    type: 'Line',
                     xColumn: 'timestamp',
                     seriesColumns: ['region'],
                 });
@@ -1058,7 +1063,7 @@ describe('CompositeChartProvider', () => {
                     ],
                 );
                 const html = renderAndGetHtml(table, {
-                    type: 'barchart',
+                    type: 'Bar',
                     xColumn: 'category',
                     yColumns: ['value'],
                     seriesColumns: ['group'],
@@ -1086,7 +1091,7 @@ describe('CompositeChartProvider', () => {
                     ],
                 );
                 const html = renderAndGetHtml(table, {
-                    type: 'linechart',
+                    type: 'Line',
                     xColumn: 'timestamp',
                     yColumns: ['count'],
                     seriesColumns: ['region'],
@@ -1119,7 +1124,7 @@ describe('CompositeChartProvider', () => {
                         ['2024-01-02', 'West', 25],
                     ],
                 );
-                const html = renderAndGetHtml(table, { type: 'timechart' });
+                const html = renderAndGetHtml(table, { type: 'TimeLine' });
                 expect(html).toBeDefined();
                 const traces = parseTraces(html!);
                 expect(traces.length).toBe(2);
@@ -1139,7 +1144,7 @@ describe('CompositeChartProvider', () => {
                         ['2024-01-02', 15, 3],
                     ],
                 );
-                const html = renderAndGetHtml(table, { type: 'timechart' });
+                const html = renderAndGetHtml(table, { type: 'TimeLine' });
                 expect(html).toBeDefined();
                 const traces = parseTraces(html!);
                 // One trace per numeric column, no series pivoting
@@ -1163,7 +1168,7 @@ describe('CompositeChartProvider', () => {
                     ],
                 );
                 // x=category (first col), inferred series=region, y=value
-                const html = renderAndGetHtml(table, { type: 'columnchart' });
+                const html = renderAndGetHtml(table, { type: 'Column' });
                 expect(html).toBeDefined();
                 const traces = parseTraces(html!);
                 expect(traces.length).toBe(2);
@@ -1186,7 +1191,7 @@ describe('CompositeChartProvider', () => {
                 );
                 // Explicitly set product as series, not region
                 const html = renderAndGetHtml(table, {
-                    type: 'linechart',
+                    type: 'Line',
                     seriesColumns: ['product'],
                 });
                 expect(html).toBeDefined();
@@ -1209,7 +1214,7 @@ describe('CompositeChartProvider', () => {
                         ['B', 'East', 30],
                     ],
                 );
-                const html = renderAndGetHtml(table, { type: 'pivotchart' });
+                const html = renderAndGetHtml(table, { type: 'Line' });
                 expect(html).toBeDefined();
                 const traces = parseTraces(html!);
                 expect(traces.length).toBe(2);
@@ -1231,7 +1236,7 @@ describe('CompositeChartProvider', () => {
                         ['2024-01-03', '2024-01-07', 'Task B'],
                     ],
                 );
-                const html = renderAndGetHtml(table, { type: 'timepivot' });
+                const html = renderAndGetHtml(table, { type: 'TimePivot' });
                 expect(html).toBeDefined();
                 // HTML-based renderer, not Plotly
                 expect(html).toContain('tp-container');
@@ -1258,7 +1263,7 @@ describe('CompositeChartProvider', () => {
                     ],
                 );
                 const html = renderAndGetHtml(table, {
-                    type: 'timechart',
+                    type: 'TimeLine',
                     binSize: '1d',
                     aggregation: 'Sum',
                 });
@@ -1285,7 +1290,7 @@ describe('CompositeChartProvider', () => {
                     ],
                 );
                 const html = renderAndGetHtml(table, {
-                    type: 'timechart',
+                    type: 'TimeLine',
                     binSize: '1h',
                     aggregation: 'Count',
                 });
@@ -1309,7 +1314,7 @@ describe('CompositeChartProvider', () => {
                     ],
                 );
                 const html = renderAndGetHtml(table, {
-                    type: 'timechart',
+                    type: 'TimeLine',
                     binSize: '1d',
                     aggregation: 'Average',
                 });
@@ -1334,7 +1339,7 @@ describe('CompositeChartProvider', () => {
                     ],
                 );
                 const html = renderAndGetHtml(table, {
-                    type: 'linechart',
+                    type: 'Line',
                     binSize: '5',
                     aggregation: 'Sum',
                 });
@@ -1362,7 +1367,7 @@ describe('CompositeChartProvider', () => {
                     ],
                 );
                 const html = renderAndGetHtml(table, {
-                    type: 'timechart',
+                    type: 'TimeLine',
                     seriesColumns: ['region'],
                     binSize: '1d',
                     aggregation: 'Sum',
@@ -1389,7 +1394,7 @@ describe('CompositeChartProvider', () => {
                         ['2024-01-01T14:00:00Z', 3],
                     ],
                 );
-                const html = renderAndGetHtml(table, { type: 'timechart' });
+                const html = renderAndGetHtml(table, { type: 'TimeLine' });
                 expect(html).toBeDefined();
                 const traces = parseTraces(html!);
                 const trace = traces[0] as Record<string, unknown>;
@@ -1411,7 +1416,7 @@ describe('CompositeChartProvider', () => {
                 );
                 // Bin by 1 minute
                 const html = renderAndGetHtml(table, {
-                    type: 'timechart',
+                    type: 'TimeLine',
                     binSize: '1minute',
                     aggregation: 'Sum',
                 });
@@ -1435,7 +1440,7 @@ describe('CompositeChartProvider', () => {
                     ],
                 );
                 const html = renderAndGetHtml(table, {
-                    type: 'timechart',
+                    type: 'TimeLine',
                     binSize: '1d',
                     aggregation: 'Min',
                 });
@@ -1457,7 +1462,7 @@ describe('CompositeChartProvider', () => {
                     ],
                 );
                 const html = renderAndGetHtml(table, {
-                    type: 'timechart',
+                    type: 'TimeLine',
                     binSize: '1d',
                     aggregation: 'Max',
                 });
@@ -1487,7 +1492,7 @@ describe('CompositeChartProvider', () => {
                     ],
                 );
                 const html = renderAndGetHtml(table, {
-                    type: 'timechart',
+                    type: 'TimeLine',
                     seriesColumns: ['region'],
                     maxSeries: 2,
                 });
@@ -1514,7 +1519,7 @@ describe('CompositeChartProvider', () => {
                     ],
                 );
                 const html = renderAndGetHtml(table, {
-                    type: 'timechart',
+                    type: 'TimeLine',
                     seriesColumns: ['region'],
                 });
                 expect(html).toBeDefined();
@@ -1537,7 +1542,7 @@ describe('CompositeChartProvider', () => {
                     rows,
                 );
                 const html = renderAndGetHtml(table, {
-                    type: 'timechart',
+                    type: 'TimeLine',
                     maxPointsPerSeries: 10,
                 });
                 expect(html).toBeDefined();
@@ -1560,7 +1565,7 @@ describe('CompositeChartProvider', () => {
                     ],
                 );
                 const html = renderAndGetHtml(table, {
-                    type: 'timechart',
+                    type: 'TimeLine',
                     maxPointsPerSeries: 100,
                 });
                 expect(html).toBeDefined();
@@ -1582,7 +1587,7 @@ describe('CompositeChartProvider', () => {
                     rows,
                 );
                 const html = renderAndGetHtml(table, {
-                    type: 'linechart',
+                    type: 'Line',
                     xColumn: 'x',
                     yColumns: ['y'],
                     maxPointsPerSeries: 5,
@@ -1601,7 +1606,7 @@ describe('CompositeChartProvider', () => {
 
         describe('chart options', () => {
             it('includes title in layout', () => {
-                const html = renderAndGetHtml(make2dTable(), { type: 'columnchart', title: 'My Chart' });
+                const html = renderAndGetHtml(make2dTable(), { type: 'Column', title: 'My Chart' });
                 expect(html).toBeDefined();
                 const layout = parseLayout(html!);
                 expect((layout.title as Record<string, unknown>)?.text).toBe('My Chart');
@@ -1609,7 +1614,7 @@ describe('CompositeChartProvider', () => {
 
             it('includes axis titles in layout', () => {
                 const html = renderAndGetHtml(make2dTable(), {
-                    type: 'columnchart',
+                    type: 'Column',
                     xTitle: 'Categories',
                     yTitle: 'Values',
                 });
@@ -1619,22 +1624,22 @@ describe('CompositeChartProvider', () => {
                 expect((layout.yaxis as Record<string, unknown>)?.title).toEqual(expect.objectContaining({ text: 'Values' }));
             });
 
-            it('hides legend when showLegend is false', () => {
-                const html = renderAndGetHtml(make2dTable(), { type: 'columnchart', showLegend: false });
+            it('hides legend when legendPosition is None', () => {
+                const html = renderAndGetHtml(make2dTable(), { type: 'Column', legendPosition: 'None' });
                 expect(html).toBeDefined();
                 const layout = parseLayout(html!);
                 expect(layout.showlegend).toBe(false);
             });
 
-            it('sets stacked bar mode for Stacked kind', () => {
-                const html = renderAndGetHtml(makeMultiSeriesTable(), { type: 'columnchart', kind: 'Stacked' });
+            it('sets stacked bar mode for ColumnStacked', () => {
+                const html = renderAndGetHtml(makeMultiSeriesTable(), { type: 'ColumnStacked' });
                 expect(html).toBeDefined();
                 const layout = parseLayout(html!);
                 expect(layout.barmode).toBe('stack');
             });
 
             it('sets log scale on x axis', () => {
-                const html = renderAndGetHtml(make2dTable(), { type: 'columnchart', xAxis: 'Log' });
+                const html = renderAndGetHtml(make2dTable(), { type: 'Column', xAxis: 'Log' });
                 expect(html).toBeDefined();
                 const layout = parseLayout(html!);
                 expect((layout.xaxis as Record<string, unknown>)?.type).toBe('log');
@@ -1642,7 +1647,7 @@ describe('CompositeChartProvider', () => {
 
             it('sets axis range from xMin/xMax', () => {
                 const html = renderAndGetHtml(make2dTable(), {
-                    type: 'columnchart',
+                    type: 'Column',
                     xMin: 0,
                     xMax: 100,
                 });
@@ -1653,7 +1658,7 @@ describe('CompositeChartProvider', () => {
 
             it('sets tick visibility', () => {
                 const html = renderAndGetHtml(make2dTable(), {
-                    type: 'columnchart',
+                    type: 'Column',
                     xShowTicks: true,
                     yShowTicks: false,
                 });
@@ -1665,7 +1670,7 @@ describe('CompositeChartProvider', () => {
 
             it('sets grid visibility', () => {
                 const html = renderAndGetHtml(make2dTable(), {
-                    type: 'columnchart',
+                    type: 'Column',
                     xShowGrid: false,
                     yShowGrid: true,
                 });
@@ -1676,18 +1681,81 @@ describe('CompositeChartProvider', () => {
             });
 
             it('sets category sort order', () => {
-                const html = renderAndGetHtml(make2dTable(), { type: 'columnchart', sort: 'Ascending' });
+                const html = renderAndGetHtml(make2dTable(), { type: 'Column', sort: 'Ascending' });
                 expect(html).toBeDefined();
                 const layout = parseLayout(html!);
                 expect((layout.xaxis as Record<string, unknown>)?.categoryorder).toBe('total ascending');
             });
 
+            it('does not set category sort order for Auto', () => {
+                const html = renderAndGetHtml(make2dTable(), { type: 'Column', sort: 'Auto' });
+                expect(html).toBeDefined();
+                const layout = parseLayout(html!);
+                expect((layout.xaxis as Record<string, unknown>)?.categoryorder).toBeUndefined();
+            });
+
             it('sets legend position to bottom', () => {
-                const html = renderAndGetHtml(make2dTable(), { type: 'columnchart', legendPosition: 'Bottom' });
+                const html = renderAndGetHtml(make2dTable(), { type: 'Column', legendPosition: 'Bottom' });
                 expect(html).toBeDefined();
                 const layout = parseLayout(html!);
                 const legend = layout.legend as Record<string, unknown>;
                 expect(legend?.orientation).toBe('h');
+            });
+
+            it('uses a secondary y-axis for DualAxis multi-y charts', () => {
+                const html = renderAndGetHtml(makeMultiSeriesTable(), {
+                    type: 'Line',
+                    xColumn: 'Month',
+                    yColumns: ['Sales', 'Profit'],
+                    yLayout: 'DualAxis',
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                const layout = parseLayout(html!);
+
+                expect((traces[0] as Record<string, unknown>)?.yaxis).toBeUndefined();
+                expect((traces[1] as Record<string, unknown>)?.yaxis).toBe('y2');
+                expect((layout.yaxis2 as Record<string, unknown>)?.overlaying).toBe('y');
+                expect((layout.yaxis2 as Record<string, unknown>)?.side).toBe('right');
+                expect((layout.yaxis2 as Record<string, unknown>)?.showgrid).toBe(false);
+                const legend = layout.legend as Record<string, unknown>;
+                expect(legend?.orientation).toBe('h');
+            });
+
+            it('creates subplot axes and domains for SeparatePanels multi-y charts', () => {
+                const html = renderAndGetHtml(makeMultiSeriesTable(), {
+                    type: 'Line',
+                    xColumn: 'Month',
+                    yColumns: ['Sales', 'Profit'],
+                    yLayout: 'SeparatePanels',
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                const layout = parseLayout(html!);
+
+                expect((traces[0] as Record<string, unknown>)?.yaxis).toBe('y2');
+                expect((traces[0] as Record<string, unknown>)?.xaxis).toBe('x2');
+                expect((traces[1] as Record<string, unknown>)?.yaxis).toBe('y3');
+                expect((traces[1] as Record<string, unknown>)?.xaxis).toBe('x3');
+
+                expect((layout.yaxis as Record<string, unknown>)?.visible).toBe(false);
+                expect((layout.xaxis as Record<string, unknown>)?.visible).toBe(false);
+                expect((layout.yaxis2 as Record<string, unknown>)?.domain).toEqual([0.525, 1]);
+                expect((layout.yaxis3 as Record<string, unknown>)?.domain).toEqual([0, 0.475]);
+                expect((layout.xaxis2 as Record<string, unknown>)?.showticklabels).toBe(false);
+                expect((layout.xaxis3 as Record<string, unknown>)?.showticklabels).toBe(true);
+            });
+
+            it('mirrors y-axis ticks when yMirror is enabled', () => {
+                const html = renderAndGetHtml(make2dTable(), {
+                    type: 'Column',
+                    yMirror: true,
+                });
+                expect(html).toBeDefined();
+                const layout = parseLayout(html!);
+
+                expect((layout.yaxis as Record<string, unknown>)?.showline).toBe(true);
+                expect((layout.yaxis as Record<string, unknown>)?.mirror).toBe('ticks');
             });
         });
 
@@ -1695,7 +1763,7 @@ describe('CompositeChartProvider', () => {
 
         describe('dark mode', () => {
             it('applies dark mode colors to layout', () => {
-                const html = renderAndGetHtml(make2dTable(), { type: 'columnchart' }, true);
+                const html = renderAndGetHtml(make2dTable(), { type: 'Column' }, true);
                 expect(html).toBeDefined();
                 const layout = parseLayout(html!);
                 expect(layout.paper_bgcolor).toBe('#1e1e1e');
@@ -1712,7 +1780,7 @@ describe('CompositeChartProvider', () => {
                     [{ name: 'json', type: 'string' }],
                     [[plotlyJson]],
                 );
-                const html = renderAndGetHtml(table, { type: 'plotly' }, true);
+                const html = renderAndGetHtml(table, { type: 'Plotly' }, true);
                 expect(html).toBeDefined();
                 const layout = parseLayout(html!);
                 expect(layout.paper_bgcolor).toBe('#1e1e1e');

@@ -22,8 +22,4 @@ public interface IOptionsManager
     /// </summary>
     FormattingOptions FormattingOptions { get; }
 
-    /// <summary>
-    /// The default chart options from user settings.
-    /// </summary>
-    ChartOptions DefaultChartOptions { get; }
 }

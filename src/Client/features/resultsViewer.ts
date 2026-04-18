@@ -12,6 +12,7 @@ import * as server from './server';
 import type { IClipboard } from './clipboard';
 import type { ClipboardItem } from './clipboard';
 import type { IChartProvider, IChartView } from './chartProvider';
+import { ChartAspectRatio } from './chartProvider';
 import type { IChartEditorProvider, IChartEditorView } from './chartEditorProvider';
 import type { IDataTableProvider, IDataTableView } from './dataTableProvider';
 import type { IWebView } from './webview';
@@ -105,8 +106,8 @@ function getChartDefaults(): Partial<server.ChartOptions> {
         if (val) { defaults[prop] = Number(val); }
     }
 
-    setBool('showLegend', 'showLegend');
     setString('legendPosition', 'legendPosition');
+    setString('sort', 'sort');
     setBool('xShowTicks', 'xShowTicks');
     setBool('yShowTicks', 'yShowTicks');
     setBool('xShowGrid', 'xShowGrid');
@@ -390,13 +391,11 @@ export class ResultsViewer {
                 const panelEditorAdapter = new WebViewAdapter(webviewView.webview, 'setEditPanelContent');
                 this.panelEditorView = this.chartEditorProvider.createView(panelEditorAdapter);
                 this.panelEditorWebView = panelEditorAdapter;
-                this.panelEditorView.onOptionsChanged = (options, clientOnly) => {
+                this.panelEditorView.onOptionsChanged = (options) => {
                     if (this.lastPanelResultData) {
                         this.lastPanelResultData = { ...this.lastPanelResultData, chartOptions: options };
                     }
-                    if (!clientOnly) {
-                        this.updateChartInPanel();
-                    }
+                    this.updateChartInPanel();
                 };
 
                 webviewView.onDidDispose(() => {
@@ -517,7 +516,9 @@ export class ResultsViewer {
             return;
         }
 
-        const chartOptions = resultData.chartOptions ? applyChartDefaults(resultData.chartOptions) : undefined;
+        const rawChartOptions = resultData.chartOptions;
+        const chartOptions = rawChartOptions ? applyChartDefaults(rawChartOptions) : undefined;
+        const chartDefaults = getChartDefaults();
         const columnNames = resultData.tables[0]?.columns?.map(c => c.name) ?? [];
 
         // Ensure the panel is ready before creating table adapters that need panel.webview
@@ -552,7 +553,7 @@ export class ResultsViewer {
             if (table) {
                 this.panelChartView?.renderChart(table, chartOptions, darkMode);
             }
-            this.panelEditorView?.setOptions(chartOptions, columnNames);
+            this.panelEditorView?.setOptions(rawChartOptions, columnNames, chartDefaults);
         }
 
         const html = this.htmlBuilder.BuildMultiTabbedHtml(hasChart, mode, this.panelWebView, this.panelEditorWebView, chartOptions, columnNames,
@@ -616,7 +617,8 @@ export class ResultsViewer {
      */
     async displayResultsInSingletonView(
         resultData: server.ResultData | undefined,
-        mode: ResultViewMode
+        mode: ResultViewMode,
+        locationOverride?: 'beside' | 'main'
     ): Promise<void> {
         // Always update result data before any early-return dispose paths,
         // so that a write-back in disposeSingletonView won't write stale
@@ -635,14 +637,21 @@ export class ResultsViewer {
         }
 
         const darkMode = isDarkMode();
-        const chartOptions = resultData.chartOptions ? applyChartDefaults(resultData.chartOptions) : undefined;
+        const rawChartOptions = resultData.chartOptions;
+        const chartOptions = rawChartOptions ? applyChartDefaults(rawChartOptions) : undefined;
+        const chartDefaults = getChartDefaults();
 
         // Resolve where the singleton should appear.
         // For chart mode, use chart display setting; otherwise use results display setting.
         // If location resolves to 'panel' or 'results' (bottom panel), default to 'beside'
         // since this method always creates a singleton editor panel.
-        const rawLocation = mode === 'chart' ? getChartDisplayLocation() : getResultsDisplayLocation();
-        const singletonLocation: 'beside' | 'main' = (rawLocation === 'beside' || rawLocation === 'main') ? rawLocation : 'beside';
+        let singletonLocation: 'beside' | 'main';
+        if (locationOverride) {
+            singletonLocation = locationOverride;
+        } else {
+            const rawLocation = mode === 'chart' ? getChartDisplayLocation() : getResultsDisplayLocation();
+            singletonLocation = (rawLocation === 'beside' || rawLocation === 'main') ? rawLocation : 'beside';
+        }
 
         // Ensure the singleton view (and its chart adapter) exist before building
         // HTML so that BuildMultiTabbedHtml can read the adapter's headHtml/scriptsHtml.
@@ -671,7 +680,7 @@ export class ResultsViewer {
             if (table) {
                 this.singletonChartView?.renderChart(table, chartOptions, darkMode);
             }
-            this.singletonEditorView?.setOptions(chartOptions, columnNames);
+            this.singletonEditorView?.setOptions(rawChartOptions, columnNames, chartDefaults);
         }
 
         const html = this.htmlBuilder.BuildMultiTabbedHtml(hasChart, mode, this.singletonWebView, this.singletonEditorWebView, chartOptions, columnNames,
@@ -840,7 +849,7 @@ export class ResultsViewer {
         const singletonEditorAdapter = new WebViewAdapter(this.singletonView.webview, 'setEditPanelContent');
         this.singletonEditorView = this.chartEditorProvider.createView(singletonEditorAdapter);
         this.singletonEditorWebView = singletonEditorAdapter;
-        this.singletonEditorView.onOptionsChanged = (options, clientOnly) => {
+        this.singletonEditorView.onOptionsChanged = (options) => {
             this.singletonChartOptionsOverride = options;
             if (this.singletonResultData) {
                 this.singletonResultData = { ...this.singletonResultData, chartOptions: this.singletonChartOptionsOverride };
@@ -851,9 +860,7 @@ export class ResultsViewer {
                 state.resultData = this.singletonResultData ?? state.resultData;
             }
             if (this.singletonChartOptionsTimer) { clearTimeout(this.singletonChartOptionsTimer); }
-            if (!clientOnly) {
-                this.singletonChartOptionsTimer = setTimeout(() => this.updateChartInSingletonView(), 600);
-            }
+            this.singletonChartOptionsTimer = setTimeout(() => this.updateChartInSingletonView(), 600);
             this.scheduleSingletonWriteBack();
         };
 
@@ -1190,7 +1197,7 @@ export class ResultsViewer {
         const hadChartOptions = !!this.lastPanelResultData.chartOptions;
         const chartData: server.ResultData = {
             ...this.lastPanelResultData,
-            chartOptions: this.lastPanelResultData.chartOptions ?? { type: 'columnchart' }
+            chartOptions: this.lastPanelResultData.chartOptions ?? { type: 'Column' }
         };
         await this.displayResultsInSingletonView(chartData, 'chart');
 
@@ -1202,17 +1209,36 @@ export class ResultsViewer {
     }
 
     /**
-     * Moves the results tab to main editor area
+     * Moves the results tab between main and beside editor columns.
      */
-    moveResultsTabToMain(): void {
+    async moveResultsTabToMain(): Promise<void> {
         const webview = this.activeResultWebview;
         if (!webview) { return; }
         const isMain = webview.viewColumn === vscode.ViewColumn.One;
         if (webview === this.singletonView) {
-            webview.reveal(isMain ? vscode.ViewColumn.Beside : vscode.ViewColumn.One, false);
+            // Dispose and recreate at the target column to avoid broken webview state.
+            const resultData = this.singletonResultData;
+            const mode = this.singletonMode ?? 'all';
+            const chartOptionsOverride = this.singletonChartOptionsOverride;
+            const backingUri = this.singletonBackingUri;
+            this.disposeSingletonView();
+            // Restore state that disposeSingletonView clears
+            this.singletonResultData = resultData;
+            this.singletonChartOptionsOverride = chartOptionsOverride;
+            this.singletonBackingUri = backingUri;
+            if (resultData) {
+                // Apply override so the recreated view uses the latest editor options
+                if (chartOptionsOverride) {
+                    this.singletonResultData = { ...resultData, chartOptions: chartOptionsOverride };
+                }
+                const targetLocation: 'beside' | 'main' = isMain ? 'beside' : 'main';
+                await this.displayResultsInSingletonView(this.singletonResultData, mode as ResultViewMode, targetLocation);
+                // Always focus the recreated panel since the user explicitly toggled
+                this.singletonView?.reveal(undefined, false);
+            }
         } else {
             // Custom editors must be moved via workbench commands; reveal() creates duplicates.
-            vscode.commands.executeCommand(
+            await vscode.commands.executeCommand(
                 isMain ? 'workbench.action.moveEditorToNextGroup' : 'workbench.action.moveEditorToFirstGroup'
             );
         }
@@ -1375,7 +1401,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         let ignoringSelfEdit = false;
 
         // Wire chart editor options callback
-        docEditorView.onOptionsChanged = async (options, clientOnly) => {
+        docEditorView.onOptionsChanged = async (options) => {
             const state = this.viewer.viewerStates.get(webviewPanel);
             if (!state) { return; }
             state.chartOptionsOverride = options;
@@ -1392,9 +1418,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
             ignoringSelfEdit = false;
             if (chartOptionsTimer) { clearTimeout(chartOptionsTimer); }
             chartOptionsTimer = setTimeout(async () => {
-                if (!clientOnly) {
-                    await this.updateChartOnly(state, webviewPanel);
-                }
+                await this.updateChartOnly(state, webviewPanel);
                 ignoringSelfEdit = true;
                 try { await document.save(); } finally { ignoringSelfEdit = false; }
             }, 600);
@@ -1520,6 +1544,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
 
         const rawChartOptions = existingState?.chartOptionsOverride ?? resultData.chartOptions;
         const chartOptions = rawChartOptions ? applyChartDefaults(rawChartOptions) : undefined;
+        const chartDefaults = getChartDefaults();
         const columnNames = resultData.tables[0]?.columns?.map(c => c.name) ?? [];
         const docWebView = this.viewer.chartWebViews.get(webviewPanel);
         const docEditorWebView = this.viewer.editorWebViews.get(webviewPanel);
@@ -1547,7 +1572,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
                 controller?.renderChart(table, chartOptions, darkMode);
             }
             const editorView = this.viewer.editorViews.get(webviewPanel);
-            editorView?.setOptions(chartOptions, columnNames);
+            editorView?.setOptions(rawChartOptions, columnNames, chartDefaults);
         }
 
         const html = this.BuildMultiTabbedHtml(hasChart, 'all', docWebView, docEditorWebView, chartOptions, columnNames,
@@ -1648,10 +1673,11 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
 
         // Aspect ratio support
         const aspectRatio = chartOptions?.aspectRatio;
-        const chartAspectClass = aspectRatio ? ' has-aspect-ratio' : '';
-        const textSize = chartOptions?.textSize ?? '';
+        const hasExplicitAspectRatio = !!aspectRatio && aspectRatio !== ChartAspectRatio.Fill;
+        const chartAspectClass = hasExplicitAspectRatio ? ' has-aspect-ratio' : '';
+        const textSize = chartOptions?.textSize === 'Auto' ? '' : (chartOptions?.textSize ?? '');
         const chartStyleParts: string[] = [];
-        if (aspectRatio) { chartStyleParts.push(`--chart-aspect-ratio: ${aspectRatio.replace(':', '/')}`); }
+        if (hasExplicitAspectRatio) { chartStyleParts.push(`--chart-aspect-ratio: ${aspectRatio.replace(':', '/')}`); }
         const chartStyle = chartStyleParts.length ? ` style="${chartStyleParts.join('; ')}"` : '';
         const chartDataAttrs = textSize ? ` data-text-size="${textSize}"` : '';
 

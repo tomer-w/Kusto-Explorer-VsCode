@@ -560,7 +560,6 @@ export interface ResultColumn {
 /** Serializable representation of chart visualization options. */
 export interface ChartOptions {
     type: string;
-    kind?: string;
     title?: string;
     xTitle?: string;
     yTitle?: string;
@@ -568,7 +567,8 @@ export interface ChartOptions {
     yColumns?: string[];
     seriesColumns?: string[];
     anomalyColumns?: string[];
-    showLegend?: boolean;
+    yLayout?: string | undefined;
+    yMirror?: boolean | undefined;
     xAxis?: string;
     yAxis?: string;
     xMin?: unknown;
@@ -591,7 +591,7 @@ export interface ChartOptions {
     textSize?: string;
     showMarkers?: boolean;
     markerOutline?: boolean;
-    markerShape?: string;
+    markerShape?: 'Circle' | 'Diamond' | 'Square' | 'TriangleUp' | 'Cross' | 'Star' | 'X';
     cycleMarkerShapes?: boolean;
     markerSize?: string;
     binSize?: string;

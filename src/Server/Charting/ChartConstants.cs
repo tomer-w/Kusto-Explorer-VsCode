@@ -8,36 +8,29 @@ namespace Kusto.Vscode;
 /// </summary>
 public static class ChartType
 {
-    public const string None = "none";
-    public const string AreaChart = "areachart";
-    public const string BarChart = "barchart";
-    public const string Card = "card";
-    public const string ColumnChart = "columnchart";
-    public const string Graph = "graph";
-    public const string LineChart = "linechart";
-    public const string PieChart = "piechart";
-    public const string PivotChart = "pivotchart";
-    public const string Plotly = "plotly";
-    public const string Sankey = "sankey";
-    public const string ScatterChart = "scatterchart";
-    public const string StackedAreaChart = "stackedareachart";
-    public const string ThreeDChart = "3Dchart";
-    public const string TimeLadderChart = "ladderchart";
-    public const string TimeLineChart = "timechart";
-    public const string TimeLineWithAnomalyChart = "anomalychart";
-    public const string TimePivot = "timepivot";
-    public const string TreeMap = "treemap";
-}
-
-/// <summary>
-/// Constants for chart visualization kinds.
-/// </summary>
-public static class ChartKind
-{
-    public const string Default = "Default";
-    public const string Stacked = "Stacked";
-    public const string Stacked100 = "Stacked100";
-    public const string Unstacked = "Unstacked";
+    public const string None = "None";
+    public const string Area = "Area";
+    public const string AreaStacked = "AreaStacked";
+    public const string AreaStacked100 = "AreaStacked100";
+    public const string Bar = "Bar";
+    public const string BarStacked = "BarStacked";
+    public const string BarStacked100 = "BarStacked100";
+    public const string Card = "Card";
+    public const string Column = "Column";
+    public const string ColumnStacked = "ColumnStacked";
+    public const string ColumnStacked100 = "ColumnStacked100";
+    public const string Graph = "Graph";
+    public const string Ladder = "Ladder";
+    public const string Line = "Line";
+    public const string Pie = "Pie";
+    public const string Plotly = "Plotly";
+    public const string Sankey = "Sankey";
+    public const string Scatter = "Scatter";
+    public const string ThreeD = "ThreeD";
+    public const string TimeLine = "TimeLine";
+    public const string TimeLineAnomaly = "TimeLineAnomaly";
+    public const string TimePivot = "TimePivot";
+    public const string TreeMap = "TreeMap";
 }
 
 /// <summary>
@@ -54,7 +47,7 @@ public static class ChartAxis
 /// </summary>
 public static class ChartSortOrder
 {
-    public const string Default = "Default";
+    public const string Auto = "Auto";
     public const string Ascending = "Ascending";
     public const string Descending = "Descending";
 }
@@ -64,9 +57,10 @@ public static class ChartSortOrder
 /// </summary>
 public static class ChartLegendPosition
 {
+    public const string Auto = "Auto";
     public const string Right = "Right";
     public const string Bottom = "Bottom";
-    public const string Hidden = "Hidden";
+    public const string None = "None";
 }
 
 /// <summary>
@@ -74,6 +68,7 @@ public static class ChartLegendPosition
 /// </summary>
 public static class ChartMode
 {
+    public const string Auto = "Auto";
     public const string Light = "Light";
     public const string Dark = "Dark";
 }
@@ -83,6 +78,7 @@ public static class ChartMode
 /// </summary>
 public static class ChartTextSize
 {
+    public const string Auto = "Auto";
     public const string ExtraSmall = "Extra Small";
     public const string Small = "Small";
     public const string Medium = "Medium";
@@ -95,6 +91,7 @@ public static class ChartTextSize
 /// </summary>
 public static class ChartAspectRatio
 {
+    public const string Fill = "Fill";
     public const string Ratio16x9 = "16:9";
     public const string Ratio3x2 = "3:2";
     public const string Ratio4x3 = "4:3";
@@ -102,4 +99,15 @@ public static class ChartAspectRatio
     public const string Ratio3x4 = "3:4";
     public const string Ratio2x3 = "2:3";
     public const string Ratio9x16 = "9:16";
+}
+
+/// <summary>
+/// Constants for Y-column layout modes.
+/// </summary>
+public static class ChartYLayout
+{
+    public const string SharedAxis = "SharedAxis";
+    public const string DualAxis = "DualAxis";
+    public const string SeparatePanels = "SeparatePanels";
+    public const string SeparateCharts = "SeparateCharts";
 }

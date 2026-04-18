@@ -724,6 +724,23 @@
             "default": "",
             "description": "Default legend position for charts"
           },
+          "kusto.chart.sort": {
+            "type": "string",
+            "enum": [
+              "",
+              "Auto",
+              "Ascending",
+              "Descending"
+            ],
+            "enumItemLabels": [
+              "(default)",
+              "Auto",
+              "Ascending",
+              "Descending"
+            ],
+            "default": "",
+            "description": "Default axis ordering for charts"
+          },
           "kusto.chart.xShowTicks": {
             "type": "string",
             "enum": [

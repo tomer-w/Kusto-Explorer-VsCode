@@ -45,32 +45,29 @@ export interface IChartProvider {
 // ─── Chart Constants ────────────────────────────────────────────────────────
 
 export const ChartType = {
-    None: 'none',
-    AreaChart: 'areachart',
-    BarChart: 'barchart',
-    Card: 'card',
-    ColumnChart: 'columnchart',
-    Graph: 'graph',
-    LineChart: 'linechart',
-    PieChart: 'piechart',
-    PivotChart: 'pivotchart',
-    Plotly: 'plotly',
-    Sankey: 'sankey',
-    ScatterChart: 'scatterchart',
-    StackedAreaChart: 'stackedareachart',
-    ThreeDChart: '3Dchart',
-    TimeLadderChart: 'ladderchart',
-    TimeLineChart: 'timechart',
-    TimeLineWithAnomalyChart: 'anomalychart',
-    TimePivot: 'timepivot',
-    TreeMap: 'treemap',
-} as const;
-
-export const ChartKind = {
-    Default: 'Default',
-    Stacked: 'Stacked',
-    Stacked100: 'Stacked100',
-    Unstacked: 'Unstacked',
+    None: 'None',
+    Area: 'Area',
+    AreaStacked: 'AreaStacked',
+    AreaStacked100: 'AreaStacked100',
+    Bar: 'Bar',
+    BarStacked: 'BarStacked',
+    BarStacked100: 'BarStacked100',
+    Card: 'Card',
+    Column: 'Column',
+    ColumnStacked: 'ColumnStacked',
+    ColumnStacked100: 'ColumnStacked100',
+    Graph: 'Graph',
+    Ladder: 'Ladder',
+    Line: 'Line',
+    Pie: 'Pie',
+    Plotly: 'Plotly',
+    Sankey: 'Sankey',
+    Scatter: 'Scatter',
+    ThreeD: 'ThreeD',
+    TimeLine: 'TimeLine',
+    TimeLineAnomaly: 'TimeLineAnomaly',
+    TimePivot: 'TimePivot',
+    TreeMap: 'TreeMap',
 } as const;
 
 export const ChartAxis = {
@@ -79,20 +76,49 @@ export const ChartAxis = {
 } as const;
 
 export const ChartSortOrder = {
-    Default: 'Default',
+    Auto: 'Auto',
     Ascending: 'Ascending',
     Descending: 'Descending',
 } as const;
 
 export const ChartLegendPosition = {
+    Auto: 'Auto',
     Right: 'Right',
     Bottom: 'Bottom',
-    Hidden: 'Hidden',
+    None: 'None',
 } as const;
 
 export const ChartMode = {
+    Auto: 'Auto',
     Light: 'Light',
     Dark: 'Dark',
+} as const;
+
+export const ChartTextSize = {
+    Auto: 'Auto',
+    ExtraSmall: 'Extra Small',
+    Small: 'Small',
+    Medium: 'Medium',
+    Large: 'Large',
+    ExtraLarge: 'Extra Large',
+} as const;
+
+export const ChartAspectRatio = {
+    Fill: 'Fill',
+    Ratio16x9: '16:9',
+    Ratio3x2: '3:2',
+    Ratio4x3: '4:3',
+    Ratio1x1: '1:1',
+    Ratio3x4: '3:4',
+    Ratio2x3: '2:3',
+    Ratio9x16: '9:16',
+} as const;
+
+export const ChartYLayout = {
+    SharedAxis: 'SharedAxis',
+    DualAxis: 'DualAxis',
+    SeparatePanels: 'SeparatePanels',
+    SeparateCharts: 'SeparateCharts',
 } as const;
 
 // ─── Shared Utilities ───────────────────────────────────────────────────────

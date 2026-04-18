@@ -16,10 +16,13 @@ function createMockWebView(): IWebView & {
     simulateMessage: (message: Record<string, unknown>) => void;
 } {
     const handlers: ((message: Record<string, unknown>) => void)[] = [];
+    const setup = vi.fn<(headHtml: string, scriptsHtml: string) => void>();
+    const setContent = vi.fn<(html: string) => void>();
+    const invoke = vi.fn<(command: string, args?: Record<string, unknown>) => void>();
     return {
-        setup: vi.fn(),
-        setContent: vi.fn(),
-        invoke: vi.fn(),
+        setup,
+        setContent,
+        invoke,
         handle: vi.fn((handler: (message: Record<string, unknown>) => void) => {
             handlers.push(handler);
             return { dispose: () => { const i = handlers.indexOf(handler); if (i >= 0) handlers.splice(i, 1); } };
@@ -33,7 +36,7 @@ function createMockWebView(): IWebView & {
 // ─── Test Helpers ───────────────────────────────────────────────────────────
 
 function defaultOptions(overrides: Partial<ChartOptions> = {}): ChartOptions {
-    return { type: 'columnchart', ...overrides };
+    return { type: 'Column', ...overrides };
 }
 
 const sampleColumns = ['Category', 'Value', 'Count'];
@@ -95,17 +98,26 @@ describe('ChartEditorProvider', () => {
             expect(typeof webview.setContent.mock.calls[0]![0]).toBe('string');
         });
 
+        it('renders a defaults pin menu in the header', () => {
+            view.setOptions(defaultOptions(), sampleColumns);
+            const html: string = webview.setContent.mock.calls[0]![0];
+
+            expect(html).toContain('Capture Defaults');
+            expect(html).toContain('Restore Defaults');
+            expect(html).toContain('&hellip;');
+        });
+
         // ── Chart type dropdown ─────────────────────────────────────────
 
         it('renders the chart type dropdown with the current type selected', () => {
-            view.setOptions(defaultOptions({ type: 'piechart' }), sampleColumns);
+            view.setOptions(defaultOptions({ type: 'Pie' }), sampleColumns);
             const html: string = webview.setContent.mock.calls[0]![0];
 
             expect(html).toContain('<select id="opt-type"');
-            expect(html).toContain('<option value="piechart" selected title="piechart">Pie</option>');
+            expect(html).toContain('<option value="Pie" selected title="Pie">Pie (piechart)</option>');
             // Other types present but not selected
-            expect(html).toContain('<option value="columnchart" title="columnchart">Column</option>');
-            expect(html).not.toContain('<option value="columnchart" selected');
+            expect(html).toContain('<option value="Column" title="Column">Column (columnchart)</option>');
+            expect(html).not.toContain('<option value="Column" selected');
         });
 
         it('includes an unknown chart type at the beginning of the dropdown', () => {
@@ -114,37 +126,20 @@ describe('ChartEditorProvider', () => {
 
             expect(html).toContain('<option value="CustomChart" selected title="CustomChart">CustomChart</option>');
             // Standard types still present
-            expect(html).toContain('<option value="columnchart" title="columnchart">');
-        });
-
-        // ── Kind dropdown ───────────────────────────────────────────────
-
-        it('renders kind dropdown with default option', () => {
-            view.setOptions(defaultOptions(), []);
-            const html: string = webview.setContent.mock.calls[0]![0];
-
-            expect(html).toContain('<select id="opt-kind"');
-            expect(html).toContain('<option value="" selected>(default)</option>');
-        });
-
-        it('selects the specified kind', () => {
-            view.setOptions(defaultOptions({ kind: 'Stacked' }), []);
-            const html: string = webview.setContent.mock.calls[0]![0];
-
-            expect(html).toContain('<option value="Stacked" selected>Stacked</option>');
+            expect(html).toContain('<option value="Column" title="Column">');
         });
 
         // ── Legend dropdown ─────────────────────────────────────────────
 
-        it('renders legend as Hidden when showLegend is false', () => {
-            view.setOptions(defaultOptions({ showLegend: false }), []);
+        it('renders legend as None when legendPosition is None', () => {
+            view.setOptions(defaultOptions({ legendPosition: 'None' }), []);
             const html: string = webview.setContent.mock.calls[0]![0];
 
-            expect(html).toContain('<option value="Hidden" selected>Hidden</option>');
+            expect(html).toContain('<option value="None" selected>None</option>');
         });
 
-        it('renders legend position when showLegend is true', () => {
-            view.setOptions(defaultOptions({ showLegend: true, legendPosition: 'Bottom' }), []);
+        it('renders legend position when explicitly set', () => {
+            view.setOptions(defaultOptions({ legendPosition: 'Bottom' }), []);
             const html: string = webview.setContent.mock.calls[0]![0];
 
             expect(html).toContain('<option value="Bottom" selected>Bottom</option>');
@@ -157,6 +152,20 @@ describe('ChartEditorProvider', () => {
             const html: string = webview.setContent.mock.calls[0]![0];
 
             expect(html).toContain('<option value="Ascending" selected>Ascending</option>');
+        });
+
+        it('renders default sort label when not explicitly set', () => {
+            view.setOptions(defaultOptions(), []);
+            const html: string = webview.setContent.mock.calls[0]![0];
+
+            expect(html).toMatch(/id="opt-sort"[^>]*>.*<option value="" selected>Default \(Auto\)/s);
+        });
+
+        it('selects Auto sort when explicitly set', () => {
+            view.setOptions(defaultOptions({ sort: 'Auto' }), []);
+            const html: string = webview.setContent.mock.calls[0]![0];
+
+            expect(html).toContain('<option value="Auto" selected>Auto</option>');
         });
 
         it('selects the specified mode', () => {
@@ -175,6 +184,13 @@ describe('ChartEditorProvider', () => {
             expect(html).toContain('<option value="4:3" selected>4:3</option>');
         });
 
+        it('selects Fill as an explicit aspect ratio', () => {
+            view.setOptions(defaultOptions({ aspectRatio: 'Fill' }), []);
+            const html: string = webview.setContent.mock.calls[0]![0];
+
+            expect(html).toContain('<option value="Fill" selected>Fill</option>');
+        });
+
         it('selects the specified text size', () => {
             view.setOptions(defaultOptions({ textSize: 'Large' }), []);
             const html: string = webview.setContent.mock.calls[0]![0];
@@ -182,56 +198,58 @@ describe('ChartEditorProvider', () => {
             expect(html).toContain('<option value="Large" selected>Large</option>');
         });
 
-        // ── Checkboxes ─────────────────────────────────────────────────
+        // ── Toggle dropdowns ───────────────────────────────────────────
 
-        it('checks showValues when true', () => {
+        it('selects showValues as On when true', () => {
             view.setOptions(defaultOptions({ showValues: true }), []);
             const html: string = webview.setContent.mock.calls[0]![0];
 
-            expect(html).toMatch(/id="opt-showValues"[^>]* checked/);
+            expect(html).toMatch(/id="opt-showValues"[^>]*>.*<option value="On" selected>On</s);
         });
 
-        it('does not check showValues when false', () => {
+        it('selects showValues as Off when false', () => {
             view.setOptions(defaultOptions({ showValues: false }), []);
             const html: string = webview.setContent.mock.calls[0]![0];
 
-            const showValuesTag = html.match(/<input[^>]*id="opt-showValues"[^>]*>/);
-            expect(showValuesTag).toBeTruthy();
-            expect(showValuesTag![0]).not.toContain('checked');
+            expect(html).toMatch(/id="opt-showValues"[^>]*>.*<option value="Off" selected>Off</s);
         });
 
-        it('checks accumulate when true', () => {
+        it('selects accumulate as On when true', () => {
             view.setOptions(defaultOptions({ accumulate: true }), []);
             const html: string = webview.setContent.mock.calls[0]![0];
 
-            expect(html).toMatch(/id="opt-accumulate"[^>]* checked/);
+            expect(html).toMatch(/id="opt-accumulate"[^>]*>.*<option value="On" selected>On</s);
         });
 
-        it('renders grid checkboxes checked by default', () => {
+        it('renders grid dropdowns as Default (On) when not set', () => {
             view.setOptions(defaultOptions(), []);
             const html: string = webview.setContent.mock.calls[0]![0];
 
-            // xShowGrid and yShowGrid default to checked (truthy unless explicitly false)
-            expect(html).toMatch(/id="opt-xShowGrid"[^>]* checked/);
-            expect(html).toMatch(/id="opt-yShowGrid"[^>]* checked/);
+            expect(html).toMatch(/id="opt-xShowGrid"[^>]*>.*<option value="" selected>Default \(On\)</s);
+            expect(html).toMatch(/id="opt-yShowGrid"[^>]*>.*<option value="" selected>Default \(On\)</s);
         });
 
-        it('renders grid checkboxes unchecked when false', () => {
+        it('renders multi-y layout as Default (Shared Axis) when not set', () => {
+            view.setOptions(defaultOptions(), []);
+            const html: string = webview.setContent.mock.calls[0]![0];
+
+            expect(html).toMatch(/id="opt-yLayout"[^>]*>.*<option value="" selected>Default \(Shared Axis\)/s);
+        });
+
+        it('selects grid dropdowns as Off when false', () => {
             view.setOptions(defaultOptions({ xShowGrid: false, yShowGrid: false }), []);
             const html: string = webview.setContent.mock.calls[0]![0];
 
-            const xGrid = html.match(/<input[^>]*id="opt-xShowGrid"[^>]*>/);
-            const yGrid = html.match(/<input[^>]*id="opt-yShowGrid"[^>]*>/);
-            expect(xGrid![0]).not.toContain('checked');
-            expect(yGrid![0]).not.toContain('checked');
+            expect(html).toMatch(/id="opt-xShowGrid"[^>]*>.*<option value="Off" selected>Off</s);
+            expect(html).toMatch(/id="opt-yShowGrid"[^>]*>.*<option value="Off" selected>Off</s);
         });
 
-        it('checks tick marks when specified', () => {
+        it('selects tick marks as On when specified', () => {
             view.setOptions(defaultOptions({ xShowTicks: true, yShowTicks: true }), []);
             const html: string = webview.setContent.mock.calls[0]![0];
 
-            expect(html).toMatch(/id="opt-xShowTicks"[^>]* checked/);
-            expect(html).toMatch(/id="opt-yShowTicks"[^>]* checked/);
+            expect(html).toMatch(/id="opt-xShowTicks"[^>]*>.*<option value="On" selected>On</s);
+            expect(html).toMatch(/id="opt-yShowTicks"[^>]*>.*<option value="On" selected>On</s);
         });
 
         // ── Column pickers ──────────────────────────────────────────────
@@ -343,12 +361,44 @@ describe('ChartEditorProvider', () => {
             expect(html).toContain('<option value="-90" selected>-90°</option>');
         });
 
-        it('renders empty tick angle when not set', () => {
+        it('renders default tick angle when not set', () => {
             view.setOptions(defaultOptions(), []);
             const html: string = webview.setContent.mock.calls[0]![0];
 
-            expect(html).toMatch(/id="opt-xTickAngle"[^>]*>.*<option value="" selected>\(auto\)/s);
-            expect(html).toMatch(/id="opt-yTickAngle"[^>]*>.*<option value="" selected>\(auto\)/s);
+            expect(html).toMatch(/id="opt-xTickAngle"[^>]*>.*<option value="" selected>Default \(Auto\)/s);
+            expect(html).toMatch(/id="opt-yTickAngle"[^>]*>.*<option value="" selected>Default \(Auto\)/s);
+        });
+
+        it('renders default legend label when not explicitly set', () => {
+            view.setOptions(defaultOptions(), []);
+            const html: string = webview.setContent.mock.calls[0]![0];
+
+            expect(html).toContain('<option value="" selected>Default (Auto)</option>');
+        });
+
+        it('renders marker defaults as explicit product defaults when not set', () => {
+            view.setOptions(defaultOptions(), []);
+            const html: string = webview.setContent.mock.calls[0]![0];
+
+            expect(html).toMatch(/id="opt-markerShape"[^>]*>.*<option value="" selected>Default \(Circle\)/s);
+            expect(html).toMatch(/id="opt-markerSize"[^>]*>.*<option value="" selected>Default \(Medium\)/s);
+        });
+
+        it('renders config-backed marker defaults when provided', () => {
+            view.setOptions(defaultOptions(), [], { markerShape: 'Diamond', markerSize: 'Large' });
+            const html: string = webview.setContent.mock.calls[0]![0];
+
+            expect(html).toMatch(/id="opt-markerShape"[^>]*>.*<option value="" selected>Default \(Diamond\)/s);
+            expect(html).toMatch(/id="opt-markerSize"[^>]*>.*<option value="" selected>Default \(Large\)/s);
+        });
+
+        it('renders normalized marker shape labels for explicit values', () => {
+            view.setOptions(defaultOptions({ markerShape: 'TriangleUp' }), []);
+            const html: string = webview.setContent.mock.calls[0]![0];
+
+            expect(html).toContain('<option value="TriangleUp" selected>Triangle Up</option>');
+            expect(html).toContain('<option value="Circle">Circle</option>');
+            expect(html).toContain('<option value="X">X</option>');
         });
 
         // ── HTML escaping ───────────────────────────────────────────────
@@ -378,12 +428,12 @@ describe('ChartEditorProvider', () => {
         // ── Re-populate ─────────────────────────────────────────────────
 
         it('can be called multiple times to re-populate', () => {
-            view.setOptions(defaultOptions({ type: 'barchart' }), sampleColumns);
-            view.setOptions(defaultOptions({ type: 'piechart' }), ['Fruit', 'Count']);
+            view.setOptions(defaultOptions({ type: 'Bar' }), sampleColumns);
+            view.setOptions(defaultOptions({ type: 'Pie' }), ['Fruit', 'Count']);
 
             expect(webview.setContent).toHaveBeenCalledTimes(2);
             const html: string = webview.setContent.mock.calls[1]![0];
-            expect(html).toContain('<option value="piechart" selected title="piechart">');
+            expect(html).toContain('<option value="Pie" selected title="Pie">');
             expect(html).toContain('<option value="Fruit"');
         });
 
@@ -431,31 +481,31 @@ describe('ChartEditorProvider', () => {
             const callback = vi.fn();
             view.onOptionsChanged = callback;
 
-            const opts = { type: 'barchart', kind: 'Stacked' };
+            const opts = { type: 'BarStacked' };
             webview.simulateMessage({ command: 'chartOptionsChanged', chartOptions: opts });
 
             expect(callback).toHaveBeenCalledOnce();
-            expect(callback).toHaveBeenCalledWith(opts, false);
+            expect(callback).toHaveBeenCalledWith(opts);
         });
 
         it('passes clientOnly flag through when true', () => {
             const callback = vi.fn();
             view.onOptionsChanged = callback;
 
-            const opts = { type: 'columnchart', aspectRatio: '4:3' };
+            const opts = { type: 'Column', aspectRatio: '4:3' };
             webview.simulateMessage({ command: 'chartOptionsChanged', chartOptions: opts, clientOnly: true });
 
             expect(callback).toHaveBeenCalledOnce();
-            expect(callback).toHaveBeenCalledWith(opts, true);
+            expect(callback).toHaveBeenCalledWith(opts);
         });
 
         it('passes clientOnly as false when not present in message', () => {
             const callback = vi.fn();
             view.onOptionsChanged = callback;
 
-            webview.simulateMessage({ command: 'chartOptionsChanged', chartOptions: { type: 'piechart' } });
+            webview.simulateMessage({ command: 'chartOptionsChanged', chartOptions: { type: 'Pie' } });
 
-            expect(callback).toHaveBeenCalledWith({ type: 'piechart' }, false);
+            expect(callback).toHaveBeenCalledWith({ type: 'Pie' });
         });
 
         it('does not fire for unrelated messages', () => {
@@ -478,8 +528,130 @@ describe('ChartEditorProvider', () => {
 
         it('does not throw when onOptionsChanged is not set', () => {
             expect(() => {
-                webview.simulateMessage({ command: 'chartOptionsChanged', chartOptions: { type: 'barchart' } });
+                webview.simulateMessage({ command: 'chartOptionsChanged', chartOptions: { type: 'Bar' } });
             }).not.toThrow();
+        });
+
+        it('captures current defaults into explicit values', () => {
+            const callback = vi.fn();
+            view.onOptionsChanged = callback;
+            view.setOptions(defaultOptions(), [], { legendPosition: 'Bottom', textSize: 'Large' });
+
+            webview.simulateMessage({ command: 'chartEditorDefaultsAction', action: 'capture' });
+
+            expect(callback).toHaveBeenCalledWith(expect.objectContaining({
+                type: 'Column',
+                legendPosition: 'Bottom',
+                textSize: 'Large',
+                sort: 'Auto',
+                yLayout: 'SharedAxis'
+            }));
+        });
+
+        it('captures product marker defaults when config defaults are not provided', () => {
+            const callback = vi.fn();
+            view.onOptionsChanged = callback;
+            view.setOptions(defaultOptions(), [], { legendPosition: 'Bottom' });
+
+            webview.simulateMessage({ command: 'chartEditorDefaultsAction', action: 'capture' });
+
+            expect(callback).toHaveBeenCalledWith(expect.objectContaining({
+                type: 'Column',
+                markerShape: 'Circle',
+                markerSize: 'Medium'
+            }));
+        });
+
+        it('re-renders captured defaults as explicit selections in the editor', () => {
+            view.setOptions(defaultOptions(), [], { legendPosition: 'Bottom', textSize: 'Large', aspectRatio: 'Fill' });
+
+            webview.simulateMessage({ command: 'chartEditorDefaultsAction', action: 'capture' });
+
+            expect(webview.setContent).toHaveBeenCalledTimes(2);
+            const html: string = webview.setContent.mock.calls[1]![0];
+            expect(html).toMatch(/id="opt-legendPosition"[^>]*>.*<option value="Bottom" selected>Bottom</s);
+            expect(html).toMatch(/id="opt-textSize"[^>]*>.*<option value="Large" selected>Large</s);
+            expect(html).toMatch(/id="opt-aspectRatio"[^>]*>.*<option value="Fill" selected>Fill</s);
+        });
+
+        it('restores matching explicit values back to defaults', () => {
+            const callback = vi.fn();
+            view.onOptionsChanged = callback;
+            view.setOptions(defaultOptions({ legendPosition: 'Bottom', textSize: 'Large', sort: 'Auto', yLayout: 'SharedAxis' }), [], { legendPosition: 'Bottom', textSize: 'Large' });
+
+            webview.simulateMessage({ command: 'chartEditorDefaultsAction', action: 'restore' });
+
+            expect(callback).toHaveBeenCalledWith({ type: 'Column' });
+        });
+
+        it('re-renders restored values back to Default labels in the editor', () => {
+            view.setOptions(defaultOptions({ legendPosition: 'Bottom', textSize: 'Large', sort: 'Auto', yLayout: 'SharedAxis', aspectRatio: 'Fill' }), [], { legendPosition: 'Bottom', textSize: 'Large', aspectRatio: 'Fill' });
+
+            webview.simulateMessage({ command: 'chartEditorDefaultsAction', action: 'restore' });
+
+            expect(webview.setContent).toHaveBeenCalledTimes(2);
+            const html: string = webview.setContent.mock.calls[1]![0];
+            expect(html).toMatch(/id="opt-legendPosition"[^>]*>.*<option value="" selected>Default \(Bottom\)/s);
+            expect(html).toMatch(/id="opt-textSize"[^>]*>.*<option value="" selected>Default \(Large\)/s);
+            expect(html).toMatch(/id="opt-sort"[^>]*>.*<option value="" selected>Default \(Auto\)/s);
+            expect(html).toMatch(/id="opt-yLayout"[^>]*>.*<option value="" selected>Default \(Shared Axis\)/s);
+            expect(html).toMatch(/id="opt-aspectRatio"[^>]*>.*<option value="" selected>Default \(Fill\)/s);
+        });
+
+        it('restores values using configured boolean defaults that differ from product defaults', () => {
+            const callback = vi.fn();
+            view.onOptionsChanged = callback;
+            view.setOptions(defaultOptions({ xShowGrid: false, yShowGrid: false }), [], { xShowGrid: false, yShowGrid: false });
+
+            webview.simulateMessage({ command: 'chartEditorDefaultsAction', action: 'restore' });
+
+            expect(callback).toHaveBeenCalledWith({ type: 'Column' });
+        });
+
+        it('does not overwrite explicit non-default values when capturing defaults', () => {
+            const callback = vi.fn();
+            view.onOptionsChanged = callback;
+            view.setOptions(defaultOptions({ sort: 'Descending', yLayout: 'DualAxis' }), [], { legendPosition: 'Bottom', textSize: 'Large' });
+
+            webview.simulateMessage({ command: 'chartEditorDefaultsAction', action: 'capture' });
+
+            expect(callback).toHaveBeenCalledWith(expect.objectContaining({
+                type: 'Column',
+                sort: 'Descending',
+                yLayout: 'DualAxis',
+                legendPosition: 'Bottom',
+                textSize: 'Large'
+            }));
+        });
+
+        it('capture and restore are stable across a round-trip', () => {
+            const callback = vi.fn();
+            view.onOptionsChanged = callback;
+            view.setOptions(defaultOptions(), [], { legendPosition: 'Bottom', textSize: 'Large', xShowGrid: false });
+
+            webview.simulateMessage({ command: 'chartEditorDefaultsAction', action: 'capture' });
+            webview.simulateMessage({ command: 'chartEditorDefaultsAction', action: 'restore' });
+
+            expect(callback).toHaveBeenNthCalledWith(1, expect.objectContaining({
+                type: 'Column',
+                legendPosition: 'Bottom',
+                textSize: 'Large',
+                xShowGrid: false,
+                sort: 'Auto',
+                yLayout: 'SharedAxis'
+            }));
+            expect(callback).toHaveBeenNthCalledWith(2, { type: 'Column' });
+        });
+
+        it('preserves normal option changes after using defaults actions', () => {
+            const callback = vi.fn();
+            view.onOptionsChanged = callback;
+            view.setOptions(defaultOptions(), [], { legendPosition: 'Bottom' });
+
+            webview.simulateMessage({ command: 'chartEditorDefaultsAction', action: 'capture' });
+            webview.simulateMessage({ command: 'chartOptionsChanged', chartOptions: { type: 'Pie', legendPosition: 'Bottom' } });
+
+            expect(callback).toHaveBeenLastCalledWith({ type: 'Pie', legendPosition: 'Bottom' });
         });
     });
 
@@ -494,7 +666,7 @@ describe('ChartEditorProvider', () => {
 
             view.dispose();
 
-            webview.simulateMessage({ command: 'chartOptionsChanged', chartOptions: { type: 'barchart' } });
+            webview.simulateMessage({ command: 'chartOptionsChanged', chartOptions: { type: 'Bar' } });
             expect(callback).not.toHaveBeenCalled();
         });
     });
