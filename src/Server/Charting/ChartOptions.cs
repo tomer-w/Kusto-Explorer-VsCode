@@ -224,8 +224,8 @@ public class ChartOptions
     public string? TextSize { get; init; }
 
     /// <summary>
-    /// Marker shape for scatter points. Use Plotly marker symbol names: "circle", "diamond", "square", "triangle-up", "cross", "star", "hexagon", "x".
-    /// If null, defaults to "circle".
+    /// Marker shape for scatter points. Use chart marker shape values.
+    /// If null, defaults to the configured marker shape or the product default.
     /// </summary>
     [DataMember(Name = "markerShape")]
     public string? MarkerShape { get; init; }
@@ -308,6 +308,9 @@ public class ChartOptions
             Mode = this.Mode,
             AspectRatio = this.AspectRatio ?? defaults.AspectRatio,
             TextSize = this.TextSize ?? defaults.TextSize,
+            MarkerShape = this.MarkerShape ?? defaults.MarkerShape,
+            CycleMarkerShapes = this.CycleMarkerShapes ?? defaults.CycleMarkerShapes,
+            MarkerSize = this.MarkerSize ?? defaults.MarkerSize,
         };
     }
 

@@ -538,6 +538,18 @@ describe('ChartEditorProvider', () => {
             }));
         });
 
+        it('re-renders captured defaults as explicit selections in the editor', () => {
+            view.setOptions(defaultOptions(), [], { legendPosition: 'Bottom', textSize: 'Large', aspectRatio: 'Fill' });
+
+            webview.simulateMessage({ command: 'chartEditorDefaultsAction', action: 'capture' });
+
+            expect(webview.setContent).toHaveBeenCalledTimes(2);
+            const html: string = webview.setContent.mock.calls[1]![0];
+            expect(html).toMatch(/id="opt-legendPosition"[^>]*>.*<option value="Bottom" selected>Bottom</s);
+            expect(html).toMatch(/id="opt-textSize"[^>]*>.*<option value="Large" selected>Large</s);
+            expect(html).toMatch(/id="opt-aspectRatio"[^>]*>.*<option value="Fill" selected>Fill</s);
+        });
+
         it('restores matching explicit values back to defaults', () => {
             const callback = vi.fn();
             view.onOptionsChanged = callback;
@@ -546,6 +558,76 @@ describe('ChartEditorProvider', () => {
             webview.simulateMessage({ command: 'chartEditorDefaultsAction', action: 'restore' });
 
             expect(callback).toHaveBeenCalledWith({ type: 'Column' });
+        });
+
+        it('re-renders restored values back to Default labels in the editor', () => {
+            view.setOptions(defaultOptions({ legendPosition: 'Bottom', textSize: 'Large', sort: 'Ascending', yLayout: 'SharedAxis', aspectRatio: 'Fill' }), [], { legendPosition: 'Bottom', textSize: 'Large', aspectRatio: 'Fill' });
+
+            webview.simulateMessage({ command: 'chartEditorDefaultsAction', action: 'restore' });
+
+            expect(webview.setContent).toHaveBeenCalledTimes(2);
+            const html: string = webview.setContent.mock.calls[1]![0];
+            expect(html).toMatch(/id="opt-legendPosition"[^>]*>.*<option value="" selected>Default \(Bottom\)/s);
+            expect(html).toMatch(/id="opt-textSize"[^>]*>.*<option value="" selected>Default \(Large\)/s);
+            expect(html).toMatch(/id="opt-sort"[^>]*>.*<option value="" selected>Default \(Ascending\)/s);
+            expect(html).toMatch(/id="opt-yLayout"[^>]*>.*<option value="" selected>Default \(Shared Axis\)/s);
+            expect(html).toMatch(/id="opt-aspectRatio"[^>]*>.*<option value="" selected>Default \(Fill\)/s);
+        });
+
+        it('restores values using configured boolean defaults that differ from product defaults', () => {
+            const callback = vi.fn();
+            view.onOptionsChanged = callback;
+            view.setOptions(defaultOptions({ xShowGrid: false, yShowGrid: false }), [], { xShowGrid: false, yShowGrid: false });
+
+            webview.simulateMessage({ command: 'chartEditorDefaultsAction', action: 'restore' });
+
+            expect(callback).toHaveBeenCalledWith({ type: 'Column' });
+        });
+
+        it('does not overwrite explicit non-default values when capturing defaults', () => {
+            const callback = vi.fn();
+            view.onOptionsChanged = callback;
+            view.setOptions(defaultOptions({ sort: 'Descending', yLayout: 'DualAxis' }), [], { legendPosition: 'Bottom', textSize: 'Large' });
+
+            webview.simulateMessage({ command: 'chartEditorDefaultsAction', action: 'capture' });
+
+            expect(callback).toHaveBeenCalledWith(expect.objectContaining({
+                type: 'Column',
+                sort: 'Descending',
+                yLayout: 'DualAxis',
+                legendPosition: 'Bottom',
+                textSize: 'Large'
+            }));
+        });
+
+        it('capture and restore are stable across a round-trip', () => {
+            const callback = vi.fn();
+            view.onOptionsChanged = callback;
+            view.setOptions(defaultOptions(), [], { legendPosition: 'Bottom', textSize: 'Large', xShowGrid: false });
+
+            webview.simulateMessage({ command: 'chartEditorDefaultsAction', action: 'capture' });
+            webview.simulateMessage({ command: 'chartEditorDefaultsAction', action: 'restore' });
+
+            expect(callback).toHaveBeenNthCalledWith(1, expect.objectContaining({
+                type: 'Column',
+                legendPosition: 'Bottom',
+                textSize: 'Large',
+                xShowGrid: false,
+                sort: 'Ascending',
+                yLayout: 'SharedAxis'
+            }));
+            expect(callback).toHaveBeenNthCalledWith(2, { type: 'Column' });
+        });
+
+        it('preserves normal option changes after using defaults actions', () => {
+            const callback = vi.fn();
+            view.onOptionsChanged = callback;
+            view.setOptions(defaultOptions(), [], { legendPosition: 'Bottom' });
+
+            webview.simulateMessage({ command: 'chartEditorDefaultsAction', action: 'capture' });
+            webview.simulateMessage({ command: 'chartOptionsChanged', chartOptions: { type: 'Pie', legendPosition: 'Bottom' } });
+
+            expect(callback).toHaveBeenLastCalledWith({ type: 'Pie', legendPosition: 'Bottom' });
         });
     });
 

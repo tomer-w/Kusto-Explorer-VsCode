@@ -790,7 +790,7 @@ class ChartEditorView implements IChartEditorView {
             `<option value="${a}"${a === yTickAngleValue ? ' selected' : ''}>${a ? a + '°' : formatDefaultLabel(formatAngleLabel(defaultYTickAngleValue))}</option>`
         ).join('');
 
-        return `<div class="panel-header"><h3>Chart Options</h3><div class="header-actions"><button type="button" class="icon-button" title="Defaults actions" aria-label="Defaults actions" onclick="_editorToggleDefaultsMenu(this)">&hellip;</button><div class="header-menu"><button type="button" class="menu-item" onclick="_editorRunDefaultsAction('capture')">Capture Defaults</button><button type="button" class="menu-item" onclick="_editorRunDefaultsAction('restore')">Restore Defaults</button></div></div></div>
+        return `<div class="panel-header"><h3>Chart Options</h3><div class="header-actions"><button type="button" class="icon-button" title="Chart Actions..." aria-label="Chart Actions..." onclick="_editorToggleDefaultsMenu(this)">&hellip;</button><div class="header-menu"><button type="button" class="menu-item" onclick="_editorRunDefaultsAction('capture')">Capture Defaults</button><button type="button" class="menu-item" onclick="_editorRunDefaultsAction('restore')">Restore Defaults</button></div></div></div>
 
             <div class="section-header" onclick="_editorToggleSection(this)">
                 <span class="chevron">&#9662;</span>General

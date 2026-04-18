@@ -12,7 +12,6 @@ public class OptionsManager : IOptionsManager
 
     private string _defaultDomain = KustoFacts.KustoWindowsNet;
     private KLE.FormattingOptions _formattingOptions = KLE.FormattingOptions.Default;
-    private ChartOptions _defaultChartOptions = new ChartOptions { Type = ChartType.None };
 
     public OptionsManager(ISettingSource settingSource)
     {
@@ -25,7 +24,6 @@ public class OptionsManager : IOptionsManager
 
     public string DefaultDomain => _defaultDomain;
     public KLE.FormattingOptions FormattingOptions => _formattingOptions;
-    public ChartOptions DefaultChartOptions => _defaultChartOptions;
 
     private void _settingSource_SettingsChanged(object? sender, EventArgs e)
     {
@@ -36,28 +34,9 @@ public class OptionsManager : IOptionsManager
     {
         _defaultDomain = await _settingSource.GetSettingAsync(ConnectionSettings.DefaultDomain, cancellationToken).ConfigureAwait(false);
         _formattingOptions = await GetFormattingOptionsAsync(cancellationToken).ConfigureAwait(false);
-        _defaultChartOptions = await GetDefaultChartOptionsAsync(cancellationToken).ConfigureAwait(false);
 
         // raise event after refresh
         this.OptionsChanged?.Invoke(this, EventArgs.Empty);
-    }
-
-    private async Task<ChartOptions> GetDefaultChartOptionsAsync(CancellationToken cancellationToken)
-    {
-        var settings = await _settingSource.GetSettingsAsync(ChartSettings.All, cancellationToken).ConfigureAwait(false);
-
-        return new ChartOptions
-        {
-            Type = ChartType.None,
-            LegendPosition = NullIfEmpty(ChartSettings.LegendPosition.GetValue(settings)),
-            XShowTicks = YesNoToBool(ChartSettings.XShowTicks.GetValue(settings)),
-            YShowTicks = YesNoToBool(ChartSettings.YShowTicks.GetValue(settings)),
-            XShowGrid = YesNoToBool(ChartSettings.XShowGrid.GetValue(settings)),
-            YShowGrid = YesNoToBool(ChartSettings.YShowGrid.GetValue(settings)),
-            ShowValues = YesNoToBool(ChartSettings.ShowValues.GetValue(settings)),
-            TextSize = NullIfEmpty(ChartSettings.TextSize.GetValue(settings)),
-            AspectRatio = NullIfEmpty(ChartSettings.AspectRatio.GetValue(settings)),
-        };
     }
 
     private async Task<KLE.FormattingOptions> GetFormattingOptionsAsync(CancellationToken cancellationToken)
@@ -79,11 +58,4 @@ public class OptionsManager : IOptionsManager
             .WithSemicolonStyle(FormatSettings.SemicolonPlacementStyle.GetValue(settings));
     }
 
-    private static string? NullIfEmpty(string? value) =>
-        string.IsNullOrEmpty(value) ? null : value;
-
-    private static bool? YesNoToBool(string? value) =>
-        string.Equals(value, "yes", StringComparison.OrdinalIgnoreCase) ? true
-        : string.Equals(value, "no", StringComparison.OrdinalIgnoreCase) ? false
-        : null;
 }
