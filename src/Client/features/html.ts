@@ -9,6 +9,10 @@
 
 import { ResultData, ResultTable } from './server';
 
+function hasCharts(data: ResultData): boolean {
+    return (data.charts?.length ?? 0) > 0;
+}
+
 /** A single HTML table from the query result. */
 export interface HtmlTable {
     name: string;
@@ -56,7 +60,7 @@ export function resultDataToHtml(data: ResultData, tableName?: string, options?:
             html: resultTableToHtml(t, options),
             rowCount: t.rows.length
         })),
-        hasChart: !!data.chartOptions
+        hasChart: hasCharts(data)
     };
 }
 

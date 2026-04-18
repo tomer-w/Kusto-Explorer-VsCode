@@ -40,8 +40,8 @@ public class ResultData
     /// <summary>
     /// The chart options for rendering a chart from the result data
     /// </summary>
-    [DataMember(Name = "chartOptions")]
-    public ChartOptions? ChartOptions { get; init; }
+    [DataMember(Name = "charts")]
+    public ImmutableList<ResultChart>? Charts { get; init; }
 
     /// <summary>
     /// Converts an <see cref="ExecuteResult"/> to a <see cref="ResultData"/>.
@@ -75,7 +75,7 @@ public class ResultData
             Cluster = cluster,
             Database = database,
             Tables = resultTables,
-            ChartOptions = executeResult.ChartOptions
+            Charts = executeResult.Charts
         };
     }
 
@@ -90,9 +90,25 @@ public class ResultData
         return new ExecuteResult
         {
             Tables = tables,
-            ChartOptions = ChartOptions
+            Charts = Charts
         };
     }
+}
+
+/// <summary>
+/// Serializable representation of a named chart bound to an optional result table.
+/// </summary>
+[DataContract]
+public class ResultChart
+{
+    [DataMember(Name = "name")]
+    public string? Name { get; init; }
+
+    [DataMember(Name = "tableName")]
+    public string? TableName { get; init; }
+
+    [DataMember(Name = "options")]
+    public required ChartOptions Options { get; init; }
 }
 
 /// <summary>

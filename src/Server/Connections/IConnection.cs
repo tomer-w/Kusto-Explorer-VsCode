@@ -79,9 +79,9 @@ public record ExecuteResult
     public ImmutableList<DataTable>? Tables { get; init; }
 
     /// <summary>
-    /// Any chart visualization options included in the result (due to render operator in query).
+    /// Any named chart descriptors included in the result.
     /// </summary>
-    public ChartOptions? ChartOptions { get; init; }
+    public ImmutableList<ResultChart>? Charts { get; init; }
 
     /// <summary>
     /// Any diagnostics produced during query execution, such as errors or warnings.
