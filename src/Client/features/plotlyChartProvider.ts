@@ -1131,6 +1131,14 @@ function downsample(x: unknown[], y: number[], maxPoints: number): { x: unknown[
     return { x: resultX, y: resultY };
 }
 
+function accumulateValues(values: number[]): number[] {
+    let runningTotal = 0;
+    return values.map(value => {
+        runningTotal += value;
+        return sanitizeDouble(runningTotal);
+    });
+}
+
 /** Ordered set of product marker shapes for cycling. */
 const markerShapes = ['Circle', 'Diamond', 'Square', 'TriangleUp', 'Cross', 'Star', 'X'] as const;
 const markerShapeSymbols: Record<typeof markerShapes[number], string> = {
@@ -2696,6 +2704,9 @@ export class PlotlyChartProvider implements IChartProvider {
                         indices.sort((a, b) => (xValues[a]! < xValues[b]! ? -1 : xValues[a]! > xValues[b]! ? 1 : 0));
                         let sortedX: unknown[] = indices.map(i => xValues[i]!);
                         let sortedY: number[] = indices.map(i => yValues[i]!);
+                        if (options.accumulate) {
+                            sortedY = accumulateValues(sortedY);
+                        }
                         // Downsample if over max points
                         if (options.maxPointsPerSeries != null && options.maxPointsPerSeries > 0) {
                             const ds = downsample(sortedX, sortedY, options.maxPointsPerSeries);
@@ -2723,6 +2734,9 @@ export class PlotlyChartProvider implements IChartProvider {
                     const indices = result.x.map((_, i) => i);
                     indices.sort((a, b) => (result!.x[a]! < result!.x[b]! ? -1 : result!.x[a]! > result!.x[b]! ? 1 : 0));
                     result = { x: indices.map(i => result!.x[i]!), y: indices.map(i => result!.y[i]!) };
+                    if (options.accumulate) {
+                        result = { x: result.x, y: accumulateValues(result.y) };
+                    }
                     if (options.maxPointsPerSeries != null && options.maxPointsPerSeries > 0) {
                         result = downsample(result.x, result.y, options.maxPointsPerSeries);
                     }

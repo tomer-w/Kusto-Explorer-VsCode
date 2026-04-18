@@ -1600,6 +1600,126 @@ describe('CompositeChartProvider', () => {
                 expect(xVals[0]).toBe(0);             // first point
                 expect(xVals[xVals.length - 1]).toBe(49); // last point
             });
+
+            it('accumulates y-values before downsampling', () => {
+                const rows: unknown[][] = [];
+                for (let i = 0; i < 5; i++) {
+                    rows.push([i, 1]);
+                }
+                const table = makeTable(
+                    [
+                        { name: 'x', type: 'int' },
+                        { name: 'y', type: 'int' },
+                    ],
+                    rows,
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'Line',
+                    xColumn: 'x',
+                    yColumns: ['y'],
+                    accumulate: true,
+                    maxPointsPerSeries: 3,
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                const trace = traces[0] as Record<string, unknown>;
+
+                expect(trace.x).toEqual([0, 2, 4]);
+                expect(trace.y).toEqual([1, 3, 5]);
+            });
+
+            it('accumulates separately for each grouped series', () => {
+                const table = makeTable(
+                    [
+                        { name: 'x', type: 'int' },
+                        { name: 'region', type: 'string' },
+                        { name: 'y', type: 'int' },
+                    ],
+                    [
+                        [2, 'East', 3],
+                        [1, 'East', 2],
+                        [2, 'West', 7],
+                        [1, 'West', 5],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'Line',
+                    xColumn: 'x',
+                    yColumns: ['y'],
+                    seriesColumns: ['region'],
+                    accumulate: true,
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                expect(traces.length).toBe(2);
+
+                const east = traces.find(t => (t as Record<string, unknown>).name === 'East') as Record<string, unknown> | undefined;
+                const west = traces.find(t => (t as Record<string, unknown>).name === 'West') as Record<string, unknown> | undefined;
+                expect(east).toBeDefined();
+                expect(west).toBeDefined();
+                expect(east!.x).toEqual([1, 2]);
+                expect(east!.y).toEqual([2, 5]);
+                expect(west!.x).toEqual([1, 2]);
+                expect(west!.y).toEqual([5, 12]);
+            });
+
+            it('accumulates each y-column independently for multi-y traces', () => {
+                const table = makeTable(
+                    [
+                        { name: 'x', type: 'int' },
+                        { name: 'sales', type: 'int' },
+                        { name: 'profit', type: 'int' },
+                    ],
+                    [
+                        [3, 4, 40],
+                        [1, 2, 10],
+                        [2, 3, 20],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'Line',
+                    xColumn: 'x',
+                    yColumns: ['sales', 'profit'],
+                    accumulate: true,
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                expect(traces.length).toBe(2);
+
+                const sales = traces.find(t => (t as Record<string, unknown>).name === 'sales') as Record<string, unknown> | undefined;
+                const profit = traces.find(t => (t as Record<string, unknown>).name === 'profit') as Record<string, unknown> | undefined;
+                expect(sales).toBeDefined();
+                expect(profit).toBeDefined();
+                expect(sales!.x).toEqual([1, 2, 3]);
+                expect(sales!.y).toEqual([2, 5, 9]);
+                expect(profit!.x).toEqual([1, 2, 3]);
+                expect(profit!.y).toEqual([10, 30, 70]);
+            });
+
+            it('accumulates after binning aggregated values', () => {
+                const table = makeTable(
+                    [
+                        { name: 'timestamp', type: 'datetime' },
+                        { name: 'value', type: 'int' },
+                    ],
+                    [
+                        ['2024-01-01T01:00:00Z', 1],
+                        ['2024-01-01T12:00:00Z', 2],
+                        ['2024-01-02T01:00:00Z', 4],
+                        ['2024-01-02T12:00:00Z', 8],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'TimeLine',
+                    binSize: '1d',
+                    aggregation: 'Sum',
+                    accumulate: true,
+                });
+                expect(html).toBeDefined();
+                const trace = parseTraces(html!)[0] as Record<string, unknown>;
+
+                expect(trace.y).toEqual([3, 15]);
+            });
         });
 
         // ─── Chart options ──────────────────────────────────────────────
@@ -1692,6 +1812,32 @@ describe('CompositeChartProvider', () => {
                 expect(html).toBeDefined();
                 const layout = parseLayout(html!);
                 expect((layout.xaxis as Record<string, unknown>)?.categoryorder).toBeUndefined();
+            });
+
+            it('accumulates y-values in x order within a trace', () => {
+                const table = makeTable(
+                    [
+                        { name: 'x', type: 'int' },
+                        { name: 'y', type: 'int' },
+                    ],
+                    [
+                        [3, 30],
+                        [1, 10],
+                        [2, 20],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'Line',
+                    xColumn: 'x',
+                    yColumns: ['y'],
+                    accumulate: true,
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                const trace = traces[0] as Record<string, unknown>;
+
+                expect(trace.x).toEqual([1, 2, 3]);
+                expect(trace.y).toEqual([10, 30, 60]);
             });
 
             it('sets legend position to bottom', () => {
