@@ -1953,6 +1953,38 @@ describe('CompositeChartProvider', () => {
                 expect((layout.yaxis as Record<string, unknown>)?.showline).toBe(true);
                 expect((layout.yaxis as Record<string, unknown>)?.mirror).toBe('ticks');
             });
+
+            it('mirrors subplot y-axes when yMirror is enabled for separate panels', () => {
+                const html = renderAndGetHtml(makeMultiSeriesTable(), {
+                    type: 'Line',
+                    xColumn: 'Month',
+                    yColumns: ['Sales', 'Profit'],
+                    yLayout: 'SeparatePanels',
+                    yMirror: true,
+                });
+                expect(html).toBeDefined();
+                const layout = parseLayout(html!);
+
+                expect((layout.yaxis2 as Record<string, unknown>)?.showline).toBe(true);
+                expect((layout.yaxis2 as Record<string, unknown>)?.mirror).toBe('ticks');
+                expect((layout.yaxis3 as Record<string, unknown>)?.showline).toBe(true);
+                expect((layout.yaxis3 as Record<string, unknown>)?.mirror).toBe('ticks');
+            });
+
+            it('does not apply yMirror in DualAxis mode', () => {
+                const html = renderAndGetHtml(makeMultiSeriesTable(), {
+                    type: 'Line',
+                    xColumn: 'Month',
+                    yColumns: ['Sales', 'Profit'],
+                    yLayout: 'DualAxis',
+                    yMirror: true,
+                });
+                expect(html).toBeDefined();
+                const layout = parseLayout(html!);
+
+                expect((layout.yaxis as Record<string, unknown>)?.mirror).not.toBe('ticks');
+                expect((layout.yaxis2 as Record<string, unknown>)?.mirror).toBeUndefined();
+            });
         });
 
         // ─── Dark mode ─────────────────────────────────────────────────

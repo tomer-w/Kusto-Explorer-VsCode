@@ -2695,7 +2695,15 @@ export class PlotlyChartProvider implements IChartProvider {
 
                 builder = builder.withLayout({
                     ...builder.layout,
-                    [`yaxis${axisNum}`]: { ...yAxisBase, domain, title: { text: yColumns[i]!.column.name }, anchor: xRef, showline: true, mirror: true, linecolor: '#888888' },
+                    [`yaxis${axisNum}`]: {
+                        ...yAxisBase,
+                        domain,
+                        title: { text: yColumns[i]!.column.name },
+                        anchor: xRef,
+                        showline: true,
+                        mirror: options.yMirror === true ? 'ticks' : true,
+                        linecolor: '#888888'
+                    },
                     [`xaxis${axisNum}`]: { ...xAxisBase, anchor: yRef, showticklabels: isBottom, title: isBottom ? (xTitle ?? '') : '', showline: true, mirror: true, linecolor: '#888888' },
                 });
             }
@@ -2944,11 +2952,21 @@ function applyCommonOptions(builder: PlotlyChartBuilder, options: ChartOptions):
     if (options.xTickAngle != null) builder = builder.setXTickAngle(options.xTickAngle);
     if (options.yTickAngle != null) builder = builder.setYTickAngle(options.yTickAngle);
 
-    if (options.yMirror === true) {
-        builder = builder.withLayout({
+    if (options.yMirror === true && options.yLayout !== ChartYLayout.DualAxis) {
+        const mirroredLayout: PlotlyLayout = {
             ...builder.layout,
             yaxis: { ...(builder.layout.yaxis ?? {}), showline: true, mirror: 'ticks' } as PlotlyAxis,
-        });
+        };
+        for (const key of Object.keys(builder.layout)) {
+            if (/^yaxis\d+$/.test(key)) {
+                mirroredLayout[key] = {
+                    ...((builder.layout[key] as PlotlyAxis | undefined) ?? {}),
+                    showline: true,
+                    mirror: 'ticks',
+                } as PlotlyAxis;
+            }
+        }
+        builder = builder.withLayout(mirroredLayout);
     }
 
     if (options.sort != null && options.sort !== ChartSortOrder.Auto) {
