@@ -1161,8 +1161,10 @@ function getMarkerShape(options: ChartOptions, traceIndex: number): string | und
     if (!options.markerShape && !options.cycleMarkerShapes) return undefined;
     const startIndex = markerShapes.indexOf((options.markerShape ?? markerShapes[0]) as typeof markerShapes[number]);
     const base = startIndex >= 0 ? startIndex : 0;
-    if (!options.cycleMarkerShapes) return markerShapeSymbols[markerShapes[base]];
-    return markerShapeSymbols[markerShapes[(base + traceIndex) % markerShapes.length]];
+    const selectedShape = markerShapes[base] ?? markerShapes[0];
+    if (!options.cycleMarkerShapes) return markerShapeSymbols[selectedShape];
+    const cycledShape = markerShapes[(base + traceIndex) % markerShapes.length] ?? markerShapes[0];
+    return markerShapeSymbols[cycledShape];
 }
 
 /** Resolves the marker size preset to a pixel value, or undefined if not set. */

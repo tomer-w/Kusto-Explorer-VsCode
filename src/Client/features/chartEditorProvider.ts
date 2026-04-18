@@ -80,7 +80,7 @@ const maxPointsOptions = [100, 500, 1000, 5000, 10000, 50000];
  */
 export interface IChartEditorView {
     /** Populate (or re-populate) the edit panel with the given options and column names. */
-    setOptions(options: ChartOptions, columnNames: string[], defaults?: Partial<ChartOptions>): void;
+    setOptions(options: ChartOptions | undefined, columnNames: string[], defaults?: Partial<ChartOptions>): void;
     /** Fires when the user changes any chart option in the edit panel. */
     onOptionsChanged: ((options: ChartOptions) => void) | undefined;
     /** Release handlers and resources. */
@@ -97,6 +97,8 @@ export interface IChartEditorProvider {
 class ChartEditorView implements IChartEditorView {
     private readonly webview: IWebView;
     private readonly subscription: { dispose(): void };
+    private currentOptions: ChartOptions = { type: 'Column' };
+    private currentDefaults: Partial<ChartOptions> = {};
     onOptionsChanged: ((options: ChartOptions) => void) | undefined;
 
     constructor(webview: IWebView) {
@@ -104,17 +106,108 @@ class ChartEditorView implements IChartEditorView {
         webview.setup(this.buildCss(), this.buildScripts());
         this.subscription = webview.handle((msg) => {
             if (msg.command === 'chartOptionsChanged' && msg.chartOptions) {
+                this.currentOptions = msg.chartOptions as ChartOptions;
                 this.onOptionsChanged?.(msg.chartOptions as ChartOptions);
+            } else if (msg.command === 'chartEditorDefaultsAction' && typeof msg.action === 'string') {
+                const updatedOptions = msg.action === 'capture'
+                    ? this.captureCurrentDefaults(this.currentOptions, this.currentDefaults)
+                    : this.restoreMatchingDefaults(this.currentOptions, this.currentDefaults);
+                this.currentOptions = updatedOptions;
+                this.webview.setContent(this.buildFormHtml(updatedOptions, this.lastColumnNames, this.currentDefaults));
+                this.onOptionsChanged?.(updatedOptions);
             }
         });
     }
 
-    setOptions(options: ChartOptions, columnNames: string[], defaults?: Partial<ChartOptions>): void {
-        this.webview.setContent(this.buildFormHtml(options, columnNames, defaults ?? {}));
+    private lastColumnNames: string[] = [];
+
+    setOptions(options: ChartOptions | undefined, columnNames: string[], defaults?: Partial<ChartOptions>): void {
+        this.currentOptions = options ?? { type: 'Column' };
+        this.lastColumnNames = columnNames;
+        this.currentDefaults = defaults ?? {};
+        this.webview.setContent(this.buildFormHtml(this.currentOptions, columnNames, this.currentDefaults));
     }
 
     dispose(): void {
         this.subscription.dispose();
+    }
+
+    private getResolvedDefaults(defaults: Partial<ChartOptions>): Partial<ChartOptions> {
+        const resolvedDefaults: Partial<ChartOptions> = {
+            legendPosition: defaults.legendPosition ?? 'Auto',
+            sort: 'Ascending',
+            aspectRatio: defaults.aspectRatio ?? ChartAspectRatio.Fill,
+            textSize: defaults.textSize ?? 'Auto',
+            yLayout: 'SharedAxis',
+            accumulate: defaults.accumulate ?? false,
+            showValues: defaults.showValues ?? false,
+            showMarkers: defaults.showMarkers ?? false,
+            markerOutline: defaults.markerOutline ?? false,
+            cycleMarkerShapes: defaults.cycleMarkerShapes ?? false,
+            xShowTicks: defaults.xShowTicks ?? false,
+            yShowTicks: defaults.yShowTicks ?? false,
+            yMirror: defaults.yMirror ?? false,
+            xShowGrid: defaults.xShowGrid ?? true,
+            yShowGrid: defaults.yShowGrid ?? true,
+        };
+
+        if (defaults.markerShape != null) {
+            resolvedDefaults.markerShape = defaults.markerShape;
+        }
+        if (defaults.markerSize != null) {
+            resolvedDefaults.markerSize = defaults.markerSize;
+        }
+
+        if (defaults.xTickAngle != null) {
+            resolvedDefaults.xTickAngle = defaults.xTickAngle;
+        }
+        if (defaults.yTickAngle != null) {
+            resolvedDefaults.yTickAngle = defaults.yTickAngle;
+        }
+
+        return resolvedDefaults;
+    }
+
+    private captureCurrentDefaults(options: ChartOptions, defaults: Partial<ChartOptions>): ChartOptions {
+        const resolvedDefaults = this.getResolvedDefaults(defaults);
+        const updatedOptions: ChartOptions = { ...options };
+        const defaultableKeys: Array<keyof ChartOptions> = [
+            'legendPosition', 'sort', 'aspectRatio', 'textSize', 'yLayout', 'accumulate',
+            'showValues', 'showMarkers', 'markerOutline', 'cycleMarkerShapes', 'xShowTicks',
+            'yShowTicks', 'yMirror', 'xShowGrid', 'yShowGrid', 'markerShape', 'markerSize',
+            'xTickAngle', 'yTickAngle'
+        ];
+
+        for (const key of defaultableKeys) {
+            if (updatedOptions[key] == null) {
+                const resolvedValue = resolvedDefaults[key];
+                if (resolvedValue != null) {
+                    updatedOptions[key] = resolvedValue as never;
+                }
+            }
+        }
+
+        return updatedOptions;
+    }
+
+    private restoreMatchingDefaults(options: ChartOptions, defaults: Partial<ChartOptions>): ChartOptions {
+        const resolvedDefaults = this.getResolvedDefaults(defaults);
+        const updatedOptions: ChartOptions = { ...options };
+        const defaultableKeys: Array<keyof ChartOptions> = [
+            'legendPosition', 'sort', 'aspectRatio', 'textSize', 'yLayout', 'accumulate',
+            'showValues', 'showMarkers', 'markerOutline', 'cycleMarkerShapes', 'xShowTicks',
+            'yShowTicks', 'yMirror', 'xShowGrid', 'yShowGrid', 'markerShape', 'markerSize',
+            'xTickAngle', 'yTickAngle'
+        ];
+
+        for (const key of defaultableKeys) {
+            const resolvedValue = resolvedDefaults[key];
+            if (resolvedValue != null && updatedOptions[key] === resolvedValue) {
+                delete updatedOptions[key];
+            }
+        }
+
+        return updatedOptions;
     }
 
     // ─── HTML Builders ──────────────────────────────────────────────────
@@ -132,16 +225,76 @@ class ChartEditorView implements IChartEditorView {
             box-sizing: border-box;
         }
         .edit-panel.visible { display: block; }
-        .edit-panel h3 {
+        .edit-panel .panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
             margin: 0;
             padding: 8px 12px;
+            border-bottom: 1px solid var(--vscode-panel-border, #444);
+        }
+        .edit-panel .panel-header h3 {
+            margin: 0;
             font-size: 13px;
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.5px;
             color: var(--vscode-foreground);
             opacity: 0.8;
-            border-bottom: 1px solid var(--vscode-panel-border, #444);
+        }
+        .edit-panel .header-actions {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+        .edit-panel .icon-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            border: none;
+            border-radius: 4px;
+            background: transparent;
+            color: var(--vscode-foreground);
+            cursor: pointer;
+            opacity: 0.8;
+            font-size: 14px;
+        }
+        .edit-panel .icon-button:hover {
+            background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground, #2a2d2e));
+            opacity: 1;
+        }
+        .edit-panel .header-menu {
+            position: absolute;
+            top: calc(100% + 4px);
+            right: 0;
+            display: none;
+            min-width: 170px;
+            padding: 4px;
+            border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border, #444));
+            border-radius: 4px;
+            background: var(--vscode-menu-background, var(--vscode-editorWidget-background, #252526));
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+            z-index: 10;
+        }
+        .edit-panel .header-menu.visible {
+            display: block;
+        }
+        .edit-panel .menu-item {
+            display: block;
+            width: 100%;
+            padding: 6px 8px;
+            border: none;
+            border-radius: 3px;
+            background: transparent;
+            color: var(--vscode-menu-foreground, var(--vscode-foreground));
+            text-align: left;
+            cursor: pointer;
+            font: inherit;
+        }
+        .edit-panel .menu-item:hover {
+            background: var(--vscode-list-hoverBackground, #2a2d2e);
         }
         .edit-panel .section-header {
             display: flex;
@@ -335,6 +488,29 @@ class ChartEditorView implements IChartEditorView {
             if (body) body.classList.toggle('collapsed');
         }
 
+        function _editorToggleDefaultsMenu(btn) {
+            var menu = btn.nextElementSibling;
+            if (menu) {
+                menu.classList.toggle('visible');
+            }
+        }
+
+        function _editorRunDefaultsAction(action) {
+            var menus = document.querySelectorAll('.header-menu.visible');
+            menus.forEach(function(menu) { menu.classList.remove('visible'); });
+            if (window._vscodeApi) {
+                window._vscodeApi.postMessage({ command: 'chartEditorDefaultsAction', action: action });
+            }
+        }
+
+        document.addEventListener('click', function(e) {
+            if (e.target.closest && e.target.closest('.header-actions')) {
+                return;
+            }
+            var menus = document.querySelectorAll('.header-menu.visible');
+            menus.forEach(function(menu) { menu.classList.remove('visible'); });
+        });
+
         function _editorCollectChartOptions() {
             var opts = {};
             var chartType = document.getElementById('opt-type');
@@ -344,7 +520,7 @@ class ChartEditorView implements IChartEditorView {
                 opts.legendPosition = legendPos.value;
             }
             var sort = document.getElementById('opt-sort');
-            if (sort) opts.sort = sort.value;
+            if (sort && sort.value) opts.sort = sort.value;
             var mode = document.getElementById('opt-mode');
             if (mode && mode.value) opts.mode = mode.value;
             var aspectRatio = document.getElementById('opt-aspectRatio');
@@ -394,7 +570,7 @@ class ChartEditorView implements IChartEditorView {
             var yAxis = document.getElementById('opt-yAxis');
             if (yAxis) opts.yAxis = yAxis.value;
             var yLayout = document.getElementById('opt-yLayout');
-            if (yLayout) opts.yLayout = yLayout.value;
+            if (yLayout && yLayout.value) opts.yLayout = yLayout.value;
             var xmin = document.getElementById('opt-xMin');
             if (xmin && xmin.value) opts.xMin = xmin.value;
             var xmax = document.getElementById('opt-xMax');
@@ -614,7 +790,7 @@ class ChartEditorView implements IChartEditorView {
             `<option value="${a}"${a === yTickAngleValue ? ' selected' : ''}>${a ? a + '°' : formatDefaultLabel(formatAngleLabel(defaultYTickAngleValue))}</option>`
         ).join('');
 
-        return `<h3>Chart Options</h3>
+        return `<div class="panel-header"><h3>Chart Options</h3><div class="header-actions"><button type="button" class="icon-button" title="Defaults actions" aria-label="Defaults actions" onclick="_editorToggleDefaultsMenu(this)">&hellip;</button><div class="header-menu"><button type="button" class="menu-item" onclick="_editorRunDefaultsAction('capture')">Capture Defaults</button><button type="button" class="menu-item" onclick="_editorRunDefaultsAction('restore')">Restore Defaults</button></div></div></div>
 
             <div class="section-header" onclick="_editorToggleSection(this)">
                 <span class="chevron">&#9662;</span>General

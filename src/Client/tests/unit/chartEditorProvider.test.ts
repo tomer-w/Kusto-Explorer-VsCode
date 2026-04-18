@@ -95,6 +95,15 @@ describe('ChartEditorProvider', () => {
             expect(typeof webview.setContent.mock.calls[0]![0]).toBe('string');
         });
 
+        it('renders a defaults pin menu in the header', () => {
+            view.setOptions(defaultOptions(), sampleColumns);
+            const html: string = webview.setContent.mock.calls[0]![0];
+
+            expect(html).toContain('Capture Defaults');
+            expect(html).toContain('Restore Defaults');
+            expect(html).toContain('&hellip;');
+        });
+
         // ── Chart type dropdown ─────────────────────────────────────────
 
         it('renders the chart type dropdown with the current type selected', () => {
@@ -511,6 +520,32 @@ describe('ChartEditorProvider', () => {
             expect(() => {
                 webview.simulateMessage({ command: 'chartOptionsChanged', chartOptions: { type: 'Bar' } });
             }).not.toThrow();
+        });
+
+        it('captures current defaults into explicit values', () => {
+            const callback = vi.fn();
+            view.onOptionsChanged = callback;
+            view.setOptions(defaultOptions(), [], { legendPosition: 'Bottom', textSize: 'Large' });
+
+            webview.simulateMessage({ command: 'chartEditorDefaultsAction', action: 'capture' });
+
+            expect(callback).toHaveBeenCalledWith(expect.objectContaining({
+                type: 'Column',
+                legendPosition: 'Bottom',
+                textSize: 'Large',
+                sort: 'Ascending',
+                yLayout: 'SharedAxis'
+            }));
+        });
+
+        it('restores matching explicit values back to defaults', () => {
+            const callback = vi.fn();
+            view.onOptionsChanged = callback;
+            view.setOptions(defaultOptions({ legendPosition: 'Bottom', textSize: 'Large', sort: 'Ascending', yLayout: 'SharedAxis' }), [], { legendPosition: 'Bottom', textSize: 'Large' });
+
+            webview.simulateMessage({ command: 'chartEditorDefaultsAction', action: 'restore' });
+
+            expect(callback).toHaveBeenCalledWith({ type: 'Column' });
         });
     });
 
