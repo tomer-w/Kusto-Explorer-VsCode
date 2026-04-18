@@ -1228,7 +1228,9 @@ function trimNullRows(xValues: unknown[], yValues: unknown[]): { x: unknown[]; y
     const yResult: unknown[] = [];
     const len = Math.min(xValues.length, yValues.length);
     for (let i = 0; i < len; i++) {
-        if (xValues[i] != null && yValues[i] != null) {
+        const xValue = xValues[i];
+        const yValue = yValues[i];
+        if (xValue != null && yValue != null && !(typeof xValue === 'number' && Number.isNaN(xValue)) && !(typeof yValue === 'number' && Number.isNaN(yValue))) {
             xResult.push(xValues[i]);
             yResult.push(yValues[i]);
         }

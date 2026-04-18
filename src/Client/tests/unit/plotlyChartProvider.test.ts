@@ -1890,6 +1890,32 @@ describe('CompositeChartProvider', () => {
                 expect(trace.y).toEqual([10, 30, 60]);
             });
 
+            it('drops NaN rows before accumulation', () => {
+                const table = makeTable(
+                    [
+                        { name: 'x', type: 'real' },
+                        { name: 'y', type: 'real' },
+                    ],
+                    [
+                        [1, 10],
+                        [2, Number.NaN],
+                        [3, 30],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'Line',
+                    xColumn: 'x',
+                    yColumns: ['y'],
+                    accumulate: true,
+                });
+                expect(html).toBeDefined();
+                const traces = parseTraces(html!);
+                const trace = traces[0] as Record<string, unknown>;
+
+                expect(trace.x).toEqual([1, 3]);
+                expect(trace.y).toEqual([10, 40]);
+            });
+
             it('sets legend position to bottom', () => {
                 const html = renderAndGetHtml(make2dTable(), { type: 'Column', legendPosition: 'Bottom' });
                 expect(html).toBeDefined();

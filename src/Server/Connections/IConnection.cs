@@ -79,7 +79,7 @@ public record ExecuteResult
     public ImmutableList<DataTable>? Tables { get; init; }
 
     /// <summary>
-    /// Any named chart descriptors included in the result.
+    /// Any chart descriptors included in the result.
     /// </summary>
     public ImmutableList<ResultChart>? Charts { get; init; }
 

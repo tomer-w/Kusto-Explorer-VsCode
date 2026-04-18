@@ -38,7 +38,7 @@ public class ResultData
     public required ImmutableList<ResultTable> Tables { get; init; }
 
     /// <summary>
-    /// The chart options for rendering a chart from the result data
+    /// The descriptors for customized charts related to the result data.
     /// </summary>
     [DataMember(Name = "charts")]
     public ImmutableList<ResultChart>? Charts { get; init; }
