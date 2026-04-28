@@ -41,7 +41,7 @@ suite('Scratch Pad Integration Tests', () => {
     suiteSetup(async () => {
         // Focus the Scratch Pads view to trigger extension activation
         // and the auto-open of ScratchPad1
-        await vscode.commands.executeCommand('msKustoExplorer-scratchPads.focus');
+        await vscode.commands.executeCommand('msKustoExplorer_scratchPads.focus');
         // Wait for activation and auto-open to complete
         await new Promise(resolve => setTimeout(resolve, 3000));
     });

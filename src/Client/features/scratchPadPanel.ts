@@ -12,7 +12,7 @@ import type { ConnectionManager, DocumentConnection } from './connectionManager'
 import { ScratchPadManager, SCRATCH_PAD_SCHEME } from './scratchPadManager';
 
 /** MIME type for scratch pad drag-and-drop within the tree view. */
-const SCRATCH_PAD_DRAG_MIME = 'application/vnd.code.tree.mskustoexplorer-scratchpads';
+const SCRATCH_PAD_DRAG_MIME = 'application/vnd.code.tree.mskustoexplorer_scratchpads';
 
 const AUTO_SAVE_DELAY_MS = 1000;
 
@@ -48,7 +48,7 @@ export class ScratchPadPanel {
 
         // Register tree data provider with drag and drop support
         this.treeProvider = new ScratchPadTreeProvider(manager);
-        this.treeView = vscode.window.createTreeView('msKustoExplorer-scratchPads', {
+        this.treeView = vscode.window.createTreeView('msKustoExplorer_scratchPads', {
             treeDataProvider: this.treeProvider,
             dragAndDropController: new ScratchPadDragAndDropController(manager),
         });

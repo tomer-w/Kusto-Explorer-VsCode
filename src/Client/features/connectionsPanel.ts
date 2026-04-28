@@ -74,7 +74,7 @@ export class ConnectionsPanel {
     connections.loadServersAndGroups();
 
     // Create tree view with drag and drop support
-    this.treeView = vscode.window.createTreeView('msKustoExplorer-connections', {
+    this.treeView = vscode.window.createTreeView('msKustoExplorer_connections', {
         treeDataProvider: this.connectionsProvider,
         showCollapseAll: true,
         dragAndDropController: new KustoDragAndDropController(connections, () => { this.isDragging = true; setTimeout(() => { this.isDragging = false; }, 100); }) // delay resets drag state after tree selection events settle
@@ -1534,8 +1534,8 @@ const ENTITY_DRAG_MIME = 'application/vnd.msKustoExplorer.entity';
  * and dragging entities onto text editors.
  */
 class KustoDragAndDropController implements vscode.TreeDragAndDropController<KustoTreeItem> {
-    readonly dropMimeTypes = ['application/vnd.code.tree.mskustoexplorer-connections'];
-    readonly dragMimeTypes = ['application/vnd.code.tree.mskustoexplorer-connections', ENTITY_DRAG_MIME];
+    readonly dropMimeTypes = ['application/vnd.code.tree.mskustoexplorer_connections'];
+    readonly dragMimeTypes = ['application/vnd.code.tree.mskustoexplorer_connections', ENTITY_DRAG_MIME];
 
     constructor(private readonly connections: ConnectionManager, private readonly onDragStart: () => void) {}
 
@@ -1550,7 +1550,7 @@ class KustoDragAndDropController implements vscode.TreeDragAndDropController<Kus
                 cluster: s.clusterName,
                 groupName: s.groupName
             }));
-            dataTransfer.set('application/vnd.code.tree.mskustoexplorer-connections', new vscode.DataTransferItem(dragData));
+            dataTransfer.set('application/vnd.code.tree.mskustoexplorer_connections', new vscode.DataTransferItem(dragData));
         }
 
         // Allow dragging entity items (servers, databases, tables, functions, etc.) onto the editor
@@ -1576,7 +1576,7 @@ class KustoDragAndDropController implements vscode.TreeDragAndDropController<Kus
     }
 
     async handleDrop(target: KustoTreeItem | undefined, dataTransfer: vscode.DataTransfer, token: vscode.CancellationToken): Promise<void> {
-        const transferItem = dataTransfer.get('application/vnd.code.tree.mskustoexplorer-connections');
+        const transferItem = dataTransfer.get('application/vnd.code.tree.mskustoexplorer_connections');
         if (!transferItem) {
             return;
         }

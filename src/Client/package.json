@@ -96,7 +96,7 @@
     },
     "customEditors": [
       {
-        "viewType": "msKustoExplorer-resultViewer",
+        "viewType": "msKustoExplorer_resultViewer",
         "displayName": "Kusto Results",
         "selector": [
           {
@@ -310,194 +310,194 @@
       "view/title": [
         {
           "command": "msKustoExplorer.addServer",
-          "when": "view == msKustoExplorer-connections",
+          "when": "view == msKustoExplorer_connections",
           "group": "navigation@1"
         },
         {
           "command": "msKustoExplorer.addServerGroup",
-          "when": "view == msKustoExplorer-connections",
+          "when": "view == msKustoExplorer_connections",
           "group": "navigation@2"
         },
         {
           "command": "msKustoExplorer.importConnectionsFromKustoExplorer",
-          "when": "view == msKustoExplorer-connections",
+          "when": "view == msKustoExplorer_connections",
           "group": "navigation@3"
         },
         {
           "command": "msKustoExplorer.addServer",
-          "when": "view == msKustoExplorer-connections",
+          "when": "view == msKustoExplorer_connections",
           "group": "1_add@1"
         },
         {
           "command": "msKustoExplorer.addServerGroup",
-          "when": "view == msKustoExplorer-connections",
+          "when": "view == msKustoExplorer_connections",
           "group": "1_add@2"
         },
         {
           "command": "msKustoExplorer.importConnectionsFromKustoExplorer",
-          "when": "view == msKustoExplorer-connections",
+          "when": "view == msKustoExplorer_connections",
           "group": "1_add@3"
         },
         {
           "command": "msKustoExplorer.newScratchPad",
-          "when": "view == msKustoExplorer-scratchPads",
+          "when": "view == msKustoExplorer_scratchPads",
           "group": "navigation@1"
         },
         {
           "command": "msKustoExplorer.importScratchPadsFromKustoExplorer",
-          "when": "view == msKustoExplorer-scratchPads",
+          "when": "view == msKustoExplorer_scratchPads",
           "group": "navigation@2"
         },
         {
           "command": "msKustoExplorer.newScratchPad",
-          "when": "view == msKustoExplorer-scratchPads",
+          "when": "view == msKustoExplorer_scratchPads",
           "group": "1_add@1"
         },
         {
           "command": "msKustoExplorer.importScratchPadsFromKustoExplorer",
-          "when": "view == msKustoExplorer-scratchPads",
+          "when": "view == msKustoExplorer_scratchPads",
           "group": "1_import@1"
         },
         {
           "command": "msKustoExplorer.clearHistory",
-          "when": "view == msKustoExplorer-history",
+          "when": "view == msKustoExplorer_history",
           "group": "navigation@1"
         },
         {
           "command": "msKustoExplorer.copyChart",
-          "when": "view == msKustoExplorer-resultsView && msKustoExplorer.panelChartActive",
+          "when": "view == msKustoExplorer_resultsView && msKustoExplorer.panelChartActive",
           "group": "navigation@1"
         },
         {
           "command": "msKustoExplorer.copyData",
-          "when": "view == msKustoExplorer-resultsView && msKustoExplorer.panelShowingData && !msKustoExplorer.panelChartActive",
+          "when": "view == msKustoExplorer_resultsView && msKustoExplorer.panelShowingData && !msKustoExplorer.panelChartActive",
           "group": "navigation@1"
         },
         {
           "command": "msKustoExplorer.toggleChartEditor",
-          "when": "view == msKustoExplorer-resultsView && msKustoExplorer.panelHasChart && msKustoExplorer.panelChartActive",
+          "when": "view == msKustoExplorer_resultsView && msKustoExplorer.panelHasChart && msKustoExplorer.panelChartActive",
           "group": "navigation@2"
         },
         {
           "command": "msKustoExplorer.savePanelResults",
-          "when": "view == msKustoExplorer-resultsView",
+          "when": "view == msKustoExplorer_resultsView",
           "group": "navigation@3"
         },
         {
           "command": "msKustoExplorer.chartPanelResults",
-          "when": "view == msKustoExplorer-resultsView && !msKustoExplorer.panelHasChart",
+          "when": "view == msKustoExplorer_resultsView && !msKustoExplorer.panelHasChart",
           "group": "navigation@4"
         },
         {
           "command": "msKustoExplorer.toggleSearch",
-          "when": "view == msKustoExplorer-resultsView && msKustoExplorer.panelShowingData && !msKustoExplorer.panelChartActive",
+          "when": "view == msKustoExplorer_resultsView && msKustoExplorer.panelShowingData && !msKustoExplorer.panelChartActive",
           "group": "navigation@5"
         }
       ],
       "view/item/context": [
         {
           "command": "msKustoExplorer.addServerToGroup",
-          "when": "view == msKustoExplorer-connections && viewItem == serverGroup",
+          "when": "view == msKustoExplorer_connections && viewItem == serverGroup",
           "group": "inline"
         },
         {
           "command": "msKustoExplorer.addServer",
-          "when": "view == msKustoExplorer-connections && viewItem =~ /^(server|serverGroup|noConnection)$/",
+          "when": "view == msKustoExplorer_connections && viewItem =~ /^(server|serverGroup|noConnection)$/",
           "group": "1_add@1"
         },
         {
           "command": "msKustoExplorer.addServerGroup",
-          "when": "view == msKustoExplorer-connections && viewItem =~ /^(server|serverGroup|noConnection)$/",
+          "when": "view == msKustoExplorer_connections && viewItem =~ /^(server|serverGroup|noConnection)$/",
           "group": "1_add@2"
         },
         {
           "command": "msKustoExplorer.addServerToGroup",
-          "when": "view == msKustoExplorer-connections && viewItem == serverGroup",
+          "when": "view == msKustoExplorer_connections && viewItem == serverGroup",
           "group": "1_add@3"
         },
         {
           "command": "msKustoExplorer.removeServer",
-          "when": "view == msKustoExplorer-connections && viewItem == server",
+          "when": "view == msKustoExplorer_connections && viewItem == server",
           "group": "9_cutcopypaste"
         },
         {
           "command": "msKustoExplorer.removeServerGroup",
-          "when": "view == msKustoExplorer-connections && viewItem == serverGroup",
+          "when": "view == msKustoExplorer_connections && viewItem == serverGroup",
           "group": "9_cutcopypaste"
         },
         {
           "command": "msKustoExplorer.moveServer",
-          "when": "view == msKustoExplorer-connections && viewItem == server",
+          "when": "view == msKustoExplorer_connections && viewItem == server",
           "group": "7_modification"
         },
         {
           "command": "msKustoExplorer.editServer",
-          "when": "view == msKustoExplorer-connections && viewItem == server",
+          "when": "view == msKustoExplorer_connections && viewItem == server",
           "group": "7_modification"
         },
         {
           "command": "msKustoExplorer.renameServer",
-          "when": "view == msKustoExplorer-connections && viewItem == server",
+          "when": "view == msKustoExplorer_connections && viewItem == server",
           "group": "7_modification"
         },
         {
           "command": "msKustoExplorer.renameServerGroup",
-          "when": "view == msKustoExplorer-connections && viewItem == serverGroup",
+          "when": "view == msKustoExplorer_connections && viewItem == serverGroup",
           "group": "7_modification"
         },
         {
           "command": "msKustoExplorer.refreshServer",
-          "when": "view == msKustoExplorer-connections && viewItem == server",
+          "when": "view == msKustoExplorer_connections && viewItem == server",
           "group": "inline"
         },
         {
           "command": "msKustoExplorer.refreshServer",
-          "when": "view == msKustoExplorer-connections && viewItem == server",
+          "when": "view == msKustoExplorer_connections && viewItem == server",
           "group": "navigation"
         },
         {
           "command": "msKustoExplorer.refreshDatabase",
-          "when": "view == msKustoExplorer-connections && viewItem == database",
+          "when": "view == msKustoExplorer_connections && viewItem == database",
           "group": "inline"
         },
         {
           "command": "msKustoExplorer.refreshDatabase",
-          "when": "view == msKustoExplorer-connections && viewItem == database",
+          "when": "view == msKustoExplorer_connections && viewItem == database",
           "group": "navigation"
         },
         {
           "command": "msKustoExplorer.viewEntityDefinition",
-          "when": "view == msKustoExplorer-connections && viewItem =~ /^(table|externalTable|materializedView|function|entityGroup|graphModel)$/",
+          "when": "view == msKustoExplorer_connections && viewItem =~ /^(table|externalTable|materializedView|function|entityGroup|graphModel)$/",
           "group": "navigation"
         },
         {
           "command": "msKustoExplorer.copyEntityAsExpression",
-          "when": "view == msKustoExplorer-connections && viewItem =~ /^(server|database|table|externalTable|materializedView|function|entityGroup|graphModel)$/",
+          "when": "view == msKustoExplorer_connections && viewItem =~ /^(server|database|table|externalTable|materializedView|function|entityGroup|graphModel)$/",
           "group": "9_cutcopypaste"
         },
         {
           "command": "msKustoExplorer.deleteScratchPad",
-          "when": "view == msKustoExplorer-scratchPads && viewItem == scratchPad",
+          "when": "view == msKustoExplorer_scratchPads && viewItem == scratchPad",
           "group": "inline"
         },
         {
           "command": "msKustoExplorer.renameScratchPad",
-          "when": "view == msKustoExplorer-scratchPads && viewItem == scratchPad",
+          "when": "view == msKustoExplorer_scratchPads && viewItem == scratchPad",
           "group": "7_modification"
         },
         {
           "command": "msKustoExplorer.deleteScratchPad",
-          "when": "view == msKustoExplorer-scratchPads && viewItem == scratchPad",
+          "when": "view == msKustoExplorer_scratchPads && viewItem == scratchPad",
           "group": "9_cutcopypaste"
         },
         {
           "command": "msKustoExplorer.deleteHistoryItem",
-          "when": "view == msKustoExplorer-history && viewItem == historyItem",
+          "when": "view == msKustoExplorer_history && viewItem == historyItem",
           "group": "inline"
         },
         {
           "command": "msKustoExplorer.deleteHistoryItem",
-          "when": "view == msKustoExplorer-history && viewItem == historyItem",
+          "when": "view == msKustoExplorer_history && viewItem == historyItem",
           "group": "9_cutcopypaste"
         }
       ],
@@ -514,37 +514,37 @@
         },
         {
           "command": "msKustoExplorer.copyChart",
-          "when": "(activeWebviewPanelId == 'msKustoExplorer-singletonView' || activeWebviewPanelId == 'msKustoExplorer-resultViewer') && msKustoExplorer.resultViewerChartActive",
+          "when": "(activeWebviewPanelId == msKustoExplorer_singletonView || activeWebviewPanelId == msKustoExplorer_resultViewer) && msKustoExplorer.resultViewerChartActive",
           "group": "navigation@1"
         },
         {
           "command": "msKustoExplorer.copyData",
-          "when": "(activeWebviewPanelId == 'msKustoExplorer-singletonView' || activeWebviewPanelId == 'msKustoExplorer-resultViewer') && msKustoExplorer.resultViewerShowingData && !msKustoExplorer.resultViewerChartActive",
+          "when": "(activeWebviewPanelId == msKustoExplorer_singletonView || activeWebviewPanelId == msKustoExplorer_resultViewer) && msKustoExplorer.resultViewerShowingData && !msKustoExplorer.resultViewerChartActive",
           "group": "navigation@1"
         },
         {
           "command": "msKustoExplorer.moveViewToMain",
-          "when": "(activeWebviewPanelId == 'msKustoExplorer-singletonView' || activeWebviewPanelId == 'msKustoExplorer-resultViewer') && msKustoExplorer.resultViewerChartActive",
+          "when": "(activeWebviewPanelId == msKustoExplorer_singletonView || activeWebviewPanelId == msKustoExplorer_resultViewer) && msKustoExplorer.resultViewerChartActive",
           "group": "navigation@2"
         },
         {
           "command": "msKustoExplorer.toggleChartEditor",
-          "when": "(activeWebviewPanelId == 'msKustoExplorer-singletonView' || activeWebviewPanelId == 'msKustoExplorer-resultViewer') && msKustoExplorer.resultViewerHasChart && msKustoExplorer.resultViewerChartActive",
+          "when": "(activeWebviewPanelId == msKustoExplorer_singletonView || activeWebviewPanelId == msKustoExplorer_resultViewer) && msKustoExplorer.resultViewerHasChart && msKustoExplorer.resultViewerChartActive",
           "group": "navigation@2"
         },
         {
           "command": "msKustoExplorer.saveSingletonResults",
-          "when": "activeWebviewPanelId == 'msKustoExplorer-singletonView'",
+          "when": "activeWebviewPanelId == msKustoExplorer_singletonView",
           "group": "navigation@3"
         },
         {
           "command": "msKustoExplorer.toggleSearch",
-          "when": "(activeWebviewPanelId == 'msKustoExplorer-singletonView' || activeWebviewPanelId == 'msKustoExplorer-resultViewer') && msKustoExplorer.resultViewerShowingData && !msKustoExplorer.resultViewerChartActive",
+          "when": "(activeWebviewPanelId == msKustoExplorer_singletonView || activeWebviewPanelId == msKustoExplorer_resultViewer) && msKustoExplorer.resultViewerShowingData && !msKustoExplorer.resultViewerChartActive",
           "group": "navigation@4"
         },
         {
           "command": "msKustoExplorer.rerunQuery",
-          "when": "activeWebviewPanelId == 'msKustoExplorer-resultViewer' && msKustoExplorer.resultViewerHasQuery",
+          "when": "activeWebviewPanelId == msKustoExplorer_resultViewer && msKustoExplorer.resultViewerHasQuery",
           "group": "navigation@5"
         }
       ],
@@ -578,42 +578,42 @@
       "webview/context": [
         {
           "command": "msKustoExplorer.copyCell",
-          "when": "webviewId == 'msKustoExplorer-resultsView' || (webviewId == 'msKustoExplorer-resultViewer' && !chartVisible && !queryVisible) || (webviewId == 'msKustoExplorer-singletonView' && !chartVisible && !queryVisible)",
+          "when": "webviewId == msKustoExplorer_resultsView || (webviewId == msKustoExplorer_resultViewer && !chartVisible && !queryVisible) || (webviewId == msKustoExplorer_singletonView && !chartVisible && !queryVisible)",
           "group": "9_cutcopypaste@1"
         },
         {
           "command": "msKustoExplorer.copyData",
-          "when": "webviewId == 'msKustoExplorer-resultsView' || (webviewId == 'msKustoExplorer-resultViewer' && !chartVisible && !queryVisible) || (webviewId == 'msKustoExplorer-singletonView' && !chartVisible && !queryVisible)",
+          "when": "webviewId == msKustoExplorer_resultsView || (webviewId == msKustoExplorer_resultViewer && !chartVisible && !queryVisible) || (webviewId == msKustoExplorer_singletonView && !chartVisible && !queryVisible)",
           "group": "9_cutcopypaste@2"
         },
         {
           "command": "msKustoExplorer.copyTableAsExpression",
-          "when": "webviewId == 'msKustoExplorer-resultsView' || (webviewId == 'msKustoExplorer-resultViewer' && !chartVisible && !queryVisible) || (webviewId == 'msKustoExplorer-singletonView' && !chartVisible && !queryVisible)",
+          "when": "webviewId == msKustoExplorer_resultsView || (webviewId == msKustoExplorer_resultViewer && !chartVisible && !queryVisible) || (webviewId == msKustoExplorer_singletonView && !chartVisible && !queryVisible)",
           "group": "9_cutcopypaste@3"
         },
         {
           "command": "msKustoExplorer.savePanelResults",
-          "when": "webviewId == 'msKustoExplorer-resultsView' || (webviewId == 'msKustoExplorer-singletonView' && !chartVisible)"
+          "when": "webviewId == msKustoExplorer_resultsView || (webviewId == msKustoExplorer_singletonView && !chartVisible)"
         },
         {
           "command": "msKustoExplorer.chartPanelResults",
-          "when": "webviewId == 'msKustoExplorer-resultsView'"
+          "when": "webviewId == msKustoExplorer_resultsView"
         },
         {
           "command": "msKustoExplorer.copyChart",
-          "when": "(webviewId == 'msKustoExplorer-singletonView' && chartVisible) || (webviewId == 'msKustoExplorer-resultViewer' && chartVisible)"
+          "when": "(webviewId == msKustoExplorer_singletonView && chartVisible) || (webviewId == msKustoExplorer_resultViewer && chartVisible)"
         },
         {
           "command": "msKustoExplorer.removeChart",
-          "when": "(webviewId == 'msKustoExplorer-singletonView' && chartVisible) || (webviewId == 'msKustoExplorer-resultViewer' && chartVisible)"
+          "when": "(webviewId == msKustoExplorer_singletonView && chartVisible) || (webviewId == msKustoExplorer_resultViewer && chartVisible)"
         },
         {
           "command": "msKustoExplorer.saveSingletonResults",
-          "when": "webviewId == 'msKustoExplorer-singletonView' && chartVisible"
+          "when": "webviewId == msKustoExplorer_singletonView && chartVisible"
         },
         {
           "command": "msKustoExplorer.rerunQuery",
-          "when": "webviewId == 'msKustoExplorer-resultViewer' && msKustoExplorer.resultViewerHasQuery"
+          "when": "webviewId == msKustoExplorer_resultViewer && msKustoExplorer.resultViewerHasQuery"
         }
       ]
     },
@@ -631,17 +631,17 @@
       {
         "command": "msKustoExplorer.copyChart",
         "key": "ctrl+c",
-        "when": "(activeWebviewPanelId == 'msKustoExplorer-singletonView' || activeWebviewPanelId == 'msKustoExplorer-resultViewer') && msKustoExplorer.resultViewerChartActive"
+        "when": "(activeWebviewPanelId == msKustoExplorer_singletonView || activeWebviewPanelId == msKustoExplorer_resultViewer) && msKustoExplorer.resultViewerChartActive"
       },
       {
         "command": "msKustoExplorer.saveSingletonResults",
         "key": "ctrl+s",
-        "when": "activeWebviewPanelId == 'msKustoExplorer-singletonView'"
+        "when": "activeWebviewPanelId == msKustoExplorer_singletonView"
       },
       {
         "command": "msKustoExplorer.saveSingletonResults",
         "key": "ctrl+shift+s",
-        "when": "activeWebviewPanelId == 'msKustoExplorer-singletonView'"
+        "when": "activeWebviewPanelId == msKustoExplorer_singletonView"
       },
       {
         "command": "msKustoExplorer.saveScratchPadAs",
@@ -652,42 +652,42 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "msKustoExplorer-sidebar",
+          "id": "msKustoExplorer_sidebar",
           "title": "Kusto Explorer",
           "icon": "images/kusto_explorer_mono.png"
         }
       ],
       "panel": [
         {
-          "id": "msKustoExplorer-resultsPanel",
+          "id": "msKustoExplorer_resultsPanel",
           "title": "Results",
           "icon": "$(database)"
         }
       ]
     },
     "views": {
-      "msKustoExplorer-resultsPanel": [
+      "msKustoExplorer_resultsPanel": [
         {
           "type": "webview",
-          "id": "msKustoExplorer-resultsView",
+          "id": "msKustoExplorer_resultsView",
           "name": "Results",
           "icon": "$(table)",
           "when": "msKustoExplorer.hasActiveDocument"
         }
       ],
-      "msKustoExplorer-sidebar": [
+      "msKustoExplorer_sidebar": [
         {
-          "id": "msKustoExplorer-connections",
+          "id": "msKustoExplorer_connections",
           "name": "Connections",
           "icon": "$(database)"
         },
         {
-          "id": "msKustoExplorer-scratchPads",
+          "id": "msKustoExplorer_scratchPads",
           "name": "Scratch Pads",
           "icon": "$(note)"
         },
         {
-          "id": "msKustoExplorer-history",
+          "id": "msKustoExplorer_history",
           "name": "History",
           "icon": "$(history)"
         }

@@ -19,7 +19,7 @@ import type { IWebView } from './webview';
 import { escapeHtml } from './html';
 
 /** The view type used for the custom results viewer. */
-const resultViewerViewType = 'msKustoExplorer-resultViewer';
+const resultViewerViewType = 'msKustoExplorer_resultViewer';
 
 /**
  * Controls which content sections are shown in a result view.
@@ -414,11 +414,11 @@ export class ResultsViewer {
 
         // Expose a function for showPanelHtml to wait on
         this.waitForPanelReady = async () => {
-            await vscode.commands.executeCommand('msKustoExplorer-resultsView.focus');
+            await vscode.commands.executeCommand('msKustoExplorer_resultsView.focus');
             await createPanelReadyPromise();
         };
 
-        vscode.window.registerWebviewViewProvider('msKustoExplorer-resultsView', {
+        vscode.window.registerWebviewViewProvider('msKustoExplorer_resultsView', {
             resolveWebviewView: (webviewView) => {
                 this.resultsPanel = webviewView;
                 if (resolvePanelReady) {
@@ -481,7 +481,7 @@ export class ResultsViewer {
 
         // Open the results view on start up when in panel mode
         if (getResultsDisplayLocation() === 'panel') {
-            vscode.commands.executeCommand('msKustoExplorer-resultsView.focus');
+            vscode.commands.executeCommand('msKustoExplorer_resultsView.focus');
         }
     }
 
@@ -581,7 +581,7 @@ export class ResultsViewer {
             } else if (this.waitForPanelReady) {
                 await this.waitForPanelReady();
             } else {
-                await vscode.commands.executeCommand('msKustoExplorer-resultsView.focus');
+                await vscode.commands.executeCommand('msKustoExplorer_resultsView.focus');
             }
         }
 
@@ -820,7 +820,7 @@ export class ResultsViewer {
             if (this.waitForPanelReady) {
                 await this.waitForPanelReady();
             } else {
-                await vscode.commands.executeCommand('msKustoExplorer-resultsView.focus');
+                await vscode.commands.executeCommand('msKustoExplorer_resultsView.focus');
             }
         }
 
@@ -847,7 +847,7 @@ export class ResultsViewer {
             if (isSingletonMode) {
                 return;
             }
-            await vscode.commands.executeCommand('msKustoExplorer-resultsView.focus');
+            await vscode.commands.executeCommand('msKustoExplorer_resultsView.focus');
             if (this.resultsPanel) {
                 try {
                     this.resultsPanel.webview.html = html;
@@ -884,7 +884,7 @@ export class ResultsViewer {
         this.singletonMode = mode;
 
         this.singletonView = vscode.window.createWebviewPanel(
-            'msKustoExplorer-singletonView',
+            'msKustoExplorer_singletonView',
             title,
             { viewColumn, preserveFocus: true },
             { enableScripts: true, retainContextWhenHidden: true }
@@ -1239,7 +1239,7 @@ export class ResultsViewer {
         if (result) {
             // Open saved file as a document view, but keep the singleton alive
             // (history entry remains; singleton will be reused on next query or history click)
-            await vscode.commands.executeCommand('vscode.openWith', result.uri, 'msKustoExplorer-resultViewer', viewColumn);
+            await vscode.commands.executeCommand('vscode.openWith', result.uri, 'msKustoExplorer_resultViewer', viewColumn);
         }
     }
 
@@ -1596,7 +1596,11 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         if (webviewPanel.active) {
             vscode.commands.executeCommand('setContext', 'msKustoExplorer.resultViewerHasChart', hasChart);
             vscode.commands.executeCommand('setContext', 'msKustoExplorer.resultViewerChartActive', firstActiveView === 'chart');
-            vscode.commands.executeCommand('setContext', 'msKustoExplorer.resultViewerShowingData', firstActiveView !== 'query');
+            // showingData is unconditionally true here because firstActiveView is only ever
+            // 'chart' or 'table-0' — the rebuild discards any prior 'query' tab selection.
+            // If updateWebview is ever changed to preserve the user's active tab across
+            // re-renders, this should become `existingState?.activeView !== 'query'`.
+            vscode.commands.executeCommand('setContext', 'msKustoExplorer.resultViewerShowingData', true);
             vscode.commands.executeCommand('setContext', 'msKustoExplorer.resultViewerHasQuery', !!resultData?.query);
         }
 
