@@ -26,8 +26,17 @@ export interface HistoryEntry {
     fileName: string;
     /** ISO 8601 timestamp of when the query was executed. */
     timestamp: string;
-    /** First ~80 characters of the query text for display. */
+    /**
+     * Short, human-friendly label for display. Derived from the first
+     * meaningful leading comment in the query when available, otherwise
+     * from the comment-stripped (server-minified) query text.
+     */
     queryPreview: string;
+    /**
+     * Truncated server-minified (comment-stripped) query text, suitable for
+     * showing in a tooltip alongside `queryPreview`.
+     */
+    minifiedPreview?: string;
     /** Cluster the query was run against. */
     cluster?: string;
     /** Database the query was run against. */
@@ -37,6 +46,12 @@ export interface HistoryEntry {
     /** FNV-1a hash of the server-minified query text, for CodeLens and result lookup. */
     queryHash?: number;
 }
+
+/** Maximum length of the display label stored in `queryPreview`. */
+const MAX_LABEL_LENGTH = 60;
+
+/** Maximum length of the minified query snippet stored in `minifiedPreview`. */
+const MAX_MINIFIED_PREVIEW_LENGTH = 200;
 
 /**
  * Computes a 32-bit FNV-1a hash of a string.
@@ -48,6 +63,79 @@ function fnv1aHash(str: string): number {
         hash = Math.imul(hash, 0x01000193);
     }
     return hash >>> 0; // ensure unsigned
+}
+
+/**
+ * Strips leading/trailing decorative "border" characters and whitespace from a
+ * comment line (e.g. the `/`, `=`, `-`, `_`, `#`, `~` chars used to draw
+ * banners around comments).
+ */
+function stripCommentBorder(text: string): string {
+    return text
+        .replace(/^[\s/=\-_#~]+/, '')
+        .replace(/[\s/=\-_#~]+$/, '');
+}
+
+/** Returns true if the string contains at least one letter or digit. */
+function hasMeaningfulText(text: string): boolean {
+    return /[A-Za-z0-9]/.test(text);
+}
+
+/** Collapses whitespace and trims to at most `max` characters. */
+function collapseAndTruncate(text: string, max: number): string {
+    const collapsed = text.replace(/\s+/g, ' ').trim();
+    return collapsed.length > max ? collapsed.slice(0, max) : collapsed;
+}
+
+/**
+ * Computes a human-friendly display label for a query result history entry.
+ *
+ * Strategy (Kusto only has `//` line comments):
+ *   1. Walk leading lines, skipping blanks and decorative-only comment lines.
+ *   2. Strip border characters (`/`, `=`, `-`, `_`, `#`, `~`) from comments.
+ *   3. Use the first comment line that contains real text (letters/digits).
+ *   4. Otherwise fall back to the minified query (no comments) if available,
+ *      else the raw query text.
+ *
+ * Exported for unit testing.
+ */
+export function computeHistoryDisplayLabel(query: string | undefined, minifiedQuery?: string): string {
+    const fallback = 'query';
+    if (!query || query.trim() === '') {
+        const minTrim = minifiedQuery?.trim();
+        return minTrim ? collapseAndTruncate(minTrim, MAX_LABEL_LENGTH) : fallback;
+    }
+
+    const lines = query.split(/\r?\n/);
+
+    for (const raw of lines) {
+        const trimmed = raw.trim();
+        if (trimmed === '') {
+            continue;
+        }
+
+        // Single-line comment.
+        if (trimmed.startsWith('//')) {
+            const content = stripCommentBorder(trimmed.slice(2));
+            if (hasMeaningfulText(content)) {
+                return collapseAndTruncate(content, MAX_LABEL_LENGTH);
+            }
+            continue;
+        }
+
+        // First non-blank, non-comment line — leading comment block (if any)
+        // had no meaningful text. Stop walking and use the fallback below.
+        break;
+    }
+
+    // Fall back to the comment-stripped server-minified query when available;
+    // otherwise use the original query text.
+    const minTrim = minifiedQuery?.trim();
+    if (minTrim && minTrim.length > 0) {
+        return collapseAndTruncate(minTrim, MAX_LABEL_LENGTH);
+    }
+    const collapsed = collapseAndTruncate(query, MAX_LABEL_LENGTH);
+    return collapsed.length > 0 ? collapsed : fallback;
 }
 
 /**
@@ -90,10 +178,22 @@ export class HistoryManager {
 
     // ─── Public API ─────────────────────────────────────────────────────
 
+    /**
+     * Returns the server-minified (comment-stripped, whitespace-collapsed)
+     * form of `query`, or the original query if minification isn't available.
+     */
+    private async getMinifiedQuery(query: string): Promise<string> {
+        return (await this.server.getMinifiedQuery(query))?.minifiedQuery ?? query;
+    }
+
+    /** Computes the canonical history hash for an already-minified query. */
+    private hashMinifiedQuery(minifiedQuery: string): number {
+        return fnv1aHash(minifiedQuery);
+    }
+
     /** Computes a hash of the server-minified query text. */
     private async computeQueryHash(query: string): Promise<number> {
-        const minified = (await this.server.getMinifiedQuery(query))?.minifiedQuery ?? query;
-        return fnv1aHash(minified);
+        return this.hashMinifiedQuery(await this.getMinifiedQuery(query));
     }
 
     /** Returns all history entry metadata, most recent first. */
@@ -110,9 +210,17 @@ export class HistoryManager {
         const timestamp = now.toISOString();
         const datePart = timestamp.replace(/[-:]/g, '').replace('T', '_').replace(/\.\d+Z$/, '');
 
-        // Build a short label from the query text
-        const querySnippet = (resultData.query ?? 'query')
-            .replace(/\s+/g, ' ').trim().slice(0, 60);
+        // Fetch the server-minified (comment-stripped) query once so we can
+        // use it both to derive a meaningful display label and to compute the
+        // query hash.
+        const minifiedQuery = resultData.query
+            ? await this.getMinifiedQuery(resultData.query)
+            : undefined;
+
+        // Build a short display label from the query text, preferring a
+        // meaningful comment when present and otherwise falling back to the
+        // minified query.
+        const querySnippet = computeHistoryDisplayLabel(resultData.query, minifiedQuery);
         // Sanitize for use as a filename
         const safeName = querySnippet.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').slice(0, 40);
         const fileName = `${datePart}_${safeName}.kqr`;
@@ -122,12 +230,16 @@ export class HistoryManager {
         await fs.promises.writeFile(filePath, content, 'utf-8');
 
         const rowCount = resultData.tables.reduce((sum, t) => sum + (t.rows?.length ?? 0), 0);
-        const queryHash = resultData.query ? await this.computeQueryHash(resultData.query) : undefined;
+        const queryHash = minifiedQuery !== undefined ? this.hashMinifiedQuery(minifiedQuery) : undefined;
+        const minifiedPreview = minifiedQuery !== undefined
+            ? collapseAndTruncate(minifiedQuery, MAX_MINIFIED_PREVIEW_LENGTH)
+            : undefined;
 
         const meta: HistoryEntry = {
             fileName,
             timestamp,
             queryPreview: querySnippet,
+            ...(minifiedPreview && { minifiedPreview }),
             ...(resultData.cluster !== undefined && { cluster: resultData.cluster }),
             ...(resultData.database !== undefined && { database: resultData.database }),
             rowCount,

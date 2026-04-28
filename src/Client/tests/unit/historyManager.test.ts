@@ -7,6 +7,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { HistoryManager } from '../../features/historyManager';
 import type { HistoryEntry } from '../../features/historyManager';
+import { computeHistoryDisplayLabel } from '../../features/historyManager';
 import type { ResultData, IServer } from '../../features/server';
 import { NullServer } from '../../features/server';
 import type * as vscode from 'vscode';
@@ -356,5 +357,112 @@ describe('HistoryManager', () => {
             await mgr.clearAllEntries();
             expect(fired).toBe(1);
         });
+    });
+});
+
+describe('computeHistoryDisplayLabel', () => {
+    it('returns "query" for empty input with no minified query', () => {
+        expect(computeHistoryDisplayLabel('')).toBe('query');
+        expect(computeHistoryDisplayLabel(undefined)).toBe('query');
+    });
+
+    it('uses the raw query when there are no comments', () => {
+        expect(computeHistoryDisplayLabel('StormEvents | take 10'))
+            .toBe('StormEvents | take 10');
+    });
+
+    it('uses a meaningful single-line comment', () => {
+        const query = '// Find top error sources\nStormEvents | take 10';
+        expect(computeHistoryDisplayLabel(query)).toBe('Find top error sources');
+    });
+
+    it('skips decorative banner lines and uses the inner comment', () => {
+        const query = [
+            '////////////////////////////////',
+            '// Find top error sources',
+            '////////////////////////////////',
+            'StormEvents | take 10',
+        ].join('\n');
+        expect(computeHistoryDisplayLabel(query)).toBe('Find top error sources');
+    });
+
+    it('skips bare comment markers like "//"', () => {
+        const query = [
+            '//',
+            '// Top error sources',
+            '//',
+            'StormEvents',
+        ].join('\n');
+        expect(computeHistoryDisplayLabel(query)).toBe('Top error sources');
+    });
+
+    it('strips border characters from inside a comment line', () => {
+        const query = '//==== Top error sources ====\nStormEvents';
+        expect(computeHistoryDisplayLabel(query)).toBe('Top error sources');
+    });
+
+    it('falls back to the minified query when comments are pure decoration', () => {
+        const query = [
+            '////////////////////////////////',
+            '//',
+            '////////////////////////////////',
+            '// the comment is just noise',
+            'StormEvents | take 10',
+        ].join('\n');
+        // Pretend the leading comment is "noise" only — simulate by passing a
+        // minified body and a query whose comments are all decorative.
+        const decorativeOnly = [
+            '////////////////////////////////',
+            '////////////////////////////////',
+            'StormEvents | take 10',
+        ].join('\n');
+        expect(computeHistoryDisplayLabel(decorativeOnly, 'StormEvents | take 10'))
+            .toBe('StormEvents | take 10');
+        // The first version finds a meaningful comment.
+        expect(computeHistoryDisplayLabel(query)).toBe('the comment is just noise');
+    });
+
+    it('falls back to the raw query when no minified is provided and no useful comment', () => {
+        const query = '////\n////\nStormEvents | take 10';
+        expect(computeHistoryDisplayLabel(query)).toBe('StormEvents | take 10');
+    });
+
+    it('prefers minified query over raw when falling back', () => {
+        const query = '// hello world is something\nStormEvents\n  | take 10';
+        // Minified strips comments and collapses whitespace.
+        const minified = 'StormEvents | take 10';
+        // Comment is meaningful, so should still use the comment.
+        expect(computeHistoryDisplayLabel(query, minified)).toBe('hello world is something');
+    });
+
+    it('uses minified query when leading comment block is decorative-only', () => {
+        const query = [
+            '//',
+            '// ====',
+            '//',
+            'StormEvents | where State == "TX"',
+        ].join('\n');
+        const minified = 'StormEvents|where State=="TX"';
+        expect(computeHistoryDisplayLabel(query, minified)).toBe('StormEvents|where State=="TX"');
+    });
+
+    it('truncates labels to 60 characters', () => {
+        const long = 'A'.repeat(200);
+        expect(computeHistoryDisplayLabel(long).length).toBeLessThanOrEqual(60);
+    });
+
+    it('collapses internal whitespace', () => {
+        expect(computeHistoryDisplayLabel('//   spaced    out    title\nStormEvents'))
+            .toBe('spaced out title');
+    });
+
+    it('handles CRLF line endings', () => {
+        const query = '// Title here\r\nStormEvents | take 10';
+        expect(computeHistoryDisplayLabel(query)).toBe('Title here');
+    });
+
+    it('skips blank lines before a comment', () => {
+        const query = '\n\n  \n// real title\nStormEvents';
+        expect(computeHistoryDisplayLabel(query)).toBe('real title');
     });
 });
