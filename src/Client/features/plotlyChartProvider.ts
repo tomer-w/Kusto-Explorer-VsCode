@@ -1499,15 +1499,23 @@ const plotlyChartScripts = `
         }
 
         if (!arValue) {
-            wrapperDiv.style.position = '';
-            wrapperDiv.style.left = '';
-            wrapperDiv.style.top = '';
+            // Use absolute positioning so the wrapper is taken out of #chart's
+            // flow. If the wrapper participates in flow, even sub-pixel content-
+            // size changes from Plotly's internal layout can shift #chart's own
+            // clientWidth/Height, which retriggers our ResizeObserver and causes
+            // a second redundant resize. Aspect-ratio mode already works this way.
+            wrapperDiv.style.position = 'absolute';
+            wrapperDiv.style.left = '0';
+            wrapperDiv.style.top = '0';
             wrapperDiv.style.width = availW + 'px';
             wrapperDiv.style.height = availH + 'px';
             wrapperDiv.style.visibility = 'visible';
             lastAppliedW = chartDiv.clientWidth;
             lastAppliedH = chartDiv.clientHeight;
-            Plotly.newPlot(plotDiv, plotDiv.data, Object.assign({}, plotDiv.layout, buildLayoutOverrides(availW, availH)), plotDiv._context);
+            // Use relayout (not newPlot) so we don't re-upload trace data to the GPU
+            // for every resize. The width/height/font overrides are layout-only and
+            // relayout handles them efficiently.
+            Plotly.relayout(plotDiv, buildLayoutOverrides(availW, availH));
             return;
         }
         var parts = arValue.split('/').map(Number);
@@ -1533,7 +1541,8 @@ const plotlyChartScripts = `
         wrapperDiv.style.visibility = 'visible';
         lastAppliedW = chartDiv.clientWidth;
         lastAppliedH = chartDiv.clientHeight;
-        Plotly.newPlot(plotDiv, plotDiv.data, Object.assign({}, plotDiv.layout, buildLayoutOverrides(w, h)), plotDiv._context);
+        // Use relayout (not newPlot) so we don't re-upload trace data to the GPU.
+        Plotly.relayout(plotDiv, buildLayoutOverrides(w, h));
     }
 
     // Expose for host code (tab switching, edit panel toggle, etc.)
@@ -1610,9 +1619,11 @@ const plotlyChartScripts = `
             wrapperDiv.style.visibility = 'visible';
         }
 
-        // Apply font/size overrides to the already-rendered plot
+        // Apply font/size overrides to the already-rendered plot via relayout.
+        // newPlot would force Plotly to re-upload all trace data and rebuild the
+        // GL canvas; relayout updates layout-only properties in place.
         var overrides = Object.assign({ width: targetW, height: targetH }, applyFontOverrides(plotDiv.layout || {}, targetW, targetH, preset));
-        Plotly.newPlot(plotDiv, plotDiv.data, Object.assign({}, plotDiv.layout, overrides), plotDiv._context);
+        Plotly.relayout(plotDiv, overrides);
 
         lastAppliedW = availW;
         lastAppliedH = availH;

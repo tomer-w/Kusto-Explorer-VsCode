@@ -1805,7 +1805,10 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         }
         .view-content { display: none; height: 100%; overflow: hidden; }
         .view-content.active { display: flex; flex-direction: column; }
-        #chart.has-aspect-ratio.active {
+        #chart.active {
+            /* Always provide a containing block so the absolutely-positioned
+             * wrapper inside can't escape and so layout changes inside the
+             * wrapper don't bubble up to #chart and trigger ResizeObserver loops. */
             position: relative;
         }
         #chart.has-aspect-ratio > :first-child {
