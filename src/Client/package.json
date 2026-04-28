@@ -518,6 +518,11 @@
           "group": "navigation@1"
         },
         {
+          "command": "msKustoExplorer.copyData",
+          "when": "(activeWebviewPanelId == 'msKustoExplorer-singletonView' || activeWebviewPanelId == 'msKustoExplorer-resultViewer') && msKustoExplorer.resultViewerShowingData && !msKustoExplorer.resultViewerChartActive",
+          "group": "navigation@1"
+        },
+        {
           "command": "msKustoExplorer.moveViewToMain",
           "when": "(activeWebviewPanelId == 'msKustoExplorer-singletonView' || activeWebviewPanelId == 'msKustoExplorer-resultViewer') && msKustoExplorer.resultViewerChartActive",
           "group": "navigation@2"
@@ -534,7 +539,7 @@
         },
         {
           "command": "msKustoExplorer.toggleSearch",
-          "when": "(activeWebviewPanelId == 'msKustoExplorer-singletonView' || activeWebviewPanelId == 'msKustoExplorer-resultViewer') && !msKustoExplorer.resultViewerChartActive",
+          "when": "(activeWebviewPanelId == 'msKustoExplorer-singletonView' || activeWebviewPanelId == 'msKustoExplorer-resultViewer') && msKustoExplorer.resultViewerShowingData && !msKustoExplorer.resultViewerChartActive",
           "group": "navigation@4"
         },
         {

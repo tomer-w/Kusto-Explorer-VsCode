@@ -392,7 +392,10 @@ export class ResultsViewer {
             vscode.window.registerCustomEditorProvider(
                 resultViewerViewType,
                 this.htmlBuilder,
-                { supportsMultipleEditorsPerDocument: false }
+                {
+                    supportsMultipleEditorsPerDocument: false,
+                    webviewOptions: { retainContextWhenHidden: true }
+                }
             )
         );
 
@@ -881,7 +884,7 @@ export class ResultsViewer {
         this.singletonMode = mode;
 
         this.singletonView = vscode.window.createWebviewPanel(
-            'kusto',
+            'msKustoExplorer-singletonView',
             title,
             { viewColumn, preserveFocus: true },
             { enableScripts: true, retainContextWhenHidden: true }
@@ -921,6 +924,7 @@ export class ResultsViewer {
                 const hasChart = !!getPrimaryChart(state?.resultData);
                 vscode.commands.executeCommand('setContext', 'msKustoExplorer.resultViewerHasChart', hasChart);
                 vscode.commands.executeCommand('setContext', 'msKustoExplorer.resultViewerChartActive', state?.activeView === 'chart');
+                vscode.commands.executeCommand('setContext', 'msKustoExplorer.resultViewerShowingData', state?.activeView !== 'query');
             }
         });
 
@@ -929,6 +933,7 @@ export class ResultsViewer {
                 const state = this.viewerStates.get(this.singletonView!);
                 if (state) { state.activeView = message.viewId; }
                 vscode.commands.executeCommand('setContext', 'msKustoExplorer.resultViewerChartActive', message.viewId === 'chart');
+                vscode.commands.executeCommand('setContext', 'msKustoExplorer.resultViewerShowingData', message.viewId !== 'query');
                 return;
             }
             if (message.command === 'editPanelToggled' && typeof message.visible === 'boolean') {
@@ -961,6 +966,7 @@ export class ResultsViewer {
             this.singletonBackingUri = undefined;
             vscode.commands.executeCommand('setContext', 'msKustoExplorer.resultViewerHasChart', false);
             vscode.commands.executeCommand('setContext', 'msKustoExplorer.resultViewerChartActive', false);
+            vscode.commands.executeCommand('setContext', 'msKustoExplorer.resultViewerShowingData', false);
             vscode.commands.executeCommand('msKustoExplorer.singletonViewStateChanged');
         });
     }
@@ -982,6 +988,7 @@ export class ResultsViewer {
 
         vscode.commands.executeCommand('setContext', 'msKustoExplorer.resultViewerHasChart', hasChart);
         vscode.commands.executeCommand('setContext', 'msKustoExplorer.resultViewerChartActive', hasChart);
+        vscode.commands.executeCommand('setContext', 'msKustoExplorer.resultViewerShowingData', !hasChart);
 
         this.singletonView!.title = title;
         this.singletonView!.webview.html = html;
@@ -1083,6 +1090,7 @@ export class ResultsViewer {
                 });
                 vscode.commands.executeCommand('setContext', 'msKustoExplorer.resultViewerHasChart', false);
                 vscode.commands.executeCommand('setContext', 'msKustoExplorer.resultViewerChartActive', false);
+                vscode.commands.executeCommand('setContext', 'msKustoExplorer.resultViewerShowingData', true);
             }
         } else {
             // Document view: remove chart from the data and update the document
@@ -1437,6 +1445,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
                 const hasChart = !!getPrimaryChart(state?.resultData);
                 vscode.commands.executeCommand('setContext', 'msKustoExplorer.resultViewerHasChart', hasChart);
                 vscode.commands.executeCommand('setContext', 'msKustoExplorer.resultViewerChartActive', state?.activeView === 'chart');
+                vscode.commands.executeCommand('setContext', 'msKustoExplorer.resultViewerShowingData', state?.activeView !== 'query');
                 vscode.commands.executeCommand('setContext', 'msKustoExplorer.resultViewerHasQuery', !!state?.resultData?.query);
             }
         };
@@ -1482,6 +1491,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
                     state.activeView = message.viewId;
                 }
                 vscode.commands.executeCommand('setContext', 'msKustoExplorer.resultViewerChartActive', message.viewId === 'chart');
+                vscode.commands.executeCommand('setContext', 'msKustoExplorer.resultViewerShowingData', message.viewId !== 'query');
                 return;
             }
             if (message.command === 'editPanelToggled' && typeof message.visible === 'boolean') {
@@ -1538,6 +1548,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
             this.viewer.webviewDocuments.delete(webviewPanel);
             vscode.commands.executeCommand('setContext', 'msKustoExplorer.resultViewerHasChart', false);
             vscode.commands.executeCommand('setContext', 'msKustoExplorer.resultViewerChartActive', false);
+            vscode.commands.executeCommand('setContext', 'msKustoExplorer.resultViewerShowingData', false);
             vscode.commands.executeCommand('setContext', 'msKustoExplorer.resultViewerHasQuery', false);
             changeSubscription.dispose();
             themeSubscription.dispose();
@@ -1585,6 +1596,7 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
         if (webviewPanel.active) {
             vscode.commands.executeCommand('setContext', 'msKustoExplorer.resultViewerHasChart', hasChart);
             vscode.commands.executeCommand('setContext', 'msKustoExplorer.resultViewerChartActive', firstActiveView === 'chart');
+            vscode.commands.executeCommand('setContext', 'msKustoExplorer.resultViewerShowingData', firstActiveView !== 'query');
             vscode.commands.executeCommand('setContext', 'msKustoExplorer.resultViewerHasQuery', !!resultData?.query);
         }
 
