@@ -554,6 +554,25 @@ class PlotlyChartBuilder {
         return createChartDiv(dataJson, layoutJson, configJson, divId);
     }
 
+    /**
+     * Returns the chart's data/layout/config as JSON strings ready to be sent
+     * to the webview page via a structured postMessage. The page handler does
+     * `JSON.parse` + `Plotly.newPlot` directly, skipping the round-trip through
+     * `<script>` reinjection in `innerHTML`. Use this in preference to
+     * `toHtmlDiv()` for single-chart rendering — it avoids a multi-MB HTML
+     * parse, a `textContent`-clone of the script body, and the JS-engine
+     * parse of the embedded `JSON.parse('...')` literal.
+     */
+    toContent(divId = 'plotly-chart'): { type: 'plot'; divId: string; dataJson: string; layoutJson: string; configJson: string } {
+        return {
+            type: 'plot',
+            divId,
+            dataJson: JSON.stringify(this._traces),
+            layoutJson: JSON.stringify(this._layout),
+            configJson: JSON.stringify(this._config),
+        };
+    }
+
     // ─── Trace helpers (ported from PlotlyChartExtensions.cs) ───────────
 
     add2DBarTrace(
@@ -1659,6 +1678,34 @@ const plotlyChartScripts = `
         }
     });
 
+    // Structured single-chart payload from the host. Avoids the multi-MB innerHTML
+    // parse + script-clone shuffle by going straight to JSON.parse + Plotly.newPlot.
+    // After this returns, plotDiv.data / plotDiv.layout are owned by Plotly, so
+    // resize/copy paths continue to work unchanged.
+    window.addEventListener('message', function(event) {
+        var msg = event.data;
+        if (!msg || msg.command !== 'setChartContent' || typeof msg.divId !== 'string') return;
+        var chartDiv = document.getElementById('chart');
+        if (!chartDiv) return;
+        chartDiv.innerHTML = '<div id="' + msg.divId + '"></div>';
+        if (typeof Plotly === 'undefined') {
+            console.error('Plotly is not loaded yet; cannot render chart.');
+            return;
+        }
+        try {
+            var data = JSON.parse(msg.dataJson);
+            var layout = JSON.parse(msg.layoutJson);
+            var config = JSON.parse(msg.configJson);
+            Plotly.newPlot(msg.divId, data, layout, config);
+        } catch (e) {
+            console.error('Plotly error:', e);
+            var errNode = document.getElementById(msg.divId);
+            if (errNode) errNode.innerText = 'Chart error: ' + (e && e.message ? e.message : e);
+            return;
+        }
+        if (window._chartUpdated) window._chartUpdated();
+    });
+
     window.addEventListener('message', async function(event) {
         var message = event.data;
         if (!(message && message.command === 'copyChart')) return;
@@ -1722,6 +1769,22 @@ const plotlyChartScripts = `
 })();
 </script>`;
 
+/**
+ * Result returned by the chart-rendering pipeline.
+ *
+ * - `html`: a pre-baked HTML body to drop into the chart region. Used for the
+ *   raw-Plotly path (data already comes from the user's query as JSON) and for
+ *   the multi-chart panel grid (multiple charts concatenated into one HTML
+ *   string with positioning/styling).
+ * - `plot`: structured data for a single chart. The page handler builds the
+ *   chart div and calls `Plotly.newPlot` directly with `JSON.parse`d inputs,
+ *   avoiding `innerHTML` of a multi-MB HTML blob and the script-reinjection
+ *   dance that comes with it.
+ */
+type ChartRenderResult =
+    | { type: 'html'; html: string }
+    | { type: 'plot'; divId: string; dataJson: string; layoutJson: string; configJson: string };
+
 /** View for Plotly charts rendered inside a webview. */
 class PlotlyChartView implements IChartView {
     onCopyResult: ((pngDataUrl: string, svgDataUrl?: string) => void) | undefined;
@@ -1730,7 +1793,7 @@ class PlotlyChartView implements IChartView {
 
     constructor(
         private readonly webview: IWebView,
-        private readonly render: (data: ResultTable, options: ChartOptions, darkMode: boolean) => string | undefined
+        private readonly render: (data: ResultTable, options: ChartOptions, darkMode: boolean) => ChartRenderResult | undefined
     ) {
         this.subscription = webview.handle((message) => {
             if (message.command === 'copyChartResult') {
@@ -1751,15 +1814,24 @@ class PlotlyChartView implements IChartView {
     }
 
     renderChart(data: ResultTable, options: ChartOptions, darkMode: boolean): void {
-        const bodyHtml = this.render(data, options, darkMode);
-        if (bodyHtml) {
-            this.webview.setContent(bodyHtml);
-        } else {
+        const result = this.render(data, options, darkMode);
+        if (!result) {
             const typeName = escapeHtml(options.type || 'Unknown');
             this.webview.setContent(
                 `<div style="display:flex;align-items:center;justify-content:center;height:100%;visibility:visible;color:var(--vscode-foreground,inherit);">` +
                 `<span style="font-size:1.5em;">&#10060;</span>&nbsp; Chart type "${typeName}" is not currently supported.</div>`
             );
+            return;
+        }
+        if (result.type === 'html') {
+            this.webview.setContent(result.html);
+        } else {
+            this.webview.invoke('setChartContent', {
+                divId: result.divId,
+                dataJson: result.dataJson,
+                layoutJson: result.layoutJson,
+                configJson: result.configJson,
+            });
         }
     }
 
@@ -1847,28 +1919,31 @@ export class PlotlyChartProvider implements IChartProvider {
         return new PlotlyChartView(webview, (data, options, darkMode) => this.renderChartToHtmlDiv(data, options, darkMode));
     }
 
-    private renderChartToHtmlDiv(data: ResultTable, options: ChartOptions, darkMode = false): string | undefined {
+    private renderChartToHtmlDiv(data: ResultTable, options: ChartOptions, darkMode = false): ChartRenderResult | undefined {
         // Allow the chart's mode option to override the editor theme
         if (options.mode === ChartMode.Light) darkMode = false;
         else if (options.mode === ChartMode.Dark) darkMode = true;
 
         if (options.type === ChartType.Plotly) {
-            return this.renderRawPlotlyChart(data, darkMode);
+            const html = this.renderRawPlotlyChart(data, darkMode);
+            return html ? { type: 'html', html } : undefined;
         }
 
-        // Multiple independent charts (CSS-scaled)
+        // Multiple independent charts (CSS-scaled). Concatenated into a single HTML
+        // string so the grid layout/scaling sits next to each chart.
         if (options.yLayout === ChartYLayout.SeparateCharts && (this.is2dChartType(options.type) || options.type === ChartType.Pie)) {
             const xColumn = this.get2dXColumn(data, options);
             if (xColumn) {
                 const yColumns = this.get2dYColumns(data, options, xColumn);
                 if (yColumns.length > 1) {
-                    return this.renderMultiChartPanels(data, options, darkMode, yColumns);
+                    const html = this.renderMultiChartPanels(data, options, darkMode, yColumns);
+                    return html ? { type: 'html', html } : undefined;
                 }
             }
         }
 
         const builder = this.buildChart(data, options, darkMode);
-        return builder?.toHtmlDiv();
+        return builder?.toContent();
     }
 
     /** Returns true for chart types that use 2D x/y column rendering and support y-split. */

@@ -199,12 +199,20 @@ describe('CompositeChartProvider', () => {
         });
 
         describe('renderChart', () => {
-            it('calls webview.setContent() with chart HTML', () => {
+            it('posts chart content via webview.invoke() with parsed JSON payloads', () => {
                 view.renderChart(make2dTable(), { type: 'Column' }, false);
-                expect(webview.setContent).toHaveBeenCalledOnce();
-                const html = webview.setContent.mock.calls[0]![0] as string;
-                expect(html).toContain('plotly-chart');
-                expect(html).toContain('Plotly.newPlot');
+                expect(webview.invoke).toHaveBeenCalledOnce();
+                const [command, args] = webview.invoke.mock.calls[0]!;
+                expect(command).toBe('setChartContent');
+                const payload = args as { divId: string; dataJson: string; layoutJson: string; configJson: string };
+                expect(payload.divId).toBe('plotly-chart');
+                // dataJson must round-trip via JSON.parse to a non-empty trace array.
+                const traces = JSON.parse(payload.dataJson) as unknown[];
+                expect(Array.isArray(traces)).toBe(true);
+                expect(traces.length).toBeGreaterThan(0);
+                // layoutJson and configJson must also be valid JSON.
+                expect(() => JSON.parse(payload.layoutJson)).not.toThrow();
+                expect(() => JSON.parse(payload.configJson)).not.toThrow();
             });
 
             it('renders empty traces for table with no rows', () => {
@@ -213,11 +221,11 @@ describe('CompositeChartProvider', () => {
                     [],
                 );
                 view.renderChart(emptyTable, { type: 'Column' }, false);
-                expect(webview.setContent).toHaveBeenCalledOnce();
-                const html = webview.setContent.mock.calls[0]![0] as string;
-                const traces = html.match(/var data = JSON\.parse\('([\s\S]*?)'\);\s*var layout/);
-                expect(traces).toBeTruthy();
-                const parsed = JSON.parse(decodeJsStringLiteral(traces![1]!)) as { x: unknown[]; y: unknown[] }[];
+                expect(webview.invoke).toHaveBeenCalledOnce();
+                const [command, args] = webview.invoke.mock.calls[0]!;
+                expect(command).toBe('setChartContent');
+                const payload = args as { dataJson: string };
+                const parsed = JSON.parse(payload.dataJson) as { x: unknown[]; y: unknown[] }[];
                 expect(parsed[0]!.x).toEqual([]);
                 expect(parsed[0]!.y).toEqual([]);
             });
@@ -242,9 +250,24 @@ describe('CompositeChartProvider', () => {
             view = provider.createView(webview);
         });
 
-        /** Helper to render and return the HTML sent to setContent. */
+        /**
+         * Renders the chart and returns an HTML-shaped string suitable for the
+         * `parseTraces` / `parseLayout` regex helpers. For the normal single-chart
+         * path (which now goes through `webview.invoke('setChartContent', ...)`),
+         * we synthesize HTML in the same shape `createChartDiv` produces so the
+         * existing regex helpers continue to work unchanged. For the raw-Plotly
+         * and multi-chart panel paths (which still go through `setContent`),
+         * we return the HTML directly.
+         */
         function renderAndGetHtml(table: ResultTable, options: ChartOptions, darkMode = false): string | undefined {
             view.renderChart(table, options, darkMode);
+            // Structured invoke: synthesize HTML using the same JSON.parse('...') format.
+            const invokeCall = webview.invoke.mock.calls.find((c: unknown[]) => c[0] === 'setChartContent');
+            if (invokeCall) {
+                const p = invokeCall[1] as { divId: string; dataJson: string; layoutJson: string; configJson: string };
+                const escape = (j: string) => j.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/<\//g, '<\\/');
+                return `<div id="${p.divId}"></div>\n<script>\nvar data = JSON.parse('${escape(p.dataJson)}');\nvar layout = JSON.parse('${escape(p.layoutJson)}');\nvar config = JSON.parse('${escape(p.configJson)}');\nPlotly.newPlot('${p.divId}', data, layout, config);\n</script>`;
+            }
             if (webview.setContent.mock.calls.length === 0) return undefined;
             return webview.setContent.mock.calls[0]![0] as string;
         }
