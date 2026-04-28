@@ -131,7 +131,7 @@ class HistoryItem extends vscode.TreeItem {
         this.description = parts.join(' · ');
 
         this.tooltip = [
-            meta.queryPreview,
+            meta.minifiedPreview ?? meta.queryPreview,
             `${meta.cluster ?? ''}${meta.database ? '/' + meta.database : ''}`,
             timeStr,
         ].filter(Boolean).join('\n');
