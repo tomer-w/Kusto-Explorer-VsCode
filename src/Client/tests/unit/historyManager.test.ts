@@ -427,12 +427,24 @@ describe('computeHistoryDisplayLabel', () => {
         expect(computeHistoryDisplayLabel(query)).toBe('StormEvents | take 10');
     });
 
-    it('prefers minified query over raw when falling back', () => {
+    it('uses a meaningful comment even when a minified query is provided', () => {
         const query = '// hello world is something\nStormEvents\n  | take 10';
-        // Minified strips comments and collapses whitespace.
         const minified = 'StormEvents | take 10';
-        // Comment is meaningful, so should still use the comment.
+        // Comment is meaningful, so it wins over both the minified and raw bodies.
         expect(computeHistoryDisplayLabel(query, minified)).toBe('hello world is something');
+    });
+
+    it('prefers the minified query over the raw body when falling back', () => {
+        // Decorative-only comments → falls back. Minified differs from raw,
+        // so the choice between them is observable.
+        const query = [
+            '////',
+            '////',
+            'StormEvents',
+            '  |   take 10',
+        ].join('\n');
+        const minified = 'StormEvents|take 10';
+        expect(computeHistoryDisplayLabel(query, minified)).toBe('StormEvents|take 10');
     });
 
     it('uses minified query when leading comment block is decorative-only', () => {
@@ -464,5 +476,54 @@ describe('computeHistoryDisplayLabel', () => {
     it('skips blank lines before a comment', () => {
         const query = '\n\n  \n// real title\nStormEvents';
         expect(computeHistoryDisplayLabel(query)).toBe('real title');
+    });
+
+    it('recognizes non-ASCII letters as meaningful (accented Latin)', () => {
+        const query = '// Événements récents\nStormEvents';
+        expect(computeHistoryDisplayLabel(query)).toBe('Événements récents');
+    });
+
+    it('recognizes Cyrillic letters as meaningful', () => {
+        const query = '// Топ ошибки\nStormEvents';
+        expect(computeHistoryDisplayLabel(query)).toBe('Топ ошибки');
+    });
+
+    it('recognizes CJK characters as meaningful', () => {
+        const query = '// 上位エラー\nStormEvents';
+        expect(computeHistoryDisplayLabel(query)).toBe('上位エラー');
+    });
+
+    it('does not split surrogate pairs when truncating', () => {
+        // Each emoji is a surrogate pair (2 UTF-16 units, 1 code point).
+        // Use a mix of letters + many emojis so the comment is considered
+        // meaningful and the truncation crosses surrogate-pair boundaries.
+        const emoji = '😀';
+        const query = '// title ' + emoji.repeat(100) + '\nStormEvents';
+        const label = computeHistoryDisplayLabel(query);
+        // Label should have at most MAX_LABEL_LENGTH (60) code points,
+        // and the result must round-trip through Array.from with no lone
+        // surrogates (a split surrogate would survive as a length-1 string
+        // unit unequal to itself reconstituted).
+        const codePoints = Array.from(label);
+        expect(codePoints.length).toBeLessThanOrEqual(60);
+        // Reconstructing from code points should equal the label exactly.
+        // If a surrogate pair were split, the second-half lone surrogate
+        // would still appear, but Array.from(label).join('') would still
+        // produce the same string, so check directly that no UTF-16 unit
+        // is an unpaired surrogate.
+        for (let i = 0; i < label.length; i++) {
+            const code = label.charCodeAt(i);
+            const isHighSurrogate = code >= 0xD800 && code <= 0xDBFF;
+            const isLowSurrogate = code >= 0xDC00 && code <= 0xDFFF;
+            if (isHighSurrogate) {
+                // Must be followed by a low surrogate.
+                const next = label.charCodeAt(i + 1);
+                expect(next >= 0xDC00 && next <= 0xDFFF).toBe(true);
+                i++; // Skip the paired low surrogate.
+            } else {
+                // Must NOT be a lone low surrogate.
+                expect(isLowSurrogate).toBe(false);
+            }
+        }
     });
 });

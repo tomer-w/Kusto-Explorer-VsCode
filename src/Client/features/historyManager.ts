@@ -76,15 +76,20 @@ function stripCommentBorder(text: string): string {
         .replace(/[\s/=\-_#~]+$/, '');
 }
 
-/** Returns true if the string contains at least one letter or digit. */
+/** Returns true if the string contains at least one letter or digit (any script). */
 function hasMeaningfulText(text: string): boolean {
-    return /[A-Za-z0-9]/.test(text);
+    return /[\p{L}\p{N}]/u.test(text);
 }
 
-/** Collapses whitespace and trims to at most `max` characters. */
+/**
+ * Collapses whitespace and truncates to at most `max` Unicode code points.
+ * Uses `Array.from` so surrogate pairs (e.g., emoji, supplementary-plane CJK)
+ * are kept intact rather than split mid-character.
+ */
 function collapseAndTruncate(text: string, max: number): string {
     const collapsed = text.replace(/\s+/g, ' ').trim();
-    return collapsed.length > max ? collapsed.slice(0, max) : collapsed;
+    const codePoints = Array.from(collapsed);
+    return codePoints.length > max ? codePoints.slice(0, max).join('') : collapsed;
 }
 
 /**
@@ -95,7 +100,7 @@ function collapseAndTruncate(text: string, max: number): string {
  *   2. Strip border characters (`/`, `=`, `-`, `_`, `#`, `~`) from comments.
  *   3. Use the first comment line that contains real text (letters/digits).
  *   4. Otherwise fall back to the minified query (no comments) if available,
- *      else the raw query text.
+ *      else the remaining query text past the leading comment block.
  *
  * Exported for unit testing.
  */
@@ -107,9 +112,10 @@ export function computeHistoryDisplayLabel(query: string | undefined, minifiedQu
     }
 
     const lines = query.split(/\r?\n/);
+    let firstCodeLine = lines.length;
 
-    for (const raw of lines) {
-        const trimmed = raw.trim();
+    for (let i = 0; i < lines.length; i++) {
+        const trimmed = lines[i]!.trim();
         if (trimmed === '') {
             continue;
         }
@@ -125,16 +131,18 @@ export function computeHistoryDisplayLabel(query: string | undefined, minifiedQu
 
         // First non-blank, non-comment line — leading comment block (if any)
         // had no meaningful text. Stop walking and use the fallback below.
+        firstCodeLine = i;
         break;
     }
 
     // Fall back to the comment-stripped server-minified query when available;
-    // otherwise use the original query text.
+    // otherwise use the original query text past the leading comment block.
     const minTrim = minifiedQuery?.trim();
     if (minTrim && minTrim.length > 0) {
         return collapseAndTruncate(minTrim, MAX_LABEL_LENGTH);
     }
-    const collapsed = collapseAndTruncate(query, MAX_LABEL_LENGTH);
+    const remainder = lines.slice(firstCodeLine).join('\n');
+    const collapsed = collapseAndTruncate(remainder, MAX_LABEL_LENGTH);
     return collapsed.length > 0 ? collapsed : fallback;
 }
 
