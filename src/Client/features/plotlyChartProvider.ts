@@ -1172,6 +1172,35 @@ function aggregateValues(values: number[], aggregation: AggregationType): number
 }
 
 /**
+ * Returns x/y sorted ascending by x. Skips all sorting work — and avoids
+ * allocating two new arrays — when the input is already monotonically
+ * non-decreasing in x, which is the common case for time-series data
+ * (Kusto queries that end in `order by t asc`, `range`-generated rows,
+ * binned aggregates emitted in bin order, etc.).
+ *
+ * The comparison uses raw JS `<`/`>`, which match the previous behavior
+ * for numbers, Date objects, and ISO-8601 datetime strings.
+ */
+function sortPointsByX(x: unknown[], y: number[]): { x: unknown[]; y: number[] } {
+    let sorted = true;
+    for (let i = 1; i < x.length; i++) {
+        if (x[i - 1]! > x[i]!) { sorted = false; break; }
+    }
+    if (sorted) return { x, y };
+    const indices = new Array<number>(x.length);
+    for (let i = 0; i < x.length; i++) indices[i] = i;
+    indices.sort((a, b) => (x[a]! < x[b]! ? -1 : x[a]! > x[b]! ? 1 : 0));
+    const sortedX = new Array<unknown>(x.length);
+    const sortedY = new Array<number>(x.length);
+    for (let i = 0; i < x.length; i++) {
+        const j = indices[i]!;
+        sortedX[i] = x[j];
+        sortedY[i] = y[j]!;
+    }
+    return { x: sortedX, y: sortedY };
+}
+
+/**
  * Downsamples x/y arrays to at most maxPoints by taking every Nth point.
  * Always includes the first and last points to preserve the range.
  */
@@ -2810,11 +2839,10 @@ export class PlotlyChartProvider implements IChartProvider {
                         yValues = binned.y;
                     }
                     if (xValues.length > 0) {
-                        // Sort by x-value so lines don't zigzag
-                        const indices = xValues.map((_, i) => i);
-                        indices.sort((a, b) => (xValues[a]! < xValues[b]! ? -1 : xValues[a]! > xValues[b]! ? 1 : 0));
-                        let sortedX: unknown[] = indices.map(i => xValues[i]!);
-                        let sortedY: number[] = indices.map(i => yValues[i]!);
+                        // Sort by x-value so lines don't zigzag (no-op when already sorted).
+                        const sorted = sortPointsByX(xValues, yValues);
+                        let sortedX: unknown[] = sorted.x;
+                        let sortedY: number[] = sorted.y;
                         if (options.accumulate) {
                             sortedY = accumulateValues(sortedY);
                         }
@@ -2841,10 +2869,8 @@ export class PlotlyChartProvider implements IChartProvider {
                     if (shouldBin) {
                         result = binAndAggregate(result.x, result.y, binSize, aggregation, xIsDateTime);
                     }
-                    // Sort by x-value so lines don't zigzag
-                    const indices = result.x.map((_, i) => i);
-                    indices.sort((a, b) => (result!.x[a]! < result!.x[b]! ? -1 : result!.x[a]! > result!.x[b]! ? 1 : 0));
-                    result = { x: indices.map(i => result!.x[i]!), y: indices.map(i => result!.y[i]!) };
+                    // Sort by x-value so lines don't zigzag (no-op when already sorted).
+                    result = sortPointsByX(result.x, result.y);
                     if (options.accumulate) {
                         result = { x: result.x, y: accumulateValues(result.y) };
                     }

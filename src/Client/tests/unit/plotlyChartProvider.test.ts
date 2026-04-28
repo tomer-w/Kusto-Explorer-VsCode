@@ -1215,6 +1215,58 @@ describe('CompositeChartProvider', () => {
                 expect(west.x).toEqual(['2024-01-01', '2024-01-02']);
                 expect(west.y).toEqual([20, 25]);
             });
+
+            it('preserves order when data is already sorted by x (monotonic fast path)', () => {
+                // Already-sorted input exercises the no-allocation fast path.
+                // Output must still match input order exactly.
+                const table = makeTable(
+                    [
+                        { name: 'timestamp', type: 'datetime' },
+                        { name: 'region', type: 'string' },
+                        { name: 'count', type: 'int' },
+                    ],
+                    [
+                        ['2024-01-01', 'East', 10],
+                        ['2024-01-02', 'East', 15],
+                        ['2024-01-03', 'East', 20],
+                        ['2024-01-04', 'East', 25],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'Line',
+                    xColumn: 'timestamp',
+                    yColumns: ['count'],
+                    seriesColumns: ['region'],
+                });
+                const east = parseTraces(html!)[0] as Record<string, unknown>;
+                expect(east.x).toEqual(['2024-01-01', '2024-01-02', '2024-01-03', '2024-01-04']);
+                expect(east.y).toEqual([10, 15, 20, 25]);
+            });
+
+            it('preserves equal-x runs as stable in already-sorted input', () => {
+                // Non-decreasing (with equal x's) is the fast-path predicate; verify ties
+                // are kept in input order.
+                const table = makeTable(
+                    [
+                        { name: 'timestamp', type: 'datetime' },
+                        { name: 'count', type: 'int' },
+                    ],
+                    [
+                        ['2024-01-01', 1],
+                        ['2024-01-01', 2],
+                        ['2024-01-02', 3],
+                        ['2024-01-02', 4],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'Line',
+                    xColumn: 'timestamp',
+                    yColumns: ['count'],
+                });
+                const trace = parseTraces(html!)[0] as Record<string, unknown>;
+                expect(trace.x).toEqual(['2024-01-01', '2024-01-01', '2024-01-02', '2024-01-02']);
+                expect(trace.y).toEqual([1, 2, 3, 4]);
+            });
         });
 
         // ─── Auto-inference ─────────────────────────────────────────────
