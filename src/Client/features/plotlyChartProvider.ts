@@ -1978,13 +1978,16 @@ export class PlotlyChartProvider implements IChartProvider {
             if (!root || !root.data) return undefined;
 
             const dataJson = JSON.stringify(root.data);
-            let layoutJson = root.layout ? JSON.stringify(root.layout) : '{}';
 
-            if (darkMode) {
-                layoutJson = applyDarkModeToLayout(layoutJson);
-            } else {
-                layoutJson = applyLightModeToLayout(layoutJson);
-            }
+            // Apply theme to the in-memory layout object before the single stringify,
+            // so we don't pay an extra parse/stringify round-trip.
+            const layoutObj = (root.layout && typeof root.layout === 'object')
+                ? root.layout as Record<string, unknown>
+                : {};
+            const themedLayout = darkMode
+                ? applyDarkModeToLayout(layoutObj)
+                : applyLightModeToLayout(layoutObj);
+            const layoutJson = JSON.stringify(themedLayout);
 
             const configJson = root.config
                 ? JSON.stringify(root.config)
@@ -3061,9 +3064,12 @@ function applyCommonOptions(builder: PlotlyChartBuilder, options: ChartOptions):
 
 // ─── Dark Mode Layout Helper ────────────────────────────────────────────────
 
-function applyDarkModeToLayout(layoutJson: string): string {
-    const layout = (JSON.parse(layoutJson) as Record<string, unknown>) ?? {};
-
+/**
+ * Mutates `layout` in place with dark-mode background, font, and axis colors,
+ * and returns it. Operates on the in-memory object so the caller can avoid a
+ * parse/stringify round-trip.
+ */
+function applyDarkModeToLayout(layout: Record<string, unknown>): Record<string, unknown> {
     layout.paper_bgcolor = '#1e1e1e';
     layout.plot_bgcolor = '#1e1e1e';
 
@@ -3088,7 +3094,7 @@ function applyDarkModeToLayout(layoutJson: string): string {
         applyDarkModeToAxis(scene, 'zaxis');
     }
 
-    return JSON.stringify(layout);
+    return layout;
 }
 
 function applyDarkModeToAxis(parent: Record<string, unknown>, axisKey: string): void {
@@ -3102,9 +3108,12 @@ function applyDarkModeToAxis(parent: Record<string, unknown>, axisKey: string): 
 
 // ─── Light Mode Layout Helper ───────────────────────────────────────────────
 
-function applyLightModeToLayout(layoutJson: string): string {
-    const layout = (JSON.parse(layoutJson) as Record<string, unknown>) ?? {};
-
+/**
+ * Mutates `layout` in place with light-mode background, font, and axis colors,
+ * and returns it. Operates on the in-memory object so the caller can avoid a
+ * parse/stringify round-trip.
+ */
+function applyLightModeToLayout(layout: Record<string, unknown>): Record<string, unknown> {
     layout.paper_bgcolor = '#ffffff';
     layout.plot_bgcolor = '#ffffff';
 
@@ -3129,7 +3138,7 @@ function applyLightModeToLayout(layoutJson: string): string {
         applyLightModeToAxis(scene, 'zaxis');
     }
 
-    return JSON.stringify(layout);
+    return layout;
 }
 
 function applyLightModeToAxis(parent: Record<string, unknown>, axisKey: string): void {
