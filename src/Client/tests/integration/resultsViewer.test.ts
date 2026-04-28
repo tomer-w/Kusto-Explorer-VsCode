@@ -106,7 +106,7 @@ suite('Results Viewer Integration Tests', () => {
         const originalSaveDialog = vscode.window.showSaveDialog;
         (vscode.window as any).showSaveDialog = async () => saveUri;
         try {
-            await vscode.commands.executeCommand('kusto.savePanelResults');
+            await vscode.commands.executeCommand('msKustoExplorer.savePanelResults');
         } finally {
             (vscode.window as any).showSaveDialog = originalSaveDialog;
         }
@@ -139,7 +139,7 @@ suite('Results Viewer Integration Tests', () => {
 
         assert.strictEqual(resultsViewer.hasSingletonView(), false, 'Should start with no singleton');
 
-        await vscode.commands.executeCommand('kusto.chartPanelResults');
+        await vscode.commands.executeCommand('msKustoExplorer.chartPanelResults');
 
         assert.strictEqual(resultsViewer.hasSingletonView(), true, 'Chart should open as singleton view');
 
@@ -166,7 +166,7 @@ suite('Results Viewer Integration Tests', () => {
         );
 
         // Move to main
-        await vscode.commands.executeCommand('kusto.moveViewToMain');
+        await vscode.commands.executeCommand('msKustoExplorer.moveViewToMain');
 
         // Small delay for view state to settle
         await new Promise(r => setTimeout(r, 200));
@@ -195,7 +195,7 @@ suite('Results Viewer Integration Tests', () => {
         const originalSaveDialog = vscode.window.showSaveDialog;
         (vscode.window as any).showSaveDialog = async () => saveUri;
         try {
-            await vscode.commands.executeCommand('kusto.saveSingletonResults');
+            await vscode.commands.executeCommand('msKustoExplorer.saveSingletonResults');
         } finally {
             (vscode.window as any).showSaveDialog = originalSaveDialog;
         }

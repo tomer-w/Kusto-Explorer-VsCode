@@ -137,7 +137,7 @@ class HistoryItem extends vscode.TreeItem {
         ].filter(Boolean).join('\n');
 
         this.command = {
-            command: 'kusto.openHistoryItem',
+            command: 'msKustoExplorer.openHistoryItem',
             title: 'Open',
             arguments: [this],
         };

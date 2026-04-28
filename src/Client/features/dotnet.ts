@@ -91,7 +91,7 @@ async function acquireDotnetFromExtension(): Promise<string | undefined> {
  * @returns The path to the dotnet executable, or undefined if not available.
  */
 async function getDotnetPath(): Promise<string | undefined> {
-    const config = vscode.workspace.getConfiguration('kusto');
+    const config = vscode.workspace.getConfiguration('msKustoExplorer');
     const useSystemDotnet = config.get<boolean>('runtime.useSystemDotnet', true);
 
     // try system dotnet first (if enabled)

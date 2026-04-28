@@ -19,9 +19,9 @@
   ],
   "activationEvents": [
     "onLanguage:kusto",
-    "onFileSystem:kusto-scratch",
-    "onLanguageModelTool:kusto_getClusters",
-    "onChatParticipant:kusto"
+    "onFileSystem:msKustoExplorer-scratch",
+    "onLanguageModelTool:msKustoExplorer_getClusters",
+    "onChatParticipant:msKustoExplorer"
   ],
   "extensionDependencies": [
     "ms-dotnettools.vscode-dotnet-runtime"
@@ -47,7 +47,7 @@
   "contributes": {
     "chatParticipants": [
       {
-        "id": "kusto",
+        "id": "msKustoExplorer",
         "fullName": "Kusto",
         "name": "kusto",
         "description": "KQL expert assistant that helps write Kusto queries using your connected database schema",
@@ -96,7 +96,7 @@
     },
     "customEditors": [
       {
-        "viewType": "kusto.resultViewer",
+        "viewType": "msKustoExplorer-resultViewer",
         "displayName": "Kusto Results",
         "selector": [
           {
@@ -108,200 +108,200 @@
     ],
     "commands": [
       {
-        "command": "kusto.runQuery",
+        "command": "msKustoExplorer.runQuery",
         "title": "Run Query",
         "icon": "$(play)"
       },
       {
-        "command": "kusto.addServer",
+        "command": "msKustoExplorer.addServer",
         "title": "Add Connection",
         "icon": "$(add)"
       },
       {
-        "command": "kusto.addServerToGroup",
+        "command": "msKustoExplorer.addServerToGroup",
         "title": "Add Connection to Group",
         "icon": "$(add)"
       },
       {
-        "command": "kusto.addServerGroup",
+        "command": "msKustoExplorer.addServerGroup",
         "title": "Add Group",
         "icon": "$(new-folder)"
       },
       {
-        "command": "kusto.removeServer",
+        "command": "msKustoExplorer.removeServer",
         "title": "Remove",
         "icon": "$(trash)"
       },
       {
-        "command": "kusto.removeServerGroup",
+        "command": "msKustoExplorer.removeServerGroup",
         "title": "Remove Group",
         "icon": "$(trash)"
       },
       {
-        "command": "kusto.moveServer",
+        "command": "msKustoExplorer.moveServer",
         "title": "Move...",
         "icon": "$(move)"
       },
       {
-        "command": "kusto.editServer",
+        "command": "msKustoExplorer.editServer",
         "title": "Edit...",
         "icon": "$(edit)"
       },
       {
-        "command": "kusto.renameServer",
+        "command": "msKustoExplorer.renameServer",
         "title": "Rename",
         "icon": "$(edit)"
       },
       {
-        "command": "kusto.renameServerGroup",
+        "command": "msKustoExplorer.renameServerGroup",
         "title": "Rename",
         "icon": "$(edit)"
       },
       {
-        "command": "kusto.refreshServer",
+        "command": "msKustoExplorer.refreshServer",
         "title": "Refresh",
         "icon": "$(refresh)"
       },
       {
-        "command": "kusto.refreshDatabase",
+        "command": "msKustoExplorer.refreshDatabase",
         "title": "Refresh",
         "icon": "$(refresh)"
       },
       {
-        "command": "kusto.copyQuery",
+        "command": "msKustoExplorer.copyQuery",
         "title": "Copy Query",
         "icon": "$(copy)"
       },
       {
-        "command": "kusto.copyQueryTransparent",
+        "command": "msKustoExplorer.copyQueryTransparent",
         "title": "Copy Query",
         "icon": "$(copy)"
       },
       {
-        "command": "kusto.copyData",
+        "command": "msKustoExplorer.copyData",
         "title": "Copy Table",
         "icon": "$(copy)"
       },
       {
-        "command": "kusto.formatQuery",
+        "command": "msKustoExplorer.formatQuery",
         "title": "Format Query"
       },
       {
-        "command": "kusto.copyEntityAsCommand",
+        "command": "msKustoExplorer.copyEntityAsCommand",
         "title": "Copy as Command",
         "icon": "$(copy)"
       },
       {
-        "command": "kusto.copyEntityAsExpression",
+        "command": "msKustoExplorer.copyEntityAsExpression",
         "title": "Copy as Expression",
         "icon": "$(symbol-variable)"
       },
       {
-        "command": "kusto.viewEntityDefinition",
+        "command": "msKustoExplorer.viewEntityDefinition",
         "title": "View Definition",
         "icon": "$(go-to-file)"
       },
       {
-        "command": "kusto.copyChart",
+        "command": "msKustoExplorer.copyChart",
         "title": "Copy Chart",
         "icon": "$(file-media)"
       },
       {
-        "command": "kusto.copyCell",
+        "command": "msKustoExplorer.copyCell",
         "title": "Copy Cell"
       },
       {
-        "command": "kusto.copyTableAsExpression",
+        "command": "msKustoExplorer.copyTableAsExpression",
         "title": "Copy as Expression",
         "icon": "$(symbol-snippet)"
       },
       {
-        "command": "kusto.refreshDocumentSchema",
+        "command": "msKustoExplorer.refreshDocumentSchema",
         "title": "Refresh Schema",
         "icon": "$(refresh)"
       },
       {
-        "command": "kusto.saveSingletonResults",
+        "command": "msKustoExplorer.saveSingletonResults",
         "title": "Save As...",
         "icon": "$(save)"
       },
       {
-        "command": "kusto.savePanelResults",
+        "command": "msKustoExplorer.savePanelResults",
         "title": "Save As...",
         "icon": "$(save)"
       },
       {
-        "command": "kusto.chartPanelResults",
+        "command": "msKustoExplorer.chartPanelResults",
         "title": "Chart",
         "icon": "$(graph)"
       },
       {
-        "command": "kusto.moveViewToMain",
+        "command": "msKustoExplorer.moveViewToMain",
         "title": "Toggle Location",
         "icon": "$(move)"
       },
       {
-        "command": "kusto.toggleChartEditor",
+        "command": "msKustoExplorer.toggleChartEditor",
         "title": "Edit Chart",
         "icon": "$(edit)"
       },
       {
-        "command": "kusto.toggleSearch",
+        "command": "msKustoExplorer.toggleSearch",
         "title": "Search",
         "icon": "$(search)"
       },
       {
-        "command": "kusto.newScratchPad",
+        "command": "msKustoExplorer.newScratchPad",
         "title": "New Scratch Pad",
         "icon": "$(add)"
       },
       {
-        "command": "kusto.deleteScratchPad",
+        "command": "msKustoExplorer.deleteScratchPad",
         "title": "Delete",
         "icon": "$(trash)"
       },
       {
-        "command": "kusto.saveScratchPadAs",
+        "command": "msKustoExplorer.saveScratchPadAs",
         "title": "Save As...",
         "icon": "$(save-as)"
       },
       {
-        "command": "kusto.renameScratchPad",
+        "command": "msKustoExplorer.renameScratchPad",
         "title": "Rename",
         "icon": "$(edit)"
       },
       {
-        "command": "kusto.openHistoryItem",
+        "command": "msKustoExplorer.openHistoryItem",
         "title": "Open",
         "icon": "$(go-to-file)"
       },
       {
-        "command": "kusto.deleteHistoryItem",
+        "command": "msKustoExplorer.deleteHistoryItem",
         "title": "Delete",
         "icon": "$(trash)"
       },
       {
-        "command": "kusto.clearHistory",
+        "command": "msKustoExplorer.clearHistory",
         "title": "Clear History",
         "icon": "$(clear-all)"
       },
       {
-        "command": "kusto.removeChart",
+        "command": "msKustoExplorer.removeChart",
         "title": "Remove Chart",
         "icon": "$(close)"
       },
       {
-        "command": "kusto.importConnectionsFromKustoExplorer",
+        "command": "msKustoExplorer.importConnectionsFromKustoExplorer",
         "title": "Import Connections",
         "icon": "$(cloud-download)"
       },
       {
-        "command": "kusto.importScratchPadsFromKustoExplorer",
+        "command": "msKustoExplorer.importScratchPadsFromKustoExplorer",
         "title": "Import Scratch Pads",
         "icon": "$(cloud-download)"
       },
       {
-        "command": "kusto.rerunQuery",
+        "command": "msKustoExplorer.rerunQuery",
         "title": "Rerun Query",
         "icon": "$(play)"
       }
@@ -309,314 +309,314 @@
     "menus": {
       "view/title": [
         {
-          "command": "kusto.addServer",
+          "command": "msKustoExplorer.addServer",
           "when": "view == msKustoExplorer-connections",
           "group": "navigation@1"
         },
         {
-          "command": "kusto.addServerGroup",
+          "command": "msKustoExplorer.addServerGroup",
           "when": "view == msKustoExplorer-connections",
           "group": "navigation@2"
         },
         {
-          "command": "kusto.importConnectionsFromKustoExplorer",
+          "command": "msKustoExplorer.importConnectionsFromKustoExplorer",
           "when": "view == msKustoExplorer-connections",
           "group": "navigation@3"
         },
         {
-          "command": "kusto.addServer",
+          "command": "msKustoExplorer.addServer",
           "when": "view == msKustoExplorer-connections",
           "group": "1_add@1"
         },
         {
-          "command": "kusto.addServerGroup",
+          "command": "msKustoExplorer.addServerGroup",
           "when": "view == msKustoExplorer-connections",
           "group": "1_add@2"
         },
         {
-          "command": "kusto.importConnectionsFromKustoExplorer",
+          "command": "msKustoExplorer.importConnectionsFromKustoExplorer",
           "when": "view == msKustoExplorer-connections",
           "group": "1_add@3"
         },
         {
-          "command": "kusto.newScratchPad",
+          "command": "msKustoExplorer.newScratchPad",
           "when": "view == msKustoExplorer-scratchPads",
           "group": "navigation@1"
         },
         {
-          "command": "kusto.importScratchPadsFromKustoExplorer",
+          "command": "msKustoExplorer.importScratchPadsFromKustoExplorer",
           "when": "view == msKustoExplorer-scratchPads",
           "group": "navigation@2"
         },
         {
-          "command": "kusto.newScratchPad",
+          "command": "msKustoExplorer.newScratchPad",
           "when": "view == msKustoExplorer-scratchPads",
           "group": "1_add@1"
         },
         {
-          "command": "kusto.importScratchPadsFromKustoExplorer",
+          "command": "msKustoExplorer.importScratchPadsFromKustoExplorer",
           "when": "view == msKustoExplorer-scratchPads",
           "group": "1_import@1"
         },
         {
-          "command": "kusto.clearHistory",
+          "command": "msKustoExplorer.clearHistory",
           "when": "view == msKustoExplorer-history",
           "group": "navigation@1"
         },
         {
-          "command": "kusto.copyChart",
-          "when": "view == msKustoExplorer-resultsView && kusto.panelChartActive",
+          "command": "msKustoExplorer.copyChart",
+          "when": "view == msKustoExplorer-resultsView && msKustoExplorer.panelChartActive",
           "group": "navigation@1"
         },
         {
-          "command": "kusto.copyData",
-          "when": "view == msKustoExplorer-resultsView && kusto.panelShowingData && !kusto.panelChartActive",
+          "command": "msKustoExplorer.copyData",
+          "when": "view == msKustoExplorer-resultsView && msKustoExplorer.panelShowingData && !msKustoExplorer.panelChartActive",
           "group": "navigation@1"
         },
         {
-          "command": "kusto.toggleChartEditor",
-          "when": "view == msKustoExplorer-resultsView && kusto.panelHasChart && kusto.panelChartActive",
+          "command": "msKustoExplorer.toggleChartEditor",
+          "when": "view == msKustoExplorer-resultsView && msKustoExplorer.panelHasChart && msKustoExplorer.panelChartActive",
           "group": "navigation@2"
         },
         {
-          "command": "kusto.savePanelResults",
+          "command": "msKustoExplorer.savePanelResults",
           "when": "view == msKustoExplorer-resultsView",
           "group": "navigation@3"
         },
         {
-          "command": "kusto.chartPanelResults",
-          "when": "view == msKustoExplorer-resultsView && !kusto.panelHasChart",
+          "command": "msKustoExplorer.chartPanelResults",
+          "when": "view == msKustoExplorer-resultsView && !msKustoExplorer.panelHasChart",
           "group": "navigation@4"
         },
         {
-          "command": "kusto.toggleSearch",
-          "when": "view == msKustoExplorer-resultsView && kusto.panelShowingData && !kusto.panelChartActive",
+          "command": "msKustoExplorer.toggleSearch",
+          "when": "view == msKustoExplorer-resultsView && msKustoExplorer.panelShowingData && !msKustoExplorer.panelChartActive",
           "group": "navigation@5"
         }
       ],
       "view/item/context": [
         {
-          "command": "kusto.addServerToGroup",
+          "command": "msKustoExplorer.addServerToGroup",
           "when": "view == msKustoExplorer-connections && viewItem == serverGroup",
           "group": "inline"
         },
         {
-          "command": "kusto.addServer",
+          "command": "msKustoExplorer.addServer",
           "when": "view == msKustoExplorer-connections && viewItem =~ /^(server|serverGroup|noConnection)$/",
           "group": "1_add@1"
         },
         {
-          "command": "kusto.addServerGroup",
+          "command": "msKustoExplorer.addServerGroup",
           "when": "view == msKustoExplorer-connections && viewItem =~ /^(server|serverGroup|noConnection)$/",
           "group": "1_add@2"
         },
         {
-          "command": "kusto.addServerToGroup",
+          "command": "msKustoExplorer.addServerToGroup",
           "when": "view == msKustoExplorer-connections && viewItem == serverGroup",
           "group": "1_add@3"
         },
         {
-          "command": "kusto.removeServer",
+          "command": "msKustoExplorer.removeServer",
           "when": "view == msKustoExplorer-connections && viewItem == server",
           "group": "9_cutcopypaste"
         },
         {
-          "command": "kusto.removeServerGroup",
+          "command": "msKustoExplorer.removeServerGroup",
           "when": "view == msKustoExplorer-connections && viewItem == serverGroup",
           "group": "9_cutcopypaste"
         },
         {
-          "command": "kusto.moveServer",
+          "command": "msKustoExplorer.moveServer",
           "when": "view == msKustoExplorer-connections && viewItem == server",
           "group": "7_modification"
         },
         {
-          "command": "kusto.editServer",
+          "command": "msKustoExplorer.editServer",
           "when": "view == msKustoExplorer-connections && viewItem == server",
           "group": "7_modification"
         },
         {
-          "command": "kusto.renameServer",
+          "command": "msKustoExplorer.renameServer",
           "when": "view == msKustoExplorer-connections && viewItem == server",
           "group": "7_modification"
         },
         {
-          "command": "kusto.renameServerGroup",
+          "command": "msKustoExplorer.renameServerGroup",
           "when": "view == msKustoExplorer-connections && viewItem == serverGroup",
           "group": "7_modification"
         },
         {
-          "command": "kusto.refreshServer",
+          "command": "msKustoExplorer.refreshServer",
           "when": "view == msKustoExplorer-connections && viewItem == server",
           "group": "inline"
         },
         {
-          "command": "kusto.refreshServer",
+          "command": "msKustoExplorer.refreshServer",
           "when": "view == msKustoExplorer-connections && viewItem == server",
           "group": "navigation"
         },
         {
-          "command": "kusto.refreshDatabase",
+          "command": "msKustoExplorer.refreshDatabase",
           "when": "view == msKustoExplorer-connections && viewItem == database",
           "group": "inline"
         },
         {
-          "command": "kusto.refreshDatabase",
+          "command": "msKustoExplorer.refreshDatabase",
           "when": "view == msKustoExplorer-connections && viewItem == database",
           "group": "navigation"
         },
         {
-          "command": "kusto.viewEntityDefinition",
+          "command": "msKustoExplorer.viewEntityDefinition",
           "when": "view == msKustoExplorer-connections && viewItem =~ /^(table|externalTable|materializedView|function|entityGroup|graphModel)$/",
           "group": "navigation"
         },
         {
-          "command": "kusto.copyEntityAsExpression",
+          "command": "msKustoExplorer.copyEntityAsExpression",
           "when": "view == msKustoExplorer-connections && viewItem =~ /^(server|database|table|externalTable|materializedView|function|entityGroup|graphModel)$/",
           "group": "9_cutcopypaste"
         },
         {
-          "command": "kusto.deleteScratchPad",
+          "command": "msKustoExplorer.deleteScratchPad",
           "when": "view == msKustoExplorer-scratchPads && viewItem == scratchPad",
           "group": "inline"
         },
         {
-          "command": "kusto.renameScratchPad",
+          "command": "msKustoExplorer.renameScratchPad",
           "when": "view == msKustoExplorer-scratchPads && viewItem == scratchPad",
           "group": "7_modification"
         },
         {
-          "command": "kusto.deleteScratchPad",
+          "command": "msKustoExplorer.deleteScratchPad",
           "when": "view == msKustoExplorer-scratchPads && viewItem == scratchPad",
           "group": "9_cutcopypaste"
         },
         {
-          "command": "kusto.deleteHistoryItem",
+          "command": "msKustoExplorer.deleteHistoryItem",
           "when": "view == msKustoExplorer-history && viewItem == historyItem",
           "group": "inline"
         },
         {
-          "command": "kusto.deleteHistoryItem",
+          "command": "msKustoExplorer.deleteHistoryItem",
           "when": "view == msKustoExplorer-history && viewItem == historyItem",
           "group": "9_cutcopypaste"
         }
       ],
       "editor/title": [
         {
-          "command": "kusto.runQuery",
-          "when": "editorLangId == kusto && !kusto.isEntityDefinition",
+          "command": "msKustoExplorer.runQuery",
+          "when": "editorLangId == kusto && !msKustoExplorer.isEntityDefinition",
           "group": "navigation@1"
         },
         {
-          "command": "kusto.refreshDocumentSchema",
-          "when": "editorLangId == kusto && !kusto.isEntityDefinition",
+          "command": "msKustoExplorer.refreshDocumentSchema",
+          "when": "editorLangId == kusto && !msKustoExplorer.isEntityDefinition",
           "group": "navigation@2"
         },
         {
-          "command": "kusto.copyChart",
-          "when": "(activeWebviewPanelId == kusto || activeWebviewPanelId == kusto.resultViewer) && kusto.resultViewerChartActive",
+          "command": "msKustoExplorer.copyChart",
+          "when": "(activeWebviewPanelId == 'msKustoExplorer-singletonView' || activeWebviewPanelId == 'msKustoExplorer-resultViewer') && msKustoExplorer.resultViewerChartActive",
           "group": "navigation@1"
         },
         {
-          "command": "kusto.moveViewToMain",
-          "when": "(activeWebviewPanelId == kusto || activeWebviewPanelId == kusto.resultViewer) && kusto.resultViewerChartActive",
+          "command": "msKustoExplorer.moveViewToMain",
+          "when": "(activeWebviewPanelId == 'msKustoExplorer-singletonView' || activeWebviewPanelId == 'msKustoExplorer-resultViewer') && msKustoExplorer.resultViewerChartActive",
           "group": "navigation@2"
         },
         {
-          "command": "kusto.toggleChartEditor",
-          "when": "(activeWebviewPanelId == kusto || activeWebviewPanelId == kusto.resultViewer) && kusto.resultViewerHasChart && kusto.resultViewerChartActive",
+          "command": "msKustoExplorer.toggleChartEditor",
+          "when": "(activeWebviewPanelId == 'msKustoExplorer-singletonView' || activeWebviewPanelId == 'msKustoExplorer-resultViewer') && msKustoExplorer.resultViewerHasChart && msKustoExplorer.resultViewerChartActive",
           "group": "navigation@2"
         },
         {
-          "command": "kusto.saveSingletonResults",
-          "when": "activeWebviewPanelId == kusto",
+          "command": "msKustoExplorer.saveSingletonResults",
+          "when": "activeWebviewPanelId == 'msKustoExplorer-singletonView'",
           "group": "navigation@3"
         },
         {
-          "command": "kusto.toggleSearch",
-          "when": "(activeWebviewPanelId == kusto || activeWebviewPanelId == kusto.resultViewer) && !kusto.resultViewerChartActive",
+          "command": "msKustoExplorer.toggleSearch",
+          "when": "(activeWebviewPanelId == 'msKustoExplorer-singletonView' || activeWebviewPanelId == 'msKustoExplorer-resultViewer') && !msKustoExplorer.resultViewerChartActive",
           "group": "navigation@4"
         },
         {
-          "command": "kusto.rerunQuery",
-          "when": "activeWebviewPanelId == kusto.resultViewer && kusto.resultViewerHasQuery",
+          "command": "msKustoExplorer.rerunQuery",
+          "when": "activeWebviewPanelId == 'msKustoExplorer-resultViewer' && msKustoExplorer.resultViewerHasQuery",
           "group": "navigation@5"
         }
       ],
       "editor/context": [
         {
-          "command": "kusto.copyQueryTransparent",
-          "when": "editorLangId == kusto && !kusto.isEntityDefinition",
+          "command": "msKustoExplorer.copyQueryTransparent",
+          "when": "editorLangId == kusto && !msKustoExplorer.isEntityDefinition",
           "group": "0_kusto@1"
         },
         {
-          "command": "kusto.formatQuery",
-          "when": "editorLangId == kusto && !kusto.isEntityDefinition",
+          "command": "msKustoExplorer.formatQuery",
+          "when": "editorLangId == kusto && !msKustoExplorer.isEntityDefinition",
           "group": "0_kusto@2"
         },
         {
-          "command": "kusto.runQuery",
-          "when": "editorLangId == kusto && !kusto.isEntityDefinition",
+          "command": "msKustoExplorer.runQuery",
+          "when": "editorLangId == kusto && !msKustoExplorer.isEntityDefinition",
           "group": "0_kusto@3"
         },
         {
-          "command": "kusto.refreshDocumentSchema",
-          "when": "editorLangId == kusto && !kusto.isEntityDefinition",
+          "command": "msKustoExplorer.refreshDocumentSchema",
+          "when": "editorLangId == kusto && !msKustoExplorer.isEntityDefinition",
           "group": "0_kusto@4"
         },
         {
-          "command": "kusto.saveScratchPadAs",
-          "when": "editorLangId == kusto && kusto.isScratchPad",
+          "command": "msKustoExplorer.saveScratchPadAs",
+          "when": "editorLangId == kusto && msKustoExplorer.isScratchPad",
           "group": "0_kusto@5"
         }
       ],
       "webview/context": [
         {
-          "command": "kusto.copyCell",
-          "when": "webviewId == 'msKustoExplorer-resultsView' || (webviewId == 'kusto.resultViewer' && !chartVisible && !queryVisible) || (webviewId == 'kusto' && !chartVisible && !queryVisible)",
+          "command": "msKustoExplorer.copyCell",
+          "when": "webviewId == 'msKustoExplorer-resultsView' || (webviewId == 'msKustoExplorer-resultViewer' && !chartVisible && !queryVisible) || (webviewId == 'msKustoExplorer-singletonView' && !chartVisible && !queryVisible)",
           "group": "9_cutcopypaste@1"
         },
         {
-          "command": "kusto.copyData",
-          "when": "webviewId == 'msKustoExplorer-resultsView' || (webviewId == 'kusto.resultViewer' && !chartVisible && !queryVisible) || (webviewId == 'kusto' && !chartVisible && !queryVisible)",
+          "command": "msKustoExplorer.copyData",
+          "when": "webviewId == 'msKustoExplorer-resultsView' || (webviewId == 'msKustoExplorer-resultViewer' && !chartVisible && !queryVisible) || (webviewId == 'msKustoExplorer-singletonView' && !chartVisible && !queryVisible)",
           "group": "9_cutcopypaste@2"
         },
         {
-          "command": "kusto.copyTableAsExpression",
-          "when": "webviewId == 'msKustoExplorer-resultsView' || (webviewId == 'kusto.resultViewer' && !chartVisible && !queryVisible) || (webviewId == 'kusto' && !chartVisible && !queryVisible)",
+          "command": "msKustoExplorer.copyTableAsExpression",
+          "when": "webviewId == 'msKustoExplorer-resultsView' || (webviewId == 'msKustoExplorer-resultViewer' && !chartVisible && !queryVisible) || (webviewId == 'msKustoExplorer-singletonView' && !chartVisible && !queryVisible)",
           "group": "9_cutcopypaste@3"
         },
         {
-          "command": "kusto.savePanelResults",
-          "when": "webviewId == 'msKustoExplorer-resultsView' || (webviewId == 'kusto' && !chartVisible)"
+          "command": "msKustoExplorer.savePanelResults",
+          "when": "webviewId == 'msKustoExplorer-resultsView' || (webviewId == 'msKustoExplorer-singletonView' && !chartVisible)"
         },
         {
-          "command": "kusto.chartPanelResults",
+          "command": "msKustoExplorer.chartPanelResults",
           "when": "webviewId == 'msKustoExplorer-resultsView'"
         },
         {
-          "command": "kusto.copyChart",
-          "when": "(webviewId == 'kusto' && chartVisible) || (webviewId == 'kusto.resultViewer' && chartVisible)"
+          "command": "msKustoExplorer.copyChart",
+          "when": "(webviewId == 'msKustoExplorer-singletonView' && chartVisible) || (webviewId == 'msKustoExplorer-resultViewer' && chartVisible)"
         },
         {
-          "command": "kusto.removeChart",
-          "when": "(webviewId == 'kusto' && chartVisible) || (webviewId == 'kusto.resultViewer' && chartVisible)"
+          "command": "msKustoExplorer.removeChart",
+          "when": "(webviewId == 'msKustoExplorer-singletonView' && chartVisible) || (webviewId == 'msKustoExplorer-resultViewer' && chartVisible)"
         },
         {
-          "command": "kusto.saveSingletonResults",
-          "when": "webviewId == 'kusto' && chartVisible"
+          "command": "msKustoExplorer.saveSingletonResults",
+          "when": "webviewId == 'msKustoExplorer-singletonView' && chartVisible"
         },
         {
-          "command": "kusto.rerunQuery",
-          "when": "webviewId == 'kusto.resultViewer' && kusto.resultViewerHasQuery"
+          "command": "msKustoExplorer.rerunQuery",
+          "when": "webviewId == 'msKustoExplorer-resultViewer' && msKustoExplorer.resultViewerHasQuery"
         }
       ]
     },
     "keybindings": [
       {
-        "command": "kusto.runQuery",
+        "command": "msKustoExplorer.runQuery",
         "key": "F5",
-        "when": "editorLangId == kusto && !kusto.isEntityDefinition"
+        "when": "editorLangId == kusto && !msKustoExplorer.isEntityDefinition"
       },
       {
         "command": "editor.action.triggerSuggest",
@@ -624,24 +624,24 @@
         "when": "editorLangId == kusto"
       },
       {
-        "command": "kusto.copyChart",
+        "command": "msKustoExplorer.copyChart",
         "key": "ctrl+c",
-        "when": "(activeWebviewPanelId == kusto || activeWebviewPanelId == kusto.resultViewer) && kusto.resultViewerChartActive"
+        "when": "(activeWebviewPanelId == 'msKustoExplorer-singletonView' || activeWebviewPanelId == 'msKustoExplorer-resultViewer') && msKustoExplorer.resultViewerChartActive"
       },
       {
-        "command": "kusto.saveSingletonResults",
+        "command": "msKustoExplorer.saveSingletonResults",
         "key": "ctrl+s",
-        "when": "activeWebviewPanelId == kusto"
+        "when": "activeWebviewPanelId == 'msKustoExplorer-singletonView'"
       },
       {
-        "command": "kusto.saveSingletonResults",
+        "command": "msKustoExplorer.saveSingletonResults",
         "key": "ctrl+shift+s",
-        "when": "activeWebviewPanelId == kusto"
+        "when": "activeWebviewPanelId == 'msKustoExplorer-singletonView'"
       },
       {
-        "command": "kusto.saveScratchPadAs",
+        "command": "msKustoExplorer.saveScratchPadAs",
         "key": "ctrl+shift+s",
-        "when": "editorLangId == kusto && kusto.isScratchPad"
+        "when": "editorLangId == kusto && msKustoExplorer.isScratchPad"
       }
     ],
     "viewsContainers": {
@@ -667,7 +667,7 @@
           "id": "msKustoExplorer-resultsView",
           "name": "Results",
           "icon": "$(table)",
-          "when": "kusto.hasActiveDocument"
+          "when": "msKustoExplorer.hasActiveDocument"
         }
       ],
       "msKustoExplorer-sidebar": [
@@ -692,7 +692,7 @@
       {
         "title": "Charts",
         "properties": {
-          "kusto.chart.showLegend": {
+          "msKustoExplorer.chart.showLegend": {
             "type": "string",
             "enum": [
               "",
@@ -707,7 +707,7 @@
             "default": "",
             "description": "Default legend visibility for charts"
           },
-          "kusto.chart.legendPosition": {
+          "msKustoExplorer.chart.legendPosition": {
             "type": "string",
             "enum": [
               "",
@@ -724,7 +724,7 @@
             "default": "",
             "description": "Default legend position for charts"
           },
-          "kusto.chart.sort": {
+          "msKustoExplorer.chart.sort": {
             "type": "string",
             "enum": [
               "",
@@ -741,7 +741,7 @@
             "default": "",
             "description": "Default axis ordering for charts"
           },
-          "kusto.chart.xShowTicks": {
+          "msKustoExplorer.chart.xShowTicks": {
             "type": "string",
             "enum": [
               "",
@@ -756,7 +756,7 @@
             "default": "",
             "description": "Default X-axis tick mark visibility for charts"
           },
-          "kusto.chart.yShowTicks": {
+          "msKustoExplorer.chart.yShowTicks": {
             "type": "string",
             "enum": [
               "",
@@ -771,7 +771,7 @@
             "default": "",
             "description": "Default Y-axis tick mark visibility for charts"
           },
-          "kusto.chart.xShowGrid": {
+          "msKustoExplorer.chart.xShowGrid": {
             "type": "string",
             "enum": [
               "",
@@ -786,7 +786,7 @@
             "default": "",
             "description": "Default X-axis grid line visibility for charts"
           },
-          "kusto.chart.yShowGrid": {
+          "msKustoExplorer.chart.yShowGrid": {
             "type": "string",
             "enum": [
               "",
@@ -801,7 +801,7 @@
             "default": "",
             "description": "Default Y-axis grid line visibility for charts"
           },
-          "kusto.chart.showValues": {
+          "msKustoExplorer.chart.showValues": {
             "type": "string",
             "enum": [
               "",
@@ -816,7 +816,7 @@
             "default": "",
             "description": "Default data value label visibility for charts"
           },
-          "kusto.chart.textSize": {
+          "msKustoExplorer.chart.textSize": {
             "type": "string",
             "enum": [
               "",
@@ -837,7 +837,7 @@
             "default": "",
             "description": "Default text size for chart titles and labels"
           },
-          "kusto.chart.aspectRatio": {
+          "msKustoExplorer.chart.aspectRatio": {
             "type": "string",
             "enum": [
               "",
@@ -862,7 +862,7 @@
             "default": "",
             "description": "Default aspect ratio for chart display"
           },
-          "kusto.chart.xTickAngle": {
+          "msKustoExplorer.chart.xTickAngle": {
             "type": "string",
             "enum": [
               "",
@@ -899,7 +899,7 @@
             "default": "",
             "description": "Default X-axis tick label angle for charts"
           },
-          "kusto.chart.yTickAngle": {
+          "msKustoExplorer.chart.yTickAngle": {
             "type": "string",
             "enum": [
               "",
@@ -936,7 +936,7 @@
             "default": "",
             "description": "Default Y-axis tick label angle for charts"
           },
-          "kusto.chart.showMarkers": {
+          "msKustoExplorer.chart.showMarkers": {
             "type": "string",
             "enum": [
               "",
@@ -951,7 +951,7 @@
             "default": "",
             "description": "Show markers on line chart traces by default"
           },
-          "kusto.chart.markerShape": {
+          "msKustoExplorer.chart.markerShape": {
             "type": "string",
             "enum": [
               "",
@@ -976,7 +976,7 @@
             "default": "",
             "description": "Default marker shape for scatter and anomaly charts"
           },
-          "kusto.chart.markerShapesCycle": {
+          "msKustoExplorer.chart.markerShapesCycle": {
             "type": "string",
             "enum": [
               "",
@@ -991,7 +991,7 @@
             "default": "",
             "description": "Marker Shapes Cycle: cycle through shapes across traces by default"
           },
-          "kusto.chart.markerOutline": {
+          "msKustoExplorer.chart.markerOutline": {
             "type": "string",
             "enum": [
               "",
@@ -1006,7 +1006,7 @@
             "default": "",
             "description": "Show a white outline around markers to help them stand out"
           },
-          "kusto.chart.markerSize": {
+          "msKustoExplorer.chart.markerSize": {
             "type": "string",
             "enum": [
               "",
@@ -1032,12 +1032,12 @@
       {
         "title": "Connections",
         "properties": {
-          "kusto.defaultDomain": {
+          "msKustoExplorer.defaultDomain": {
             "type": "string",
             "default": ".kusto.windows.net",
             "description": "The domain appended to abbreviated cluster names in cluster() expressions."
           },
-          "kusto.connections.suppressKustoExplorerImportPrompt": {
+          "msKustoExplorer.connections.suppressKustoExplorerImportPrompt": {
             "type": "boolean",
             "default": false,
             "description": "Suppress the prompt to import connections from Kusto Explorer when no connections are configured."
@@ -1047,7 +1047,7 @@
       {
         "title": "Editor",
         "properties": {
-          "kusto.editor.showQuerySeparators": {
+          "msKustoExplorer.editor.showQuerySeparators": {
             "type": "boolean",
             "default": true,
             "description": "Show query separator lines (---) in the editor."
@@ -1057,12 +1057,12 @@
       {
         "title": "Formatting",
         "properties": {
-          "kusto.format.insertMissingTokens": {
+          "msKustoExplorer.format.insertMissingTokens": {
             "type": "boolean",
             "default": false,
             "description": "Automatically add missing tokens (e.g., semicolons) when formatting"
           },
-          "kusto.format.bracketStyle": {
+          "msKustoExplorer.format.bracketStyle": {
             "type": "string",
             "enum": [
               "none",
@@ -1072,7 +1072,7 @@
             "default": "vertical",
             "description": "How brackets are styled when formatting"
           },
-          "kusto.format.schemaBracketStyle": {
+          "msKustoExplorer.format.schemaBracketStyle": {
             "type": "string",
             "enum": [
               "none",
@@ -1082,7 +1082,7 @@
             "default": "vertical",
             "description": "How schema brackets are styled when formatting"
           },
-          "kusto.format.dataTableBracketStyle": {
+          "msKustoExplorer.format.dataTableBracketStyle": {
             "type": "string",
             "enum": [
               "none",
@@ -1092,7 +1092,7 @@
             "default": "vertical",
             "description": "How data table brackets are styled when formatting"
           },
-          "kusto.format.functionBodyBracketStyle": {
+          "msKustoExplorer.format.functionBodyBracketStyle": {
             "type": "string",
             "enum": [
               "none",
@@ -1102,7 +1102,7 @@
             "default": "vertical",
             "description": "How function body braces are styled when formatting"
           },
-          "kusto.format.functionParameterBracketStyle": {
+          "msKustoExplorer.format.functionParameterBracketStyle": {
             "type": "string",
             "enum": [
               "none",
@@ -1112,7 +1112,7 @@
             "default": "none",
             "description": "How parameter list parentheses are styled when formatting"
           },
-          "kusto.format.functionArgumentBracketStyle": {
+          "msKustoExplorer.format.functionArgumentBracketStyle": {
             "type": "string",
             "enum": [
               "none",
@@ -1122,7 +1122,7 @@
             "default": "none",
             "description": "How argument list parentheses are styled when formatting"
           },
-          "kusto.format.pipeOperatorPlacementStyle": {
+          "msKustoExplorer.format.pipeOperatorPlacementStyle": {
             "type": "string",
             "enum": [
               "none",
@@ -1132,7 +1132,7 @@
             "default": "smart",
             "description": "How query pipe operators (|) are placed when formatting"
           },
-          "kusto.format.expressionListPlacementStyle": {
+          "msKustoExplorer.format.expressionListPlacementStyle": {
             "type": "string",
             "enum": [
               "none",
@@ -1142,7 +1142,7 @@
             "default": "smart",
             "description": "How expressions in a list are placed when formatting"
           },
-          "kusto.format.statementListPlacementStyle": {
+          "msKustoExplorer.format.statementListPlacementStyle": {
             "type": "string",
             "enum": [
               "none",
@@ -1152,7 +1152,7 @@
             "default": "smart",
             "description": "How statements in a list are placed when formatting"
           },
-          "kusto.format.semicolonPlacementStyle": {
+          "msKustoExplorer.format.semicolonPlacementStyle": {
             "type": "string",
             "enum": [
               "none",
@@ -1167,7 +1167,7 @@
       {
         "title": "Results",
         "properties": {
-          "kusto.results.display": {
+          "msKustoExplorer.results.display": {
             "type": "string",
             "enum": [
               "panel",
@@ -1177,7 +1177,7 @@
             "default": "panel",
             "markdownDescription": "Where query results are displayed.\n- `panel`: In the Results tab of the bottom panel\n- `beside`: In a singleton editor beside your query\n- `main`: In a singleton editor in the main area"
           },
-          "kusto.results.chartDisplay": {
+          "msKustoExplorer.results.chartDisplay": {
             "type": "string",
             "enum": [
               "beside",
@@ -1192,7 +1192,7 @@
       {
         "title": "Runtime",
         "properties": {
-          "kusto.runtime.useSystemDotnet": {
+          "msKustoExplorer.runtime.useSystemDotnet": {
             "type": "boolean",
             "default": true,
             "description": "Use system-installed .NET runtime if available. Set to false to always use the VS Code runtime acquisition extension."
@@ -1202,105 +1202,105 @@
     ],
     "languageModelToolReferencingInstructions": [
       {
-        "toolId": "kusto_getClusters",
+        "toolId": "msKustoExplorer_getClusters",
         "instructions": "Use this tool to discover which Kusto (Azure Data Explorer) clusters the user has configured."
       },
       {
-        "toolId": "kusto_getActiveConnection",
+        "toolId": "msKustoExplorer_getActiveConnection",
         "instructions": "Use this tool to find out which Kusto cluster and database the user is currently connected to in their active editor."
       },
       {
-        "toolId": "kusto_getDatabases",
+        "toolId": "msKustoExplorer_getDatabases",
         "instructions": "Use this tool to list the databases available in a Kusto cluster when the user asks about databases or needs to choose one."
       },
       {
-        "toolId": "kusto_getTables",
+        "toolId": "msKustoExplorer_getTables",
         "instructions": "Use this tool to list the tables in a Kusto database when the user asks what data is available or needs table names for writing KQL queries."
       },
       {
-        "toolId": "kusto_getTableColumns",
+        "toolId": "msKustoExplorer_getTableColumns",
         "instructions": "Use this tool to get the columns and their types for a specific Kusto table. Essential for writing correct KQL queries with the right column names."
       },
       {
-        "toolId": "kusto_getExternalTables",
+        "toolId": "msKustoExplorer_getExternalTables",
         "instructions": "Use this tool to list external tables in a Kusto database when the user needs to query external data sources."
       },
       {
-        "toolId": "kusto_getExternalTableColumns",
+        "toolId": "msKustoExplorer_getExternalTableColumns",
         "instructions": "Use this tool to get the columns and their types for a specific Kusto external table."
       },
       {
-        "toolId": "kusto_getFunctions",
+        "toolId": "msKustoExplorer_getFunctions",
         "instructions": "Use this tool to list stored functions in a Kusto database when the user needs to call or reference existing functions in KQL queries."
       },
       {
-        "toolId": "kusto_getMaterializedViews",
+        "toolId": "msKustoExplorer_getMaterializedViews",
         "instructions": "Use this tool to list materialized views in a Kusto database when the user asks about pre-aggregated or cached query results."
       },
       {
-        "toolId": "kusto_getMaterializedViewColumns",
+        "toolId": "msKustoExplorer_getMaterializedViewColumns",
         "instructions": "Use this tool to get the columns and their types for a specific Kusto materialized view."
       },
       {
-        "toolId": "kusto_getEntityGroups",
+        "toolId": "msKustoExplorer_getEntityGroups",
         "instructions": "Use this tool to list entity groups in a Kusto database."
       },
       {
-        "toolId": "kusto_getGraphModels",
+        "toolId": "msKustoExplorer_getGraphModels",
         "instructions": "Use this tool to list graph models in a Kusto database when the user works with graph-related queries."
       },
       {
-        "toolId": "kusto_getTableDefinition",
+        "toolId": "msKustoExplorer_getTableDefinition",
         "instructions": "Use this tool to get the full KQL definition of a Kusto table, including its create command. Useful when the user wants to understand or replicate a table's structure."
       },
       {
-        "toolId": "kusto_getExternalTableDefinition",
+        "toolId": "msKustoExplorer_getExternalTableDefinition",
         "instructions": "Use this tool to get the full KQL definition of a Kusto external table in the form of a create command."
       },
       {
-        "toolId": "kusto_getMaterializedViewDefinition",
+        "toolId": "msKustoExplorer_getMaterializedViewDefinition",
         "instructions": "Use this tool to get the full KQL definition of a materialized view, including its create command, source table, and aggregation query."
       },
       {
-        "toolId": "kusto_getFunctionDefinition",
+        "toolId": "msKustoExplorer_getFunctionDefinition",
         "instructions": "Use this tool to get the full KQL definition of a stored function, including its create command, parameters, and body. Useful when the user wants to understand, modify, or debug a function."
       },
       {
-        "toolId": "kusto_getEntityGroupDefinition",
+        "toolId": "msKustoExplorer_getEntityGroupDefinition",
         "instructions": "Use this tool to get the full definition of an entity group in the form of a create command, including its member entities."
       },
       {
-        "toolId": "kusto_getGraphModelDefinition",
+        "toolId": "msKustoExplorer_getGraphModelDefinition",
         "instructions": "Use this tool to get the full definition of a graph model in the form of a create command."
       },
       {
-        "toolId": "kusto_getCurrentQueryText",
+        "toolId": "msKustoExplorer_getCurrentQueryText",
         "instructions": "Use this tool to get the KQL query the user is currently working on in their editor. Use it when the user says 'this query', 'my query', 'the current query', or asks for help with what they're editing."
       },
       {
-        "toolId": "kusto_getQueryRanges",
+        "toolId": "msKustoExplorer_getQueryRanges",
         "instructions": "Use this tool to get the line ranges of all queries in the user's active KQL document. Useful for understanding the document structure or when the user refers to multiple queries."
       },
       {
-        "toolId": "kusto_validateQuery",
+        "toolId": "msKustoExplorer_validateQuery",
         "instructions": "Use this tool to validate KQL queries for syntax and semantic errors. Always validate queries you generate before presenting them to the user to ensure correctness."
       },
       {
-        "toolId": "kusto_getQueryResultType",
+        "toolId": "msKustoExplorer_getQueryResultType",
         "instructions": "Use this tool to determine what kind of data a KQL query returns. It returns the table schema for tabular queries or the scalar type for scalar queries. Use this to understand the output shape of a query."
       },
       {
-        "toolId": "kusto_getFunctionResultType",
-        "instructions": "Use this tool to determine what kind of data a database function returns given its name. It returns the table schema for tabular functions or the scalar type for scalar functions. Note that the result may not include all columns if the function has a tabular parameter that contributes to the output. To determine the exact columns for a function that has a tabular parameter, create a mock query that calls the function with arguments that are the correct types and use the kusto_getQueryResultType tool."
+        "toolId": "msKustoExplorer_getFunctionResultType",
+        "instructions": "Use this tool to determine what kind of data a database function returns given its name. It returns the table schema for tabular functions or the scalar type for scalar functions. Note that the result may not include all columns if the function has a tabular parameter that contributes to the output. To determine the exact columns for a function that has a tabular parameter, create a mock query that calls the function with arguments that are the correct types and use the msKustoExplorer_getQueryResultType tool."
       },
       {
-        "toolId": "kusto_runQuery",
+        "toolId": "msKustoExplorer_runQuery",
         "instructions": "Use this tool to run a KQL query and return results when the user asks to execute a query or see data, or if you need to know the result of a query to answer a user question. Queries are run in read-only mode for safety. Please limit the output of queries to just the columns necessary and limit the number of rows unless you know you need all rows to answer the request. If the user wants to see the results, use the showResults parameter with true and add a render operator to the query to show a visual chart."
       }
     ],
     "languageModelTools": [
       {
-        "name": "kusto_getClusters",
+        "name": "msKustoExplorer_getClusters",
         "displayName": "Get Kusto Clusters",
         "toolReferenceName": "kustoClusters",
         "canBeReferencedInPrompt": true,
@@ -1317,7 +1317,7 @@
         }
       },
       {
-        "name": "kusto_getActiveConnection",
+        "name": "msKustoExplorer_getActiveConnection",
         "displayName": "Get Active Kusto Connection",
         "toolReferenceName": "kustoActiveConnection",
         "canBeReferencedInPrompt": true,
@@ -1334,7 +1334,7 @@
         }
       },
       {
-        "name": "kusto_getDatabases",
+        "name": "msKustoExplorer_getDatabases",
         "displayName": "Get Kusto Databases",
         "toolReferenceName": "kustoDatabases",
         "canBeReferencedInPrompt": true,
@@ -1356,7 +1356,7 @@
         }
       },
       {
-        "name": "kusto_getTables",
+        "name": "msKustoExplorer_getTables",
         "displayName": "Get Kusto Tables",
         "toolReferenceName": "kustoTables",
         "canBeReferencedInPrompt": true,
@@ -1382,7 +1382,7 @@
         }
       },
       {
-        "name": "kusto_getTableColumns",
+        "name": "msKustoExplorer_getTableColumns",
         "displayName": "Get Table Columns",
         "toolReferenceName": "kustoTableColumns",
         "canBeReferencedInPrompt": true,
@@ -1415,7 +1415,7 @@
         }
       },
       {
-        "name": "kusto_getExternalTableColumns",
+        "name": "msKustoExplorer_getExternalTableColumns",
         "displayName": "Get External Table Columns",
         "toolReferenceName": "kustoExternalTableColumns",
         "canBeReferencedInPrompt": true,
@@ -1448,7 +1448,7 @@
         }
       },
       {
-        "name": "kusto_getMaterializedViewColumns",
+        "name": "msKustoExplorer_getMaterializedViewColumns",
         "displayName": "Get Materialized View Columns",
         "toolReferenceName": "kustoMaterializedViewColumns",
         "canBeReferencedInPrompt": true,
@@ -1481,7 +1481,7 @@
         }
       },
       {
-        "name": "kusto_getFunctions",
+        "name": "msKustoExplorer_getFunctions",
         "displayName": "Get Kusto Functions",
         "toolReferenceName": "kustoFunctions",
         "canBeReferencedInPrompt": true,
@@ -1507,7 +1507,7 @@
         }
       },
       {
-        "name": "kusto_getMaterializedViews",
+        "name": "msKustoExplorer_getMaterializedViews",
         "displayName": "Get Materialized Views",
         "toolReferenceName": "kustoMaterializedViews",
         "canBeReferencedInPrompt": true,
@@ -1533,7 +1533,7 @@
         }
       },
       {
-        "name": "kusto_getExternalTables",
+        "name": "msKustoExplorer_getExternalTables",
         "displayName": "Get External Tables",
         "toolReferenceName": "kustoExternalTables",
         "canBeReferencedInPrompt": true,
@@ -1559,7 +1559,7 @@
         }
       },
       {
-        "name": "kusto_getEntityGroups",
+        "name": "msKustoExplorer_getEntityGroups",
         "displayName": "Get Entity Groups",
         "toolReferenceName": "kustoEntityGroups",
         "canBeReferencedInPrompt": true,
@@ -1585,7 +1585,7 @@
         }
       },
       {
-        "name": "kusto_getGraphModels",
+        "name": "msKustoExplorer_getGraphModels",
         "displayName": "Get Graph Models",
         "toolReferenceName": "kustoGraphModels",
         "canBeReferencedInPrompt": true,
@@ -1611,7 +1611,7 @@
         }
       },
       {
-        "name": "kusto_getTableDefinition",
+        "name": "msKustoExplorer_getTableDefinition",
         "displayName": "Get Table Definition",
         "toolReferenceName": "kustoTableDef",
         "canBeReferencedInPrompt": true,
@@ -1645,7 +1645,7 @@
         }
       },
       {
-        "name": "kusto_getExternalTableDefinition",
+        "name": "msKustoExplorer_getExternalTableDefinition",
         "displayName": "Get External Table Definition",
         "toolReferenceName": "kustoExternalTableDef",
         "canBeReferencedInPrompt": true,
@@ -1678,7 +1678,7 @@
         }
       },
       {
-        "name": "kusto_getMaterializedViewDefinition",
+        "name": "msKustoExplorer_getMaterializedViewDefinition",
         "displayName": "Get Materialized View Definition",
         "toolReferenceName": "kustoMaterializedViewDef",
         "canBeReferencedInPrompt": true,
@@ -1711,7 +1711,7 @@
         }
       },
       {
-        "name": "kusto_getFunctionDefinition",
+        "name": "msKustoExplorer_getFunctionDefinition",
         "displayName": "Get Function Definition",
         "toolReferenceName": "kustoFunctionDef",
         "canBeReferencedInPrompt": true,
@@ -1744,7 +1744,7 @@
         }
       },
       {
-        "name": "kusto_getEntityGroupDefinition",
+        "name": "msKustoExplorer_getEntityGroupDefinition",
         "displayName": "Get Entity Group Definition",
         "toolReferenceName": "kustoEntityGroupDef",
         "canBeReferencedInPrompt": true,
@@ -1777,7 +1777,7 @@
         }
       },
       {
-        "name": "kusto_getGraphModelDefinition",
+        "name": "msKustoExplorer_getGraphModelDefinition",
         "displayName": "Get Graph Model Definition",
         "toolReferenceName": "kustoGraphModelDef",
         "canBeReferencedInPrompt": true,
@@ -1810,7 +1810,7 @@
         }
       },
       {
-        "name": "kusto_getCurrentQueryText",
+        "name": "msKustoExplorer_getCurrentQueryText",
         "displayName": "Get Current KQL Query",
         "toolReferenceName": "kustoCurrentQuery",
         "canBeReferencedInPrompt": true,
@@ -1829,7 +1829,7 @@
         }
       },
       {
-        "name": "kusto_getQueryRanges",
+        "name": "msKustoExplorer_getQueryRanges",
         "displayName": "Get KQL Query Ranges",
         "toolReferenceName": "kustoQueryRanges",
         "canBeReferencedInPrompt": true,
@@ -1848,7 +1848,7 @@
         }
       },
       {
-        "name": "kusto_validateQuery",
+        "name": "msKustoExplorer_validateQuery",
         "displayName": "Validate KQL Query",
         "toolReferenceName": "kustoValidateQuery",
         "canBeReferencedInPrompt": true,
@@ -1883,7 +1883,7 @@
         }
       },
       {
-        "name": "kusto_getQueryResultType",
+        "name": "msKustoExplorer_getQueryResultType",
         "displayName": "Get KQL Query Result Type",
         "toolReferenceName": "kustoQueryResultType",
         "canBeReferencedInPrompt": true,
@@ -1919,7 +1919,7 @@
         }
       },
       {
-        "name": "kusto_getFunctionResultType",
+        "name": "msKustoExplorer_getFunctionResultType",
         "displayName": "Get Function Result Type",
         "toolReferenceName": "kustoFunctionResultType",
         "canBeReferencedInPrompt": true,
@@ -1955,7 +1955,7 @@
         }
       },
       {
-        "name": "kusto_runQuery",
+        "name": "msKustoExplorer_runQuery",
         "displayName": "Run KQL Query",
         "toolReferenceName": "kustoRunQuery",
         "canBeReferencedInPrompt": true,

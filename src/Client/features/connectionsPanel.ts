@@ -122,7 +122,7 @@ export class ConnectionsPanel {
     // Set initial context for view visibility
     const initialEditor = vscode.window.activeTextEditor;
     const initialIsKusto = initialEditor && initialEditor.document.languageId === 'kusto';
-    vscode.commands.executeCommand('setContext', 'kusto.hasActiveDocument', initialIsKusto);
+    vscode.commands.executeCommand('setContext', 'msKustoExplorer.hasActiveDocument', initialIsKusto);
 
     // Handle tree selection changes - update document connection when user clicks
     context.subscriptions.push(
@@ -739,7 +739,7 @@ class ServerTreeItem extends vscode.TreeItem {
         this.iconPath = getServerKindIcon(serverKind);
         // Set command to prevent auto-expand on click (selection still fires)
         this.command = {
-            command: 'kusto.selectServer',
+            command: 'msKustoExplorer.selectServer',
             title: 'Select Server',
             arguments: [this]
         };
@@ -757,7 +757,7 @@ class DatabaseTreeItem extends vscode.TreeItem {
         this.iconPath = new vscode.ThemeIcon('database');
         // Set command to prevent auto-expand on click (selection still fires)
         this.command = {
-            command: 'kusto.selectDatabase',
+            command: 'msKustoExplorer.selectDatabase',
             title: 'Select Database',
             arguments: [this]
         };
@@ -815,7 +815,7 @@ class TableTreeItem extends vscode.TreeItem {
             this.tooltip = tableInfo.description;
         }
         // Set command to prevent auto-expand on click/drag (selection still fires)
-        this.command = { command: 'kusto.selectEntity', title: 'Select Entity', arguments: [this] };
+        this.command = { command: 'msKustoExplorer.selectEntity', title: 'Select Entity', arguments: [this] };
     }
 }
 
@@ -835,7 +835,7 @@ class ExternalTableTreeItem extends vscode.TreeItem {
             this.tooltip = tableInfo.description;
         }
         // Set command to prevent auto-expand on click/drag (selection still fires)
-        this.command = { command: 'kusto.selectEntity', title: 'Select Entity', arguments: [this] };
+        this.command = { command: 'msKustoExplorer.selectEntity', title: 'Select Entity', arguments: [this] };
     }
 }
 
@@ -855,7 +855,7 @@ class MaterializedViewTreeItem extends vscode.TreeItem {
             this.tooltip = viewInfo.description;
         }
         // Set command to prevent auto-expand on click/drag (selection still fires)
-        this.command = { command: 'kusto.selectEntity', title: 'Select Entity', arguments: [this] };
+        this.command = { command: 'msKustoExplorer.selectEntity', title: 'Select Entity', arguments: [this] };
     }
 }
 
@@ -913,7 +913,7 @@ class EntityGroupTreeItem extends vscode.TreeItem {
             this.tooltip = groupInfo.description;
         }
         // Set command to prevent auto-expand on click/drag (selection still fires)
-        this.command = { command: 'kusto.selectEntity', title: 'Select Entity', arguments: [this] };
+        this.command = { command: 'msKustoExplorer.selectEntity', title: 'Select Entity', arguments: [this] };
     }
 }
 
@@ -1527,15 +1527,15 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
 /**
  * Custom MIME type for dragging entity metadata from the tree.
  */
-const ENTITY_DRAG_MIME = 'application/vnd.kusto.entity';
+const ENTITY_DRAG_MIME = 'application/vnd.msKustoExplorer.entity';
 
 /**
  * Drag and drop controller for moving servers between groups
  * and dragging entities onto text editors.
  */
 class KustoDragAndDropController implements vscode.TreeDragAndDropController<KustoTreeItem> {
-    readonly dropMimeTypes = ['application/vnd.code.tree.msKustoExplorer-connections'];
-    readonly dragMimeTypes = ['application/vnd.code.tree.msKustoExplorer-connections', ENTITY_DRAG_MIME];
+    readonly dropMimeTypes = ['application/vnd.code.tree.mskustoexplorer-connections'];
+    readonly dragMimeTypes = ['application/vnd.code.tree.mskustoexplorer-connections', ENTITY_DRAG_MIME];
 
     constructor(private readonly connections: ConnectionManager, private readonly onDragStart: () => void) {}
 
@@ -1550,7 +1550,7 @@ class KustoDragAndDropController implements vscode.TreeDragAndDropController<Kus
                 cluster: s.clusterName,
                 groupName: s.groupName
             }));
-            dataTransfer.set('application/vnd.code.tree.msKustoExplorer-connections', new vscode.DataTransferItem(dragData));
+            dataTransfer.set('application/vnd.code.tree.mskustoexplorer-connections', new vscode.DataTransferItem(dragData));
         }
 
         // Allow dragging entity items (servers, databases, tables, functions, etc.) onto the editor
@@ -1576,7 +1576,7 @@ class KustoDragAndDropController implements vscode.TreeDragAndDropController<Kus
     }
 
     async handleDrop(target: KustoTreeItem | undefined, dataTransfer: vscode.DataTransfer, token: vscode.CancellationToken): Promise<void> {
-        const transferItem = dataTransfer.get('application/vnd.code.tree.msKustoExplorer-connections');
+        const transferItem = dataTransfer.get('application/vnd.code.tree.mskustoexplorer-connections');
         if (!transferItem) {
             return;
         }

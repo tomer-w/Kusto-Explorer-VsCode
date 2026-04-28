@@ -440,7 +440,7 @@ class KustoCodeLensProvider implements vscode.CodeLensProvider {
 
             lenses.push(new vscode.CodeLens(vsRange, {
                 title: '⬚ Select',
-                command: 'kusto.selectQuery',
+                command: 'msKustoExplorer.selectQuery',
                 tooltip: 'Select this query',
                 arguments: [range.start.line, range.start.character, range.end.line, range.end.character]
             }));
@@ -449,7 +449,7 @@ class KustoCodeLensProvider implements vscode.CodeLensProvider {
             if (!isEntityDefinition) {
                 lenses.push(new vscode.CodeLens(vsRange, {
                     title: '▶ Run',
-                    command: 'kusto.runQuery',
+                    command: 'msKustoExplorer.runQuery',
                     tooltip: 'Run this query',
                     arguments: [range.start.line, range.start.character, range.end.line, range.end.character]
                 }));
@@ -457,7 +457,7 @@ class KustoCodeLensProvider implements vscode.CodeLensProvider {
 
             lenses.push(new vscode.CodeLens(vsRange, {
                 title: '📋 Copy',
-                command: 'kusto.copyQueryTransparent',
+                command: 'msKustoExplorer.copyQueryTransparent',
                 tooltip: 'Copy this query with syntax highlighting',
                 arguments: [range.start.line, range.start.character, range.end.line, range.end.character]
             }));
@@ -465,7 +465,7 @@ class KustoCodeLensProvider implements vscode.CodeLensProvider {
             if (!isEntityDefinition) {
                 lenses.push(new vscode.CodeLens(vsRange, {
                     title: '✎ Format',
-                    command: 'kusto.formatQuery',
+                    command: 'msKustoExplorer.formatQuery',
                     tooltip: 'Format this query',
                     arguments: [range.start.line, range.start.character, range.end.line, range.end.character]
                 }));
@@ -474,7 +474,7 @@ class KustoCodeLensProvider implements vscode.CodeLensProvider {
                 if (await this.history.hasEntryForQuery(queryText)) {
                     lenses.push(new vscode.CodeLens(vsRange, {
                         title: '📊 Results',
-                        command: 'kusto.showResults',
+                        command: 'msKustoExplorer.showResults',
                         tooltip: 'Show results from history for this query',
                         arguments: [range.start.line, range.start.character]
                     }));
@@ -588,7 +588,7 @@ function activateQuerySeparators(context: vscode.ExtensionContext, server: IServ
                 e => e.document.uri.toString() === result.uri
             );
 
-            const config = vscode.workspace.getConfiguration('kusto');
+            const config = vscode.workspace.getConfiguration('msKustoExplorer');
             const enableSeparators = config.get<boolean>('editor.showQuerySeparators', true);
 
             const firstEditor = editors[0];

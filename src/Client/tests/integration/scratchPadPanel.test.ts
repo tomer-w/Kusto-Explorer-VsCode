@@ -17,7 +17,7 @@ async function cleanupScratchPads(keepFiles: string[]): Promise<void> {
     for (const group of vscode.window.tabGroups.all) {
         for (const tab of group.tabs) {
             const input = tab.input as { uri?: vscode.Uri } | undefined;
-            if (input?.uri?.scheme === 'kusto-scratch') {
+            if (input?.uri?.scheme === 'msKustoExplorer-scratch') {
                 if (!shouldKeep(input.uri.path, keepFiles)) {
                     await vscode.window.tabGroups.close(tab);
                 }
@@ -26,11 +26,11 @@ async function cleanupScratchPads(keepFiles: string[]): Promise<void> {
     }
 
     // Delete all scratch pad files except those we're keeping
-    const rootUri = vscode.Uri.from({ scheme: 'kusto-scratch', path: '/' });
+    const rootUri = vscode.Uri.from({ scheme: 'msKustoExplorer-scratch', path: '/' });
     const entries = await vscode.workspace.fs.readDirectory(rootUri);
     for (const [name] of entries) {
         if (!shouldKeep(name, keepFiles)) {
-            const fileUri = vscode.Uri.from({ scheme: 'kusto-scratch', path: '/' + name });
+            const fileUri = vscode.Uri.from({ scheme: 'msKustoExplorer-scratch', path: '/' + name });
             await vscode.workspace.fs.delete(fileUri);
         }
     }
@@ -53,24 +53,24 @@ suite('Scratch Pad Integration Tests', () => {
 
     test('ScratchPad1 document is open by default', async () => {
         const scratchDoc = vscode.workspace.textDocuments.find(
-            doc => doc.uri.scheme === 'kusto-scratch' && doc.uri.path.includes('ScratchPad1')
+            doc => doc.uri.scheme === 'msKustoExplorer-scratch' && doc.uri.path.includes('ScratchPad1')
         );
         assert.ok(scratchDoc, 'ScratchPad1 should be open after activation');
         assert.strictEqual(scratchDoc.languageId, 'kusto');
     });
 
-    test('kusto.newScratchPad creates and opens a new scratch pad', async () => {
+    test('msKustoExplorer.newScratchPad creates and opens a new scratch pad', async () => {
         const docsBefore = vscode.workspace.textDocuments.filter(
-            doc => doc.uri.scheme === 'kusto-scratch'
+            doc => doc.uri.scheme === 'msKustoExplorer-scratch'
         );
 
-        await vscode.commands.executeCommand('kusto.newScratchPad');
+        await vscode.commands.executeCommand('msKustoExplorer.newScratchPad');
 
         // Wait for the editor to open
         await new Promise(resolve => setTimeout(resolve, 1000));
 
         const docsAfter = vscode.workspace.textDocuments.filter(
-            doc => doc.uri.scheme === 'kusto-scratch'
+            doc => doc.uri.scheme === 'msKustoExplorer-scratch'
         );
         assert.ok(
             docsAfter.length > docsBefore.length,
@@ -80,13 +80,13 @@ suite('Scratch Pad Integration Tests', () => {
         // The active editor should be the new scratch pad
         const activeEditor = vscode.window.activeTextEditor;
         assert.ok(activeEditor, 'There should be an active editor after creating a scratch pad');
-        assert.strictEqual(activeEditor.document.uri.scheme, 'kusto-scratch');
+        assert.strictEqual(activeEditor.document.uri.scheme, 'msKustoExplorer-scratch');
         assert.strictEqual(activeEditor.document.languageId, 'kusto');
     });
 
-    test('kusto.renameScratchPad renames a scratch pad', async () => {
+    test('msKustoExplorer.renameScratchPad renames a scratch pad', async () => {
         // Create a scratch pad to rename
-        await vscode.commands.executeCommand('kusto.newScratchPad');
+        await vscode.commands.executeCommand('msKustoExplorer.newScratchPad');
         await new Promise(resolve => setTimeout(resolve, 1000));
 
         // Find the newly created scratch pad name
@@ -98,7 +98,7 @@ suite('Scratch Pad Integration Tests', () => {
         const originalShowInputBox = vscode.window.showInputBox;
         (vscode.window as any).showInputBox = async () => 'RenamedPad';
         try {
-            await vscode.commands.executeCommand('kusto.renameScratchPad', { fileName: originalFileName });
+            await vscode.commands.executeCommand('msKustoExplorer.renameScratchPad', { fileName: originalFileName });
         } finally {
             (vscode.window as any).showInputBox = originalShowInputBox;
         }
@@ -107,7 +107,7 @@ suite('Scratch Pad Integration Tests', () => {
 
         // The renamed document should now be open
         const renamedDoc = vscode.workspace.textDocuments.find(
-            doc => doc.uri.scheme === 'kusto-scratch' && doc.uri.path.includes('RenamedPad')
+            doc => doc.uri.scheme === 'msKustoExplorer-scratch' && doc.uri.path.includes('RenamedPad')
         );
         assert.ok(renamedDoc, 'Renamed scratch pad should be open');
 
@@ -121,16 +121,16 @@ suite('Scratch Pad Integration Tests', () => {
 
         // The original file should no longer exist on disk
         try {
-            await vscode.workspace.fs.stat(vscode.Uri.from({ scheme: 'kusto-scratch', path: '/' + originalFileName }));
+            await vscode.workspace.fs.stat(vscode.Uri.from({ scheme: 'msKustoExplorer-scratch', path: '/' + originalFileName }));
             assert.fail('Original file should not exist after rename');
         } catch {
             // Expected: file not found
         }
     });
 
-    test('kusto.renameScratchPad does nothing when cancelled', async () => {
+    test('msKustoExplorer.renameScratchPad does nothing when cancelled', async () => {
         // Create a scratch pad to attempt to rename
-        await vscode.commands.executeCommand('kusto.newScratchPad');
+        await vscode.commands.executeCommand('msKustoExplorer.newScratchPad');
         await new Promise(resolve => setTimeout(resolve, 1000));
 
         const activeEditor = vscode.window.activeTextEditor;
@@ -141,7 +141,7 @@ suite('Scratch Pad Integration Tests', () => {
         const originalShowInputBox = vscode.window.showInputBox;
         (vscode.window as any).showInputBox = async () => undefined;
         try {
-            await vscode.commands.executeCommand('kusto.renameScratchPad', { fileName: originalFileName });
+            await vscode.commands.executeCommand('msKustoExplorer.renameScratchPad', { fileName: originalFileName });
         } finally {
             (vscode.window as any).showInputBox = originalShowInputBox;
         }
@@ -150,7 +150,7 @@ suite('Scratch Pad Integration Tests', () => {
 
         // The original file should still exist
         const stat = await vscode.workspace.fs.stat(
-            vscode.Uri.from({ scheme: 'kusto-scratch', path: '/' + originalFileName })
+            vscode.Uri.from({ scheme: 'msKustoExplorer-scratch', path: '/' + originalFileName })
         );
         assert.ok(stat, 'Original file should still exist after cancelled rename');
 
@@ -163,9 +163,9 @@ suite('Scratch Pad Integration Tests', () => {
         );
     });
 
-    test('kusto.deleteScratchPad does nothing when cancelled', async () => {
+    test('msKustoExplorer.deleteScratchPad does nothing when cancelled', async () => {
         // Create a scratch pad to attempt to delete
-        await vscode.commands.executeCommand('kusto.newScratchPad');
+        await vscode.commands.executeCommand('msKustoExplorer.newScratchPad');
         await new Promise(resolve => setTimeout(resolve, 1000));
 
         const activeEditor = vscode.window.activeTextEditor;
@@ -176,7 +176,7 @@ suite('Scratch Pad Integration Tests', () => {
         const originalShowWarningMessage = vscode.window.showWarningMessage;
         (vscode.window as any).showWarningMessage = async () => undefined;
         try {
-            await vscode.commands.executeCommand('kusto.deleteScratchPad', { fileName });
+            await vscode.commands.executeCommand('msKustoExplorer.deleteScratchPad', { fileName });
         } finally {
             (vscode.window as any).showWarningMessage = originalShowWarningMessage;
         }
@@ -185,7 +185,7 @@ suite('Scratch Pad Integration Tests', () => {
 
         // The file should still exist
         const stat = await vscode.workspace.fs.stat(
-            vscode.Uri.from({ scheme: 'kusto-scratch', path: '/' + fileName })
+            vscode.Uri.from({ scheme: 'msKustoExplorer-scratch', path: '/' + fileName })
         );
         assert.ok(stat, 'File should still exist after cancelled delete');
 
@@ -201,7 +201,7 @@ suite('Scratch Pad Integration Tests', () => {
     test('Auto-save triggers after editing a scratch pad', async () => {
         // Open ScratchPad1
         const doc = await vscode.workspace.openTextDocument(
-            vscode.Uri.from({ scheme: 'kusto-scratch', path: '/ScratchPad1.kql' })
+            vscode.Uri.from({ scheme: 'msKustoExplorer-scratch', path: '/ScratchPad1.kql' })
         );
         const editor = await vscode.window.showTextDocument(doc);
 
@@ -222,7 +222,7 @@ suite('Scratch Pad Integration Tests', () => {
         const testContent = 'StormEvents | count';
 
         // Write content to ScratchPad1
-        const uri = vscode.Uri.from({ scheme: 'kusto-scratch', path: '/ScratchPad1.kql' });
+        const uri = vscode.Uri.from({ scheme: 'msKustoExplorer-scratch', path: '/ScratchPad1.kql' });
         const doc = await vscode.workspace.openTextDocument(uri);
         const editor = await vscode.window.showTextDocument(doc);
         await editor.edit(editBuilder => {
@@ -250,21 +250,21 @@ suite('Scratch Pad Integration Tests', () => {
         assert.strictEqual(reopenedDoc.getText(), testContent, 'Content should persist after close and reopen');
     });
 
-    test('kusto.deleteScratchPad deletes when confirmed', async () => {
+    test('msKustoExplorer.deleteScratchPad deletes when confirmed', async () => {
         // Create a scratch pad to delete
-        await vscode.commands.executeCommand('kusto.newScratchPad');
+        await vscode.commands.executeCommand('msKustoExplorer.newScratchPad');
         await new Promise(resolve => setTimeout(resolve, 1000));
 
         const activeEditor = vscode.window.activeTextEditor;
         assert.ok(activeEditor, 'Should have an active editor');
         const fileName = activeEditor.document.uri.path.replace(/^\//, '');
-        const uri = vscode.Uri.from({ scheme: 'kusto-scratch', path: '/' + fileName });
+        const uri = vscode.Uri.from({ scheme: 'msKustoExplorer-scratch', path: '/' + fileName });
 
         // Stub showWarningMessage to return 'Delete' (user confirmed)
         const originalShowWarningMessage = vscode.window.showWarningMessage;
         (vscode.window as any).showWarningMessage = async () => 'Delete';
         try {
-            await vscode.commands.executeCommand('kusto.deleteScratchPad', { fileName });
+            await vscode.commands.executeCommand('msKustoExplorer.deleteScratchPad', { fileName });
         } finally {
             (vscode.window as any).showWarningMessage = originalShowWarningMessage;
         }
@@ -290,7 +290,7 @@ suite('Scratch Pad Integration Tests', () => {
     });
 
     test('New scratch pads get incrementing names', async () => {
-        await vscode.commands.executeCommand('kusto.newScratchPad');
+        await vscode.commands.executeCommand('msKustoExplorer.newScratchPad');
         await new Promise(resolve => setTimeout(resolve, 1000));
         const editor1 = vscode.window.activeTextEditor;
         assert.ok(editor1, 'Should have an active editor');
@@ -298,7 +298,7 @@ suite('Scratch Pad Integration Tests', () => {
         const num1 = parseInt(name1.match(/ScratchPad(\d+)/)?.[1] ?? '0', 10);
         assert.ok(num1 > 0, `Should have a numbered name, got: ${name1}`);
 
-        await vscode.commands.executeCommand('kusto.newScratchPad');
+        await vscode.commands.executeCommand('msKustoExplorer.newScratchPad');
         await new Promise(resolve => setTimeout(resolve, 1000));
         const editor2 = vscode.window.activeTextEditor;
         assert.ok(editor2, 'Should have an active editor');
