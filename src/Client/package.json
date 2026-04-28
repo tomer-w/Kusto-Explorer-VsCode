@@ -310,194 +310,194 @@
       "view/title": [
         {
           "command": "kusto.addServer",
-          "when": "view == kusto.connections",
+          "when": "view == msKustoExplorer-connections",
           "group": "navigation@1"
         },
         {
           "command": "kusto.addServerGroup",
-          "when": "view == kusto.connections",
+          "when": "view == msKustoExplorer-connections",
           "group": "navigation@2"
         },
         {
           "command": "kusto.importConnectionsFromKustoExplorer",
-          "when": "view == kusto.connections",
+          "when": "view == msKustoExplorer-connections",
           "group": "navigation@3"
         },
         {
           "command": "kusto.addServer",
-          "when": "view == kusto.connections",
+          "when": "view == msKustoExplorer-connections",
           "group": "1_add@1"
         },
         {
           "command": "kusto.addServerGroup",
-          "when": "view == kusto.connections",
+          "when": "view == msKustoExplorer-connections",
           "group": "1_add@2"
         },
         {
           "command": "kusto.importConnectionsFromKustoExplorer",
-          "when": "view == kusto.connections",
+          "when": "view == msKustoExplorer-connections",
           "group": "1_add@3"
         },
         {
           "command": "kusto.newScratchPad",
-          "when": "view == kusto.scratchPads",
+          "when": "view == msKustoExplorer-scratchPads",
           "group": "navigation@1"
         },
         {
           "command": "kusto.importScratchPadsFromKustoExplorer",
-          "when": "view == kusto.scratchPads",
+          "when": "view == msKustoExplorer-scratchPads",
           "group": "navigation@2"
         },
         {
           "command": "kusto.newScratchPad",
-          "when": "view == kusto.scratchPads",
+          "when": "view == msKustoExplorer-scratchPads",
           "group": "1_add@1"
         },
         {
           "command": "kusto.importScratchPadsFromKustoExplorer",
-          "when": "view == kusto.scratchPads",
+          "when": "view == msKustoExplorer-scratchPads",
           "group": "1_import@1"
         },
         {
           "command": "kusto.clearHistory",
-          "when": "view == kusto.history",
+          "when": "view == msKustoExplorer-history",
           "group": "navigation@1"
         },
         {
           "command": "kusto.copyChart",
-          "when": "view == kusto.resultsView && kusto.panelChartActive",
+          "when": "view == msKustoExplorer-resultsView && kusto.panelChartActive",
           "group": "navigation@1"
         },
         {
           "command": "kusto.copyData",
-          "when": "view == kusto.resultsView && kusto.panelShowingData && !kusto.panelChartActive",
+          "when": "view == msKustoExplorer-resultsView && kusto.panelShowingData && !kusto.panelChartActive",
           "group": "navigation@1"
         },
         {
           "command": "kusto.toggleChartEditor",
-          "when": "view == kusto.resultsView && kusto.panelHasChart && kusto.panelChartActive",
+          "when": "view == msKustoExplorer-resultsView && kusto.panelHasChart && kusto.panelChartActive",
           "group": "navigation@2"
         },
         {
           "command": "kusto.savePanelResults",
-          "when": "view == kusto.resultsView",
+          "when": "view == msKustoExplorer-resultsView",
           "group": "navigation@3"
         },
         {
           "command": "kusto.chartPanelResults",
-          "when": "view == kusto.resultsView && !kusto.panelHasChart",
+          "when": "view == msKustoExplorer-resultsView && !kusto.panelHasChart",
           "group": "navigation@4"
         },
         {
           "command": "kusto.toggleSearch",
-          "when": "view == kusto.resultsView && kusto.panelShowingData && !kusto.panelChartActive",
+          "when": "view == msKustoExplorer-resultsView && kusto.panelShowingData && !kusto.panelChartActive",
           "group": "navigation@5"
         }
       ],
       "view/item/context": [
         {
           "command": "kusto.addServerToGroup",
-          "when": "view == kusto.connections && viewItem == serverGroup",
+          "when": "view == msKustoExplorer-connections && viewItem == serverGroup",
           "group": "inline"
         },
         {
           "command": "kusto.addServer",
-          "when": "view == kusto.connections && viewItem =~ /^(server|serverGroup|noConnection)$/",
+          "when": "view == msKustoExplorer-connections && viewItem =~ /^(server|serverGroup|noConnection)$/",
           "group": "1_add@1"
         },
         {
           "command": "kusto.addServerGroup",
-          "when": "view == kusto.connections && viewItem =~ /^(server|serverGroup|noConnection)$/",
+          "when": "view == msKustoExplorer-connections && viewItem =~ /^(server|serverGroup|noConnection)$/",
           "group": "1_add@2"
         },
         {
           "command": "kusto.addServerToGroup",
-          "when": "view == kusto.connections && viewItem == serverGroup",
+          "when": "view == msKustoExplorer-connections && viewItem == serverGroup",
           "group": "1_add@3"
         },
         {
           "command": "kusto.removeServer",
-          "when": "view == kusto.connections && viewItem == server",
+          "when": "view == msKustoExplorer-connections && viewItem == server",
           "group": "9_cutcopypaste"
         },
         {
           "command": "kusto.removeServerGroup",
-          "when": "view == kusto.connections && viewItem == serverGroup",
+          "when": "view == msKustoExplorer-connections && viewItem == serverGroup",
           "group": "9_cutcopypaste"
         },
         {
           "command": "kusto.moveServer",
-          "when": "view == kusto.connections && viewItem == server",
+          "when": "view == msKustoExplorer-connections && viewItem == server",
           "group": "7_modification"
         },
         {
           "command": "kusto.editServer",
-          "when": "view == kusto.connections && viewItem == server",
+          "when": "view == msKustoExplorer-connections && viewItem == server",
           "group": "7_modification"
         },
         {
           "command": "kusto.renameServer",
-          "when": "view == kusto.connections && viewItem == server",
+          "when": "view == msKustoExplorer-connections && viewItem == server",
           "group": "7_modification"
         },
         {
           "command": "kusto.renameServerGroup",
-          "when": "view == kusto.connections && viewItem == serverGroup",
+          "when": "view == msKustoExplorer-connections && viewItem == serverGroup",
           "group": "7_modification"
         },
         {
           "command": "kusto.refreshServer",
-          "when": "view == kusto.connections && viewItem == server",
+          "when": "view == msKustoExplorer-connections && viewItem == server",
           "group": "inline"
         },
         {
           "command": "kusto.refreshServer",
-          "when": "view == kusto.connections && viewItem == server",
+          "when": "view == msKustoExplorer-connections && viewItem == server",
           "group": "navigation"
         },
         {
           "command": "kusto.refreshDatabase",
-          "when": "view == kusto.connections && viewItem == database",
+          "when": "view == msKustoExplorer-connections && viewItem == database",
           "group": "inline"
         },
         {
           "command": "kusto.refreshDatabase",
-          "when": "view == kusto.connections && viewItem == database",
+          "when": "view == msKustoExplorer-connections && viewItem == database",
           "group": "navigation"
         },
         {
           "command": "kusto.viewEntityDefinition",
-          "when": "view == kusto.connections && viewItem =~ /^(table|externalTable|materializedView|function|entityGroup|graphModel)$/",
+          "when": "view == msKustoExplorer-connections && viewItem =~ /^(table|externalTable|materializedView|function|entityGroup|graphModel)$/",
           "group": "navigation"
         },
         {
           "command": "kusto.copyEntityAsExpression",
-          "when": "view == kusto.connections && viewItem =~ /^(server|database|table|externalTable|materializedView|function|entityGroup|graphModel)$/",
+          "when": "view == msKustoExplorer-connections && viewItem =~ /^(server|database|table|externalTable|materializedView|function|entityGroup|graphModel)$/",
           "group": "9_cutcopypaste"
         },
         {
           "command": "kusto.deleteScratchPad",
-          "when": "view == kusto.scratchPads && viewItem == scratchPad",
+          "when": "view == msKustoExplorer-scratchPads && viewItem == scratchPad",
           "group": "inline"
         },
         {
           "command": "kusto.renameScratchPad",
-          "when": "view == kusto.scratchPads && viewItem == scratchPad",
+          "when": "view == msKustoExplorer-scratchPads && viewItem == scratchPad",
           "group": "7_modification"
         },
         {
           "command": "kusto.deleteScratchPad",
-          "when": "view == kusto.scratchPads && viewItem == scratchPad",
+          "when": "view == msKustoExplorer-scratchPads && viewItem == scratchPad",
           "group": "9_cutcopypaste"
         },
         {
           "command": "kusto.deleteHistoryItem",
-          "when": "view == kusto.history && viewItem == historyItem",
+          "when": "view == msKustoExplorer-history && viewItem == historyItem",
           "group": "inline"
         },
         {
           "command": "kusto.deleteHistoryItem",
-          "when": "view == kusto.history && viewItem == historyItem",
+          "when": "view == msKustoExplorer-history && viewItem == historyItem",
           "group": "9_cutcopypaste"
         }
       ],
@@ -573,26 +573,26 @@
       "webview/context": [
         {
           "command": "kusto.copyCell",
-          "when": "webviewId == 'kusto.resultsView' || (webviewId == 'kusto.resultViewer' && !chartVisible && !queryVisible) || (webviewId == 'kusto' && !chartVisible && !queryVisible)",
+          "when": "webviewId == 'msKustoExplorer-resultsView' || (webviewId == 'kusto.resultViewer' && !chartVisible && !queryVisible) || (webviewId == 'kusto' && !chartVisible && !queryVisible)",
           "group": "9_cutcopypaste@1"
         },
         {
           "command": "kusto.copyData",
-          "when": "webviewId == 'kusto.resultsView' || (webviewId == 'kusto.resultViewer' && !chartVisible && !queryVisible) || (webviewId == 'kusto' && !chartVisible && !queryVisible)",
+          "when": "webviewId == 'msKustoExplorer-resultsView' || (webviewId == 'kusto.resultViewer' && !chartVisible && !queryVisible) || (webviewId == 'kusto' && !chartVisible && !queryVisible)",
           "group": "9_cutcopypaste@2"
         },
         {
           "command": "kusto.copyTableAsExpression",
-          "when": "webviewId == 'kusto.resultsView' || (webviewId == 'kusto.resultViewer' && !chartVisible && !queryVisible) || (webviewId == 'kusto' && !chartVisible && !queryVisible)",
+          "when": "webviewId == 'msKustoExplorer-resultsView' || (webviewId == 'kusto.resultViewer' && !chartVisible && !queryVisible) || (webviewId == 'kusto' && !chartVisible && !queryVisible)",
           "group": "9_cutcopypaste@3"
         },
         {
           "command": "kusto.savePanelResults",
-          "when": "webviewId == 'kusto.resultsView' || (webviewId == 'kusto' && !chartVisible)"
+          "when": "webviewId == 'msKustoExplorer-resultsView' || (webviewId == 'kusto' && !chartVisible)"
         },
         {
           "command": "kusto.chartPanelResults",
-          "when": "webviewId == 'kusto.resultsView'"
+          "when": "webviewId == 'msKustoExplorer-resultsView'"
         },
         {
           "command": "kusto.copyChart",
@@ -647,42 +647,42 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "kusto-explorer",
+          "id": "msKustoExplorer-sidebar",
           "title": "Kusto Explorer",
           "icon": "images/kusto_explorer_mono.png"
         }
       ],
       "panel": [
         {
-          "id": "kusto-panel",
+          "id": "msKustoExplorer-resultsPanel",
           "title": "Results",
           "icon": "$(database)"
         }
       ]
     },
     "views": {
-      "kusto-panel": [
+      "msKustoExplorer-resultsPanel": [
         {
           "type": "webview",
-          "id": "kusto.resultsView",
+          "id": "msKustoExplorer-resultsView",
           "name": "Results",
           "icon": "$(table)",
           "when": "kusto.hasActiveDocument"
         }
       ],
-      "kusto-explorer": [
+      "msKustoExplorer-sidebar": [
         {
-          "id": "kusto.connections",
+          "id": "msKustoExplorer-connections",
           "name": "Connections",
           "icon": "$(database)"
         },
         {
-          "id": "kusto.scratchPads",
+          "id": "msKustoExplorer-scratchPads",
           "name": "Scratch Pads",
           "icon": "$(note)"
         },
         {
-          "id": "kusto.history",
+          "id": "msKustoExplorer-history",
           "name": "History",
           "icon": "$(history)"
         }

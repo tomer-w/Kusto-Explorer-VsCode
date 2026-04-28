@@ -411,11 +411,11 @@ export class ResultsViewer {
 
         // Expose a function for showPanelHtml to wait on
         this.waitForPanelReady = async () => {
-            await vscode.commands.executeCommand('kusto.resultsView.focus');
+            await vscode.commands.executeCommand('msKustoExplorer-resultsView.focus');
             await createPanelReadyPromise();
         };
 
-        vscode.window.registerWebviewViewProvider('kusto.resultsView', {
+        vscode.window.registerWebviewViewProvider('msKustoExplorer-resultsView', {
             resolveWebviewView: (webviewView) => {
                 this.resultsPanel = webviewView;
                 if (resolvePanelReady) {
@@ -478,7 +478,7 @@ export class ResultsViewer {
 
         // Open the results view on start up when in panel mode
         if (getResultsDisplayLocation() === 'panel') {
-            vscode.commands.executeCommand('kusto.resultsView.focus');
+            vscode.commands.executeCommand('msKustoExplorer-resultsView.focus');
         }
     }
 
@@ -578,7 +578,7 @@ export class ResultsViewer {
             } else if (this.waitForPanelReady) {
                 await this.waitForPanelReady();
             } else {
-                await vscode.commands.executeCommand('kusto.resultsView.focus');
+                await vscode.commands.executeCommand('msKustoExplorer-resultsView.focus');
             }
         }
 
@@ -817,7 +817,7 @@ export class ResultsViewer {
             if (this.waitForPanelReady) {
                 await this.waitForPanelReady();
             } else {
-                await vscode.commands.executeCommand('kusto.resultsView.focus');
+                await vscode.commands.executeCommand('msKustoExplorer-resultsView.focus');
             }
         }
 
@@ -844,7 +844,7 @@ export class ResultsViewer {
             if (isSingletonMode) {
                 return;
             }
-            await vscode.commands.executeCommand('kusto.resultsView.focus');
+            await vscode.commands.executeCommand('msKustoExplorer-resultsView.focus');
             if (this.resultsPanel) {
                 try {
                     this.resultsPanel.webview.html = html;
