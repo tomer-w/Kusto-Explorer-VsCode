@@ -1882,11 +1882,13 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
                     editPanel.classList.add('visible');
                 }
             }
-            // Trigger chart resize when switching to chart
+            // Trigger chart resize when switching to chart. Use rAF (one frame,
+            // ~16ms) instead of a fixed 50ms timeout so the resize happens as
+            // soon as the browser has applied the new layout.
             if (viewId === 'chart') {
-                setTimeout(function() {
+                requestAnimationFrame(function() {
                     if (window._chartResize) window._chartResize();
-                }, 50);
+                });
             }
         }
 
@@ -1901,10 +1903,12 @@ class DocumentViewProvider implements vscode.CustomTextEditorProvider {
                 window._vscodeApi.postMessage({ command: 'editPanelToggled', visible: editPanelUserVisible });
             }
 
-            // Resize chart when panel toggles
-            setTimeout(function() {
+            // Resize chart when panel toggles. Use rAF (one frame, ~16ms)
+            // instead of a fixed 50ms timeout so the resize happens as soon as
+            // the browser has applied the panel's display change.
+            requestAnimationFrame(function() {
                 if (window._chartResize) window._chartResize();
-            }, 50);
+            });
         }
 
         // Listen for messages from the extension
