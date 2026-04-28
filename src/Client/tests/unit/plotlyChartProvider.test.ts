@@ -37,6 +37,19 @@ function createMockWebView(): IWebView & {
 
 // ─── Test Data Helpers ──────────────────────────────────────────────────────
 
+/**
+ * Reverses the encoding done by `escapeForJsStringLiteral` in plotlyChartProvider.ts
+ * so tests can pull the JSON payload out of the rendered `JSON.parse('...')` literal.
+ * Order matters: undo the backslash escape first, then the apostrophe escape, then
+ * the `</` split (which never produces a sequence the earlier rules can re-match).
+ */
+function decodeJsStringLiteral(encoded: string): string {
+    return encoded
+        .replace(/\\\\/g, '\\')
+        .replace(/\\'/g, "'")
+        .replace(/<\\\//g, '</');
+}
+
 function makeTable(columns: { name: string; type: string }[], rows: unknown[][]): ResultTable {
     return { name: 'TestTable', columns, rows };
 }
@@ -202,9 +215,9 @@ describe('CompositeChartProvider', () => {
                 view.renderChart(emptyTable, { type: 'Column' }, false);
                 expect(webview.setContent).toHaveBeenCalledOnce();
                 const html = webview.setContent.mock.calls[0]![0] as string;
-                const traces = html.match(/var data = (\[[\s\S]*?\]);\s*var layout/);
+                const traces = html.match(/var data = JSON\.parse\('([\s\S]*?)'\);\s*var layout/);
                 expect(traces).toBeTruthy();
-                const parsed = JSON.parse(traces![1]!) as { x: unknown[]; y: unknown[] }[];
+                const parsed = JSON.parse(decodeJsStringLiteral(traces![1]!)) as { x: unknown[]; y: unknown[] }[];
                 expect(parsed[0]!.x).toEqual([]);
                 expect(parsed[0]!.y).toEqual([]);
             });
@@ -238,16 +251,16 @@ describe('CompositeChartProvider', () => {
 
         /** Helper to parse the Plotly data array from the rendered HTML. */
         function parseTraces(html: string): unknown[] {
-            const dataMatch = html.match(/var data = (\[[\s\S]*?\]);\s*var layout/);
+            const dataMatch = html.match(/var data = JSON\.parse\('([\s\S]*?)'\);\s*var layout/);
             expect(dataMatch).toBeTruthy();
-            return JSON.parse(dataMatch![1]!) as unknown[];
+            return JSON.parse(decodeJsStringLiteral(dataMatch![1]!)) as unknown[];
         }
 
         /** Helper to parse the Plotly layout from the rendered HTML. */
         function parseLayout(html: string): Record<string, unknown> {
-            const layoutMatch = html.match(/var layout = (\{[\s\S]*?\});\s*var config/);
+            const layoutMatch = html.match(/var layout = JSON\.parse\('([\s\S]*?)'\);\s*var config/);
             expect(layoutMatch).toBeTruthy();
-            return JSON.parse(layoutMatch![1]!) as Record<string, unknown>;
+            return JSON.parse(decodeJsStringLiteral(layoutMatch![1]!)) as Record<string, unknown>;
         }
 
         describe('columnchart', () => {

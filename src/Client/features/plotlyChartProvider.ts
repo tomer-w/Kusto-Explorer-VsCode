@@ -972,13 +972,36 @@ class PlotlyChartBuilder {
 
 const PlotlyJsCdn = 'https://cdn.plot.ly/plotly-2.27.0.min.js';
 
+/**
+ * Escapes a JSON string so it can be embedded inside a single-quoted JS string
+ * literal and recovered with `JSON.parse`. We escape:
+ *  - `\\` (must come first) so JSON's own escapes survive JS-string decoding,
+ *  - `'` so we don't terminate the surrounding JS string,
+ *  - `</` → `<\/` so a literal `</script>` in the data can't break out of the
+ *    enclosing `<script>` tag.
+ *
+ * Embedding the data via `JSON.parse('…')` is dramatically faster than emitting
+ * a JS object literal (`var data = […];`) when the payload is large: V8 has a
+ * hand-tuned fast path for `JSON.parse` of a string, but no equivalent fast
+ * path for parsing a multi-megabyte inline literal at script-load time.
+ */
+function escapeForJsStringLiteral(json: string): string {
+    return json
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/<\//g, '<\\/');
+}
+
 function createChartDiv(dataJson: string, layoutJson: string, configJson: string, divId = 'plotly-chart'): string {
+    const dataLit = escapeForJsStringLiteral(dataJson);
+    const layoutLit = escapeForJsStringLiteral(layoutJson);
+    const configLit = escapeForJsStringLiteral(configJson);
     return `<div id="${divId}"></div>
 <script>
 try {
-  var data = ${dataJson};
-  var layout = ${layoutJson};
-  var config = ${configJson};
+  var data = JSON.parse('${dataLit}');
+  var layout = JSON.parse('${layoutLit}');
+  var config = JSON.parse('${configLit}');
   Plotly.newPlot('${divId}', data, layout, config);
 } catch(e) { console.error('Plotly error:', e); document.getElementById('${divId}').innerText = 'Chart error: ' + e.message; }
 </script>`;
