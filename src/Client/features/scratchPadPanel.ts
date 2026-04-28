@@ -12,11 +12,11 @@ import type { ConnectionManager, DocumentConnection } from './connectionManager'
 import { ScratchPadManager, SCRATCH_PAD_SCHEME } from './scratchPadManager';
 
 /** MIME type for scratch pad drag-and-drop within the tree view. */
-const SCRATCH_PAD_DRAG_MIME = 'application/vnd.code.tree.kusto.scratchPads';
+const SCRATCH_PAD_DRAG_MIME = 'application/vnd.code.tree.mskustoexplorer_scratchpads';
 
 const AUTO_SAVE_DELAY_MS = 1000;
 
-/** Builds a virtual URI for a scratch pad file: kusto-scratch:/ScratchPad1.kql */
+/** Builds a virtual URI for a scratch pad file: msKustoExplorer-scratch:/ScratchPad1.kql */
 function scratchUri(fileName: string): vscode.Uri {
     return vscode.Uri.from({ scheme: SCRATCH_PAD_SCHEME, path: '/' + fileName });
 }
@@ -48,7 +48,7 @@ export class ScratchPadPanel {
 
         // Register tree data provider with drag and drop support
         this.treeProvider = new ScratchPadTreeProvider(manager);
-        this.treeView = vscode.window.createTreeView('kusto.scratchPads', {
+        this.treeView = vscode.window.createTreeView('msKustoExplorer_scratchPads', {
             treeDataProvider: this.treeProvider,
             dragAndDropController: new ScratchPadDragAndDropController(manager),
         });
@@ -399,7 +399,7 @@ class ScratchPadItem extends vscode.TreeItem {
     constructor(public readonly fileName: string) {
         super(path.basename(fileName, '.kql'), vscode.TreeItemCollapsibleState.None);
         this.command = {
-            command: 'kusto.openScratchPad',
+            command: 'msKustoExplorer.openScratchPad',
             title: 'Open',
             arguments: [this]
         };

@@ -15,7 +15,7 @@ import { ENTITY_DEFINITION_SCHEME } from './entityDefinitionProvider';
 import { resultTableToMarkdown } from './markdown';
 import type { ResultsViewer } from './resultsViewer';
 
-const COPILOT_PARTICIPANT_ID = 'kusto';
+const COPILOT_PARTICIPANT_ID = 'msKustoExplorer';
 const MAX_SCHEMA_CHARS = 30000; // Approximate limit to stay within token limits
 
 // Module-level state set once in activate(). These act as singletons for the extension's
@@ -83,30 +83,30 @@ export function activate(context: vscode.ExtensionContext, srv: IServer, connect
     resultsViewer = rv;
 
     // Register tools
-    registerTool(context, 'kusto_getClusters', 'Getting available clusters...', getClusters);
-    registerTool(context, 'kusto_getActiveConnection', 'Getting active connection...', getActiveConnection);
-    registerTool(context, 'kusto_getDatabases', 'Getting databases...', getDatabases);
-    registerTool(context, 'kusto_getTables', 'Getting tables...', getTables);
-    registerTool(context, 'kusto_getTableColumns', 'Getting table columns...', getTableColumns);
-    registerTool(context, 'kusto_getExternalTables', 'Getting external tables...', getExternalTables);
-    registerTool(context, 'kusto_getExternalTableColumns', 'Getting external table columns...', getExternalTableColumns);
-    registerTool(context, 'kusto_getFunctions', 'Getting functions...', getFunctions);
-    registerTool(context, 'kusto_getMaterializedViews', 'Getting materialized views...', getMaterializedViews);
-    registerTool(context, 'kusto_getMaterializedViewColumns', 'Getting materialized view columns...', getMaterializedViewColumns);
-    registerTool(context, 'kusto_getEntityGroups', 'Getting entity groups...', getEntityGroups);
-    registerTool(context, 'kusto_getGraphModels', 'Getting graph models...', getGraphModels);
-    registerTool(context, 'kusto_getTableDefinition', 'Getting table definition...', getTableDefinition);
-    registerTool(context, 'kusto_getExternalTableDefinition', 'Getting external table definition...', getExternalTableDefinition);
-    registerTool(context, 'kusto_getMaterializedViewDefinition', 'Getting materialized view definition...', getMaterializedViewDefinition);
-    registerTool(context, 'kusto_getFunctionDefinition', 'Getting function definition...', getFunctionDefinition);
-    registerTool(context, 'kusto_getEntityGroupDefinition', 'Getting entity group definition...', getEntityGroupDefinition);
-    registerTool(context, 'kusto_getGraphModelDefinition', 'Getting graph model definition...', getGraphModelDefinition);
-    registerTool(context, 'kusto_getCurrentQueryText', 'Getting current query...', getCurrentQuery);
-    registerTool(context, 'kusto_getQueryRanges', 'Getting query ranges...', getQueryRanges);
-    registerTool(context, 'kusto_validateQuery', 'Validating query...', validateQuery);
-    registerTool(context, 'kusto_getQueryResultType', 'Getting query result type...', getQueryResultType);
-    registerTool(context, 'kusto_getFunctionResultType', 'Getting function result type...', getFunctionResultType);
-    registerTool(context, 'kusto_runQuery', 'Running query...', runQuery);
+    registerTool(context, 'msKustoExplorer_getClusters', 'Getting available clusters...', getClusters);
+    registerTool(context, 'msKustoExplorer_getActiveConnection', 'Getting active connection...', getActiveConnection);
+    registerTool(context, 'msKustoExplorer_getDatabases', 'Getting databases...', getDatabases);
+    registerTool(context, 'msKustoExplorer_getTables', 'Getting tables...', getTables);
+    registerTool(context, 'msKustoExplorer_getTableColumns', 'Getting table columns...', getTableColumns);
+    registerTool(context, 'msKustoExplorer_getExternalTables', 'Getting external tables...', getExternalTables);
+    registerTool(context, 'msKustoExplorer_getExternalTableColumns', 'Getting external table columns...', getExternalTableColumns);
+    registerTool(context, 'msKustoExplorer_getFunctions', 'Getting functions...', getFunctions);
+    registerTool(context, 'msKustoExplorer_getMaterializedViews', 'Getting materialized views...', getMaterializedViews);
+    registerTool(context, 'msKustoExplorer_getMaterializedViewColumns', 'Getting materialized view columns...', getMaterializedViewColumns);
+    registerTool(context, 'msKustoExplorer_getEntityGroups', 'Getting entity groups...', getEntityGroups);
+    registerTool(context, 'msKustoExplorer_getGraphModels', 'Getting graph models...', getGraphModels);
+    registerTool(context, 'msKustoExplorer_getTableDefinition', 'Getting table definition...', getTableDefinition);
+    registerTool(context, 'msKustoExplorer_getExternalTableDefinition', 'Getting external table definition...', getExternalTableDefinition);
+    registerTool(context, 'msKustoExplorer_getMaterializedViewDefinition', 'Getting materialized view definition...', getMaterializedViewDefinition);
+    registerTool(context, 'msKustoExplorer_getFunctionDefinition', 'Getting function definition...', getFunctionDefinition);
+    registerTool(context, 'msKustoExplorer_getEntityGroupDefinition', 'Getting entity group definition...', getEntityGroupDefinition);
+    registerTool(context, 'msKustoExplorer_getGraphModelDefinition', 'Getting graph model definition...', getGraphModelDefinition);
+    registerTool(context, 'msKustoExplorer_getCurrentQueryText', 'Getting current query...', getCurrentQuery);
+    registerTool(context, 'msKustoExplorer_getQueryRanges', 'Getting query ranges...', getQueryRanges);
+    registerTool(context, 'msKustoExplorer_validateQuery', 'Validating query...', validateQuery);
+    registerTool(context, 'msKustoExplorer_getQueryResultType', 'Getting query result type...', getQueryResultType);
+    registerTool(context, 'msKustoExplorer_getFunctionResultType', 'Getting function result type...', getFunctionResultType);
+    registerTool(context, 'msKustoExplorer_runQuery', 'Running query...', runQuery);
 
     // Register the Chat Participant - user invokes with @kusto
     const participant = vscode.chat.createChatParticipant(COPILOT_PARTICIPANT_ID, handleChatRequest);

@@ -66,7 +66,7 @@ suite('History Integration Tests', () => {
         assert.strictEqual(entries.length, 2);
 
         // Delete the first entry (most recent = query2)
-        await vscode.commands.executeCommand('kusto.deleteHistoryItem', { meta: entries[0] });
+        await vscode.commands.executeCommand('msKustoExplorer.deleteHistoryItem', { meta: entries[0] });
 
         entries = historyManager.getEntries();
         assert.strictEqual(entries.length, 1, 'Should have one entry after deletion');
@@ -83,7 +83,7 @@ suite('History Integration Tests', () => {
         const original = vscode.window.showWarningMessage;
         (vscode.window as any).showWarningMessage = async () => 'Delete All';
         try {
-            await vscode.commands.executeCommand('kusto.clearHistory');
+            await vscode.commands.executeCommand('msKustoExplorer.clearHistory');
         } finally {
             (vscode.window as any).showWarningMessage = original;
         }
