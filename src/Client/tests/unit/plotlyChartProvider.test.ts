@@ -445,6 +445,53 @@ describe('CompositeChartProvider', () => {
             });
         });
 
+        describe('scattergl threshold', () => {
+            // Generates a 2-column (datetime, real) table with `n` rows.
+            function makeLargeTimeSeries(n: number): ResultTable {
+                const rows: unknown[][] = new Array(n);
+                const base = new Date('2025-01-01T00:00:00Z').getTime();
+                for (let i = 0; i < n; i++) {
+                    rows[i] = [new Date(base + i * 60_000).toISOString(), i];
+                }
+                return makeTable(
+                    [{ name: 'Time', type: 'datetime' }, { name: 'Value', type: 'real' }],
+                    rows,
+                );
+            }
+
+            it('keeps SVG scatter for line charts at or below threshold', () => {
+                const html = renderAndGetHtml(makeLargeTimeSeries(1000), { type: 'Line' });
+                const trace = parseTraces(html!)[0] as Record<string, unknown>;
+                expect(trace.type).toBe('scatter');
+            });
+
+            it('switches line charts above threshold to scattergl', () => {
+                const html = renderAndGetHtml(makeLargeTimeSeries(1001), { type: 'Line' });
+                const trace = parseTraces(html!)[0] as Record<string, unknown>;
+                expect(trace.type).toBe('scattergl');
+            });
+
+            it('switches scatter charts above threshold to scattergl', () => {
+                const html = renderAndGetHtml(makeLargeTimeSeries(2000), { type: 'Scatter' });
+                const trace = parseTraces(html!)[0] as Record<string, unknown>;
+                expect(trace.type).toBe('scattergl');
+            });
+
+            it('switches non-stacked area charts above threshold to scattergl', () => {
+                const html = renderAndGetHtml(makeLargeTimeSeries(2000), { type: 'Area' });
+                const trace = parseTraces(html!)[0] as Record<string, unknown>;
+                expect(trace.type).toBe('scattergl');
+                expect(trace.fill).toBe('tozeroy');
+            });
+
+            it('keeps stacked area charts on SVG scatter regardless of size (stackgroup is unsupported in scattergl)', () => {
+                const html = renderAndGetHtml(makeLargeTimeSeries(5000), { type: 'AreaStacked' });
+                const trace = parseTraces(html!)[0] as Record<string, unknown>;
+                expect(trace.type).toBe('scatter');
+                expect(trace.stackgroup).toBe('1');
+            });
+        });
+
         describe('piechart', () => {
             it('renders a pie trace with labels and values', () => {
                 const html = renderAndGetHtml(makePieTable(), { type: 'Pie' });

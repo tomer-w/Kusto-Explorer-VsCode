@@ -34,6 +34,22 @@ const PlotlyScatterModes = {
     LinesAndMarkers: 'lines+markers',
 } as const;
 
+/**
+ * Per-trace point count above which we switch from Plotly's SVG `scatter` trace
+ * to its WebGL `scattergl` trace. SVG renders one DOM node per marker/segment,
+ * so it becomes unresponsive in the low thousands of points; `scattergl` draws
+ * the whole trace into a single canvas and stays interactive into the millions.
+ *
+ * `scattergl` does NOT support `stackgroup`/`groupnorm`, so stacked area charts
+ * always stay on `scatter` regardless of point count.
+ */
+const WebGlPointThreshold = 1000;
+
+/** Returns 'scattergl' when the trace exceeds the WebGL threshold and is GL-compatible, else 'scatter'. */
+function pickScatterType(pointCount: number, glCompatible = true): 'scatter' | 'scattergl' {
+    return glCompatible && pointCount > WebGlPointThreshold ? 'scattergl' : 'scatter';
+}
+
 const PlotlyFillModes = {
     ToZeroY: 'tozeroy',
     ToNextY: 'tonexty',
@@ -284,7 +300,7 @@ interface BarTrace extends PlotlyTraceBase {
 }
 
 interface ScatterTrace extends PlotlyTraceBase {
-    type: 'scatter';
+    type: 'scatter' | 'scattergl';
     x: unknown[];
     y: unknown[];
     mode: string;
@@ -601,7 +617,7 @@ class PlotlyChartBuilder {
         else if (showMarkers) mode = PlotlyScatterModes.LinesAndMarkers;
         else if (showValues) mode = 'lines+text';
         const trace: ScatterTrace = {
-            type: 'scatter',
+            type: pickScatterType(x.length),
             x,
             y,
             mode,
@@ -627,7 +643,7 @@ class PlotlyChartBuilder {
     ): PlotlyChartBuilder {
         const hasMarker = markerSymbol != null || markerSize != null;
         const trace: ScatterTrace = {
-            type: 'scatter',
+            type: pickScatterType(x.length),
             x,
             y,
             mode: showValues ? 'markers+text' : PlotlyScatterModes.Markers,
@@ -663,8 +679,10 @@ class PlotlyChartBuilder {
         if (showMarkers && showValues) mode = 'lines+markers+text';
         else if (showMarkers) mode = PlotlyScatterModes.LinesAndMarkers;
         else if (showValues) mode = 'lines+text';
+        // scattergl does not support stackgroup/groupnorm, so stacked area must stay on SVG scatter.
+        const glCompatible = stackGroup == null && groupNorm == null;
         const trace: ScatterTrace = {
-            type: 'scatter',
+            type: pickScatterType(x.length, glCompatible),
             x,
             y,
             mode,
