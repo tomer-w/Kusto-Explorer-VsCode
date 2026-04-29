@@ -34,6 +34,22 @@ const PlotlyScatterModes = {
     LinesAndMarkers: 'lines+markers',
 } as const;
 
+/**
+ * Per-trace point count above which we switch from Plotly's SVG `scatter` trace
+ * to its WebGL `scattergl` trace. SVG renders one DOM node per marker/segment,
+ * so it becomes unresponsive in the low thousands of points; `scattergl` draws
+ * the whole trace into a single canvas and stays interactive into the millions.
+ *
+ * `scattergl` does NOT support `stackgroup`/`groupnorm`, so stacked area charts
+ * always stay on `scatter` regardless of point count.
+ */
+const WebGlPointThreshold = 1000;
+
+/** Returns 'scattergl' when the trace exceeds the WebGL threshold and is GL-compatible, else 'scatter'. */
+function pickScatterType(pointCount: number, glCompatible = true): 'scatter' | 'scattergl' {
+    return glCompatible && pointCount > WebGlPointThreshold ? 'scattergl' : 'scatter';
+}
+
 const PlotlyFillModes = {
     ToZeroY: 'tozeroy',
     ToNextY: 'tonexty',
@@ -284,7 +300,7 @@ interface BarTrace extends PlotlyTraceBase {
 }
 
 interface ScatterTrace extends PlotlyTraceBase {
-    type: 'scatter';
+    type: 'scatter' | 'scattergl';
     x: unknown[];
     y: unknown[];
     mode: string;
@@ -538,6 +554,25 @@ class PlotlyChartBuilder {
         return createChartDiv(dataJson, layoutJson, configJson, divId);
     }
 
+    /**
+     * Returns the chart's data/layout/config as JSON strings ready to be sent
+     * to the webview page via a structured postMessage. The page handler does
+     * `JSON.parse` + `Plotly.newPlot` directly, skipping the round-trip through
+     * `<script>` reinjection in `innerHTML`. Use this in preference to
+     * `toHtmlDiv()` for single-chart rendering — it avoids a multi-MB HTML
+     * parse, a `textContent`-clone of the script body, and the JS-engine
+     * parse of the embedded `JSON.parse('...')` literal.
+     */
+    toContent(divId = 'plotly-chart'): { type: 'plot'; divId: string; dataJson: string; layoutJson: string; configJson: string } {
+        return {
+            type: 'plot',
+            divId,
+            dataJson: JSON.stringify(this._traces),
+            layoutJson: JSON.stringify(this._layout),
+            configJson: JSON.stringify(this._config),
+        };
+    }
+
     // ─── Trace helpers (ported from PlotlyChartExtensions.cs) ───────────
 
     add2DBarTrace(
@@ -601,7 +636,7 @@ class PlotlyChartBuilder {
         else if (showMarkers) mode = PlotlyScatterModes.LinesAndMarkers;
         else if (showValues) mode = 'lines+text';
         const trace: ScatterTrace = {
-            type: 'scatter',
+            type: pickScatterType(x.length),
             x,
             y,
             mode,
@@ -627,7 +662,7 @@ class PlotlyChartBuilder {
     ): PlotlyChartBuilder {
         const hasMarker = markerSymbol != null || markerSize != null;
         const trace: ScatterTrace = {
-            type: 'scatter',
+            type: pickScatterType(x.length),
             x,
             y,
             mode: showValues ? 'markers+text' : PlotlyScatterModes.Markers,
@@ -663,8 +698,10 @@ class PlotlyChartBuilder {
         if (showMarkers && showValues) mode = 'lines+markers+text';
         else if (showMarkers) mode = PlotlyScatterModes.LinesAndMarkers;
         else if (showValues) mode = 'lines+text';
+        // scattergl does not support stackgroup/groupnorm, so stacked area must stay on SVG scatter.
+        const glCompatible = stackGroup == null && groupNorm == null;
         const trace: ScatterTrace = {
-            type: 'scatter',
+            type: pickScatterType(x.length, glCompatible),
             x,
             y,
             mode,
@@ -954,13 +991,42 @@ class PlotlyChartBuilder {
 
 const PlotlyJsCdn = 'https://cdn.plot.ly/plotly-2.27.0.min.js';
 
+/**
+ * Escapes a JSON string so it can be embedded inside a single-quoted JS string
+ * literal and recovered with `JSON.parse`. We escape:
+ *  - `\\` (must come first) so JSON's own escapes survive JS-string decoding,
+ *  - `'` so we don't terminate the surrounding JS string,
+ *  - `</` → `<\/` so a literal `</script>` in the data can't break out of the
+ *    enclosing `<script>` tag,
+ *  - U+2028 (LINE SEPARATOR) and U+2029 (PARAGRAPH SEPARATOR), which were
+ *    illegal inside JS string literals before ES2019 and remain a syntax-error
+ *    risk on older runtimes. Modern V8 accepts them, but defensive escaping
+ *    keeps the generated `<script>` valid for any string content in the data.
+ *
+ * Embedding the data via `JSON.parse('…')` is dramatically faster than emitting
+ * a JS object literal (`var data = […];`) when the payload is large: V8 has a
+ * hand-tuned fast path for `JSON.parse` of a string, but no equivalent fast
+ * path for parsing a multi-megabyte inline literal at script-load time.
+ */
+function escapeForJsStringLiteral(json: string): string {
+    return json
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/<\//g, '<\\/')
+        .replace(/\u2028/g, '\\u2028')
+        .replace(/\u2029/g, '\\u2029');
+}
+
 function createChartDiv(dataJson: string, layoutJson: string, configJson: string, divId = 'plotly-chart'): string {
+    const dataLit = escapeForJsStringLiteral(dataJson);
+    const layoutLit = escapeForJsStringLiteral(layoutJson);
+    const configLit = escapeForJsStringLiteral(configJson);
     return `<div id="${divId}"></div>
 <script>
 try {
-  var data = ${dataJson};
-  var layout = ${layoutJson};
-  var config = ${configJson};
+  var data = JSON.parse('${dataLit}');
+  var layout = JSON.parse('${layoutLit}');
+  var config = JSON.parse('${configLit}');
   Plotly.newPlot('${divId}', data, layout, config);
 } catch(e) { console.error('Plotly error:', e); document.getElementById('${divId}').innerText = 'Chart error: ' + e.message; }
 </script>`;
@@ -1128,6 +1194,35 @@ function aggregateValues(values: number[], aggregation: AggregationType): number
         case 'Min': return Math.min(...values);
         case 'Max': return Math.max(...values);
     }
+}
+
+/**
+ * Returns x/y sorted ascending by x. Skips all sorting work — and avoids
+ * allocating two new arrays — when the input is already monotonically
+ * non-decreasing in x, which is the common case for time-series data
+ * (Kusto queries that end in `order by t asc`, `range`-generated rows,
+ * binned aggregates emitted in bin order, etc.).
+ *
+ * The comparison uses raw JS `<`/`>`, which match the previous behavior
+ * for numbers, Date objects, and ISO-8601 datetime strings.
+ */
+function sortPointsByX(x: unknown[], y: number[]): { x: unknown[]; y: number[] } {
+    let sorted = true;
+    for (let i = 1; i < x.length; i++) {
+        if (x[i - 1]! > x[i]!) { sorted = false; break; }
+    }
+    if (sorted) return { x, y };
+    const indices = new Array<number>(x.length);
+    for (let i = 0; i < x.length; i++) indices[i] = i;
+    indices.sort((a, b) => (x[a]! < x[b]! ? -1 : x[a]! > x[b]! ? 1 : 0));
+    const sortedX = new Array<unknown>(x.length);
+    const sortedY = new Array<number>(x.length);
+    for (let i = 0; i < x.length; i++) {
+        const j = indices[i]!;
+        sortedX[i] = x[j];
+        sortedY[i] = y[j]!;
+    }
+    return { x: sortedX, y: sortedY };
 }
 
 /**
@@ -1410,15 +1505,23 @@ const plotlyChartScripts = `
         }
 
         if (!arValue) {
-            wrapperDiv.style.position = '';
-            wrapperDiv.style.left = '';
-            wrapperDiv.style.top = '';
+            // Use absolute positioning so the wrapper is taken out of #chart's
+            // flow. If the wrapper participates in flow, even sub-pixel content-
+            // size changes from Plotly's internal layout can shift #chart's own
+            // clientWidth/Height, which retriggers our ResizeObserver and causes
+            // a second redundant resize. Aspect-ratio mode already works this way.
+            wrapperDiv.style.position = 'absolute';
+            wrapperDiv.style.left = '0';
+            wrapperDiv.style.top = '0';
             wrapperDiv.style.width = availW + 'px';
             wrapperDiv.style.height = availH + 'px';
             wrapperDiv.style.visibility = 'visible';
             lastAppliedW = chartDiv.clientWidth;
             lastAppliedH = chartDiv.clientHeight;
-            Plotly.newPlot(plotDiv, plotDiv.data, Object.assign({}, plotDiv.layout, buildLayoutOverrides(availW, availH)), plotDiv._context);
+            // Use relayout (not newPlot) so we don't re-upload trace data to the GPU
+            // for every resize. The width/height/font overrides are layout-only and
+            // relayout handles them efficiently.
+            Plotly.relayout(plotDiv, buildLayoutOverrides(availW, availH));
             return;
         }
         var parts = arValue.split('/').map(Number);
@@ -1444,7 +1547,8 @@ const plotlyChartScripts = `
         wrapperDiv.style.visibility = 'visible';
         lastAppliedW = chartDiv.clientWidth;
         lastAppliedH = chartDiv.clientHeight;
-        Plotly.newPlot(plotDiv, plotDiv.data, Object.assign({}, plotDiv.layout, buildLayoutOverrides(w, h)), plotDiv._context);
+        // Use relayout (not newPlot) so we don't re-upload trace data to the GPU.
+        Plotly.relayout(plotDiv, buildLayoutOverrides(w, h));
     }
 
     // Expose for host code (tab switching, edit panel toggle, etc.)
@@ -1512,18 +1616,23 @@ const plotlyChartScripts = `
                 wrapperDiv.style.height = targetH + 'px';
                 wrapperDiv.style.margin = '';
             } else {
-                wrapperDiv.style.position = '';
-                wrapperDiv.style.left = '';
-                wrapperDiv.style.top = '';
+                // Fill mode: keep the wrapper absolutely positioned (matching
+                // resizeChartCore) so its layout cannot perturb #chart's
+                // clientWidth/Height and retrigger the ResizeObserver.
+                wrapperDiv.style.position = 'absolute';
+                wrapperDiv.style.left = '0';
+                wrapperDiv.style.top = '0';
                 wrapperDiv.style.width = availW + 'px';
                 wrapperDiv.style.height = availH + 'px';
             }
             wrapperDiv.style.visibility = 'visible';
         }
 
-        // Apply font/size overrides to the already-rendered plot
+        // Apply font/size overrides to the already-rendered plot via relayout.
+        // newPlot would force Plotly to re-upload all trace data and rebuild the
+        // GL canvas; relayout updates layout-only properties in place.
         var overrides = Object.assign({ width: targetW, height: targetH }, applyFontOverrides(plotDiv.layout || {}, targetW, targetH, preset));
-        Plotly.newPlot(plotDiv, plotDiv.data, Object.assign({}, plotDiv.layout, overrides), plotDiv._context);
+        Plotly.relayout(plotDiv, overrides);
 
         lastAppliedW = availW;
         lastAppliedH = availH;
@@ -1589,6 +1698,67 @@ const plotlyChartScripts = `
         }
     });
 
+    // Structured single-chart payload from the host. Avoids the multi-MB innerHTML
+    // parse + script-clone shuffle by going straight to JSON.parse + Plotly.newPlot.
+    // After this returns, plotDiv.data / plotDiv.layout are owned by Plotly, so
+    // resize/copy paths continue to work unchanged.
+    //
+    // postMessage events can in principle originate from any script in the page,
+    // so treat the payload as untrusted: validate divId against a strict pattern
+    // and build the placeholder element with DOM APIs (no innerHTML concatenation).
+    var SAFE_DIV_ID_RE = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
+    window.addEventListener('message', function(event) {
+        var msg = event.data;
+        if (!msg || msg.command !== 'setChartContent' || typeof msg.divId !== 'string') return;
+        if (!SAFE_DIV_ID_RE.test(msg.divId)) {
+            console.error('setChartContent: rejecting unsafe divId');
+            return;
+        }
+        var chartDiv = document.getElementById('chart');
+        if (!chartDiv) return;
+        // Replace contents safely: drop any existing children, then create the
+        // placeholder via createElement so the divId is never parsed as HTML.
+        while (chartDiv.firstChild) chartDiv.removeChild(chartDiv.firstChild);
+        var plotPlaceholder = document.createElement('div');
+        plotPlaceholder.id = msg.divId;
+        chartDiv.appendChild(plotPlaceholder);
+        if (typeof Plotly === 'undefined') {
+            console.error('Plotly is not loaded yet; cannot render chart.');
+            return;
+        }
+        try {
+            var data = JSON.parse(msg.dataJson);
+            var layout = JSON.parse(msg.layoutJson);
+            var config = JSON.parse(msg.configJson);
+            Plotly.newPlot(plotPlaceholder, data, layout, config);
+        } catch (e) {
+            console.error('Plotly error:', e);
+            plotPlaceholder.innerText = 'Chart error: ' + (e && e.message ? e.message : e);
+            return;
+        }
+        if (window._chartUpdated) window._chartUpdated();
+    });
+
+    // Tell the host our setChartContent listener is attached so it can replay
+    // the latest payload. This makes structured-content delivery reliable
+    // across initial page load and any subsequent webview.html rebuild,
+    // independent of how the host buffers messages during page startup.
+    if (window._vscodeApi) {
+        try { window._vscodeApi.postMessage({ command: 'chartViewReady' }); } catch (e) {}
+    } else {
+        // _vscodeApi may be set up by another script later; retry briefly.
+        var readyAttempts = 0;
+        var readyTimer = setInterval(function() {
+            readyAttempts++;
+            if (window._vscodeApi) {
+                clearInterval(readyTimer);
+                try { window._vscodeApi.postMessage({ command: 'chartViewReady' }); } catch (e) {}
+            } else if (readyAttempts > 20) {
+                clearInterval(readyTimer);
+            }
+        }, 50);
+    }
+
     window.addEventListener('message', async function(event) {
         var message = event.data;
         if (!(message && message.command === 'copyChart')) return;
@@ -1652,17 +1822,53 @@ const plotlyChartScripts = `
 })();
 </script>`;
 
+/**
+ * Result returned by the chart-rendering pipeline.
+ *
+ * - `html`: a pre-baked HTML body to drop into the chart region. Used for the
+ *   raw-Plotly path (data already comes from the user's query as JSON) and for
+ *   the multi-chart panel grid (multiple charts concatenated into one HTML
+ *   string with positioning/styling).
+ * - `plot`: structured data for a single chart. The page handler builds the
+ *   chart div and calls `Plotly.newPlot` directly with `JSON.parse`d inputs,
+ *   avoiding `innerHTML` of a multi-MB HTML blob and the script-reinjection
+ *   dance that comes with it.
+ */
+type ChartRenderResult =
+    | { type: 'html'; html: string }
+    | { type: 'plot'; divId: string; dataJson: string; layoutJson: string; configJson: string };
+
 /** View for Plotly charts rendered inside a webview. */
 class PlotlyChartView implements IChartView {
     onCopyResult: ((pngDataUrl: string, svgDataUrl?: string) => void) | undefined;
     onCopyError: ((error: string) => void) | undefined;
     private readonly subscription: { dispose(): void };
+    /**
+     * Last structured chart payload sent via `setChartContent`. Cached so we
+     * can replay it whenever the page reports it's ready.
+     *
+     * Why: structured-content rendering does not embed anything into the
+     * adapter's `contentHtml`, so the chart only appears via the message we
+     * post. On initial render (and after any `webview.html` rebuild) the host
+     * sends the message before the page's listener is attached, and depending
+     * on how the host buffers messages during page load, that first message
+     * could be lost. The page sends `chartViewReady` once its handler is up,
+     * and we reliably re-send the latest payload here.
+     */
+    private lastPayload: { divId: string; dataJson: string; layoutJson: string; configJson: string } | undefined;
 
     constructor(
         private readonly webview: IWebView,
-        private readonly render: (data: ResultTable, options: ChartOptions, darkMode: boolean) => string | undefined
+        private readonly render: (data: ResultTable, options: ChartOptions, darkMode: boolean) => ChartRenderResult | undefined
     ) {
         this.subscription = webview.handle((message) => {
+            if (message.command === 'chartViewReady' && this.lastPayload) {
+                // Page just attached its handler (initial load or rebuild) —
+                // resend the latest payload so the chart renders even if the
+                // immediate post during renderChart was missed.
+                this.webview.invoke('setChartContent', { ...this.lastPayload });
+                return;
+            }
             if (message.command === 'copyChartResult') {
                 const pngDataUrl = message.pngDataUrl as string;
                 const svgDataUrl = message.svgDataUrl as string | undefined;
@@ -1681,16 +1887,32 @@ class PlotlyChartView implements IChartView {
     }
 
     renderChart(data: ResultTable, options: ChartOptions, darkMode: boolean): void {
-        const bodyHtml = this.render(data, options, darkMode);
-        if (bodyHtml) {
-            this.webview.setContent(bodyHtml);
-        } else {
+        const result = this.render(data, options, darkMode);
+        if (!result) {
             const typeName = escapeHtml(options.type || 'Unknown');
             this.webview.setContent(
                 `<div style="display:flex;align-items:center;justify-content:center;height:100%;visibility:visible;color:var(--vscode-foreground,inherit);">` +
                 `<span style="font-size:1.5em;">&#10060;</span>&nbsp; Chart type "${typeName}" is not currently supported.</div>`
             );
+            this.lastPayload = undefined;
+            return;
         }
+        if (result.type === 'html') {
+            this.webview.setContent(result.html);
+            this.lastPayload = undefined;
+            return;
+        }
+        // Structured single-chart payload. Cache it so we can replay on
+        // `chartViewReady` after a page (re)load, then send immediately for
+        // the common case where the page is already up.
+        const payload = {
+            divId: result.divId,
+            dataJson: result.dataJson,
+            layoutJson: result.layoutJson,
+            configJson: result.configJson,
+        };
+        this.lastPayload = payload;
+        this.webview.invoke('setChartContent', { ...payload });
     }
 
     dispose(): void {
@@ -1777,28 +1999,31 @@ export class PlotlyChartProvider implements IChartProvider {
         return new PlotlyChartView(webview, (data, options, darkMode) => this.renderChartToHtmlDiv(data, options, darkMode));
     }
 
-    private renderChartToHtmlDiv(data: ResultTable, options: ChartOptions, darkMode = false): string | undefined {
+    private renderChartToHtmlDiv(data: ResultTable, options: ChartOptions, darkMode = false): ChartRenderResult | undefined {
         // Allow the chart's mode option to override the editor theme
         if (options.mode === ChartMode.Light) darkMode = false;
         else if (options.mode === ChartMode.Dark) darkMode = true;
 
         if (options.type === ChartType.Plotly) {
-            return this.renderRawPlotlyChart(data, darkMode);
+            const html = this.renderRawPlotlyChart(data, darkMode);
+            return html ? { type: 'html', html } : undefined;
         }
 
-        // Multiple independent charts (CSS-scaled)
+        // Multiple independent charts (CSS-scaled). Concatenated into a single HTML
+        // string so the grid layout/scaling sits next to each chart.
         if (options.yLayout === ChartYLayout.SeparateCharts && (this.is2dChartType(options.type) || options.type === ChartType.Pie)) {
             const xColumn = this.get2dXColumn(data, options);
             if (xColumn) {
                 const yColumns = this.get2dYColumns(data, options, xColumn);
                 if (yColumns.length > 1) {
-                    return this.renderMultiChartPanels(data, options, darkMode, yColumns);
+                    const html = this.renderMultiChartPanels(data, options, darkMode, yColumns);
+                    return html ? { type: 'html', html } : undefined;
                 }
             }
         }
 
         const builder = this.buildChart(data, options, darkMode);
-        return builder?.toHtmlDiv();
+        return builder?.toContent();
     }
 
     /** Returns true for chart types that use 2D x/y column rendering and support y-split. */
@@ -1908,13 +2133,16 @@ export class PlotlyChartProvider implements IChartProvider {
             if (!root || !root.data) return undefined;
 
             const dataJson = JSON.stringify(root.data);
-            let layoutJson = root.layout ? JSON.stringify(root.layout) : '{}';
 
-            if (darkMode) {
-                layoutJson = applyDarkModeToLayout(layoutJson);
-            } else {
-                layoutJson = applyLightModeToLayout(layoutJson);
-            }
+            // Apply theme to the in-memory layout object before the single stringify,
+            // so we don't pay an extra parse/stringify round-trip.
+            const layoutObj = (root.layout && typeof root.layout === 'object')
+                ? root.layout as Record<string, unknown>
+                : {};
+            const themedLayout = darkMode
+                ? applyDarkModeToLayout(layoutObj)
+                : applyLightModeToLayout(layoutObj);
+            const layoutJson = JSON.stringify(themedLayout);
 
             const configJson = root.config
                 ? JSON.stringify(root.config)
@@ -2769,11 +2997,10 @@ export class PlotlyChartProvider implements IChartProvider {
                         yValues = binned.y;
                     }
                     if (xValues.length > 0) {
-                        // Sort by x-value so lines don't zigzag
-                        const indices = xValues.map((_, i) => i);
-                        indices.sort((a, b) => (xValues[a]! < xValues[b]! ? -1 : xValues[a]! > xValues[b]! ? 1 : 0));
-                        let sortedX: unknown[] = indices.map(i => xValues[i]!);
-                        let sortedY: number[] = indices.map(i => yValues[i]!);
+                        // Sort by x-value so lines don't zigzag (no-op when already sorted).
+                        const sorted = sortPointsByX(xValues, yValues);
+                        let sortedX: unknown[] = sorted.x;
+                        let sortedY: number[] = sorted.y;
                         if (options.accumulate) {
                             sortedY = accumulateValues(sortedY);
                         }
@@ -2800,10 +3027,8 @@ export class PlotlyChartProvider implements IChartProvider {
                     if (shouldBin) {
                         result = binAndAggregate(result.x, result.y, binSize, aggregation, xIsDateTime);
                     }
-                    // Sort by x-value so lines don't zigzag
-                    const indices = result.x.map((_, i) => i);
-                    indices.sort((a, b) => (result!.x[a]! < result!.x[b]! ? -1 : result!.x[a]! > result!.x[b]! ? 1 : 0));
-                    result = { x: indices.map(i => result!.x[i]!), y: indices.map(i => result!.y[i]!) };
+                    // Sort by x-value so lines don't zigzag (no-op when already sorted).
+                    result = sortPointsByX(result.x, result.y);
                     if (options.accumulate) {
                         result = { x: result.x, y: accumulateValues(result.y) };
                     }
@@ -2994,9 +3219,12 @@ function applyCommonOptions(builder: PlotlyChartBuilder, options: ChartOptions):
 
 // ─── Dark Mode Layout Helper ────────────────────────────────────────────────
 
-function applyDarkModeToLayout(layoutJson: string): string {
-    const layout = (JSON.parse(layoutJson) as Record<string, unknown>) ?? {};
-
+/**
+ * Mutates `layout` in place with dark-mode background, font, and axis colors,
+ * and returns it. Operates on the in-memory object so the caller can avoid a
+ * parse/stringify round-trip.
+ */
+function applyDarkModeToLayout(layout: Record<string, unknown>): Record<string, unknown> {
     layout.paper_bgcolor = '#1e1e1e';
     layout.plot_bgcolor = '#1e1e1e';
 
@@ -3021,7 +3249,7 @@ function applyDarkModeToLayout(layoutJson: string): string {
         applyDarkModeToAxis(scene, 'zaxis');
     }
 
-    return JSON.stringify(layout);
+    return layout;
 }
 
 function applyDarkModeToAxis(parent: Record<string, unknown>, axisKey: string): void {
@@ -3035,9 +3263,12 @@ function applyDarkModeToAxis(parent: Record<string, unknown>, axisKey: string): 
 
 // ─── Light Mode Layout Helper ───────────────────────────────────────────────
 
-function applyLightModeToLayout(layoutJson: string): string {
-    const layout = (JSON.parse(layoutJson) as Record<string, unknown>) ?? {};
-
+/**
+ * Mutates `layout` in place with light-mode background, font, and axis colors,
+ * and returns it. Operates on the in-memory object so the caller can avoid a
+ * parse/stringify round-trip.
+ */
+function applyLightModeToLayout(layout: Record<string, unknown>): Record<string, unknown> {
     layout.paper_bgcolor = '#ffffff';
     layout.plot_bgcolor = '#ffffff';
 
@@ -3062,7 +3293,7 @@ function applyLightModeToLayout(layoutJson: string): string {
         applyLightModeToAxis(scene, 'zaxis');
     }
 
-    return JSON.stringify(layout);
+    return layout;
 }
 
 function applyLightModeToAxis(parent: Record<string, unknown>, axisKey: string): void {

@@ -37,6 +37,24 @@ function createMockWebView(): IWebView & {
 
 // ─── Test Data Helpers ──────────────────────────────────────────────────────
 
+/**
+ * Reverses the encoding done by `escapeForJsStringLiteral` in plotlyChartProvider.ts
+ * so tests can pull the JSON payload out of the rendered `JSON.parse('...')` literal.
+ * Order matters: undo the backslash escape first, then the apostrophe, then `</`,
+ * then the line/paragraph separator escapes (which never produce a sequence the
+ * earlier rules can re-match).
+ *
+ * Keep this in lockstep with `escapeForJsStringLiteral` in the production source.
+ */
+function decodeJsStringLiteral(encoded: string): string {
+    return encoded
+        .replace(/\\\\/g, '\\')
+        .replace(/\\'/g, "'")
+        .replace(/<\\\//g, '</')
+        .replace(/\\u2028/g, '\u2028')
+        .replace(/\\u2029/g, '\u2029');
+}
+
 function makeTable(columns: { name: string; type: string }[], rows: unknown[][]): ResultTable {
     return { name: 'TestTable', columns, rows };
 }
@@ -186,12 +204,20 @@ describe('CompositeChartProvider', () => {
         });
 
         describe('renderChart', () => {
-            it('calls webview.setContent() with chart HTML', () => {
+            it('posts chart content via webview.invoke() with parsed JSON payloads', () => {
                 view.renderChart(make2dTable(), { type: 'Column' }, false);
-                expect(webview.setContent).toHaveBeenCalledOnce();
-                const html = webview.setContent.mock.calls[0]![0] as string;
-                expect(html).toContain('plotly-chart');
-                expect(html).toContain('Plotly.newPlot');
+                expect(webview.invoke).toHaveBeenCalledOnce();
+                const [command, args] = webview.invoke.mock.calls[0]!;
+                expect(command).toBe('setChartContent');
+                const payload = args as { divId: string; dataJson: string; layoutJson: string; configJson: string };
+                expect(payload.divId).toBe('plotly-chart');
+                // dataJson must round-trip via JSON.parse to a non-empty trace array.
+                const traces = JSON.parse(payload.dataJson) as unknown[];
+                expect(Array.isArray(traces)).toBe(true);
+                expect(traces.length).toBeGreaterThan(0);
+                // layoutJson and configJson must also be valid JSON.
+                expect(() => JSON.parse(payload.layoutJson)).not.toThrow();
+                expect(() => JSON.parse(payload.configJson)).not.toThrow();
             });
 
             it('renders empty traces for table with no rows', () => {
@@ -200,11 +226,11 @@ describe('CompositeChartProvider', () => {
                     [],
                 );
                 view.renderChart(emptyTable, { type: 'Column' }, false);
-                expect(webview.setContent).toHaveBeenCalledOnce();
-                const html = webview.setContent.mock.calls[0]![0] as string;
-                const traces = html.match(/var data = (\[[\s\S]*?\]);\s*var layout/);
-                expect(traces).toBeTruthy();
-                const parsed = JSON.parse(traces![1]!) as { x: unknown[]; y: unknown[] }[];
+                expect(webview.invoke).toHaveBeenCalledOnce();
+                const [command, args] = webview.invoke.mock.calls[0]!;
+                expect(command).toBe('setChartContent');
+                const payload = args as { dataJson: string };
+                const parsed = JSON.parse(payload.dataJson) as { x: unknown[]; y: unknown[] }[];
                 expect(parsed[0]!.x).toEqual([]);
                 expect(parsed[0]!.y).toEqual([]);
             });
@@ -214,6 +240,31 @@ describe('CompositeChartProvider', () => {
                 expect(webview.setContent).toHaveBeenCalledOnce();
                 const html = webview.setContent.mock.calls[0]![0] as string;
                 expect(html).toContain('not currently supported');
+            });
+
+            it('replays last setChartContent payload on chartViewReady', () => {
+                // Initial render: payload is sent immediately and cached.
+                view.renderChart(make2dTable(), { type: 'Column' }, false);
+                expect(webview.invoke).toHaveBeenCalledOnce();
+                const initial = webview.invoke.mock.calls[0]!;
+                expect(initial[0]).toBe('setChartContent');
+
+                // Page reports its message handler is attached. The view should
+                // resend the cached payload so initial render survives a missed
+                // first message during webview startup or after webview.html
+                // rebuild.
+                webview.simulateMessage({ command: 'chartViewReady' });
+                expect(webview.invoke).toHaveBeenCalledTimes(2);
+                expect(webview.invoke.mock.calls[1]![0]).toBe('setChartContent');
+                expect(webview.invoke.mock.calls[1]![1]).toEqual(initial[1]);
+            });
+
+            it('does not replay setChartContent on chartViewReady when last result was HTML or unsupported', () => {
+                // Unsupported chart type: nothing to replay, the cached payload
+                // (if any) from a prior structured render must be cleared.
+                view.renderChart(make2dTable(), { type: 'UnknownChart' }, false);
+                webview.simulateMessage({ command: 'chartViewReady' });
+                expect(webview.invoke).not.toHaveBeenCalled();
             });
         });
     });
@@ -229,25 +280,48 @@ describe('CompositeChartProvider', () => {
             view = provider.createView(webview);
         });
 
-        /** Helper to render and return the HTML sent to setContent. */
+        /**
+         * Renders the chart and returns an HTML-shaped string suitable for the
+         * `parseTraces` / `parseLayout` regex helpers. For the normal single-chart
+         * path (which now goes through `webview.invoke('setChartContent', ...)`),
+         * we synthesize HTML in the same shape `createChartDiv` produces so the
+         * existing regex helpers continue to work unchanged. For the raw-Plotly
+         * and multi-chart panel paths (which still go through `setContent`),
+         * we return the HTML directly.
+         *
+         * The `escape` function below MUST mirror `escapeForJsStringLiteral` in
+         * the production source. Keep them in lockstep.
+         */
         function renderAndGetHtml(table: ResultTable, options: ChartOptions, darkMode = false): string | undefined {
             view.renderChart(table, options, darkMode);
+            // Structured invoke: synthesize HTML using the same JSON.parse('...') format.
+            const invokeCall = webview.invoke.mock.calls.find((c: unknown[]) => c[0] === 'setChartContent');
+            if (invokeCall) {
+                const p = invokeCall[1] as { divId: string; dataJson: string; layoutJson: string; configJson: string };
+                const escape = (j: string) => j
+                    .replace(/\\/g, '\\\\')
+                    .replace(/'/g, "\\'")
+                    .replace(/<\//g, '<\\/')
+                    .replace(/\u2028/g, '\\u2028')
+                    .replace(/\u2029/g, '\\u2029');
+                return `<div id="${p.divId}"></div>\n<script>\nvar data = JSON.parse('${escape(p.dataJson)}');\nvar layout = JSON.parse('${escape(p.layoutJson)}');\nvar config = JSON.parse('${escape(p.configJson)}');\nPlotly.newPlot('${p.divId}', data, layout, config);\n</script>`;
+            }
             if (webview.setContent.mock.calls.length === 0) return undefined;
             return webview.setContent.mock.calls[0]![0] as string;
         }
 
         /** Helper to parse the Plotly data array from the rendered HTML. */
         function parseTraces(html: string): unknown[] {
-            const dataMatch = html.match(/var data = (\[[\s\S]*?\]);\s*var layout/);
+            const dataMatch = html.match(/var data = JSON\.parse\('([\s\S]*?)'\);\s*var layout/);
             expect(dataMatch).toBeTruthy();
-            return JSON.parse(dataMatch![1]!) as unknown[];
+            return JSON.parse(decodeJsStringLiteral(dataMatch![1]!)) as unknown[];
         }
 
         /** Helper to parse the Plotly layout from the rendered HTML. */
         function parseLayout(html: string): Record<string, unknown> {
-            const layoutMatch = html.match(/var layout = (\{[\s\S]*?\});\s*var config/);
+            const layoutMatch = html.match(/var layout = JSON\.parse\('([\s\S]*?)'\);\s*var config/);
             expect(layoutMatch).toBeTruthy();
-            return JSON.parse(layoutMatch![1]!) as Record<string, unknown>;
+            return JSON.parse(decodeJsStringLiteral(layoutMatch![1]!)) as Record<string, unknown>;
         }
 
         describe('columnchart', () => {
@@ -442,6 +516,53 @@ describe('CompositeChartProvider', () => {
                 for (const t of traces) {
                     expect((t as Record<string, unknown>).stackgroup).toBe('1');
                 }
+            });
+        });
+
+        describe('scattergl threshold', () => {
+            // Generates a 2-column (datetime, real) table with `n` rows.
+            function makeLargeTimeSeries(n: number): ResultTable {
+                const rows: unknown[][] = new Array(n);
+                const base = new Date('2025-01-01T00:00:00Z').getTime();
+                for (let i = 0; i < n; i++) {
+                    rows[i] = [new Date(base + i * 60_000).toISOString(), i];
+                }
+                return makeTable(
+                    [{ name: 'Time', type: 'datetime' }, { name: 'Value', type: 'real' }],
+                    rows,
+                );
+            }
+
+            it('keeps SVG scatter for line charts at or below threshold', () => {
+                const html = renderAndGetHtml(makeLargeTimeSeries(1000), { type: 'Line' });
+                const trace = parseTraces(html!)[0] as Record<string, unknown>;
+                expect(trace.type).toBe('scatter');
+            });
+
+            it('switches line charts above threshold to scattergl', () => {
+                const html = renderAndGetHtml(makeLargeTimeSeries(1001), { type: 'Line' });
+                const trace = parseTraces(html!)[0] as Record<string, unknown>;
+                expect(trace.type).toBe('scattergl');
+            });
+
+            it('switches scatter charts above threshold to scattergl', () => {
+                const html = renderAndGetHtml(makeLargeTimeSeries(2000), { type: 'Scatter' });
+                const trace = parseTraces(html!)[0] as Record<string, unknown>;
+                expect(trace.type).toBe('scattergl');
+            });
+
+            it('switches non-stacked area charts above threshold to scattergl', () => {
+                const html = renderAndGetHtml(makeLargeTimeSeries(2000), { type: 'Area' });
+                const trace = parseTraces(html!)[0] as Record<string, unknown>;
+                expect(trace.type).toBe('scattergl');
+                expect(trace.fill).toBe('tozeroy');
+            });
+
+            it('keeps stacked area charts on SVG scatter regardless of size (stackgroup is unsupported in scattergl)', () => {
+                const html = renderAndGetHtml(makeLargeTimeSeries(5000), { type: 'AreaStacked' });
+                const trace = parseTraces(html!)[0] as Record<string, unknown>;
+                expect(trace.type).toBe('scatter');
+                expect(trace.stackgroup).toBe('1');
             });
         });
 
@@ -975,6 +1096,31 @@ describe('CompositeChartProvider', () => {
                 const html = renderAndGetHtml(table, { type: 'Plotly' });
                 expect(html).toContain('not currently supported');
             });
+
+            it('escapes U+2028 / U+2029 line separators in embedded JSON', () => {
+                // U+2028 (line separator) and U+2029 (paragraph separator) were
+                // illegal inside JS string literals before ES2019 and remain a
+                // syntax-error risk on older runtimes. Verify they are escaped
+                // out of the embedded `JSON.parse('...')` literal.
+                const ls = '\u2028';
+                const ps = '\u2029';
+                const plotlyJson = JSON.stringify({
+                    data: [{ type: 'bar', x: ['ok' + ls + 'next'], y: [1] }],
+                    layout: { title: 'pre' + ps + 'post' },
+                });
+                const table = makeTable(
+                    [{ name: 'plotly_json', type: 'string' }],
+                    [[plotlyJson]],
+                );
+                const html = renderAndGetHtml(table, { type: 'Plotly' });
+                expect(html).toBeDefined();
+                // The literal characters must not appear in the produced script;
+                // they must be escape sequences (\u2028 / \u2029) instead.
+                expect(html).not.toContain(ls);
+                expect(html).not.toContain(ps);
+                expect(html).toContain('\\u2028');
+                expect(html).toContain('\\u2029');
+            });
         });
 
         // ─── Series columns ────────────────────────────────────────────
@@ -1154,6 +1300,58 @@ describe('CompositeChartProvider', () => {
                 const west = traces[1] as Record<string, unknown>;
                 expect(west.x).toEqual(['2024-01-01', '2024-01-02']);
                 expect(west.y).toEqual([20, 25]);
+            });
+
+            it('preserves order when data is already sorted by x (monotonic fast path)', () => {
+                // Already-sorted input exercises the no-allocation fast path.
+                // Output must still match input order exactly.
+                const table = makeTable(
+                    [
+                        { name: 'timestamp', type: 'datetime' },
+                        { name: 'region', type: 'string' },
+                        { name: 'count', type: 'int' },
+                    ],
+                    [
+                        ['2024-01-01', 'East', 10],
+                        ['2024-01-02', 'East', 15],
+                        ['2024-01-03', 'East', 20],
+                        ['2024-01-04', 'East', 25],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'Line',
+                    xColumn: 'timestamp',
+                    yColumns: ['count'],
+                    seriesColumns: ['region'],
+                });
+                const east = parseTraces(html!)[0] as Record<string, unknown>;
+                expect(east.x).toEqual(['2024-01-01', '2024-01-02', '2024-01-03', '2024-01-04']);
+                expect(east.y).toEqual([10, 15, 20, 25]);
+            });
+
+            it('preserves equal-x runs as stable in already-sorted input', () => {
+                // Non-decreasing (with equal x's) is the fast-path predicate; verify ties
+                // are kept in input order.
+                const table = makeTable(
+                    [
+                        { name: 'timestamp', type: 'datetime' },
+                        { name: 'count', type: 'int' },
+                    ],
+                    [
+                        ['2024-01-01', 1],
+                        ['2024-01-01', 2],
+                        ['2024-01-02', 3],
+                        ['2024-01-02', 4],
+                    ],
+                );
+                const html = renderAndGetHtml(table, {
+                    type: 'Line',
+                    xColumn: 'timestamp',
+                    yColumns: ['count'],
+                });
+                const trace = parseTraces(html!)[0] as Record<string, unknown>;
+                expect(trace.x).toEqual(['2024-01-01', '2024-01-01', '2024-01-02', '2024-01-02']);
+                expect(trace.y).toEqual([1, 2, 3, 4]);
             });
         });
 
