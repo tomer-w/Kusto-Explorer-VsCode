@@ -997,7 +997,11 @@ const PlotlyJsCdn = 'https://cdn.plot.ly/plotly-2.27.0.min.js';
  *  - `\\` (must come first) so JSON's own escapes survive JS-string decoding,
  *  - `'` so we don't terminate the surrounding JS string,
  *  - `</` → `<\/` so a literal `</script>` in the data can't break out of the
- *    enclosing `<script>` tag.
+ *    enclosing `<script>` tag,
+ *  - U+2028 (LINE SEPARATOR) and U+2029 (PARAGRAPH SEPARATOR), which were
+ *    illegal inside JS string literals before ES2019 and remain a syntax-error
+ *    risk on older runtimes. Modern V8 accepts them, but defensive escaping
+ *    keeps the generated `<script>` valid for any string content in the data.
  *
  * Embedding the data via `JSON.parse('…')` is dramatically faster than emitting
  * a JS object literal (`var data = […];`) when the payload is large: V8 has a
@@ -1008,7 +1012,9 @@ function escapeForJsStringLiteral(json: string): string {
     return json
         .replace(/\\/g, '\\\\')
         .replace(/'/g, "\\'")
-        .replace(/<\//g, '<\\/');
+        .replace(/<\//g, '<\\/')
+        .replace(/\u2028/g, '\\u2028')
+        .replace(/\u2029/g, '\\u2029');
 }
 
 function createChartDiv(dataJson: string, layoutJson: string, configJson: string, divId = 'plotly-chart'): string {
@@ -1610,9 +1616,12 @@ const plotlyChartScripts = `
                 wrapperDiv.style.height = targetH + 'px';
                 wrapperDiv.style.margin = '';
             } else {
-                wrapperDiv.style.position = '';
-                wrapperDiv.style.left = '';
-                wrapperDiv.style.top = '';
+                // Fill mode: keep the wrapper absolutely positioned (matching
+                // resizeChartCore) so its layout cannot perturb #chart's
+                // clientWidth/Height and retrigger the ResizeObserver.
+                wrapperDiv.style.position = 'absolute';
+                wrapperDiv.style.left = '0';
+                wrapperDiv.style.top = '0';
                 wrapperDiv.style.width = availW + 'px';
                 wrapperDiv.style.height = availH + 'px';
             }
@@ -1693,12 +1702,26 @@ const plotlyChartScripts = `
     // parse + script-clone shuffle by going straight to JSON.parse + Plotly.newPlot.
     // After this returns, plotDiv.data / plotDiv.layout are owned by Plotly, so
     // resize/copy paths continue to work unchanged.
+    //
+    // postMessage events can in principle originate from any script in the page,
+    // so treat the payload as untrusted: validate divId against a strict pattern
+    // and build the placeholder element with DOM APIs (no innerHTML concatenation).
+    var SAFE_DIV_ID_RE = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
     window.addEventListener('message', function(event) {
         var msg = event.data;
         if (!msg || msg.command !== 'setChartContent' || typeof msg.divId !== 'string') return;
+        if (!SAFE_DIV_ID_RE.test(msg.divId)) {
+            console.error('setChartContent: rejecting unsafe divId');
+            return;
+        }
         var chartDiv = document.getElementById('chart');
         if (!chartDiv) return;
-        chartDiv.innerHTML = '<div id="' + msg.divId + '"></div>';
+        // Replace contents safely: drop any existing children, then create the
+        // placeholder via createElement so the divId is never parsed as HTML.
+        while (chartDiv.firstChild) chartDiv.removeChild(chartDiv.firstChild);
+        var plotPlaceholder = document.createElement('div');
+        plotPlaceholder.id = msg.divId;
+        chartDiv.appendChild(plotPlaceholder);
         if (typeof Plotly === 'undefined') {
             console.error('Plotly is not loaded yet; cannot render chart.');
             return;
@@ -1707,15 +1730,34 @@ const plotlyChartScripts = `
             var data = JSON.parse(msg.dataJson);
             var layout = JSON.parse(msg.layoutJson);
             var config = JSON.parse(msg.configJson);
-            Plotly.newPlot(msg.divId, data, layout, config);
+            Plotly.newPlot(plotPlaceholder, data, layout, config);
         } catch (e) {
             console.error('Plotly error:', e);
-            var errNode = document.getElementById(msg.divId);
-            if (errNode) errNode.innerText = 'Chart error: ' + (e && e.message ? e.message : e);
+            plotPlaceholder.innerText = 'Chart error: ' + (e && e.message ? e.message : e);
             return;
         }
         if (window._chartUpdated) window._chartUpdated();
     });
+
+    // Tell the host our setChartContent listener is attached so it can replay
+    // the latest payload. This makes structured-content delivery reliable
+    // across initial page load and any subsequent webview.html rebuild,
+    // independent of how the host buffers messages during page startup.
+    if (window._vscodeApi) {
+        try { window._vscodeApi.postMessage({ command: 'chartViewReady' }); } catch (e) {}
+    } else {
+        // _vscodeApi may be set up by another script later; retry briefly.
+        var readyAttempts = 0;
+        var readyTimer = setInterval(function() {
+            readyAttempts++;
+            if (window._vscodeApi) {
+                clearInterval(readyTimer);
+                try { window._vscodeApi.postMessage({ command: 'chartViewReady' }); } catch (e) {}
+            } else if (readyAttempts > 20) {
+                clearInterval(readyTimer);
+            }
+        }, 50);
+    }
 
     window.addEventListener('message', async function(event) {
         var message = event.data;
@@ -1801,12 +1843,32 @@ class PlotlyChartView implements IChartView {
     onCopyResult: ((pngDataUrl: string, svgDataUrl?: string) => void) | undefined;
     onCopyError: ((error: string) => void) | undefined;
     private readonly subscription: { dispose(): void };
+    /**
+     * Last structured chart payload sent via `setChartContent`. Cached so we
+     * can replay it whenever the page reports it's ready.
+     *
+     * Why: structured-content rendering does not embed anything into the
+     * adapter's `contentHtml`, so the chart only appears via the message we
+     * post. On initial render (and after any `webview.html` rebuild) the host
+     * sends the message before the page's listener is attached, and depending
+     * on how the host buffers messages during page load, that first message
+     * could be lost. The page sends `chartViewReady` once its handler is up,
+     * and we reliably re-send the latest payload here.
+     */
+    private lastPayload: { divId: string; dataJson: string; layoutJson: string; configJson: string } | undefined;
 
     constructor(
         private readonly webview: IWebView,
         private readonly render: (data: ResultTable, options: ChartOptions, darkMode: boolean) => ChartRenderResult | undefined
     ) {
         this.subscription = webview.handle((message) => {
+            if (message.command === 'chartViewReady' && this.lastPayload) {
+                // Page just attached its handler (initial load or rebuild) —
+                // resend the latest payload so the chart renders even if the
+                // immediate post during renderChart was missed.
+                this.webview.invoke('setChartContent', { ...this.lastPayload });
+                return;
+            }
             if (message.command === 'copyChartResult') {
                 const pngDataUrl = message.pngDataUrl as string;
                 const svgDataUrl = message.svgDataUrl as string | undefined;
@@ -1832,18 +1894,25 @@ class PlotlyChartView implements IChartView {
                 `<div style="display:flex;align-items:center;justify-content:center;height:100%;visibility:visible;color:var(--vscode-foreground,inherit);">` +
                 `<span style="font-size:1.5em;">&#10060;</span>&nbsp; Chart type "${typeName}" is not currently supported.</div>`
             );
+            this.lastPayload = undefined;
             return;
         }
         if (result.type === 'html') {
             this.webview.setContent(result.html);
-        } else {
-            this.webview.invoke('setChartContent', {
-                divId: result.divId,
-                dataJson: result.dataJson,
-                layoutJson: result.layoutJson,
-                configJson: result.configJson,
-            });
+            this.lastPayload = undefined;
+            return;
         }
+        // Structured single-chart payload. Cache it so we can replay on
+        // `chartViewReady` after a page (re)load, then send immediately for
+        // the common case where the page is already up.
+        const payload = {
+            divId: result.divId,
+            dataJson: result.dataJson,
+            layoutJson: result.layoutJson,
+            configJson: result.configJson,
+        };
+        this.lastPayload = payload;
+        this.webview.invoke('setChartContent', { ...payload });
     }
 
     dispose(): void {
