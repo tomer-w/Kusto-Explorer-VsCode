@@ -399,21 +399,39 @@ public class ServerSchemaSource : ISchemaSource
         return graphEntities
             .Select(e =>
             {
-                snapshotMap.TryGetValue(e.EntityName, out var snapshots);
-                var snapshotNames = snapshots != null 
-                    ? JsonConvert.DeserializeObject<ImmutableList<string>>(snapshots) ?? ImmutableList<string>.Empty
-                    : ImmutableList<string>.Empty;
-
-                GraphModel.TryParse(e.Content, out var model);
-                return new GraphModelInfo
+                var snapshotNames = ImmutableList<string>.Empty;
+                if (snapshotMap.TryGetValue(e.EntityName, out var snapshots)
+                    && snapshots != null)
                 {
-                    Name = e.EntityName,
-                    Model = e.Content,
-                    Snapshots = snapshotNames,
-                    Description = e.DocString,
-                    Folder = e.Folder
-                };
-            }).ToImmutableList();
+                    try
+                    {
+                        snapshotNames = JsonConvert.DeserializeObject<ImmutableList<string>>(snapshots) ?? ImmutableList<string>.Empty;                      
+                    }
+                    catch
+                    {
+                        _logger?.Log($"ServerSchemaSource: Failed to parse snapshots for graph model: {e.EntityName}");
+                    }
+                }
+
+                if (GraphModel.TryParse(e.Content, out var model))
+                {
+                    return new GraphModelInfo
+                    {
+                        Name = e.EntityName,
+                        Model = e.Content,
+                        Snapshots = snapshotNames,
+                        Description = e.DocString,
+                        Folder = e.Folder
+                    };                       
+                }                  
+                else
+                {
+                    _logger?.Log($"ServerSchemaSource: Failed to parse graph model for model: {e.EntityName}");
+                    return null;                   
+                }
+            })
+            .OfType<GraphModelInfo>()
+            .ToImmutableList();
     }
 
     public async Task<ImmutableList<StoredQueryResultInfo>> GetStoredQueryResultInfosAsync(
