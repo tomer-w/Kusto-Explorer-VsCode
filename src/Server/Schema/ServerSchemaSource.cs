@@ -401,15 +401,15 @@ public class ServerSchemaSource : ISchemaSource
             {
                 var snapshotNames = ImmutableList<string>.Empty;
                 if (snapshotMap.TryGetValue(e.EntityName, out var snapshots)
-                    && snapshots != null)
+                    && !string.IsNullOrWhiteSpace(snapshots))
                 {
                     try
                     {
                         snapshotNames = JsonConvert.DeserializeObject<ImmutableList<string>>(snapshots) ?? ImmutableList<string>.Empty;                      
                     }
-                    catch
+                    catch (JsonException je)
                     {
-                        _logger?.Log($"ServerSchemaSource: Failed to parse snapshots for graph model: {e.EntityName}");
+                        _logger?.Log($"ServerSchemaSource: Failed to parse snapshots for graph model '{e.EntityName}': {je.Message}");
                     }
                 }
 
