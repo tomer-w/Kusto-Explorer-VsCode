@@ -413,24 +413,15 @@ public class ServerSchemaSource : ISchemaSource
                     }
                 }
 
-                if (GraphModel.TryParse(e.Content, out var model))
+                return new GraphModelInfo
                 {
-                    return new GraphModelInfo
-                    {
-                        Name = e.EntityName,
-                        Model = e.Content,
-                        Snapshots = snapshotNames,
-                        Description = e.DocString,
-                        Folder = e.Folder
-                    };                       
-                }                  
-                else
-                {
-                    _logger?.Log($"ServerSchemaSource: Failed to parse graph model for model: {e.EntityName}");
-                    return null;                   
-                }
+                    Name = e.EntityName,
+                    Model = e.Content,
+                    Snapshots = snapshotNames,
+                    Description = e.DocString,
+                    Folder = e.Folder
+                };                       
             })
-            .OfType<GraphModelInfo>()
             .ToImmutableList();
     }
 
