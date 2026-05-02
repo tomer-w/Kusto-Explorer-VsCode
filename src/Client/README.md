@@ -5,10 +5,10 @@ Edit, run, and chart Kusto queries (KQL) right from VS Code. Explore databases a
 ## Get Started
 
 1. Select the **Kusto Explorer** icon in the VS Code Activity Bar
-2. Open a scratch pad or create a `.kql` file
-3. Connect to a Kusto cluster and database:
+2. Use an existing scratch pad (already open) or create a `.kql` file
+3. Connect the query document to a Kusto cluster and database (while the document has focus):
    - Add a cluster connection in the **Connections** sidebar (if it doesn't exist yet)
-   - Select a database to set the active cluster and database for the document
+   - Select a database to set the active cluster and database for the focused document
 4. Write a Kusto query (or ask Copilot for help)
 5. Press **F5** to execute the query and view results in the Results panel
 6. Use the chart button to visualize your results — customize chart type, axes, legend, and more

@@ -157,7 +157,7 @@ This will create a `.vsix` file that can be installed in VS Code.
 
 ```bash
 code --install-extension <vsix-file> [--force]
-code --uninstall-extension Microsoft.kusto-explorer-vscode
+code --uninstall-extension ms-kusto.kusto-explorer-vscode
 ```
 
 ## Reporting Issues

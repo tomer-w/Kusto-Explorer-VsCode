@@ -31,11 +31,15 @@ code --install-extension <vsix-file>
 
 For a full walkthrough of the extension's features, see the [User Guide](src/Client/README.md).
 
-1. Open the **Kusto Explorer** icon in the VS Code Activity Bar
-2. Add a cluster connection in the **Connections** sidebar
-3. Select a database to set it as active for your query document
-4. Write a query (or ask Copilot for help), then press **F5** to run it
-5. View results in the bottom panel — add a chart, copy data, or save as `.kqr`
+1. Select the **Kusto Explorer** icon in the VS Code Activity Bar
+2. Use an existing scratch pad (already open) or create a `.kql` file
+3. Connect the query document to a Kusto cluster and database (while the document has focus):
+   - Add a cluster connection in the **Connections** sidebar (if it doesn't exist yet)
+   - Select a database to set the active cluster and database for the focused document
+4. Write a Kusto query (or ask Copilot for help)
+5. Press **F5** to execute the query and view results in the Results panel
+6. Use the chart button to visualize your results — customize chart type, axes, legend, and more
+7. Revisit prior queries and results in the **History** sidebar
 
 ----
 
