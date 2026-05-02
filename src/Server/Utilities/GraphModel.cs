@@ -15,8 +15,16 @@ public class GraphModel
 
     public static bool TryParse(string text, out GraphModel model)
     {
-        model = JsonConvert.DeserializeObject<GraphModel>(text);
-        return model != null;
+        try
+        {
+            model = JsonConvert.DeserializeObject<GraphModel>(text);
+            return model != null;          
+        }
+        catch
+        {
+            model = null!;
+            return false;
+        }
     }
 
     public override string ToString()

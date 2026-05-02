@@ -685,7 +685,8 @@ type KustoTreeItem =
 | FunctionTreeItem
 | EntityGroupTreeItem
 | EntityGroupMemberTreeItem
-| GraphModelTreeItem;
+| GraphModelTreeItem
+| GraphSnapshotTreeItem;
 
 class NoConnectionTreeItem extends vscode.TreeItem {
     constructor() {
@@ -937,10 +938,25 @@ class GraphModelTreeItem extends vscode.TreeItem {
         public readonly databaseName: string,
         public readonly graphInfo: DatabaseGraphModelInfo
     ) {
-        super(graphInfo.name, vscode.TreeItemCollapsibleState.None);
+        const hasSnapshots = (graphInfo.snapshots?.length ?? 0) > 0;
+        super(graphInfo.name, hasSnapshots ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None);
         this.id = `graphModel:${clusterName}:${databaseName}:${graphInfo.name}`;
         this.contextValue = 'graphModel';
         this.iconPath = new vscode.ThemeIcon('type-hierarchy');
+    }
+}
+
+class GraphSnapshotTreeItem extends vscode.TreeItem {
+    constructor(
+        public readonly clusterName: string,
+        public readonly databaseName: string,
+        public readonly modelName: string,
+        public readonly snapshotName: string
+    ) {
+        super(snapshotName, vscode.TreeItemCollapsibleState.None);
+        this.id = `graphSnapshot:${clusterName}:${databaseName}:${modelName}:${snapshotName}`;
+        this.contextValue = 'graphSnapshot';
+        this.iconPath = new vscode.ThemeIcon('history');
     }
 }
 
@@ -1402,6 +1418,12 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
                 .map(e => new EntityGroupMemberTreeItem(element.clusterName, element.databaseName, element.groupInfo.name, e));
         }
 
+        if (element instanceof GraphModelTreeItem) {
+            return (element.graphInfo.snapshots ?? [])
+                .map(s => new GraphSnapshotTreeItem(element.clusterName, element.databaseName, element.graphInfo.name, s))
+                .sort((a, b) => a.snapshotName.localeCompare(b.snapshotName, undefined, { sensitivity: 'base' }));
+        }
+
         return [];
     }
 
@@ -1459,6 +1481,15 @@ class KustoConnectionsProvider implements vscode.TreeDataProvider<KustoTreeItem>
         if (element instanceof GraphModelTreeItem)
         {
             return new DatabaseFolderTreeItem(element.clusterName, element.databaseName, 'graphModels', 'Graph Models', 'type-hierarchy');
+        }
+        if (element instanceof GraphSnapshotTreeItem)
+        {
+            const dbInfo = this.connections.getDatabaseInfo(element.clusterName, element.databaseName);
+            const graphInfo = dbInfo?.graphModels?.find(g => g.name === element.modelName);
+            if (graphInfo) {
+                return new GraphModelTreeItem(element.clusterName, element.databaseName, graphInfo);
+            }
+            return undefined;
         }
         if (element instanceof EntityFolderTreeItem)
         {

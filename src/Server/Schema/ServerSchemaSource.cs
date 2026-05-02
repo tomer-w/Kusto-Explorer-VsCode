@@ -399,12 +399,20 @@ public class ServerSchemaSource : ISchemaSource
         return graphEntities
             .Select(e =>
             {
-                snapshotMap.TryGetValue(e.EntityName, out var snapshots);
-                var snapshotNames = snapshots != null 
-                    ? JsonConvert.DeserializeObject<ImmutableList<string>>(snapshots) ?? ImmutableList<string>.Empty
-                    : ImmutableList<string>.Empty;
+                var snapshotNames = ImmutableList<string>.Empty;
+                if (snapshotMap.TryGetValue(e.EntityName, out var snapshots)
+                    && !string.IsNullOrWhiteSpace(snapshots))
+                {
+                    try
+                    {
+                        snapshotNames = JsonConvert.DeserializeObject<ImmutableList<string>>(snapshots) ?? ImmutableList<string>.Empty;                      
+                    }
+                    catch (JsonException je)
+                    {
+                        _logger?.Log($"ServerSchemaSource: Failed to parse snapshots for graph model '{e.EntityName}': {je.Message}");
+                    }
+                }
 
-                GraphModel.TryParse(e.Content, out var model);
                 return new GraphModelInfo
                 {
                     Name = e.EntityName,
@@ -412,8 +420,9 @@ public class ServerSchemaSource : ISchemaSource
                     Snapshots = snapshotNames,
                     Description = e.DocString,
                     Folder = e.Folder
-                };
-            }).ToImmutableList();
+                };                       
+            })
+            .ToImmutableList();
     }
 
     public async Task<ImmutableList<StoredQueryResultInfo>> GetStoredQueryResultInfosAsync(
